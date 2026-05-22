@@ -10,7 +10,10 @@ Requirements:
 - Use Markdown headings for organization.
 - Use tables for comparisons or compact summaries.
 - Use valid LaTeX math with `$...$` for inline math and `$$...$$` for display math.
-- Do not use bracket math like `[ ... ]`.
+- Never use `[ ... ]` for math.
+- Use `$$ ... $$` for display math.
+- If writing a formula on its own line, always wrap it in `$$ ... $$`.
+- Literal brackets should only be used for normal text, not formulas.
 - Do not invent facts not supported by the source text.
 
 Suggested structure:

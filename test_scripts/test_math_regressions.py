@@ -31,6 +31,10 @@ $70,000 is money.
 $ 70,000 is money.
 $ Suppose:
 $ This means:
+[ z = \frac{x-\mu}{\sigma} ]
+[ P(X < 900) = P(Z < -0.68) ]
+[Google](https://google.com)
+[important note]
 """
     clean = sanitize(source)
 
@@ -43,6 +47,10 @@ $ This means:
     assert "\\$ 70,000 is money." in clean
     assert "\\$ Suppose:" in clean
     assert "\\$ This means:" in clean
+    assert "$$\nz = \\frac{x-\\mu}{\\sigma}\n$$" in clean
+    assert "$$\nP(X < 900) = P(Z < -0.68)\n$$" in clean
+    assert "[Google](https://google.com)" in clean
+    assert "[important note]" in clean
     assert "$μ$" not in clean
     assert "$σ$" not in clean
 
@@ -52,6 +60,7 @@ $ This means:
 
     result = validate(clean_path)
     assert result.ok, result.to_json_dict()
+    assert result.display_blocks == 2, result.to_json_dict()
     assert result.inline_formulas == 5, result.to_json_dict()
 
 

@@ -4,6 +4,8 @@ import re
 
 PLACEHOLDER = "\uE000MATHBLOCK{}\uE001"
 DOLLAR_PLACEHOLDER = "\uE002DOLLARMATH{}\uE003"
+BRACKET_PLACEHOLDER = "\uE004BRACKETMATH{}\uE005"
+LINK_PLACEHOLDER = "\uE006LINK{}\uE007"
 
 STRUCTURE_PREFIXES = (
     "#",
@@ -347,6 +349,78 @@ def protect_and_convert_display_math(text: str) -> tuple[str, list[str]]:
     return "".join(out), blocks
 
 
+def protect_one_line_bracket_math(text: str) -> tuple[str, list[str]]:
+    blocks: list[str] = []
+    lines: list[str] = []
+    in_code = False
+
+    for line in text.splitlines():
+        if line.strip().startswith("```"):
+            in_code = not in_code
+            lines.append(line)
+            continue
+        if in_code:
+            lines.append(line)
+            continue
+
+        match = re.fullmatch(r"(\s*)\[(.+?)\](\s*)", line)
+        if not match:
+            lines.append(line)
+            continue
+
+        inner = match.group(2).strip()
+        if _looks_like_markdown_link(line) or not _looks_like_bracket_formula(inner):
+            lines.append(line)
+            continue
+
+        idx = len(blocks)
+        blocks.append("\n\n$$\n" + fix_math_inner(inner) + "\n$$\n\n")
+        lines.append(BRACKET_PLACEHOLDER.format(idx))
+
+    return "\n".join(lines), blocks
+
+
+def restore_bracket_blocks(text: str, blocks: list[str]) -> str:
+    for i, block in enumerate(blocks):
+        text = text.replace(BRACKET_PLACEHOLDER.format(i), block)
+    return text
+
+
+def protect_markdown_links(text: str) -> tuple[str, list[str]]:
+    blocks: list[str] = []
+
+    def replace(match: re.Match) -> str:
+        idx = len(blocks)
+        blocks.append(match.group(0))
+        return LINK_PLACEHOLDER.format(idx)
+
+    return re.sub(r"\[[^\]\n]+\]\([^) \n]+(?:\s+\"[^\"]+\")?\)", replace, text), blocks
+
+
+def restore_markdown_links(text: str, blocks: list[str]) -> str:
+    for i, block in enumerate(blocks):
+        text = text.replace(LINK_PLACEHOLDER.format(i), block)
+    return text
+
+
+def _looks_like_markdown_link(line: str) -> bool:
+    return bool(re.search(r"\[[^\]]+\]\([^)]+\)", line))
+
+
+def _looks_like_bracket_formula(inner: str) -> bool:
+    if not inner:
+        return False
+    if re.search(r"\\(?:frac|mu|sigma|text|cap|mid)\b", inner):
+        return True
+    if re.search(r"[=<>^_]", inner):
+        return True
+    if re.search(r"\\(?:cap|mid)\b", inner):
+        return True
+    if re.search(r"\bP\s*\([^)]", inner):
+        return True
+    return False
+
+
 def restore_blocks(text: str, blocks: list[str]) -> str:
     for i, block in enumerate(blocks):
         text = text.replace(PLACEHOLDER.format(i), block)
@@ -360,6 +434,8 @@ def merge_bare_probability_notation(text: str) -> str:
 
 def sanitize_markdown_math(text: str) -> str:
     text, dollar_blocks = protect_existing_dollar_math(text)
+    text, bracket_blocks = protect_one_line_bracket_math(text)
+    text, link_blocks = protect_markdown_links(text)
     text = escape_currency(text)
     text = escape_bad_dollar_lines(text)
     protected, blocks = protect_and_convert_display_math(text)
@@ -379,7 +455,9 @@ def sanitize_markdown_math(text: str) -> str:
     out = "\n".join(lines)
     out = merge_bare_probability_notation(out)
     out = restore_blocks(out, blocks)
+    out = restore_bracket_blocks(out, bracket_blocks)
     out = restore_dollar_blocks(out, dollar_blocks)
+    out = restore_markdown_links(out, link_blocks)
 
     out = out.replace("ESCAPED_DOLLAR", r"\$")
     out = out.replace("DISPLAY_MATH_BLOCK", "")
