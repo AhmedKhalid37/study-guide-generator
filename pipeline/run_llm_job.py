@@ -21,6 +21,7 @@ def run_llm_job(
     *,
     title: str,
     mode: str = "exam",
+    prompt_name: str = "basic_study_guide",
     theme: str = "claude_clean",
     strict_math: bool = True,
     config: LLMConfig | None = None,
@@ -32,6 +33,7 @@ def run_llm_job(
             "input_type": "text",
             "title": title,
             "mode": mode,
+            "prompt_name": prompt_name,
             "theme": theme,
             "strict_math": strict_math,
             "provider": "openai_compatible",
@@ -53,6 +55,7 @@ def run_llm_job(
             source_text,
             title=title,
             mode=mode,
+            prompt_name=prompt_name,
             config=resolved_config,
         )
         job.save_text(job.raw_md, raw_markdown)
@@ -72,6 +75,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--source-file", type=Path, required=True)
     parser.add_argument("--title", required=True)
     parser.add_argument("--mode", default="exam")
+    parser.add_argument("--prompt-name", default="basic_study_guide")
     parser.add_argument("--theme", default="claude_clean")
     parser.add_argument(
         "--no-strict-math",
@@ -87,6 +91,7 @@ def main(argv: list[str] | None = None) -> int:
             source_text,
             title=args.title,
             mode=args.mode,
+            prompt_name=args.prompt_name,
             theme=args.theme,
             strict_math=not args.no_strict_math,
             config=config,

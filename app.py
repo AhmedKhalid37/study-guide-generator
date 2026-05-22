@@ -72,6 +72,19 @@ def _paste_mode(*, theme: str, strict_math: bool) -> None:
 def _llm_mode(*, theme: str, strict_math: bool) -> None:
     title = st.text_input("Title", value="Generated Study Guide")
     guide_mode = st.selectbox("Mode", ["exam", "theory", "quick", "deep"], index=0)
+    style_label = st.selectbox(
+        "Style",
+        [
+            "Basic study guide",
+            "Baby-step explanation",
+            "Exam cram",
+            "MCQ training",
+            "Final solution",
+            "Claude-style study guide",
+        ],
+        index=0,
+    )
+    prompt_name = _prompt_name_for_style(style_label)
     model_choice = st.selectbox(
         "Model",
         [
@@ -108,6 +121,7 @@ def _llm_mode(*, theme: str, strict_math: bool) -> None:
                 source_text,
                 title=title,
                 mode=guide_mode,
+                prompt_name=prompt_name,
                 theme=theme,
                 strict_math=strict_math,
                 config=_llm_config_for_model(selected_model),
@@ -125,6 +139,17 @@ def _llm_config_for_model(selected_model: str | None) -> LLMConfig:
         model=selected_model,
         temperature=config.temperature,
     )
+
+
+def _prompt_name_for_style(style_label: str) -> str:
+    return {
+        "Basic study guide": "basic_study_guide",
+        "Baby-step explanation": "baby_steps",
+        "Exam cram": "exam_cram",
+        "MCQ training": "mcq_training",
+        "Final solution": "final_solution",
+        "Claude-style study guide": "claude_study_guide",
+    }[style_label]
 
 
 def _run_job(factory) -> None:

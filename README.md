@@ -89,6 +89,11 @@ Streamlit's LLM mode. Model overrides are per run only. `deepseek-v4-flash` is
 the faster/cheaper style option; `deepseek-v4-pro` is the better-quality style
 option.
 
+LLM mode also includes style presets. The default is `Basic study guide`; you
+can switch per run to baby-step explanation, exam cram, MCQ training, final
+solution, or Claude-style study guide. Each preset is a Markdown prompt in
+`prompts/`.
+
 Alternatively, launch Streamlit with DeepSeek environment variables using fish
 shell:
 
