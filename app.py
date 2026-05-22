@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import json
+import re
 import tempfile
 from pathlib import Path
 
@@ -11,6 +13,7 @@ from pipeline.run_markdown_job import MarkdownJobError, run_markdown_job, run_pa
 def main() -> None:
     st.set_page_config(page_title="Study Guide Generator", layout="centered")
     st.title("Study Guide Generator")
+    _sidebar_help()
 
     _init_state()
 
@@ -40,7 +43,8 @@ def _upload_mode(*, theme: str, strict_math: bool) -> None:
             return
 
         suffix = Path(uploaded.name).suffix or ".md"
-        with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tmp:
+        prefix = _safe_temp_prefix(uploaded.name)
+        with tempfile.NamedTemporaryFile(delete=False, suffix=suffix, prefix=prefix) as tmp:
             tmp.write(uploaded.getbuffer())
             temp_path = Path(tmp.name)
 
@@ -80,6 +84,9 @@ def _show_result() -> None:
         st.error(error)
         if failed_job is not None:
             st.write(f"Job folder: `{failed_job.dir}`")
+            _show_validation_summary(failed_job)
+            _show_render_log(failed_job)
+            _download_existing_artifacts(failed_job, include_outputs=False)
         return
 
     if job is None:
@@ -87,14 +94,79 @@ def _show_result() -> None:
 
     st.success("Job completed.")
     st.write(f"Job id: `{job.id}`")
-    st.write(f"Job folder: `{job.dir}`")
-    st.write(f"clean.md: `{job.clean_md}`")
-    st.write(f"final.html: `{job.final_html}`")
-    st.write(f"final.pdf: `{job.final_pdf}`")
+    _show_validation_summary(job)
 
-    _download_button("Download clean.md", job.clean_md, "text/markdown")
-    _download_button("Download final.html", job.final_html, "text/html")
-    _download_button("Download final.pdf", job.final_pdf, "application/pdf")
+    with st.expander("Job details"):
+        st.write(f"Job folder: `{job.dir}`")
+        st.write(f"clean.md: `{job.clean_md}`")
+        st.write(f"final.html: `{job.final_html}`")
+        st.write(f"final.pdf: `{job.final_pdf}`")
+
+    _download_existing_artifacts(job, include_outputs=True)
+
+
+def _sidebar_help() -> None:
+    with st.sidebar:
+        st.header("Help")
+        st.markdown(
+            """
+**Upload Markdown** converts an existing `.md` or `.markdown` file into a
+sanitized study-guide PDF.
+
+**Paste Text** converts pasted Markdown or plain text through the same backend
+pipeline.
+
+**Strict math validation** stops the job when KaTeX cannot parse a formula.
+Turn it off only when you want a PDF even with visibly marked math errors.
+
+Jobs are saved under `jobs/<job_id>/` with inputs, logs, Markdown, HTML, PDF,
+and `job.json`.
+"""
+        )
+
+
+def _show_validation_summary(job) -> None:
+    validation_path = job.logs_dir / "validation.json"
+    data = _read_json(validation_path)
+    if data is None:
+        st.caption(f"Validation summary unavailable: {validation_path}")
+        return
+
+    ok = bool(data.get("ok"))
+    errors = data.get("errors") or []
+    status = "passed" if ok else "failed"
+    st.write(
+        "Validation "
+        f"{status}: display math blocks `{data.get('displayBlocks', 0)}`, "
+        f"inline math `{data.get('inlineFormulas', 0)}`, "
+        f"errors `{len(errors)}`"
+    )
+
+    if errors:
+        with st.expander("Validation errors"):
+            for index, error in enumerate(errors, start=1):
+                expr = error.get("expr", "")
+                message = error.get("message") or error.get("error", "")
+                mode = "display" if error.get("display_mode") or error.get("displayMode") else "inline"
+                st.markdown(f"**{index}. {mode}**")
+                st.code(expr)
+                st.write(message)
+
+
+def _show_render_log(job) -> None:
+    if not job.render_log.exists():
+        return
+    with st.expander("Render log"):
+        st.code(job.render_log.read_text(encoding="utf-8", errors="replace"))
+
+
+def _download_existing_artifacts(job, *, include_outputs: bool) -> None:
+    if include_outputs:
+        _download_button("Download clean.md", job.clean_md, "text/markdown")
+        _download_button("Download final.html", job.final_html, "text/html")
+        _download_button("Download final.pdf", job.final_pdf, "application/pdf")
+    else:
+        _download_button("Download clean.md", job.clean_md, "text/markdown")
     _download_button("Download validation.json", job.logs_dir / "validation.json", "application/json")
     _download_button("Download render.log", job.render_log, "text/plain")
 
@@ -109,6 +181,21 @@ def _download_button(label: str, path: Path, mime: str) -> None:
         file_name=path.name,
         mime=mime,
     )
+
+
+def _read_json(path: Path) -> dict | None:
+    if not path.exists():
+        return None
+    try:
+        return json.loads(path.read_text(encoding="utf-8"))
+    except json.JSONDecodeError:
+        return None
+
+
+def _safe_temp_prefix(filename: str) -> str:
+    stem = Path(filename).stem or "upload"
+    safe = re.sub(r"[^A-Za-z0-9_.-]+", "_", stem).strip("._-") or "upload"
+    return f"{safe[:40]}_"
 
 
 if __name__ == "__main__":

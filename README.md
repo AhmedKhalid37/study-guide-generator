@@ -7,6 +7,42 @@ This pipeline converts course material into a clean, exam-focused study guide:
 Note: `legacy_scripts/` contains a backup copy of the old working pipeline
 scripts as they existed before the Chrome renderer work.
 
+## Streamlit MVP
+
+Install Python dependencies:
+
+```bash
+python -m pip install -r requirements.txt
+```
+
+Install Node dependencies for KaTeX validation/rendering:
+
+```bash
+npm install
+```
+
+Chromium is required for Chrome/HTML PDF rendering. On CachyOS:
+
+```bash
+sudo pacman -S --needed chromium
+```
+
+Launch the app:
+
+```bash
+python -m streamlit run app.py
+```
+
+To test upload mode, launch the app and upload `ch4_raw.md`.
+
+To test paste mode, paste this small example:
+
+```md
+# Paste Test
+
+The formula is (z=\frac{x-\mu}{\sigma}).
+```
+
 This v2 upgrade adds the most useful ideas from the second Claude run:
 
 - a **math sanitizer** that repairs broken Markdown math
