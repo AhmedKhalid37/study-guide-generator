@@ -8,7 +8,7 @@ from pathlib import Path
 
 import streamlit as st
 
-from pipeline.llm_client import MissingLLMConfigError
+from pipeline.llm_client import LLMConfig, MissingLLMConfigError, load_env_file
 from pipeline.run_llm_job import LLMJobError, run_llm_job
 from pipeline.run_markdown_job import MarkdownJobError, run_markdown_job, run_pasted_text_job
 
@@ -72,6 +72,20 @@ def _paste_mode(*, theme: str, strict_math: bool) -> None:
 def _llm_mode(*, theme: str, strict_math: bool) -> None:
     title = st.text_input("Title", value="Generated Study Guide")
     guide_mode = st.selectbox("Mode", ["exam", "theory", "quick", "deep"], index=0)
+    model_choice = st.selectbox(
+        "Model",
+        [
+            "Use environment default",
+            "deepseek-v4-flash",
+            "deepseek-v4-pro",
+            "deepseek-chat",
+            "deepseek-reasoner",
+        ],
+        index=0,
+    )
+    selected_model = None if model_choice == "Use environment default" else model_choice
+    st.session_state.selected_llm_model = selected_model
+
     uploaded = st.file_uploader("Optional source file", type=["txt", "md", "markdown"])
     text = st.text_area("Source text", height=360)
 
@@ -96,8 +110,21 @@ def _llm_mode(*, theme: str, strict_math: bool) -> None:
                 mode=guide_mode,
                 theme=theme,
                 strict_math=strict_math,
+                config=_llm_config_for_model(selected_model),
             )
         )
+
+
+def _llm_config_for_model(selected_model: str | None) -> LLMConfig:
+    config = LLMConfig.from_env()
+    if selected_model is None:
+        return config
+    return LLMConfig(
+        base_url=config.base_url,
+        api_key=config.api_key,
+        model=selected_model,
+        temperature=config.temperature,
+    )
 
 
 def _run_job(factory) -> None:
@@ -172,14 +199,19 @@ and `job.json`.
 """
         )
         st.header("LLM Config")
-        _config_status("LLM_BASE_URL", "Base URL")
-        _config_status("LLM_MODEL", "Model")
-        _config_status("LLM_API_KEY", "API key")
+        _show_llm_config_status()
 
 
-def _config_status(env_name: str, label: str) -> None:
-    status = "set" if os.getenv(env_name) else "missing"
-    st.write(f"{label}: `{status}`")
+def _show_llm_config_status() -> None:
+    load_env_file()
+    st.write(f"Base URL: `{'present' if os.getenv('LLM_BASE_URL') else 'missing'}`")
+    st.write(f"API key: `{'present' if os.getenv('LLM_API_KEY') else 'missing'}`")
+    st.write(f"Default model: `{os.getenv('LLM_MODEL') or 'missing'}`")
+    selected = st.session_state.get("selected_llm_model")
+    if selected:
+        st.write(f"Selected model for this run: `{selected}`")
+    else:
+        st.write("Selected model for this run: `environment default`")
 
 
 def _show_validation_summary(job) -> None:

@@ -52,14 +52,16 @@ python test_scripts/test_math_regressions.py
 ## CLI LLM Mode
 
 The LLM path is CLI-first and uses one OpenAI-compatible client for hosted APIs
-or local servers. Set these environment variables before running it:
+or local servers.
+
+Create a local `.env` file from the example:
 
 ```bash
-export LLM_BASE_URL="https://api.openai.com/v1"
-export LLM_API_KEY="YOUR_KEY"
-export LLM_MODEL="gpt-4.1"
-export LLM_TEMPERATURE="0.2"
+cp .env.example .env
 ```
+
+Edit `.env` with your actual API key and model. Never commit `.env`; it is
+ignored by git so secrets stay local.
 
 For a local OpenAI-compatible server, point `LLM_BASE_URL` and `LLM_MODEL` at
 that server instead.
@@ -76,12 +78,24 @@ python -m pipeline.run_llm_job \
 The command creates a `jobs/<job_id>/` folder containing `input/source.txt`,
 `raw.md`, `clean.md`, `final.html`, `final.pdf`, logs, and `job.json`.
 
-Launch Streamlit with DeepSeek environment variables using fish shell:
+After `.env` is set, launch Streamlit normally:
+
+```bash
+python -m streamlit run app.py
+```
+
+The app uses the `.env` default model unless you choose a different model in
+Streamlit's LLM mode. Model overrides are per run only. `deepseek-v4-flash` is
+the faster/cheaper style option; `deepseek-v4-pro` is the better-quality style
+option.
+
+Alternatively, launch Streamlit with DeepSeek environment variables using fish
+shell:
 
 ```fish
 set -x LLM_BASE_URL "https://api.deepseek.com/v1"
 set -x LLM_API_KEY "your_key_here"
-set -x LLM_MODEL "deepseek-chat"
+set -x LLM_MODEL "deepseek-v4-flash"
 set -x LLM_TEMPERATURE "0.2"
 python -m streamlit run app.py
 ```
