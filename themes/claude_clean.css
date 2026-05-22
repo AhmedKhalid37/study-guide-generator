@@ -1,0 +1,215 @@
+@page {
+  size: A4;
+  margin: 18mm 17mm;
+}
+
+:root {
+  --ink: #1a1a1a;
+  --ink-soft: #2a2a2a;
+  --muted: #6b6b72;
+  --rule: #b5b5bb;
+  --rule-soft: #e0e0e4;
+  --link: #1a5fb4;
+  --code-bg: #f2f2f4;
+  --code-bd: #e3e3e8;
+  --block-bg: #f6f6f8;
+  --block-bd: #e7e7ec;
+  --quote-bar: #c9ccd1;
+  --serif: "Source Serif 4", "Charter", "Iowan Old Style", "Palatino Linotype",
+    "Book Antiqua", Georgia, "Times New Roman", serif;
+  --mono: "JetBrains Mono", "Fira Code", "DejaVu Sans Mono", "SF Mono",
+    Consolas, "Liberation Mono", monospace;
+}
+
+html {
+  font-size: 11pt;
+  -webkit-text-size-adjust: 100%;
+}
+
+body {
+  margin: 0;
+  background: #fff;
+  color: var(--ink);
+  font-family: var(--serif);
+  line-height: 1.55;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -webkit-print-color-adjust: exact;
+  print-color-adjust: exact;
+}
+
+.guide {
+  max-width: 100%;
+}
+
+.guide > :first-child {
+  margin-top: 0;
+}
+
+.guide h1,
+.guide h2,
+.guide h3,
+.guide h4,
+.guide h5,
+.guide h6 {
+  color: var(--ink);
+  font-family: var(--serif);
+  font-weight: 700;
+  line-height: 1.25;
+  break-after: avoid;
+}
+
+.guide h1 {
+  font-size: 2rem;
+  margin: 0 0 0.6rem;
+}
+
+.guide h2 {
+  font-size: 1.5rem;
+  margin: 1.9rem 0 0.6rem;
+}
+
+.guide h3 {
+  font-size: 1.2rem;
+  margin: 1.5rem 0 0.45rem;
+}
+
+.guide h4 {
+  font-size: 1.05rem;
+  margin: 1.2rem 0 0.35rem;
+}
+
+.guide p {
+  margin: 0.7rem 0;
+  orphans: 3;
+  widows: 3;
+}
+
+.guide a {
+  color: var(--link);
+  text-decoration: none;
+}
+
+.guide ul,
+.guide ol {
+  margin: 0.7rem 0;
+  padding-left: 1.5rem;
+}
+
+.guide li {
+  margin: 0.3rem 0;
+}
+
+.guide blockquote {
+  margin: 1rem 0;
+  padding: 0.15rem 0 0.15rem 1.1rem;
+  border-left: 4px solid var(--quote-bar);
+  color: var(--ink-soft);
+  break-inside: avoid;
+}
+
+.guide blockquote p {
+  margin: 0.35rem 0;
+}
+
+.guide code {
+  padding: 0.08em 0.4em;
+  border: 1px solid var(--code-bd);
+  border-radius: 5px;
+  background: var(--code-bg);
+  font-family: var(--mono);
+  font-size: 0.86em;
+  white-space: nowrap;
+}
+
+.guide pre {
+  margin: 1rem 0;
+  padding: 0.9rem 1.1rem;
+  overflow-x: auto;
+  border: 1px solid var(--block-bd);
+  border-radius: 8px;
+  background: var(--block-bg);
+  font-size: 0.85em;
+  line-height: 1.45;
+  break-inside: avoid;
+}
+
+.guide pre code {
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: none;
+  font-size: inherit;
+  white-space: pre;
+}
+
+.guide table {
+  width: 100%;
+  margin: 1.1rem 0;
+  border-collapse: collapse;
+  border-top: 2px solid var(--rule);
+  font-size: 0.95em;
+  break-inside: avoid;
+}
+
+.guide th {
+  padding: 0.5rem 0.7rem;
+  border-bottom: 1.5px solid var(--rule);
+  font-weight: 700;
+  text-align: left;
+  vertical-align: bottom;
+}
+
+.guide td {
+  padding: 0.45rem 0.7rem;
+  border-bottom: 1px solid var(--rule-soft);
+  vertical-align: top;
+}
+
+.guide tbody tr:last-child td {
+  border-bottom: 2px solid var(--rule);
+}
+
+.guide hr {
+  margin: 2rem 0;
+  border: 0;
+  border-top: 1px solid var(--rule);
+}
+
+.guide img {
+  display: block;
+  max-width: 100%;
+  height: auto;
+  margin: 1rem auto;
+  break-inside: avoid;
+}
+
+.guide .katex {
+  font-size: 1.04em;
+}
+
+.guide .katex-display {
+  margin: 1.2rem 0;
+  overflow-x: auto;
+  overflow-y: hidden;
+}
+
+.guide .katex-display > .katex {
+  font-size: 1.08em;
+}
+
+@media print {
+  .guide h1,
+  .guide h2,
+  .guide h3,
+  .guide h4 {
+    break-after: avoid;
+  }
+
+  .guide table,
+  .guide pre,
+  .guide blockquote,
+  .guide img {
+    break-inside: avoid;
+  }
+}
