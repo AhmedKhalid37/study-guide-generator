@@ -4,6 +4,7 @@ import re
 
 PLACEHOLDER = "\uE000MATHBLOCK{}\uE001"
 DOLLAR_PLACEHOLDER = "\uE002DOLLARMATH{}\uE003"
+DOLLAR_PLACEHOLDER_PREFIX = "\uE002DOLLARMATH"
 BRACKET_PLACEHOLDER = "\uE004BRACKETMATH{}\uE005"
 LINK_PLACEHOLDER = "\uE006LINK{}\uE007"
 
@@ -107,10 +108,19 @@ def protect_existing_dollar_math(text: str) -> tuple[str, list[str]]:
             i += 1
             continue
 
+        line = _protect_latex_inline_math(line, blocks)
         out.append(_protect_inline_dollar_math(line, blocks))
         i += 1
 
     return "".join(out), blocks
+
+
+def _protect_latex_inline_math(line: str, blocks: list[str]) -> str:
+    return re.sub(
+        r"\\\((.+?)\\\)",
+        lambda match: _store_dollar_block(blocks, "$" + fix_math_inner(match.group(1)) + "$"),
+        line,
+    )
 
 
 def _protect_inline_dollar_math(line: str, blocks: list[str]) -> str:
@@ -267,6 +277,16 @@ def convert_inline_math_line(line: str) -> str:
 
     while i < n:
         ch = line[i]
+        if ch == "`":
+            end = line.find("`", i + 1)
+            if end == -1:
+                out.append(ch)
+                i += 1
+            else:
+                out.append(line[i : end + 1])
+                i = end + 1
+            continue
+
         if ch != "(":
             out.append(ch)
             i += 1
@@ -289,6 +309,15 @@ def convert_inline_math_line(line: str) -> str:
             continue
 
         inner = line[i + 1:j]
+        if (
+            DOLLAR_PLACEHOLDER_PREFIX in inner
+            or "$" in inner
+            or r"\(" in inner
+            or r"\)" in inner
+        ):
+            out.append(ch)
+            i += 1
+            continue
         if looks_math(inner):
             out.append("$" + fix_math_inner(inner) + "$")
             i = j + 1

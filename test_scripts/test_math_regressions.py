@@ -15,6 +15,7 @@ from pipeline.math_validator import validate
 
 def main() -> None:
     test_sanitizer_regressions()
+    test_parenthetical_math_regressions()
     test_html_renderer_inline_math()
     print("math regression tests passed")
 
@@ -62,6 +63,48 @@ $ This means:
     assert result.ok, result.to_json_dict()
     assert result.display_blocks == 2, result.to_json_dict()
     assert result.inline_formulas == 5, result.to_json_dict()
+
+
+def test_parenthetical_math_regressions() -> None:
+    source = r"""for (j=1) and (j=2)
+from hidden node (j) to output (k)
+from input (i) to hidden (j)
+equal to (t_k)
+one-hot (t=(1,0,0))
+error_k· (w_{1k}^{[o]})
+not (x_i)
+this is important (remember this)
+the flower (iris) has petals
+see chapter (normal distribution)
+[Google](https://google.com)
+`code (x_i)`
+There are two sets: for \(j=1\) and \(j=2\).
+"""
+    clean = sanitize(source)
+
+    assert "for $j=1$ and $j=2$" in clean
+    assert "from hidden node $j$ to output $k$" in clean
+    assert "from input $i$ to hidden $j$" in clean
+    assert "equal to $t_k$" in clean
+    assert "one-hot $t=(1,0,0)$" in clean
+    assert "error_k· $w_{1k}^{[o]}$" in clean
+    assert "not $x_i$" in clean
+    assert "this is important (remember this)" in clean
+    assert "the flower (iris) has petals" in clean
+    assert "see chapter (normal distribution)" in clean
+    assert "[Google](https://google.com)" in clean
+    assert "`code (x_i)`" in clean
+    assert "There are two sets: for $j=1$ and $j=2$." in clean
+    assert "$There are two sets" not in clean
+    assert "$from hidden node" not in clean
+    assert "$equal to" not in clean
+
+    with tempfile.NamedTemporaryFile("w", suffix=".md", delete=False, encoding="utf-8") as tmp:
+        tmp.write(clean)
+        clean_path = Path(tmp.name)
+
+    result = validate(clean_path)
+    assert result.ok, result.to_json_dict()
 
 
 def test_html_renderer_inline_math() -> None:
