@@ -4,6 +4,14 @@ import os
 from dataclasses import dataclass
 
 
+def load_env_file() -> None:
+    try:
+        from dotenv import load_dotenv
+    except ImportError:
+        return
+    load_dotenv()
+
+
 class MissingLLMConfigError(RuntimeError):
     pass
 
@@ -17,6 +25,7 @@ class LLMConfig:
 
     @classmethod
     def from_env(cls) -> "LLMConfig":
+        load_env_file()
         missing = [
             name
             for name in ("LLM_BASE_URL", "LLM_API_KEY", "LLM_MODEL")
