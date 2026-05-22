@@ -168,8 +168,12 @@ def _is_escaped(text: str, index: int) -> bool:
 
 def _add_math(expressions: list[MathExpression], expr: str, *, display_mode: bool) -> str:
     index = len(expressions)
-    expressions.append(MathExpression(expr=expr, display_mode=display_mode))
+    expressions.append(MathExpression(expr=_normalize_math(expr), display_mode=display_mode))
     return PLACEHOLDER.format(index)
+
+
+def _normalize_math(expr: str) -> str:
+    return expr.replace("μ", r"\mu").replace("σ", r"\sigma")
 
 
 def _render_katex(expressions: list[MathExpression], *, strict_math: bool = True) -> list[str]:

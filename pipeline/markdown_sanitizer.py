@@ -3,15 +3,206 @@ from __future__ import annotations
 import re
 
 PLACEHOLDER = "\uE000MATHBLOCK{}\uE001"
+DOLLAR_PLACEHOLDER = "\uE002DOLLARMATH{}\uE003"
+
+STRUCTURE_PREFIXES = (
+    "#",
+    "##",
+    "###",
+    "---",
+    "Step",
+    "Question",
+    "Final answer",
+    "Exam hint",
+    "Definition",
+    "Plain English",
+    "Memory hint",
+)
 
 
 def escape_currency(text: str) -> str:
     # Escape literal money signs before numbers so they do not become math delimiters.
+    text = re.sub(r"(?<!\\)\$\s+(?=\d)", r"\\$ ", text)
     return re.sub(r"(?<!\\)\$(?=\d)", r"\\$", text)
+
+
+def escape_bad_dollar_lines(text: str) -> str:
+    lines: list[str] = []
+    for line in text.splitlines():
+        stripped = line.lstrip()
+        indent = line[: len(line) - len(stripped)]
+        if stripped == "$":
+            lines.append(indent + r"\$")
+            continue
+        if re.match(r"^\$\s+[A-Za-z]", stripped):
+            lines.append(indent + r"\$" + stripped[1:])
+            continue
+        lines.append(line)
+    return "\n".join(lines)
+
+
+def protect_existing_dollar_math(text: str) -> tuple[str, list[str]]:
+    blocks: list[str] = []
+    lines = text.splitlines(True)
+    out: list[str] = []
+    in_code = False
+    i = 0
+
+    while i < len(lines):
+        line = lines[i]
+        stripped = line.strip()
+
+        if stripped.startswith("```"):
+            in_code = not in_code
+            out.append(line)
+            i += 1
+            continue
+
+        if in_code:
+            out.append(line)
+            i += 1
+            continue
+
+        if stripped == "$":
+            out.append(line.replace("$", r"\$", 1))
+            i += 1
+            continue
+
+        if _is_single_line_display_math(stripped):
+            expr = stripped[2:-2].strip()
+            out.append(_store_dollar_block(blocks, "$$" + fix_math_inner(expr) + "$$") + _line_ending(line))
+            i += 1
+            continue
+
+        if stripped.startswith("$$"):
+            collected = [line]
+            j = i + 1
+            found_close = False
+            blocked_by_structure = False
+
+            while j < len(lines):
+                candidate = lines[j]
+                candidate_stripped = candidate.strip()
+                if candidate_stripped == "$$" or (
+                    candidate_stripped.endswith("$$")
+                    and not candidate_stripped.startswith("$$")
+                ):
+                    collected.append(candidate)
+                    found_close = True
+                    break
+                if _is_markdown_structure(candidate_stripped):
+                    blocked_by_structure = True
+                    break
+                collected.append(candidate)
+                j += 1
+
+            if found_close and not blocked_by_structure:
+                out.append(_store_dollar_block(blocks, _normalize_display_block("".join(collected))))
+                i = j + 1
+                continue
+
+            out.append(line.replace("$", r"\$", 1))
+            i += 1
+            continue
+
+        out.append(_protect_inline_dollar_math(line, blocks))
+        i += 1
+
+    return "".join(out), blocks
+
+
+def _protect_inline_dollar_math(line: str, blocks: list[str]) -> str:
+    line = re.sub(
+        r"(?<!\\)\$\$([^\n$]+?)(?<!\\)\$\$",
+        lambda match: _store_dollar_block(blocks, "$" + fix_math_inner(match.group(1)) + "$"),
+        line,
+    )
+
+    out: list[str] = []
+    i = 0
+    in_code = False
+    while i < len(line):
+        ch = line[i]
+        if ch == "`":
+            in_code = not in_code
+            out.append(ch)
+            i += 1
+            continue
+        if ch != "$" or in_code or _is_escaped(line, i):
+            out.append(ch)
+            i += 1
+            continue
+
+        end = _find_inline_dollar_close(line, i + 1)
+        if end is None:
+            out.append(ch)
+            i += 1
+            continue
+
+        expr = line[i + 1:end].strip()
+        if expr and looks_math(expr):
+            out.append(_store_dollar_block(blocks, "$" + fix_math_inner(expr) + "$"))
+            i = end + 1
+            continue
+
+        out.append(ch)
+        i += 1
+
+    return "".join(out)
+
+
+def _find_inline_dollar_close(line: str, start: int) -> int | None:
+    for i in range(start, len(line)):
+        if line[i] == "$" and not _is_escaped(line, i):
+            return i
+    return None
+
+
+def _is_escaped(text: str, index: int) -> bool:
+    backslashes = 0
+    i = index - 1
+    while i >= 0 and text[i] == "\\":
+        backslashes += 1
+        i -= 1
+    return backslashes % 2 == 1
+
+
+def _normalize_display_block(block: str) -> str:
+    stripped = block.strip()
+    if stripped.startswith("$$") and stripped.endswith("$$"):
+        return "$$\n" + fix_math_inner(stripped[2:-2]) + "\n$$"
+    return block
+
+
+def restore_dollar_blocks(text: str, blocks: list[str]) -> str:
+    for i, block in enumerate(blocks):
+        text = text.replace(DOLLAR_PLACEHOLDER.format(i), block)
+    return text
+
+
+def _store_dollar_block(blocks: list[str], block: str) -> str:
+    idx = len(blocks)
+    blocks.append(block)
+    return DOLLAR_PLACEHOLDER.format(idx)
+
+
+def _is_single_line_display_math(stripped: str) -> bool:
+    return stripped.startswith("$$") and stripped.endswith("$$") and len(stripped) > 4
+
+
+def _line_ending(line: str) -> str:
+    return "\n" if line.endswith("\n") else ""
+
+
+def _is_markdown_structure(stripped: str) -> bool:
+    if not stripped:
+        return False
+    return any(stripped.startswith(prefix) for prefix in STRUCTURE_PREFIXES)
 
 
 def fix_math_inner(s: str) -> str:
     s = s.strip()
+    s = normalize_unicode_math(s)
 
     # Preserve escaped literal money signs.
     s = re.sub(r"(?<!\\)%", r"\\%", s)
@@ -32,6 +223,10 @@ def fix_math_inner(s: str) -> str:
     return s
 
 
+def normalize_unicode_math(s: str) -> str:
+    return s.replace("μ", r"\mu").replace("σ", r"\sigma")
+
+
 def looks_math(s: str) -> bool:
     t = s.strip()
     if not t:
@@ -43,6 +238,8 @@ def looks_math(s: str) -> bool:
 
     # Obvious LaTeX/math markers.
     if "\\" in t:
+        return True
+    if re.search(r"[μσ]", t):
         return True
     if re.search(r"[=^_<>+\-*/≤≥≈∑√]", t):
         return True
@@ -126,6 +323,7 @@ def protect_and_convert_display_math(text: str) -> tuple[str, list[str]]:
 
                 has_markdown_structure = any(
                     x.lstrip().startswith(("#", "|", "---", "* ", "- "))
+                    or _is_markdown_structure(x.strip())
                     for x in content
                 )
 
@@ -161,7 +359,9 @@ def merge_bare_probability_notation(text: str) -> str:
 
 
 def sanitize_markdown_math(text: str) -> str:
+    text, dollar_blocks = protect_existing_dollar_math(text)
     text = escape_currency(text)
+    text = escape_bad_dollar_lines(text)
     protected, blocks = protect_and_convert_display_math(text)
 
     lines = []
@@ -179,6 +379,10 @@ def sanitize_markdown_math(text: str) -> str:
     out = "\n".join(lines)
     out = merge_bare_probability_notation(out)
     out = restore_blocks(out, blocks)
+    out = restore_dollar_blocks(out, dollar_blocks)
+
+    out = out.replace("ESCAPED_DOLLAR", r"\$")
+    out = out.replace("DISPLAY_MATH_BLOCK", "")
 
     # Normalize huge blank spaces while keeping display math readable.
     out = re.sub(r"\n{4,}", "\n\n\n", out)
