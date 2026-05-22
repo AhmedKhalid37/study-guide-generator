@@ -43,6 +43,12 @@ To test paste mode, paste this small example:
 The formula is (z=\frac{x-\mu}{\sigma}).
 ```
 
+Run math sanitizer/renderer regression tests:
+
+```bash
+python test_scripts/test_math_regressions.py
+```
+
 This v2 upgrade adds the most useful ideas from the second Claude run:
 
 - a **math sanitizer** that repairs broken Markdown math
