@@ -4,6 +4,9 @@ This pipeline converts course material into a clean, exam-focused study guide:
 
 `PDF / DOCX / PPTX / TXT / MD -> extracted text -> LLM-generated guide -> Markdown sanitizer -> optional math validation -> PDF`
 
+Note: `legacy_scripts/` contains a backup copy of the old working pipeline
+scripts as they existed before the Chrome renderer work.
+
 This v2 upgrade adds the most useful ideas from the second Claude run:
 
 - a **math sanitizer** that repairs broken Markdown math

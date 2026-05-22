@@ -1,5 +1,6 @@
 node_modules/
 output/
+jobs/
 .venv/
 __pycache__/
 *.pyc
