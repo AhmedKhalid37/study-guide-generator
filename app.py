@@ -1,12 +1,15 @@
 from __future__ import annotations
 
 import json
+import os
 import re
 import tempfile
 from pathlib import Path
 
 import streamlit as st
 
+from pipeline.llm_client import MissingLLMConfigError
+from pipeline.run_llm_job import LLMJobError, run_llm_job
 from pipeline.run_markdown_job import MarkdownJobError, run_markdown_job, run_pasted_text_job
 
 
@@ -17,14 +20,20 @@ def main() -> None:
 
     _init_state()
 
-    mode = st.radio("Mode", ["Upload Markdown", "Paste Text"], horizontal=True)
+    mode = st.radio(
+        "Mode",
+        ["Upload Markdown", "Paste Text", "Generate with LLM"],
+        horizontal=True,
+    )
     theme = st.selectbox("Theme", ["claude_clean"], index=0)
     strict_math = st.checkbox("Strict math validation", value=True)
 
     if mode == "Upload Markdown":
         _upload_mode(theme=theme, strict_math=strict_math)
-    else:
+    elif mode == "Paste Text":
         _paste_mode(theme=theme, strict_math=strict_math)
+    else:
+        _llm_mode(theme=theme, strict_math=strict_math)
 
     _show_result()
 
@@ -60,6 +69,37 @@ def _paste_mode(*, theme: str, strict_math: bool) -> None:
         _run_job(lambda: run_pasted_text_job(text, theme=theme, strict_math=strict_math))
 
 
+def _llm_mode(*, theme: str, strict_math: bool) -> None:
+    title = st.text_input("Title", value="Generated Study Guide")
+    guide_mode = st.selectbox("Mode", ["exam", "theory", "quick", "deep"], index=0)
+    uploaded = st.file_uploader("Optional source file", type=["txt", "md", "markdown"])
+    text = st.text_area("Source text", height=360)
+
+    if uploaded is not None and text.strip():
+        st.caption("Using uploaded source file and ignoring pasted source text.")
+
+    has_source = uploaded is not None or bool(text.strip())
+    if st.button("Generate Study Guide PDF", type="primary", disabled=not has_source):
+        if uploaded is not None:
+            source_text = uploaded.getvalue().decode("utf-8", errors="replace")
+        else:
+            source_text = text
+
+        if not source_text.strip():
+            st.warning("Provide source text or upload a source file first.")
+            return
+
+        _run_job(
+            lambda: run_llm_job(
+                source_text,
+                title=title,
+                mode=guide_mode,
+                theme=theme,
+                strict_math=strict_math,
+            )
+        )
+
+
 def _run_job(factory) -> None:
     st.session_state.last_job = None
     st.session_state.last_error = None
@@ -68,9 +108,14 @@ def _run_job(factory) -> None:
     with st.spinner("Running job..."):
         try:
             st.session_state.last_job = factory()
-        except MarkdownJobError as exc:
+        except MissingLLMConfigError:
+            st.session_state.last_error = (
+                "Missing LLM environment variables. "
+                "Set LLM_BASE_URL, LLM_API_KEY, and LLM_MODEL."
+            )
+        except (MarkdownJobError, LLMJobError) as exc:
             st.session_state.last_error = str(exc)
-            st.session_state.last_failed_job = exc.job
+            st.session_state.last_failed_job = getattr(exc, "job", None)
         except Exception as exc:
             st.session_state.last_error = str(exc)
 
@@ -116,6 +161,9 @@ sanitized study-guide PDF.
 **Paste Text** converts pasted Markdown or plain text through the same backend
 pipeline.
 
+**Generate with LLM** sends source text to the configured OpenAI-compatible LLM,
+then sanitizes, validates, and renders the generated Markdown.
+
 **Strict math validation** stops the job when KaTeX cannot parse a formula.
 Turn it off only when you want a PDF even with visibly marked math errors.
 
@@ -123,6 +171,15 @@ Jobs are saved under `jobs/<job_id>/` with inputs, logs, Markdown, HTML, PDF,
 and `job.json`.
 """
         )
+        st.header("LLM Config")
+        _config_status("LLM_BASE_URL", "Base URL")
+        _config_status("LLM_MODEL", "Model")
+        _config_status("LLM_API_KEY", "API key")
+
+
+def _config_status(env_name: str, label: str) -> None:
+    status = "set" if os.getenv(env_name) else "missing"
+    st.write(f"{label}: `{status}`")
 
 
 def _show_validation_summary(job) -> None:

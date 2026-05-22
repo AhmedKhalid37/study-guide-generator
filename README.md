@@ -76,6 +76,16 @@ python -m pipeline.run_llm_job \
 The command creates a `jobs/<job_id>/` folder containing `input/source.txt`,
 `raw.md`, `clean.md`, `final.html`, `final.pdf`, logs, and `job.json`.
 
+Launch Streamlit with DeepSeek environment variables using fish shell:
+
+```fish
+set -x LLM_BASE_URL "https://api.deepseek.com/v1"
+set -x LLM_API_KEY "your_key_here"
+set -x LLM_MODEL "deepseek-chat"
+set -x LLM_TEMPERATURE "0.2"
+python -m streamlit run app.py
+```
+
 This v2 upgrade adds the most useful ideas from the second Claude run:
 
 - a **math sanitizer** that repairs broken Markdown math
