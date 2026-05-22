@@ -48,7 +48,7 @@ def run_markdown_job(
         saved_input = accept_markdown_upload(job, source)
         shutil.copy2(saved_input, job.raw_md)
         job.update(input_path=str(saved_input), raw_md=str(job.raw_md))
-        return _run_raw_markdown_pipeline(job, theme=theme, strict_math=strict_math)
+        return run_raw_markdown_pipeline(job, theme=theme, strict_math=strict_math)
     except MarkdownJobError:
         raise
     except Exception as exc:
@@ -80,7 +80,7 @@ def run_pasted_text_job(
         pasted = accept_paste(job, text)
         job.save_text(job.raw_md, text)
         job.update(input_path=str(pasted), raw_md=str(job.raw_md))
-        return _run_raw_markdown_pipeline(job, theme=theme, strict_math=strict_math)
+        return run_raw_markdown_pipeline(job, theme=theme, strict_math=strict_math)
     except MarkdownJobError:
         raise
     except Exception as exc:
@@ -89,7 +89,7 @@ def run_pasted_text_job(
         raise MarkdownJobError(message, job) from exc
 
 
-def _run_raw_markdown_pipeline(job: Job, *, theme: str, strict_math: bool) -> Job:
+def run_raw_markdown_pipeline(job: Job, *, theme: str, strict_math: bool) -> Job:
     job.set_status("sanitizing")
     raw = job.raw_md.read_text(encoding="utf-8", errors="replace")
     job.save_text(job.clean_md, sanitize(raw))
@@ -133,6 +133,10 @@ def _run_raw_markdown_pipeline(job: Job, *, theme: str, strict_math: bool) -> Jo
     print(f"final.html: {job.final_html}")
     print(f"final.pdf: {job.final_pdf}")
     return job
+
+
+def _run_raw_markdown_pipeline(job: Job, *, theme: str, strict_math: bool) -> Job:
+    return run_raw_markdown_pipeline(job, theme=theme, strict_math=strict_math)
 
 
 def _validation_error_message(result) -> str:

@@ -49,6 +49,33 @@ Run math sanitizer/renderer regression tests:
 python test_scripts/test_math_regressions.py
 ```
 
+## CLI LLM Mode
+
+The LLM path is CLI-first and uses one OpenAI-compatible client for hosted APIs
+or local servers. Set these environment variables before running it:
+
+```bash
+export LLM_BASE_URL="https://api.openai.com/v1"
+export LLM_API_KEY="YOUR_KEY"
+export LLM_MODEL="gpt-4.1"
+export LLM_TEMPERATURE="0.2"
+```
+
+For a local OpenAI-compatible server, point `LLM_BASE_URL` and `LLM_MODEL` at
+that server instead.
+
+Generate, sanitize, validate, and render from a text/Markdown source file:
+
+```bash
+python -m pipeline.run_llm_job \
+  --source-file ch6_raw.md \
+  --title "Chapter 6 Study Guide" \
+  --mode exam
+```
+
+The command creates a `jobs/<job_id>/` folder containing `input/source.txt`,
+`raw.md`, `clean.md`, `final.html`, `final.pdf`, logs, and `job.json`.
+
 This v2 upgrade adds the most useful ideas from the second Claude run:
 
 - a **math sanitizer** that repairs broken Markdown math
