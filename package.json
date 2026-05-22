@@ -1,0 +1,8 @@
+{
+  "scripts": {
+    "validate-math": "node scripts/validate_math.js"
+  },
+  "dependencies": {
+    "katex": "^0.16.47"
+  }
+}

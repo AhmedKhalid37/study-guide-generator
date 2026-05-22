@@ -1,0 +1,8 @@
+# Generate from PDF
+python scripts/build_guide.py my_chapter.pdf --title "Chapter 8 — Intrusion Detection" --out output/chapter8.md --mode exam --validate-math
+
+# Sanitize an existing Claude/ChatGPT markdown guide only
+python scripts/sanitize_markdown_math.py raw_guide.md clean_guide.md --validate
+
+# Convert to PDF
+bash scripts/render_pdf.sh output/chapter8.md output/chapter8.pdf

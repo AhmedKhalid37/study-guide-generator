@@ -1,0 +1,228 @@
+/* =============================================================================
+   pdf_templates/default.css
+   Primary study-guide theme. Reproduces the reference "Lecture_04" look:
+   serif body, bold serif headings, pill-styled inline code, booktabs tables,
+   centered KaTeX math, thin rule separators, near-monochrome + blue links.
+
+   RENDER CONTRACT (read this — small amendment to CLAUDE.md §4 pdf_renderer):
+   This file owns page geometry via @page. So pdf_renderer.py MUST call
+   page.pdf(...) with:
+       prefer_css_page_size=True,
+       print_background=True,          # pills/tables/code backgrounds
+       margin={"top":0,"right":0,"bottom":0,"left":0}
+   Do NOT also pass format=A4 + margins, or they compound with @page.
+   md_to_html.js embeds katex.min.css FIRST, then this file, in one <style>.
+   Content is expected inside <main class="guide">…</main>.
+
+   FONTS: I could not extract the reference's embedded font (the source PDF was
+   cleared from the sandbox), so I matched it to Source Serif 4 — a Georgia-class
+   open serif that reads identically to the reference. The @font-face blocks
+   below are OPTIONAL: if you drop the .woff2 files into assets/fonts/ you get a
+   pixel-stable match across machines; if you don't, the fallback stack renders
+   almost the same. Grab Source Serif 4 + JetBrains Mono from fontsource.org or
+   Google Fonts. On CachyOS, install `noto-fonts-emoji` so ⚠️-style callouts
+   render in colour.
+   ============================================================================= */
+
+/* ---- optional bundled fonts (safe if files are absent → silent fallback) ---- */
+@font-face {
+  font-family: "Source Serif 4";
+  src: url("../assets/fonts/SourceSerif4-Regular.woff2") format("woff2");
+  font-weight: 400; font-style: normal; font-display: swap;
+}
+@font-face {
+  font-family: "Source Serif 4";
+  src: url("../assets/fonts/SourceSerif4-It.woff2") format("woff2");
+  font-weight: 400; font-style: italic; font-display: swap;
+}
+@font-face {
+  font-family: "Source Serif 4";
+  src: url("../assets/fonts/SourceSerif4-Bold.woff2") format("woff2");
+  font-weight: 700; font-style: normal; font-display: swap;
+}
+@font-face {
+  font-family: "Source Serif 4";
+  src: url("../assets/fonts/SourceSerif4-BoldIt.woff2") format("woff2");
+  font-weight: 700; font-style: italic; font-display: swap;
+}
+@font-face {
+  font-family: "JetBrains Mono";
+  src: url("../assets/fonts/JetBrainsMono-Regular.woff2") format("woff2");
+  font-weight: 400; font-style: normal; font-display: swap;
+}
+
+/* ---- design tokens ---- */
+:root {
+  --ink:        #1a1a1a;   /* body text */
+  --ink-soft:   #2a2a2a;   /* blockquotes, captions */
+  --muted:      #6b6b72;   /* figcaptions, meta */
+  --rule:       #b5b5bb;   /* hr + table rules (medium, matches reference) */
+  --rule-soft:  #e0e0e4;   /* inner table row lines */
+  --link:       #1a5fb4;   /* readable blue, links */
+  --code-bg:    #f2f2f4;   /* inline code pill */
+  --code-bd:    #e3e3e8;   /* inline code pill border */
+  --block-bg:   #f6f6f8;   /* fenced code block */
+  --block-bd:   #e7e7ec;
+  --quote-bar:  #c9ccd1;   /* blockquote left rule */
+
+  --serif: "Source Serif 4", "Charter", "Iowan Old Style",
+           "Palatino Linotype", "Book Antiqua", Georgia,
+           "Times New Roman", serif, "Noto Color Emoji";
+  --mono:  "JetBrains Mono", "Fira Code", "DejaVu Sans Mono",
+           "SF Mono", Consolas, "Liberation Mono", monospace;
+}
+
+/* ---- page geometry (owned here; see render contract above) ---- */
+@page {
+  size: A4;
+  margin: 18mm 17mm;
+}
+
+html {
+  font-size: 11pt;              /* base for rem scale; comfortable on A4 */
+  -webkit-text-size-adjust: 100%;
+}
+
+body {
+  margin: 0;
+  background: #ffffff;
+  color: var(--ink);
+  font-family: var(--serif);
+  line-height: 1.55;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  /* make backgrounds actually print (pairs with print_background=True) */
+  -webkit-print-color-adjust: exact;
+  print-color-adjust: exact;
+}
+
+/* content wrapper */
+.guide {
+  max-width: 100%;
+}
+.guide > :first-child { margin-top: 0; }
+
+/* ---- headings ---- */
+.guide h1, .guide h2, .guide h3, .guide h4, .guide h5, .guide h6 {
+  font-family: var(--serif);
+  font-weight: 700;
+  color: var(--ink);
+  line-height: 1.25;
+  break-after: avoid;          /* never orphan a heading at page bottom */
+  -webkit-column-break-after: avoid;
+}
+.guide h1 { font-size: 2rem;    margin: 0 0 0.6rem;  letter-spacing: -0.01em; }
+.guide h2 { font-size: 1.5rem;  margin: 1.9rem 0 0.6rem; }
+.guide h3 { font-size: 1.2rem;  margin: 1.5rem 0 0.45rem; }
+.guide h4 { font-size: 1.05rem; margin: 1.2rem 0 0.35rem; }
+.guide h5 { font-size: 0.98rem; margin: 1.0rem 0 0.3rem; }
+.guide h6 { font-size: 0.92rem; margin: 1.0rem 0 0.3rem; color: var(--ink-soft); }
+
+/* ---- paragraphs & inline ---- */
+.guide p { margin: 0.7rem 0; orphans: 3; widows: 3; }
+.guide strong { font-weight: 700; }
+.guide em { font-style: italic; }
+.guide a { color: var(--link); text-decoration: none; }
+.guide a:hover { text-decoration: underline; }
+
+/* ---- lists ---- */
+.guide ul, .guide ol { margin: 0.7rem 0; padding-left: 1.5rem; }
+.guide li { margin: 0.3rem 0; }
+.guide li > ul, .guide li > ol { margin: 0.25rem 0; }
+.guide ul { list-style: disc; }
+.guide ul ul { list-style: circle; }
+
+/* ---- blockquote (left rule, no fill — matches reference callouts) ---- */
+.guide blockquote {
+  margin: 1rem 0;
+  padding: 0.15rem 0 0.15rem 1.1rem;
+  border-left: 4px solid var(--quote-bar);
+  color: var(--ink-soft);
+  break-inside: avoid;
+}
+.guide blockquote p { margin: 0.35rem 0; }
+
+/* ---- inline code as rounded grey pill ---- */
+.guide code {
+  font-family: var(--mono);
+  font-size: 0.86em;
+  background: var(--code-bg);
+  border: 1px solid var(--code-bd);
+  border-radius: 5px;
+  padding: 0.08em 0.4em;
+  white-space: nowrap;
+}
+
+/* ---- fenced code block (reset the pill styling inside) ---- */
+.guide pre {
+  background: var(--block-bg);
+  border: 1px solid var(--block-bd);
+  border-radius: 8px;
+  padding: 0.9rem 1.1rem;
+  margin: 1rem 0;
+  font-size: 0.85em;
+  line-height: 1.45;
+  overflow-x: auto;
+  break-inside: avoid;
+}
+.guide pre code {
+  font-family: var(--mono);
+  background: none;
+  border: none;
+  border-radius: 0;
+  padding: 0;
+  white-space: pre;
+  font-size: inherit;
+}
+
+/* ---- tables: clean booktabs (top/header/bottom rules, light row lines) ---- */
+.guide table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 1.1rem 0;
+  font-size: 0.95em;
+  border-top: 2px solid var(--rule);
+  break-inside: avoid;          /* fine for the short comparison tables here */
+}
+.guide thead th {
+  text-align: left;
+  font-weight: 700;
+  padding: 0.5rem 0.7rem;
+  border-bottom: 1.5px solid var(--rule);
+  vertical-align: bottom;
+}
+.guide tbody td {
+  padding: 0.45rem 0.7rem;
+  border-bottom: 1px solid var(--rule-soft);
+  vertical-align: top;
+}
+.guide tbody tr:last-child td { border-bottom: 2px solid var(--rule); }
+
+/* ---- horizontal rule (section separator) ---- */
+.guide hr {
+  border: none;
+  border-top: 1px solid var(--rule);
+  margin: 2rem 0;
+}
+
+/* ---- images / figures ---- */
+.guide img { max-width: 100%; height: auto; display: block; margin: 1rem auto; break-inside: avoid; }
+.guide figure { margin: 1.2rem 0; text-align: center; break-inside: avoid; }
+.guide figcaption { font-size: 0.85em; color: var(--muted); margin-top: 0.4rem; }
+
+/* ---- KaTeX math ---- */
+.guide .katex { font-size: 1.04em; }
+.guide .katex-display {
+  margin: 1.2rem 0;
+  overflow-x: auto;             /* wide equations scroll instead of clipping */
+  overflow-y: hidden;
+}
+.guide .katex-display > .katex { font-size: 1.08em; }
+
+/* ---- print-only safety ---- */
+@media print {
+  .guide h1, .guide h2, .guide h3, .guide h4 { break-after: avoid; }
+  .guide table, .guide pre, .guide blockquote, .guide figure, .guide img {
+    break-inside: avoid;
+  }
+}
