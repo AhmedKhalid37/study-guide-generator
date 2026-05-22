@@ -10,6 +10,7 @@ Requirements:
 - Break every idea into small steps.
 - Use simple words before technical terms.
 - Use valid LaTeX math with `$...$` for inline math and `$$...$$` for display math.
+- When referring to variables in prose, use `$j$`, `$k$`, `$t_k$`, and `$x_i$` directly. Do not write variables in parentheses like `(j)` or `(t_k)`.
 - Never use `[ ... ]` for math.
 - If writing a formula on its own line, always wrap it in `$$ ... $$`.
 - Do not invent facts not supported by the source.

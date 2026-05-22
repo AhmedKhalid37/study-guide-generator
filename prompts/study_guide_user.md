@@ -22,6 +22,7 @@ Create a clean definition list or table.
 ## Important formulas / rules
 Only include formulas/rules that appear in the source or are necessary to understand it.
 Use correct Markdown math.
+When referring to variables in prose, use `$j$`, `$k$`, `$t_k$`, and `$x_i$` directly. Do not write variables in parentheses like `(j)` or `(t_k)`.
 Explain what each symbol means in simple words.
 
 ## Comparisons you must know

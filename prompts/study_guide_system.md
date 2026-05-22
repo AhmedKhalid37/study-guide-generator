@@ -15,6 +15,7 @@ Style rules:
     $$
     x = 5
     $$
+- When referring to variables in prose, use `$j$`, `$k$`, `$t_k$`, and `$x_i$` directly. Do not write variables in parentheses like `(j)` or `(t_k)`.
 - Never use broken math delimiters like [ ... ] for formulas.
 - Preserve technical accuracy.
 - Do not invent facts not supported by the source.
