@@ -62,6 +62,36 @@ Read-only FastAPI wrapper:
 python -m uvicorn api.server:app --reload
 ```
 
+Create a paste job through the API:
+
+```bash
+curl -X POST http://127.0.0.1:8000/api/jobs/paste \
+  -H "Content-Type: application/json" \
+  -d '{
+    "text": "# Paste Test\n\nThe formula is $z=\\frac{x-\\mu}{\\sigma}$.",
+    "theme": "claude_clean",
+    "strict_math": true
+  }'
+```
+
+Create an LLM job through the API:
+
+```bash
+curl -X POST http://127.0.0.1:8000/api/jobs/llm \
+  -H "Content-Type: application/json" \
+  -d '{
+    "source_text": "Summarize Bayes theorem for an exam study guide.",
+    "title": "Bayes Theorem Study Guide",
+    "mode": "exam",
+    "prompt_name": "basic_study_guide",
+    "provider": "DeepSeek",
+    "model": "deepseek-v4-flash",
+    "theme": "claude_clean",
+    "strict_math": true,
+    "qwen_thinking": true
+  }'
+```
+
 To test upload mode, launch the app and upload `ch4_raw.md`.
 
 To test paste mode, paste this small example:

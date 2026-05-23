@@ -1,14 +1,20 @@
 from __future__ import annotations
 
 import json
+import tempfile
 from pathlib import Path
 from typing import Any
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, File, Form, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
+from pydantic import BaseModel
 
 from pipeline.job_manager import JOBS_DIR, Job
+from pipeline.llm_client import MissingLLMConfigError
+from pipeline.provider_config import DEEPSEEK_MODELS, QWEN_MODELS, build_provider_config
+from pipeline.run_llm_job import LLMJobError, run_llm_job
+from pipeline.run_markdown_job import MarkdownJobError, run_markdown_job, run_pasted_text_job
 
 
 app = FastAPI(title="Study Guide Generator API")
@@ -18,7 +24,7 @@ app.add_middleware(
         "http://127.0.0.1:5173",
         "http://localhost:5173",
     ],
-    allow_methods=["GET"],
+    allow_methods=["GET", "POST"],
     allow_headers=["*"],
 )
 
@@ -32,21 +38,6 @@ STYLE_PRESETS = [
     "final_solution",
     "claude_study_guide",
 ]
-DEEPSEEK_MODELS = [
-    "deepseek-v4-flash",
-    "deepseek-v4-pro",
-    "deepseek-chat",
-    "deepseek-reasoner",
-]
-QWEN_MODELS = [
-    "qwen3.7-max",
-    "qwen3.6-plus",
-    "qwen3-max",
-    "qwen3.6-max-preview",
-    "qwen-plus",
-    "qwen-max",
-]
-
 ARTIFACTS = {
     "clean.md": ("clean_md", "text/markdown"),
     "final.html": ("final_html", "text/html"),
@@ -54,6 +45,24 @@ ARTIFACTS = {
     "validation.json": ("validation_json", "application/json"),
     "render.log": ("render_log", "text/plain"),
 }
+
+
+class PasteJobRequest(BaseModel):
+    text: str
+    theme: str = "claude_clean"
+    strict_math: bool = True
+
+
+class LLMJobRequest(BaseModel):
+    source_text: str
+    title: str = "Generated Study Guide"
+    mode: str = "exam"
+    prompt_name: str = "basic_study_guide"
+    provider: str
+    model: str
+    theme: str = "claude_clean"
+    strict_math: bool = True
+    qwen_thinking: bool = True
 
 
 @app.get("/api/health")
@@ -99,6 +108,92 @@ def list_jobs(limit: int = 20) -> dict[str, Any]:
     return {"jobs": jobs[: max(limit, 0)]}
 
 
+@app.post("/api/jobs/paste")
+def create_paste_job(request: PasteJobRequest) -> dict[str, Any]:
+    text = request.text.strip()
+    if not text:
+        raise HTTPException(status_code=400, detail="text must not be empty.")
+    _validate_theme(request.theme)
+
+    try:
+        job = run_pasted_text_job(
+            text,
+            theme=request.theme,
+            strict_math=request.strict_math,
+        )
+    except MarkdownJobError as exc:
+        raise _job_error(exc, job=getattr(exc, "job", None)) from exc
+    except Exception as exc:
+        raise _job_error(exc) from exc
+    return job_response(job)
+
+
+@app.post("/api/jobs/upload-markdown")
+def create_upload_markdown_job(
+    file: UploadFile = File(...),
+    theme: str = Form("claude_clean"),
+    strict_math: bool = Form(True),
+) -> dict[str, Any]:
+    filename = file.filename or ""
+    suffix = Path(filename).suffix.lower()
+    if suffix not in {".md", ".markdown"}:
+        raise HTTPException(status_code=400, detail="file must be .md or .markdown.")
+    _validate_theme(theme)
+
+    temp_path: Path | None = None
+    try:
+        with tempfile.NamedTemporaryFile(delete=False, suffix=suffix, prefix="api-upload-") as tmp:
+            temp_path = Path(tmp.name)
+            while chunk := file.file.read(1024 * 1024):
+                tmp.write(chunk)
+        job = run_markdown_job(temp_path, theme=theme, strict_math=strict_math)
+    except MarkdownJobError as exc:
+        raise _job_error(exc, job=getattr(exc, "job", None)) from exc
+    except Exception as exc:
+        raise _job_error(exc) from exc
+    finally:
+        if temp_path is not None:
+            temp_path.unlink(missing_ok=True)
+        file.file.close()
+    return job_response(job)
+
+
+@app.post("/api/jobs/llm")
+def create_llm_job(request: LLMJobRequest) -> dict[str, Any]:
+    source_text = request.source_text.strip()
+    title = request.title.strip()
+    if not source_text:
+        raise HTTPException(status_code=400, detail="source_text must not be empty.")
+    if not title:
+        raise HTTPException(status_code=400, detail="title must not be empty.")
+    _validate_theme(request.theme)
+    _validate_prompt_name(request.prompt_name)
+    _validate_provider_model(request.provider, request.model)
+
+    try:
+        config = build_provider_config(
+            request.provider,
+            request.model,
+            qwen_thinking_enabled=request.qwen_thinking,
+        )
+        job = run_llm_job(
+            source_text,
+            title=title,
+            mode=request.mode,
+            prompt_name=request.prompt_name,
+            theme=request.theme,
+            strict_math=request.strict_math,
+            config=config,
+        )
+    except MissingLLMConfigError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except LLMJobError as exc:
+        raise _job_error(exc, job=getattr(exc, "job", None)) from exc
+    except Exception as exc:
+        raise _job_error(exc) from exc
+    return job_response(job)
+
+
 @app.get("/api/jobs/{job_id}")
 def get_job(job_id: str) -> dict[str, Any]:
     job = _get_job(job_id)
@@ -116,6 +211,51 @@ def get_artifact(job_id: str, artifact_name: str) -> FileResponse:
     if not path.exists() or not path.is_file():
         raise HTTPException(status_code=404, detail="Artifact not found.")
     return FileResponse(path, media_type=media_type, filename=artifact_name)
+
+
+def job_response(job: Job) -> dict[str, Any]:
+    manifest = job.read_manifest()
+    availability = _artifact_availability(job)
+    artifact_urls = {
+        artifact_name: f"/api/jobs/{job.id}/artifacts/{artifact_name}"
+        for artifact_name, (key, _media_type) in ARTIFACTS.items()
+        if availability.get(key)
+    }
+    return {
+        "job_id": job.id,
+        "status": manifest.get("status"),
+        "title": manifest.get("title"),
+        "provider": manifest.get("provider"),
+        "model": manifest.get("model"),
+        "created_at": manifest.get("created_at"),
+        "artifact_availability": availability,
+        "artifact_urls": artifact_urls,
+    }
+
+
+def _validate_theme(theme: str) -> None:
+    if theme not in THEMES:
+        raise HTTPException(status_code=400, detail="Unsupported theme.")
+
+
+def _validate_prompt_name(prompt_name: str) -> None:
+    if prompt_name not in STYLE_PRESETS:
+        raise HTTPException(status_code=400, detail="Unsupported prompt_name.")
+
+
+def _validate_provider_model(provider: str, model: str) -> None:
+    if provider == "DeepSeek" and model in DEEPSEEK_MODELS:
+        return
+    if provider == "Qwen" and model in QWEN_MODELS:
+        return
+    raise HTTPException(status_code=400, detail="Unsupported provider or model.")
+
+
+def _job_error(exc: Exception, job: Job | None = None) -> HTTPException:
+    detail: dict[str, Any] = {"message": str(exc)}
+    if job is not None:
+        detail["job"] = job_response(job)
+    return HTTPException(status_code=500, detail=detail)
 
 
 def _get_job(job_id: str) -> Job:
