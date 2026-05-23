@@ -33,6 +33,29 @@ Launch the app:
 python -m streamlit run app.py
 ```
 
+## UI Commands
+
+Existing Streamlit app:
+
+```bash
+python -m streamlit run app.py
+```
+
+React frontend preview:
+
+```bash
+cd frontend
+npm install
+npm run dev
+```
+
+React frontend build:
+
+```bash
+cd frontend
+npm run build
+```
+
 To test upload mode, launch the app and upload `ch4_raw.md`.
 
 To test paste mode, paste this small example:

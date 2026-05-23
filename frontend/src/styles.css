@@ -1,0 +1,26 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+* {
+  box-sizing: border-box;
+}
+
+html {
+  background: #030914;
+}
+
+body {
+  margin: 0;
+  min-width: 320px;
+  background: #030914;
+}
+
+img {
+  -webkit-user-drag: none;
+}
+
+::selection {
+  background: rgba(255, 122, 0, 0.35);
+  color: white;
+}
