@@ -22,6 +22,9 @@ Create a clean definition list or table.
 ## Important formulas / rules
 Only include formulas/rules that appear in the source or are necessary to understand it.
 Use correct Markdown math.
+Write derivatives as `$f'(z)$`, `$f'(z_i)$`, or `$f'(z_i^{(l)})$`.
+Never write derivative notation as `f'z$` or `f'$z$`.
+Split long equations into multiple display lines instead of one very long line.
 When referring to variables in prose, use `$j$`, `$k$`, `$t_k$`, and `$x_i$` directly. Do not write variables in parentheses like `(j)` or `(t_k)`.
 Explain what each symbol means in simple words.
 

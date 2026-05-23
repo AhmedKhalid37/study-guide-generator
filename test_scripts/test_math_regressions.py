@@ -18,6 +18,7 @@ def main() -> None:
     test_parenthetical_math_regressions()
     test_numeric_inline_math_and_money_regressions()
     test_broken_display_math_does_not_swallow_prose()
+    test_derivative_inline_math_regressions()
     test_html_renderer_inline_math()
     print("math regression tests passed")
 
@@ -160,6 +161,38 @@ where $\eta$ is the learning rate.
     assert "$$\n### Gradient of loss\n$$" not in clean
     assert "$$\n### Parameter update (gradient descent)\n$$" not in clean
     assert "$$\nwhere " not in clean
+
+    with tempfile.NamedTemporaryFile("w", suffix=".md", delete=False, encoding="utf-8") as tmp:
+        tmp.write(clean)
+        clean_path = Path(tmp.name)
+
+    result = validate(clean_path)
+    assert result.ok, result.to_json_dict()
+
+
+def test_derivative_inline_math_regressions() -> None:
+    source = r"""Forgetting to multiply by $f'(z)$ when applying the chain rule.
+Forgetting to multiply by f'z$ when applying the chain rule through a non-linear activation function in layer j$.
+Forgetting to multiply by f'$z$ when applying the chain rule.
+The derivative is $f'(z_i^{(l)})$.
+The layer is $j$.
+The answer is $0$.
+"""
+    clean = sanitize(source)
+
+    assert "Forgetting to multiply by $f'(z)$ when applying the chain rule." in clean
+    assert (
+        "Forgetting to multiply by $f'(z)$ when applying the chain rule through "
+        "a non-linear activation function in layer $j$."
+    ) in clean
+    assert "Forgetting to multiply by $f'(z)$ when applying the chain rule." in clean
+    assert "The derivative is $f'(z_i^{(l)})$." in clean
+    assert "The layer is $j$." in clean
+    assert "The answer is $0$." in clean
+    assert "f'z$" not in clean
+    assert "f'$z$" not in clean
+    assert "whenapplying" not in clean
+    assert "layerj" not in clean
 
     with tempfile.NamedTemporaryFile("w", suffix=".md", delete=False, encoding="utf-8") as tmp:
         tmp.write(clean)

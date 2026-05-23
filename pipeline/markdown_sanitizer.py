@@ -181,7 +181,7 @@ def _protect_inline_dollar_math(line: str, blocks: list[str]) -> str:
             continue
 
         expr = line[i + 1:end].strip()
-        if expr and looks_math(expr):
+        if expr and looks_math(expr) and not _looks_like_prose_math_span(expr):
             out.append(_store_dollar_block(blocks, "$" + fix_math_inner(expr) + "$"))
             i = end + 1
             continue
@@ -305,6 +305,8 @@ def looks_math(s: str) -> bool:
     # Obvious LaTeX/math markers.
     if "\\" in t:
         return True
+    if re.fullmatch(r"[A-Za-z]+\'\([A-Za-z0-9_{}^\\()]+(?:\^\{[^}]+\})?\)", t):
+        return True
     if re.search(r"[μσ]", t):
         return True
     if re.search(r"[=^_<>+\-*/≤≥≈∑√]", t):
@@ -324,6 +326,48 @@ def looks_math(s: str) -> bool:
     if re.search(r"\b[A-Za-z]\s*\([^)]", t) and re.search(r"\d|=|\\", t):
         return True
     return False
+
+
+def _looks_like_prose_math_span(s: str) -> bool:
+    t = re.sub(r"\s+", " ", s.strip().lower())
+    if not t:
+        return False
+    prose_markers = (
+        "when applying",
+        "because",
+        "through",
+        "function",
+        "layer",
+        "where",
+        "answer",
+        "example",
+    )
+    if any(marker in t for marker in prose_markers):
+        return True
+    words = re.findall(r"[A-Za-z]{3,}", t)
+    math_tokens = re.findall(r"\\|[=^_<>+\-*/≤≥≈∑√]|\b[xyzijk]\b|\d", t)
+    return len(words) >= 4 and len(words) > len(math_tokens) + 2
+
+
+def repair_malformed_derivative_notation(text: str) -> str:
+    text = re.sub(
+        r"\bf'\s*\$([^$\n]+?)\$",
+        lambda match: f"$f'({match.group(1).strip()})$",
+        text,
+    )
+    text = re.sub(
+        r"\bf'\s*([A-Za-z](?:_[A-Za-z0-9]+|\^\{[^}]+\})?)\$(?=\s+(?:when applying|when|because|through)\b)",
+        lambda match: f"$f'({match.group(1)})$",
+        text,
+        flags=re.IGNORECASE,
+    )
+    text = re.sub(
+        r"\blayer\s+([A-Za-z])\$(?=([.,;:)]|\s|$))",
+        r"layer $\1$\2",
+        text,
+        flags=re.IGNORECASE,
+    )
+    return text
 
 
 def convert_inline_math_line(line: str) -> str:
@@ -518,6 +562,7 @@ def merge_bare_probability_notation(text: str) -> str:
 
 
 def sanitize_markdown_math(text: str) -> str:
+    text = repair_malformed_derivative_notation(text)
     text, dollar_blocks = protect_existing_dollar_math(text)
     text, bracket_blocks = protect_one_line_bracket_math(text)
     text, link_blocks = protect_markdown_links(text)

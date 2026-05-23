@@ -15,6 +15,9 @@ Style rules:
     $$
     x = 5
     $$
+- Write derivatives as `$f'(z)$`, `$f'(z_i)$`, or `$f'(z_i^{(l)})$`.
+- Never write derivative notation as `f'z$` or `f'$z$`.
+- Split long equations into multiple display lines instead of one very long line.
 - When referring to variables in prose, use `$j$`, `$k$`, `$t_k$`, and `$x_i$` directly. Do not write variables in parentheses like `(j)` or `(t_k)`.
 - Never use broken math delimiters like [ ... ] for formulas.
 - Preserve technical accuracy.

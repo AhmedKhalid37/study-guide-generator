@@ -192,10 +192,16 @@ body {
   margin: 1.2rem 0;
   overflow-x: auto;
   overflow-y: hidden;
+  max-width: 100%;
 }
 
 .guide .katex-display > .katex {
   font-size: 1.08em;
+}
+
+.guide li .katex-display,
+.guide td .katex-display {
+  font-size: 0.94em;
 }
 
 @media print {
@@ -211,5 +217,28 @@ body {
   .guide blockquote,
   .guide img {
     break-inside: avoid;
+  }
+
+  .guide,
+  .guide * {
+    scrollbar-width: none;
+  }
+
+  .guide *::-webkit-scrollbar {
+    display: none;
+  }
+
+  .guide .katex-display {
+    overflow: hidden;
+    font-size: 0.9em;
+  }
+
+  .guide .katex-display > .katex {
+    font-size: 1em;
+  }
+
+  .guide li .katex-display,
+  .guide td .katex-display {
+    font-size: 0.84em;
   }
 }
