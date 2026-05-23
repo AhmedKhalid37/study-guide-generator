@@ -8,6 +8,7 @@ from pathlib import Path
 
 import streamlit as st
 
+from pipeline.job_manager import JOBS_DIR, Job
 from pipeline.llm_client import LLMConfig, MissingLLMConfigError, load_env_file
 from pipeline.run_llm_job import LLMJobError, run_llm_job
 from pipeline.run_markdown_job import MarkdownJobError, run_markdown_job, run_pasted_text_job
@@ -54,12 +55,14 @@ def main() -> None:
         _llm_mode(theme=theme, strict_math=strict_math)
 
     _show_result()
+    _show_selected_history_job()
 
 
 def _init_state() -> None:
     st.session_state.setdefault("last_job", None)
     st.session_state.setdefault("last_error", None)
     st.session_state.setdefault("last_failed_job", None)
+    st.session_state.setdefault("selected_history_job_id", None)
 
 
 def _upload_mode(*, theme: str, strict_math: bool) -> None:
@@ -271,10 +274,7 @@ def _show_result() -> None:
     if error:
         st.error(error)
         if failed_job is not None:
-            st.write(f"Job folder: `{failed_job.dir}`")
-            _show_validation_summary(failed_job)
-            _show_render_log(failed_job)
-            _download_existing_artifacts(failed_job, include_outputs=False)
+            _show_job_artifacts(failed_job, include_outputs=False)
         return
 
     if job is None:
@@ -282,6 +282,10 @@ def _show_result() -> None:
 
     st.success("Job completed.")
     st.write(f"Job id: `{job.id}`")
+    _show_job_artifacts(job, include_outputs=True)
+
+
+def _show_job_artifacts(job: Job, *, include_outputs: bool) -> None:
     _show_validation_summary(job)
 
     with st.expander("Job details"):
@@ -290,7 +294,7 @@ def _show_result() -> None:
         st.write(f"final.html: `{job.final_html}`")
         st.write(f"final.pdf: `{job.final_pdf}`")
 
-    _download_existing_artifacts(job, include_outputs=True)
+    _download_existing_artifacts(job, include_outputs=include_outputs)
 
 
 def _sidebar_help() -> None:
@@ -316,6 +320,95 @@ and `job.json`.
         )
         st.header("LLM Config")
         _show_llm_config_status()
+        _show_recent_jobs_panel()
+
+
+def scan_recent_jobs(limit: int = 10) -> list[dict]:
+    jobs = []
+    if not JOBS_DIR.exists():
+        return jobs
+
+    for manifest_path in JOBS_DIR.glob("*/job.json"):
+        data = _read_json(manifest_path)
+        if data is None:
+            continue
+        job_id = str(data.get("id") or manifest_path.parent.name)
+        data["_job_id"] = job_id
+        data["_job_dir"] = str(manifest_path.parent)
+        jobs.append(data)
+
+    jobs.sort(
+        key=lambda item: str(item.get("created_at") or item.get("_job_id") or ""),
+        reverse=True,
+    )
+    return jobs[:limit]
+
+
+def _show_recent_jobs_panel() -> None:
+    st.header("Recent Jobs")
+    jobs = scan_recent_jobs()
+    if not jobs:
+        st.caption("No jobs found.")
+        st.session_state.selected_history_job_id = None
+        return
+
+    job_by_id = {job["_job_id"]: job for job in jobs}
+    options = [""] + list(job_by_id)
+    selected = st.selectbox(
+        "Open previous job",
+        options,
+        format_func=lambda job_id: (
+            "Select a job" if not job_id else _job_option_label(job_by_id[job_id])
+        ),
+    )
+    st.session_state.selected_history_job_id = selected or None
+
+    with st.expander("Latest 10", expanded=False):
+        for job in jobs:
+            st.markdown(f"**{job.get('_job_id', 'unknown')}**")
+            st.caption(_job_summary(job))
+
+
+def _job_option_label(job: dict) -> str:
+    status = job.get("status") or "unknown"
+    title = job.get("title") or "Untitled"
+    created_at = job.get("created_at") or "unknown time"
+    return f"{created_at} | {status} | {title} | {job.get('_job_id', 'unknown')}"
+
+
+def _job_summary(job: dict) -> str:
+    provider = job.get("provider")
+    model = job.get("model")
+    provider_model = " / ".join(str(value) for value in (provider, model) if value)
+    if not provider_model:
+        provider_model = "provider/model unavailable"
+    return (
+        f"status: {job.get('status') or 'unknown'} | "
+        f"provider/model: {provider_model} | "
+        f"title: {job.get('title') or 'Untitled'} | "
+        f"created_at: {job.get('created_at') or 'unknown'}"
+    )
+
+
+def _show_selected_history_job() -> None:
+    job_id = st.session_state.get("selected_history_job_id")
+    if not job_id:
+        return
+
+    job = Job(job_id)
+    manifest = job.read_manifest()
+    st.divider()
+    st.subheader("Previous Job")
+    st.write(f"Job id: `{job.id}`")
+    st.write(f"Status: `{manifest.get('status') or 'unknown'}`")
+    if manifest.get("title"):
+        st.write(f"Title: `{manifest['title']}`")
+    if manifest.get("provider") or manifest.get("model"):
+        provider_model = f"{manifest.get('provider') or 'unknown'} / {manifest.get('model') or 'unknown'}"
+        st.write(f"Provider/model: `{provider_model}`")
+    if manifest.get("created_at"):
+        st.write(f"Created at: `{manifest['created_at']}`")
+    _show_job_artifacts(job, include_outputs=True)
 
 
 def _show_llm_config_status() -> None:
@@ -347,8 +440,22 @@ def _show_llm_config_status() -> None:
         st.write("Selected model for this run: `environment default`")
 
 
-def _show_validation_summary(job) -> None:
-    validation_path = job.logs_dir / "validation.json"
+def _validation_json_path(job: Job) -> Path:
+    manifest = job.read_manifest()
+    manifest_path = manifest.get("validation_json")
+    candidates = [
+        Path(manifest_path) if manifest_path else None,
+        job.logs_dir / "validation.json",
+        job.validation_json,
+    ]
+    for path in candidates:
+        if path is not None and path.exists():
+            return path
+    return job.logs_dir / "validation.json"
+
+
+def _show_validation_summary(job: Job) -> None:
+    validation_path = _validation_json_path(job)
     data = _read_json(validation_path)
     if data is None:
         st.caption(f"Validation summary unavailable: {validation_path}")
@@ -389,7 +496,7 @@ def _download_existing_artifacts(job, *, include_outputs: bool) -> None:
         _download_button("Download final.pdf", job.final_pdf, "application/pdf")
     else:
         _download_button("Download clean.md", job.clean_md, "text/markdown")
-    _download_button("Download validation.json", job.logs_dir / "validation.json", "application/json")
+    _download_button("Download validation.json", _validation_json_path(job), "application/json")
     _download_button("Download render.log", job.render_log, "text/plain")
 
 
