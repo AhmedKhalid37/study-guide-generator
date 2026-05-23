@@ -53,6 +53,18 @@ export function createPasteJob({ text, theme = "claude_clean", strictMath = true
   });
 }
 
+export function createUploadMarkdownJob({ file, theme = "claude_clean", strictMath = true }) {
+  const formData = new FormData();
+  formData.append("file", file);
+  formData.append("theme", theme);
+  formData.append("strict_math", String(strictMath));
+
+  return requestJson("/api/jobs/upload-markdown", {
+    method: "POST",
+    body: formData
+  });
+}
+
 export function artifactUrl(jobId, artifactName) {
   return `${API_BASE_URL}/api/jobs/${encodeURIComponent(jobId)}/artifacts/${encodeURIComponent(
     artifactName
