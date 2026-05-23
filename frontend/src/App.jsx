@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import React, { useMemo, useState } from "react";
 import GlowBackground from "./components/GlowBackground";
 import TopBar from "./components/TopBar";
 import PhoneMockup from "./components/PhoneMockup";
