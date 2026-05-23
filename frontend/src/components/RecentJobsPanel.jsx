@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { AlertCircle, Download, FileCode2, FileJson, FileText, Loader2 } from "lucide-react";
 import { artifactUrl, getJob, getJobs } from "../api/client";
 

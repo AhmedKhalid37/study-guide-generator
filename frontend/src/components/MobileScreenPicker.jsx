@@ -1,3 +1,5 @@
+import React from "react";
+
 export default function MobileScreenPicker({ screens, activeScreenId, setActiveScreenId }) {
   return (
     <div className="mx-auto mb-8 flex max-w-3xl flex-wrap justify-center gap-2">

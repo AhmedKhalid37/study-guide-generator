@@ -1,3 +1,4 @@
+import React from "react";
 import { motion } from "framer-motion";
 import { desktopMockup } from "../data/mockups";
 import FallbackImage from "./FallbackImage";

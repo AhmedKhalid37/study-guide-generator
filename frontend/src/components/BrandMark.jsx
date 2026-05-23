@@ -1,3 +1,4 @@
+import React from "react";
 import { BookOpen, Sparkles } from "lucide-react";
 
 export default function BrandMark({ compact = false }) {

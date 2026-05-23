@@ -1,3 +1,4 @@
+import React from "react";
 import { Monitor, Smartphone, Layers3 } from "lucide-react";
 import BrandMark from "./BrandMark";
 

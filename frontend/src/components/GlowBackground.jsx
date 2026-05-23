@@ -1,3 +1,5 @@
+import React from "react";
+
 export default function GlowBackground() {
   return (
     <div className="pointer-events-none fixed inset-0 overflow-hidden">
