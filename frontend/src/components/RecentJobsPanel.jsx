@@ -28,7 +28,7 @@ function statusClass(status) {
   return "border-amber-300/30 bg-amber-300/10 text-amber-100";
 }
 
-export default function RecentJobsPanel({ refreshKey = 0 }) {
+export default function RecentJobsPanel({ refreshKey = 0, embedded = false, onSelectedJobChange }) {
   const [jobs, setJobs] = useState([]);
   const [selectedJobId, setSelectedJobId] = useState(null);
   const [selectedJob, setSelectedJob] = useState(null);
@@ -79,6 +79,7 @@ export default function RecentJobsPanel({ refreshKey = 0 }) {
     async function loadJob() {
       if (!selectedJobId) {
         setSelectedJob(null);
+        onSelectedJobChange?.(null);
         return;
       }
 
@@ -88,11 +89,13 @@ export default function RecentJobsPanel({ refreshKey = 0 }) {
         const data = await getJob(selectedJobId);
         if (!cancelled) {
           setSelectedJob(data);
+          onSelectedJobChange?.(data);
         }
       } catch (error) {
         if (!cancelled) {
           setJobError(error);
           setSelectedJob(null);
+          onSelectedJobChange?.(null);
         }
       } finally {
         if (!cancelled) {
@@ -105,7 +108,7 @@ export default function RecentJobsPanel({ refreshKey = 0 }) {
     return () => {
       cancelled = true;
     };
-  }, [selectedJobId]);
+  }, [selectedJobId, onSelectedJobChange]);
 
   const selectedManifest = selectedJob?.job;
   const availability = selectedJob?.artifact_availability ?? {};
@@ -114,8 +117,7 @@ export default function RecentJobsPanel({ refreshKey = 0 }) {
     [availability]
   );
 
-  return (
-    <section className="mx-auto mt-10 grid w-full max-w-[1536px] gap-5 xl:grid-cols-[minmax(0,1fr)_420px]">
+  const listPanel = (
       <div className="rounded-2xl border border-white/10 bg-white/[0.04] p-5 shadow-navy backdrop-blur-xl">
         <div className="flex flex-col gap-2 border-b border-white/10 pb-4 sm:flex-row sm:items-end sm:justify-between">
           <div>
@@ -186,6 +188,15 @@ export default function RecentJobsPanel({ refreshKey = 0 }) {
           </div>
         )}
       </div>
+  );
+
+  if (embedded) {
+    return listPanel;
+  }
+
+  return (
+    <section className="mx-auto mt-10 grid w-full max-w-[1536px] gap-5 xl:grid-cols-[minmax(0,1fr)_420px]">
+      {listPanel}
 
       <aside className="rounded-2xl border border-white/10 bg-navy-900/80 p-5 shadow-navy backdrop-blur-xl">
         <div className="border-b border-white/10 pb-4">

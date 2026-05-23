@@ -35,8 +35,12 @@ const modelsByProvider = {
   Qwen: ["qwen3.7-max", "qwen3.6-plus", "qwen3-max", "qwen3.6-max-preview", "qwen-plus", "qwen-max"]
 };
 
-export default function PasteGenerationPanel({ onJobCreated }) {
-  const [inputMethod, setInputMethod] = useState("paste");
+export default function PasteGenerationPanel({
+  onJobCreated,
+  initialInputMethod = "paste",
+  embedded = false
+}) {
+  const [inputMethod, setInputMethod] = useState(initialInputMethod);
   const [text, setText] = useState("");
   const [file, setFile] = useState(null);
   const [llmTitle, setLlmTitle] = useState("Generated Study Guide");
@@ -155,8 +159,12 @@ export default function PasteGenerationPanel({ onJobCreated }) {
     setResult(null);
   }
 
+  const shellClass = embedded
+    ? "w-full rounded-2xl border border-white/10 bg-navy-900/80 p-5 shadow-navy backdrop-blur-xl"
+    : "mx-auto mt-10 w-full max-w-[1536px] rounded-2xl border border-white/10 bg-navy-900/80 p-5 shadow-navy backdrop-blur-xl";
+
   return (
-    <section className="mx-auto mt-10 w-full max-w-[1536px] rounded-2xl border border-white/10 bg-navy-900/80 p-5 shadow-navy backdrop-blur-xl">
+    <section className={shellClass}>
       <div className="flex flex-col gap-2 border-b border-white/10 pb-4 sm:flex-row sm:items-end sm:justify-between">
         <div>
           <p className="text-xs font-bold uppercase tracking-[0.18em] text-ember-500">
