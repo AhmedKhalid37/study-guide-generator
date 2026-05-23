@@ -166,8 +166,13 @@ later image-upload/multimodal feature.
 
 LLM mode also includes style presets. The default is `Basic study guide`; you
 can switch per run to baby-step explanation, exam cram, MCQ training, final
-solution, or Claude-style study guide. Each preset is a Markdown prompt in
-`prompts/`.
+solution, Claude-style study guide, or master-level longform guide. Each preset
+is a Markdown prompt in `prompts/`.
+
+The `Master-level longform guide` preset is intended for deep 10+ page guides.
+It asks the model for a 4500-6500 word treatment with derivations, examples,
+exam questions, a cheat sheet, and glossary, so it uses more tokens and may cost
+more than the shorter presets.
 
 Alternatively, launch Streamlit with provider environment variables using fish
 shell:

@@ -103,6 +103,7 @@ def _llm_mode(*, theme: str, strict_math: bool) -> None:
             "MCQ training",
             "Final solution",
             "Claude-style study guide",
+            "Master-level longform guide",
         ],
         index=0,
     )
@@ -246,6 +247,7 @@ def _prompt_name_for_style(style_label: str) -> str:
         "MCQ training": "mcq_training",
         "Final solution": "final_solution",
         "Claude-style study guide": "claude_study_guide",
+        "Master-level longform guide": "master_longform",
     }[style_label]
 
 

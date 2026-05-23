@@ -26,7 +26,8 @@ const styles = [
   { label: "Exam cram", promptName: "exam_cram" },
   { label: "MCQ training", promptName: "mcq_training" },
   { label: "Final solution", promptName: "final_solution" },
-  { label: "Claude-style study guide", promptName: "claude_study_guide" }
+  { label: "Claude-style study guide", promptName: "claude_study_guide" },
+  { label: "Master-level longform guide", promptName: "master_longform" }
 ];
 
 const modelsByProvider = {

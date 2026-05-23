@@ -37,6 +37,7 @@ STYLE_PRESETS = [
     "mcq_training",
     "final_solution",
     "claude_study_guide",
+    "master_longform",
 ]
 ARTIFACTS = {
     "clean.md": ("clean_md", "text/markdown"),
