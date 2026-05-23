@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from pipeline.llm_client import LLMConfig, generate_chat_completion
-from pipeline.prompt_loader import load_prompt_template
+from pipeline.prompt_loader import load_prompt_template, render_prompt_template
 
 
 def build_messages(
@@ -12,7 +12,7 @@ def build_messages(
     prompt_name: str = "basic_study_guide",
 ) -> list[dict]:
     template = load_prompt_template(prompt_name)
-    user = template.format(title=title, mode=mode, source=source_text)
+    user = render_prompt_template(template, title=title, mode=mode, source=source_text)
     return [
         {
             "role": "system",

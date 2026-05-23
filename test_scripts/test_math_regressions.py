@@ -11,6 +11,7 @@ if str(ROOT) not in sys.path:
 from pipeline.html_renderer import render_markdown
 from pipeline.markdown_sanitizer import sanitize
 from pipeline.math_validator import validate
+from pipeline.prompt_loader import PROMPTS_DIR, load_prompt_template, render_prompt_template
 
 
 def main() -> None:
@@ -19,6 +20,7 @@ def main() -> None:
     test_numeric_inline_math_and_money_regressions()
     test_broken_display_math_does_not_swallow_prose()
     test_derivative_inline_math_regressions()
+    test_prompt_templates_render_with_latex_braces()
     test_html_renderer_inline_math()
     print("math regression tests passed")
 
@@ -200,6 +202,31 @@ The answer is $0$.
 
     result = validate(clean_path)
     assert result.ok, result.to_json_dict()
+
+
+def test_prompt_templates_render_with_latex_braces() -> None:
+    for prompt_path in PROMPTS_DIR.glob("*.md"):
+        template = load_prompt_template(prompt_path.stem)
+        rendered = render_prompt_template(
+            template,
+            title="Test",
+            mode="exam",
+            source=r"Source text with $\frac{x-\mu}{\sigma}$.",
+        )
+
+        assert "{title}" not in rendered
+        assert "{mode}" not in rendered
+        assert "{source}" not in rendered
+        if "{title}" in template:
+            assert "Test" in rendered
+        if "{mode}" in template:
+            assert "exam" in rendered
+        if "{source}" in template:
+            assert "Source text" in rendered
+        if "z_i^{(l)}" in template:
+            assert "z_i^{(l)}" in rendered
+        if "{source}" in template:
+            assert r"\frac{x-\mu}{\sigma}" in rendered
 
 
 def test_html_renderer_inline_math() -> None:

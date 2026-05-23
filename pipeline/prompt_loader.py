@@ -11,3 +11,17 @@ def load_prompt_template(name: str = "basic_study_guide") -> str:
     if not path.exists():
         raise FileNotFoundError(f"Prompt template not found: {path}")
     return path.read_text(encoding="utf-8")
+
+
+def render_prompt_template(
+    template: str,
+    *,
+    title: str,
+    mode: str,
+    source: str,
+) -> str:
+    return (
+        template.replace("{title}", title)
+        .replace("{mode}", mode)
+        .replace("{source}", source)
+    )
