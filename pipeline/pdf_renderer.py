@@ -49,6 +49,10 @@ def _render_with_chromium(html_path: Path, output_pdf: Path) -> None:
             "--disable-dev-shm-usage",
             "--disable-crash-reporter",
             "--disable-breakpad",
+            # Prevent Chrome's default print header/footer from adding timestamps,
+            # document titles, file:// paths, and browser page counts to PDFs.
+            "--no-pdf-header-footer",
+            "--print-to-pdf-no-header",
             f"--user-data-dir={profile_dir}",
             f"--print-to-pdf={output_pdf}",
             html_path.resolve().as_uri(),
