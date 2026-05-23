@@ -28,7 +28,7 @@ function statusClass(status) {
   return "border-amber-300/30 bg-amber-300/10 text-amber-100";
 }
 
-export default function RecentJobsPanel() {
+export default function RecentJobsPanel({ refreshKey = 0 }) {
   const [jobs, setJobs] = useState([]);
   const [selectedJobId, setSelectedJobId] = useState(null);
   const [selectedJob, setSelectedJob] = useState(null);
@@ -50,7 +50,12 @@ export default function RecentJobsPanel() {
         }
         const nextJobs = data.jobs ?? [];
         setJobs(nextJobs);
-        setSelectedJobId((current) => current ?? nextJobs[0]?.id ?? null);
+        setSelectedJobId((current) => {
+          if (current && nextJobs.some((job) => job.id === current)) {
+            return current;
+          }
+          return nextJobs[0]?.id ?? null;
+        });
       } catch (error) {
         if (!cancelled) {
           setJobsError(error);
@@ -66,7 +71,7 @@ export default function RecentJobsPanel() {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [refreshKey]);
 
   useEffect(() => {
     let cancelled = false;

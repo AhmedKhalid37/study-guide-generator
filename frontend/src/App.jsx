@@ -5,12 +5,14 @@ import PhoneMockup from "./components/PhoneMockup";
 import DesktopMockup from "./components/DesktopMockup";
 import MobileScreenPicker from "./components/MobileScreenPicker";
 import ImplementationNote from "./components/ImplementationNote";
+import PasteGenerationPanel from "./components/PasteGenerationPanel";
 import RecentJobsPanel from "./components/RecentJobsPanel";
 import { mobileScreens } from "./data/mockups";
 
 export default function App() {
   const [view, setView] = useState("mobile");
   const [activeScreenId, setActiveScreenId] = useState("home");
+  const [jobsRefreshKey, setJobsRefreshKey] = useState(0);
 
   const activeScreen = useMemo(
     () => mobileScreens.find((screen) => screen.id === activeScreenId) ?? mobileScreens[0],
@@ -38,7 +40,8 @@ export default function App() {
         {view === "desktop" && (
           <section>
             <DesktopMockup />
-            <RecentJobsPanel />
+            <PasteGenerationPanel onJobCreated={() => setJobsRefreshKey((key) => key + 1)} />
+            <RecentJobsPanel refreshKey={jobsRefreshKey} />
             <ImplementationNote />
           </section>
         )}
@@ -53,7 +56,8 @@ export default function App() {
             <div className="mt-12">
               <DesktopMockup />
             </div>
-            <RecentJobsPanel />
+            <PasteGenerationPanel onJobCreated={() => setJobsRefreshKey((key) => key + 1)} />
+            <RecentJobsPanel refreshKey={jobsRefreshKey} />
             <ImplementationNote />
           </section>
         )}

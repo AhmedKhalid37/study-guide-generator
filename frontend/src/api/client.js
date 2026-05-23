@@ -4,10 +4,21 @@ export const API_BASE_URL = (
   import.meta.env.VITE_API_BASE_URL || DEFAULT_API_BASE_URL
 ).replace(/\/+$/, "");
 
-async function requestJson(path) {
-  const response = await fetch(`${API_BASE_URL}${path}`);
+async function requestJson(path, options) {
+  const response = await fetch(`${API_BASE_URL}${path}`, options);
   if (!response.ok) {
-    throw new Error(`API request failed: ${response.status}`);
+    let message = `API request failed: ${response.status}`;
+    try {
+      const data = await response.json();
+      if (typeof data.detail === "string") {
+        message = data.detail;
+      } else if (data.detail?.message) {
+        message = data.detail.message;
+      }
+    } catch {
+      // Keep the status-based fallback when the response is not JSON.
+    }
+    throw new Error(message);
   }
   return response.json();
 }
@@ -28,8 +39,26 @@ export function getJob(jobId) {
   return requestJson(`/api/jobs/${encodeURIComponent(jobId)}`);
 }
 
+export function createPasteJob({ text, theme = "claude_clean", strictMath = true }) {
+  return requestJson("/api/jobs/paste", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify({
+      text,
+      theme,
+      strict_math: strictMath
+    })
+  });
+}
+
 export function artifactUrl(jobId, artifactName) {
   return `${API_BASE_URL}/api/jobs/${encodeURIComponent(jobId)}/artifacts/${encodeURIComponent(
     artifactName
   )}`;
+}
+
+export function apiUrl(path) {
+  return `${API_BASE_URL}${path}`;
 }
