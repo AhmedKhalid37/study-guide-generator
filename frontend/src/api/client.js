@@ -65,6 +65,16 @@ export function createUploadMarkdownJob({ file, theme = "claude_clean", strictMa
   });
 }
 
+export function createLlmJob(payload) {
+  return requestJson("/api/jobs/llm", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify(payload)
+  });
+}
+
 export function artifactUrl(jobId, artifactName) {
   return `${API_BASE_URL}/api/jobs/${encodeURIComponent(jobId)}/artifacts/${encodeURIComponent(
     artifactName

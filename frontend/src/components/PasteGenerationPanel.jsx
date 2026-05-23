@@ -10,7 +10,7 @@ import {
   Loader2,
   Wand2
 } from "lucide-react";
-import { apiUrl, createPasteJob, createUploadMarkdownJob } from "../api/client";
+import { apiUrl, createLlmJob, createPasteJob, createUploadMarkdownJob } from "../api/client";
 
 const artifactLabels = {
   "final.pdf": { label: "PDF", icon: Download },
@@ -20,10 +20,30 @@ const artifactLabels = {
   "render.log": { label: "Render log", icon: FileText }
 };
 
+const styles = [
+  { label: "Basic study guide", promptName: "basic_study_guide" },
+  { label: "Baby-step explanation", promptName: "baby_steps" },
+  { label: "Exam cram", promptName: "exam_cram" },
+  { label: "MCQ training", promptName: "mcq_training" },
+  { label: "Final solution", promptName: "final_solution" },
+  { label: "Claude-style study guide", promptName: "claude_study_guide" }
+];
+
+const modelsByProvider = {
+  DeepSeek: ["deepseek-v4-flash", "deepseek-v4-pro", "deepseek-chat", "deepseek-reasoner"],
+  Qwen: ["qwen3.7-max", "qwen3.6-plus", "qwen3-max", "qwen3.6-max-preview", "qwen-plus", "qwen-max"]
+};
+
 export default function PasteGenerationPanel({ onJobCreated }) {
   const [inputMethod, setInputMethod] = useState("paste");
   const [text, setText] = useState("");
   const [file, setFile] = useState(null);
+  const [llmTitle, setLlmTitle] = useState("Generated Study Guide");
+  const [llmMode, setLlmMode] = useState("exam");
+  const [llmStyle, setLlmStyle] = useState("basic_study_guide");
+  const [provider, setProvider] = useState("DeepSeek");
+  const [model, setModel] = useState(modelsByProvider.DeepSeek[0]);
+  const [qwenThinking, setQwenThinking] = useState(true);
   const [strictMath, setStrictMath] = useState(true);
   const [isGenerating, setIsGenerating] = useState(false);
   const [loadingMessage, setLoadingMessage] = useState("Generating guide...");
@@ -57,24 +77,25 @@ export default function PasteGenerationPanel({ onJobCreated }) {
         return;
       }
     }
+    if (inputMethod === "llm") {
+      if (!text.trim()) {
+        setError("No source text provided.");
+        setResult(null);
+        return;
+      }
+      if (!llmTitle.trim()) {
+        setError("No title provided.");
+        setResult(null);
+        return;
+      }
+    }
 
     setIsGenerating(true);
-    setLoadingMessage(inputMethod === "upload" ? "Uploading markdown..." : "Generating guide...");
+    setLoadingMessage(loadingMessageFor(inputMethod));
     setError("");
     setResult(null);
     try {
-      const job =
-        inputMethod === "upload"
-          ? await createUploadMarkdownJob({
-              file,
-              theme: "claude_clean",
-              strictMath
-            })
-          : await createPasteJob({
-              text,
-              theme: "claude_clean",
-              strictMath
-            });
+      const job = await createJob();
       setResult(job);
       onJobCreated?.(job);
     } catch (generationError) {
@@ -82,6 +103,34 @@ export default function PasteGenerationPanel({ onJobCreated }) {
     } finally {
       setIsGenerating(false);
     }
+  }
+
+  function createJob() {
+    if (inputMethod === "upload") {
+      return createUploadMarkdownJob({
+        file,
+        theme: "claude_clean",
+        strictMath
+      });
+    }
+    if (inputMethod === "llm") {
+      return createLlmJob({
+        source_text: text,
+        title: llmTitle,
+        mode: llmMode,
+        prompt_name: llmStyle,
+        provider,
+        model,
+        theme: "claude_clean",
+        strict_math: strictMath,
+        qwen_thinking: qwenThinking
+      });
+    }
+    return createPasteJob({
+      text,
+      theme: "claude_clean",
+      strictMath
+    });
   }
 
   function handleInputMethodChange(event) {
@@ -97,6 +146,14 @@ export default function PasteGenerationPanel({ onJobCreated }) {
     setResult(null);
   }
 
+  function handleProviderChange(event) {
+    const nextProvider = event.target.value;
+    setProvider(nextProvider);
+    setModel(modelsByProvider[nextProvider][0]);
+    setError("");
+    setResult(null);
+  }
+
   return (
     <section className="mx-auto mt-10 w-full max-w-[1536px] rounded-2xl border border-white/10 bg-navy-900/80 p-5 shadow-navy backdrop-blur-xl">
       <div className="flex flex-col gap-2 border-b border-white/10 pb-4 sm:flex-row sm:items-end sm:justify-between">
@@ -106,7 +163,7 @@ export default function PasteGenerationPanel({ onJobCreated }) {
           </p>
           <h2 className="mt-1 text-xl font-bold text-white">Generate a PDF guide</h2>
         </div>
-        <p className="text-sm text-slate-400">Paste Text and Upload Markdown are live</p>
+        <p className="text-sm text-slate-400">Paste Text, Upload Markdown, and LLM are live</p>
       </div>
 
       <form onSubmit={handleSubmit} className="mt-5 grid gap-5 xl:grid-cols-[280px_minmax(0,1fr)]">
@@ -122,9 +179,7 @@ export default function PasteGenerationPanel({ onJobCreated }) {
           >
             <option value="paste">Paste Text</option>
             <option value="upload">Upload Markdown</option>
-            <option value="llm" disabled>
-              Generate with LLM
-            </option>
+            <option value="llm">Generate with LLM</option>
           </select>
 
           <label className="flex items-center gap-3 rounded-xl border border-white/10 bg-white/[0.04] px-4 py-3 text-sm font-bold text-slate-100">
@@ -139,7 +194,7 @@ export default function PasteGenerationPanel({ onJobCreated }) {
 
           <button
             type="submit"
-            disabled={isGenerating || inputMethod === "llm"}
+            disabled={isGenerating}
             className="inline-flex h-12 items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-ember-500 to-ember-700 px-4 text-sm font-extrabold text-white shadow-ember transition disabled:cursor-not-allowed disabled:opacity-55"
           >
             {isGenerating ? (
@@ -150,7 +205,7 @@ export default function PasteGenerationPanel({ onJobCreated }) {
             ) : (
               <>
                 <Wand2 className="h-4 w-4" />
-                Generate PDF
+                {inputMethod === "llm" ? "Generate Study Guide PDF" : "Generate PDF"}
               </>
             )}
           </button>
@@ -170,6 +225,100 @@ export default function PasteGenerationPanel({ onJobCreated }) {
                 className="mt-3 min-h-[280px] w-full resize-y rounded-2xl border border-white/10 bg-[#071426] p-4 text-sm leading-6 text-slate-100 outline-none transition placeholder:text-slate-500 focus:border-ember-500"
               />
             </>
+          )}
+
+          {inputMethod === "llm" && (
+            <div>
+              <div className="grid gap-4 lg:grid-cols-2">
+                <label className="grid gap-2 text-sm font-bold text-white">
+                  Title
+                  <input
+                    value={llmTitle}
+                    onChange={(event) => setLlmTitle(event.target.value)}
+                    className="h-11 rounded-xl border border-white/10 bg-[#071426] px-3 text-sm font-medium text-white outline-none transition focus:border-ember-500"
+                  />
+                </label>
+
+                <label className="grid gap-2 text-sm font-bold text-white">
+                  Mode
+                  <select
+                    value={llmMode}
+                    onChange={(event) => setLlmMode(event.target.value)}
+                    className="h-11 rounded-xl border border-white/10 bg-[#071426] px-3 text-sm font-medium text-white outline-none transition focus:border-ember-500"
+                  >
+                    <option value="exam">exam</option>
+                    <option value="theory">theory</option>
+                    <option value="quick">quick</option>
+                    <option value="deep">deep</option>
+                  </select>
+                </label>
+
+                <label className="grid gap-2 text-sm font-bold text-white">
+                  Style
+                  <select
+                    value={llmStyle}
+                    onChange={(event) => setLlmStyle(event.target.value)}
+                    className="h-11 rounded-xl border border-white/10 bg-[#071426] px-3 text-sm font-medium text-white outline-none transition focus:border-ember-500"
+                  >
+                    {styles.map((style) => (
+                      <option key={style.promptName} value={style.promptName}>
+                        {style.label}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+
+                <label className="grid gap-2 text-sm font-bold text-white">
+                  Provider
+                  <select
+                    value={provider}
+                    onChange={handleProviderChange}
+                    className="h-11 rounded-xl border border-white/10 bg-[#071426] px-3 text-sm font-medium text-white outline-none transition focus:border-ember-500"
+                  >
+                    <option value="DeepSeek">DeepSeek</option>
+                    <option value="Qwen">Qwen</option>
+                  </select>
+                </label>
+
+                <label className="grid gap-2 text-sm font-bold text-white lg:col-span-2">
+                  Model
+                  <select
+                    value={model}
+                    onChange={(event) => setModel(event.target.value)}
+                    className="h-11 rounded-xl border border-white/10 bg-[#071426] px-3 text-sm font-medium text-white outline-none transition focus:border-ember-500"
+                  >
+                    {modelsByProvider[provider].map((modelId) => (
+                      <option key={modelId} value={modelId}>
+                        {modelId}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              </div>
+
+              {provider === "Qwen" && (
+                <label className="mt-4 flex items-center gap-3 rounded-xl border border-white/10 bg-white/[0.04] px-4 py-3 text-sm font-bold text-slate-100">
+                  <input
+                    type="checkbox"
+                    checked={qwenThinking}
+                    onChange={(event) => setQwenThinking(event.target.checked)}
+                    className="h-4 w-4 accent-ember-500"
+                  />
+                  Enable thinking mode
+                </label>
+              )}
+
+              <label className="mt-4 block text-sm font-bold text-white" htmlFor="llm-source-text">
+                Source text
+              </label>
+              <textarea
+                id="llm-source-text"
+                value={text}
+                onChange={(event) => setText(event.target.value)}
+                placeholder="Paste source notes, chapter text, or topic details for the AI-generated guide."
+                className="mt-3 min-h-[220px] w-full resize-y rounded-2xl border border-white/10 bg-[#071426] p-4 text-sm leading-6 text-slate-100 outline-none transition placeholder:text-slate-500 focus:border-ember-500"
+              />
+            </div>
           )}
 
           {inputMethod === "upload" && (
@@ -247,4 +396,14 @@ export default function PasteGenerationPanel({ onJobCreated }) {
 function isMarkdownFile(file) {
   const name = file.name.toLowerCase();
   return name.endsWith(".md") || name.endsWith(".markdown");
+}
+
+function loadingMessageFor(inputMethod) {
+  if (inputMethod === "upload") {
+    return "Uploading markdown...";
+  }
+  if (inputMethod === "llm") {
+    return "Generating with AI...";
+  }
+  return "Generating guide...";
 }
