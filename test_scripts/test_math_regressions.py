@@ -20,6 +20,7 @@ def main() -> None:
     test_numeric_inline_math_and_money_regressions()
     test_broken_display_math_does_not_swallow_prose()
     test_derivative_inline_math_regressions()
+    test_table_rows_keep_inline_math()
     test_prompt_templates_render_with_latex_braces()
     test_html_renderer_inline_math()
     print("math regression tests passed")
@@ -202,6 +203,36 @@ The answer is $0$.
 
     result = validate(clean_path)
     assert result.ok, result.to_json_dict()
+
+
+def test_table_rows_keep_inline_math() -> None:
+    source = r"""| Symbol | Meaning | Explanation |
+|---|---|---|
+| $f'(z)$ | Local Gradient | The derivative of the activation function evaluated at $z$. |
+| $\delta_i^{(l)}$ | Error term | The error signal for neuron $i$ in layer $l$. |
+| $w_{ij}^{(l)}$ | Weight | Weight from neuron $j$ to neuron $i$. |
+| $a$ | Activation | The final output of the neuron, $f(z)$. |
+
+$$
+. |
+| $f'(z)$ | Local Gradient | The derivative of the activation function evaluated at $z$. |
+"""
+    clean = sanitize(source)
+
+    assert "| $f'(z)$ | Local Gradient |" in clean
+    assert "| $\\delta_i^{(l)}$ | Error term |" in clean
+    assert "| $w_{ij}^{(l)}$ | Weight |" in clean
+    assert "| $a$ | Activation | The final output of the neuron, $f(z)$. |" in clean
+    assert "$f$z$$" not in clean
+    assert "$$\n| $" not in clean
+
+    with tempfile.NamedTemporaryFile("w", suffix=".md", delete=False, encoding="utf-8") as tmp:
+        tmp.write(clean)
+        clean_path = Path(tmp.name)
+
+    result = validate(clean_path)
+    assert result.ok, result.to_json_dict()
+    assert not any("| $f'(z)$ |" in error.expr for error in result.errors)
 
 
 def test_prompt_templates_render_with_latex_braces() -> None:

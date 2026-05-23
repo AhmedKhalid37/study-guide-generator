@@ -323,6 +323,8 @@ def looks_math(s: str) -> bool:
         return True
     if re.search(r"\bE\s*\([^)]", t):
         return True
+    if re.fullmatch(r"[A-Za-z]+(?:_[A-Za-z0-9]+)?\([^)]*\)", t):
+        return True
     if re.search(r"\b[A-Za-z]\s*\([^)]", t) and re.search(r"\d|=|\\", t):
         return True
     return False
