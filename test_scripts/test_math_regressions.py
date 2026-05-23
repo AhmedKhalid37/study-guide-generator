@@ -16,6 +16,8 @@ from pipeline.math_validator import validate
 def main() -> None:
     test_sanitizer_regressions()
     test_parenthetical_math_regressions()
+    test_numeric_inline_math_and_money_regressions()
+    test_broken_display_math_does_not_swallow_prose()
     test_html_renderer_inline_math()
     print("math regression tests passed")
 
@@ -98,6 +100,66 @@ There are two sets: for \(j=1\) and \(j=2\).
     assert "$There are two sets" not in clean
     assert "$from hidden node" not in clean
     assert "$equal to" not in clean
+
+    with tempfile.NamedTemporaryFile("w", suffix=".md", delete=False, encoding="utf-8") as tmp:
+        tmp.write(clean)
+        clean_path = Path(tmp.name)
+
+    result = validate(clean_path)
+    assert result.ok, result.to_json_dict()
+
+
+def test_numeric_inline_math_and_money_regressions() -> None:
+    source = r"""The answer is $0$.
+The class is $1$.
+The probability is $0.5$.
+The z-score is $-1$.
+The value is $2.0$.
+Money example: $70,000 should stay money.
+Price: $0.99 should stay money.
+"""
+    clean = sanitize(source)
+
+    assert "The answer is $0$." in clean
+    assert "The class is $1$." in clean
+    assert "The probability is $0.5$." in clean
+    assert "The z-score is $-1$." in clean
+    assert "The value is $2.0$." in clean
+    assert "Money example: \\$70,000 should stay money." in clean
+    assert "Price: \\$0.99 should stay money." in clean
+
+    with tempfile.NamedTemporaryFile("w", suffix=".md", delete=False, encoding="utf-8") as tmp:
+        tmp.write(clean)
+        clean_path = Path(tmp.name)
+
+    result = validate(clean_path)
+    assert result.ok, result.to_json_dict()
+    assert result.inline_formulas == 5, result.to_json_dict()
+
+
+def test_broken_display_math_does_not_swallow_prose() -> None:
+    source = r"""$$
+\delta_i^{(L)} = x $$For hidden layers $l < L$:
+### Gradient of loss
+
+### Parameter update (gradient descent)
+
+$$For hidden layers $l < L$:
+
+where $\eta$ is the learning rate.
+## Worked example
+"""
+    clean = sanitize(source)
+
+    assert "$$For hidden layers" not in clean
+    assert "For hidden layers $l < L$:" in clean
+    assert "### Gradient of loss" in clean
+    assert "### Parameter update (gradient descent)" in clean
+    assert "where $\\eta$ is the learning rate." in clean
+    assert "## Worked example" in clean
+    assert "$$\n### Gradient of loss\n$$" not in clean
+    assert "$$\n### Parameter update (gradient descent)\n$$" not in clean
+    assert "$$\nwhere " not in clean
 
     with tempfile.NamedTemporaryFile("w", suffix=".md", delete=False, encoding="utf-8") as tmp:
         tmp.write(clean)

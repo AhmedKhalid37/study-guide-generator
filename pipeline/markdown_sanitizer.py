@@ -13,7 +13,19 @@ STRUCTURE_PREFIXES = (
     "##",
     "###",
     "---",
+    "|",
+    "**Q",
+    "**A",
     "Step",
+    "Example",
+    "Answer:",
+    "For hidden layers",
+    "Where",
+    "where",
+    "Worked example",
+    "Common exam traps",
+    "Mini cheat sheet",
+    "Practice questions",
     "Question",
     "Final answer",
     "Exam hint",
@@ -77,6 +89,13 @@ def protect_existing_dollar_math(text: str) -> tuple[str, list[str]]:
             i += 1
             continue
 
+        if _is_broken_display_delimiter_line(stripped):
+            line = _remove_leading_display_delimiter(line)
+            line = _protect_latex_inline_math(line, blocks)
+            out.append(_protect_inline_dollar_math(line, blocks))
+            i += 1
+            continue
+
         if stripped.startswith("$$"):
             collected = [line]
             j = i + 1
@@ -93,6 +112,13 @@ def protect_existing_dollar_math(text: str) -> tuple[str, list[str]]:
                     collected.append(candidate)
                     found_close = True
                     break
+                if (
+                    "$$" in candidate
+                    and not candidate_stripped.startswith("$$")
+                    and _split_display_close_with_prose(lines, j, collected)
+                ):
+                    found_close = True
+                    break
                 if _is_markdown_structure(candidate_stripped):
                     blocked_by_structure = True
                     break
@@ -100,7 +126,10 @@ def protect_existing_dollar_math(text: str) -> tuple[str, list[str]]:
                 j += 1
 
             if found_close and not blocked_by_structure:
-                out.append(_store_dollar_block(blocks, _normalize_display_block("".join(collected))))
+                out.append(
+                    _store_dollar_block(blocks, _normalize_display_block("".join(collected)))
+                    + _line_ending(lines[j])
+                )
                 i = j + 1
                 continue
 
@@ -212,6 +241,31 @@ def _is_markdown_structure(stripped: str) -> bool:
     return any(stripped.startswith(prefix) for prefix in STRUCTURE_PREFIXES)
 
 
+def _is_broken_display_delimiter_line(stripped: str) -> bool:
+    if not stripped.startswith("$$") or stripped == "$$" or _is_single_line_display_math(stripped):
+        return False
+    rest = stripped[2:].strip()
+    return bool(rest) and (_is_markdown_structure(rest) or not looks_math(rest))
+
+
+def _remove_leading_display_delimiter(line: str) -> str:
+    before, _delimiter, after = line.partition("$$")
+    return before + after.lstrip()
+
+
+def _split_display_close_with_prose(lines: list[str], index: int, collected: list[str]) -> bool:
+    candidate = lines[index]
+    before, _delimiter, after = candidate.partition("$$")
+    if not before.strip():
+        return False
+
+    collected.append(before.rstrip() + _line_ending(candidate))
+    prose = after.lstrip()
+    if prose:
+        lines.insert(index + 1, prose)
+    return True
+
+
 def fix_math_inner(s: str) -> str:
     s = s.strip()
     s = normalize_unicode_math(s)
@@ -254,6 +308,8 @@ def looks_math(s: str) -> bool:
     if re.search(r"[μσ]", t):
         return True
     if re.search(r"[=^_<>+\-*/≤≥≈∑√]", t):
+        return True
+    if re.fullmatch(r"-?\d+(?:\.\d+)?", t):
         return True
     if re.fullmatch(r"[A-Za-z]", t):
         return True
