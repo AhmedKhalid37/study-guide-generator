@@ -56,6 +56,12 @@ cd frontend
 npm run build
 ```
 
+Read-only FastAPI wrapper:
+
+```bash
+python -m uvicorn api.server:app --reload
+```
+
 To test upload mode, launch the app and upload `ch4_raw.md`.
 
 To test paste mode, paste this small example:

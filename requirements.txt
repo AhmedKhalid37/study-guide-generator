@@ -7,3 +7,6 @@ tiktoken>=0.7.0
 markdown-it-py>=3.0.0
 streamlit>=1.36.0
 python-dotenv>=1.0.0
+fastapi
+uvicorn
+python-multipart
