@@ -30,6 +30,25 @@ npm run dev
 
 Then open the local Vite URL shown in your terminal.
 
+Run the read-only FastAPI wrapper from the repository root:
+
+```bash
+python -m uvicorn api.server:app --reload
+```
+
+Run React from this directory:
+
+```bash
+cd frontend
+npm run dev
+```
+
+Optional API override:
+
+```bash
+VITE_API_BASE_URL=http://127.0.0.1:8000 npm run dev
+```
+
 ## Build
 
 ```bash

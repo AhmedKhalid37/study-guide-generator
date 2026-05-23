@@ -5,6 +5,7 @@ import PhoneMockup from "./components/PhoneMockup";
 import DesktopMockup from "./components/DesktopMockup";
 import MobileScreenPicker from "./components/MobileScreenPicker";
 import ImplementationNote from "./components/ImplementationNote";
+import RecentJobsPanel from "./components/RecentJobsPanel";
 import { mobileScreens } from "./data/mockups";
 
 export default function App() {
@@ -37,6 +38,7 @@ export default function App() {
         {view === "desktop" && (
           <section>
             <DesktopMockup />
+            <RecentJobsPanel />
             <ImplementationNote />
           </section>
         )}
@@ -51,6 +53,7 @@ export default function App() {
             <div className="mt-12">
               <DesktopMockup />
             </div>
+            <RecentJobsPanel />
             <ImplementationNote />
           </section>
         )}
