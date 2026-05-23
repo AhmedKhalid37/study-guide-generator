@@ -13,6 +13,24 @@ from pipeline.run_llm_job import LLMJobError, run_llm_job
 from pipeline.run_markdown_job import MarkdownJobError, run_markdown_job, run_pasted_text_job
 
 
+DEEPSEEK_BASE_URL = "https://api.deepseek.com/v1"
+QWEN_BASE_URL = "https://dashscope-intl.aliyuncs.com/compatible-mode/v1"
+DEEPSEEK_MODELS = [
+    "deepseek-v4-flash",
+    "deepseek-v4-pro",
+    "deepseek-chat",
+    "deepseek-reasoner",
+]
+QWEN_MODELS = [
+    "qwen3.7-max",
+    "qwen3.6-plus",
+    "qwen3-max",
+    "qwen3.6-max-preview",
+    "qwen-plus",
+    "qwen-max",
+]
+
+
 def main() -> None:
     st.set_page_config(page_title="Study Guide Generator", layout="centered")
     st.title("Study Guide Generator")
@@ -70,6 +88,7 @@ def _paste_mode(*, theme: str, strict_math: bool) -> None:
 
 
 def _llm_mode(*, theme: str, strict_math: bool) -> None:
+    load_env_file()
     title = st.text_input("Title", value="Generated Study Guide")
     guide_mode = st.selectbox("Mode", ["exam", "theory", "quick", "deep"], index=0)
     style_label = st.selectbox(
@@ -85,18 +104,24 @@ def _llm_mode(*, theme: str, strict_math: bool) -> None:
         index=0,
     )
     prompt_name = _prompt_name_for_style(style_label)
+    provider = st.selectbox("Provider", ["DeepSeek", "Qwen"], index=0)
+    model_options = DEEPSEEK_MODELS if provider == "DeepSeek" else QWEN_MODELS
     model_choice = st.selectbox(
-        "Model",
-        [
-            "Use environment default",
-            "deepseek-v4-flash",
-            "deepseek-v4-pro",
-            "deepseek-chat",
-            "deepseek-reasoner",
-        ],
-        index=0,
+        f"{provider} model",
+        ["Use environment default", *model_options, "Custom model ID"],
+        index=0 if provider == "DeepSeek" else 1,
     )
-    selected_model = None if model_choice == "Use environment default" else model_choice
+    custom_model = st.text_input(
+        "Custom model ID",
+        value="",
+        placeholder="Enter a provider-specific model ID",
+        disabled=model_choice != "Custom model ID",
+    )
+    qwen_thinking_enabled = True
+    if provider == "Qwen":
+        qwen_thinking_enabled = st.checkbox("Enable thinking mode", value=True)
+    selected_model = custom_model.strip() if model_choice == "Custom model ID" else model_choice
+    st.session_state.selected_llm_provider = provider
     st.session_state.selected_llm_model = selected_model
 
     uploaded = st.file_uploader("Optional source file", type=["txt", "md", "markdown"])
@@ -124,21 +149,90 @@ def _llm_mode(*, theme: str, strict_math: bool) -> None:
                 prompt_name=prompt_name,
                 theme=theme,
                 strict_math=strict_math,
-                config=_llm_config_for_model(selected_model),
+                config=build_provider_config(
+                    provider,
+                    model_choice,
+                    custom_model,
+                    qwen_thinking_enabled=qwen_thinking_enabled,
+                ),
             )
         )
 
 
-def _llm_config_for_model(selected_model: str | None) -> LLMConfig:
-    config = LLMConfig.from_env()
-    if selected_model is None:
-        return config
-    return LLMConfig(
-        base_url=config.base_url,
-        api_key=config.api_key,
-        model=selected_model,
-        temperature=config.temperature,
-    )
+def build_provider_config(
+    provider: str,
+    model_choice: str,
+    custom_model: str | None = None,
+    *,
+    qwen_thinking_enabled: bool = True,
+) -> LLMConfig:
+    load_env_file()
+    temperature = _llm_temperature_from_env()
+
+    if provider == "DeepSeek":
+        api_key = os.getenv("DEEPSEEK_API_KEY") or os.getenv("LLM_API_KEY")
+        if not api_key:
+            raise MissingLLMConfigError("Missing DEEPSEEK_API_KEY.")
+        model = _selected_model(
+            model_choice,
+            custom_model,
+            fallback=os.getenv("DEEPSEEK_MODEL")
+            or os.getenv("LLM_MODEL")
+            or os.getenv("DEEPSEEK_MODEL_FLASH")
+            or DEEPSEEK_MODELS[0],
+        )
+        return LLMConfig(
+            base_url=os.getenv("DEEPSEEK_BASE_URL")
+            or os.getenv("LLM_BASE_URL")
+            or DEEPSEEK_BASE_URL,
+            api_key=api_key,
+            model=model,
+            temperature=temperature,
+            provider="deepseek",
+        )
+
+    if provider == "Qwen":
+        api_key = os.getenv("DASHSCOPE_API_KEY") or os.getenv("QWEN_API_KEY")
+        if not api_key:
+            raise MissingLLMConfigError("Missing DASHSCOPE_API_KEY or QWEN_API_KEY.")
+        model = _selected_model(
+            model_choice,
+            custom_model,
+            fallback=os.getenv("QWEN_MODEL") or os.getenv("LLM_MODEL") or QWEN_MODELS[0],
+        )
+        return LLMConfig(
+            base_url=os.getenv("DASHSCOPE_BASE_URL")
+            or os.getenv("QWEN_BASE_URL")
+            or QWEN_BASE_URL,
+            api_key=api_key,
+            model=model,
+            temperature=temperature,
+            provider="qwen",
+            extra_body={"enable_thinking": qwen_thinking_enabled},
+        )
+
+    raise MissingLLMConfigError(f"Unsupported LLM provider: {provider}")
+
+
+def _selected_model(model_choice: str, custom_model: str | None, *, fallback: str) -> str:
+    if model_choice == "Use environment default":
+        return fallback
+    if model_choice == "Custom model ID":
+        model = (custom_model or "").strip()
+        if not model:
+            return fallback
+        return model
+    return model_choice
+
+
+def _llm_temperature_from_env() -> float:
+    temperature_raw = os.getenv("LLM_TEMPERATURE", "0.2")
+    try:
+        return float(temperature_raw)
+    except ValueError as exc:
+        raise MissingLLMConfigError(
+            f"LLM_TEMPERATURE must be a number, got: {temperature_raw}"
+        ) from exc
 
 
 def _prompt_name_for_style(style_label: str) -> str:
@@ -160,11 +254,8 @@ def _run_job(factory) -> None:
     with st.spinner("Running job..."):
         try:
             st.session_state.last_job = factory()
-        except MissingLLMConfigError:
-            st.session_state.last_error = (
-                "Missing LLM environment variables. "
-                "Set LLM_BASE_URL, LLM_API_KEY, and LLM_MODEL."
-            )
+        except MissingLLMConfigError as exc:
+            st.session_state.last_error = str(exc)
         except (MarkdownJobError, LLMJobError) as exc:
             st.session_state.last_error = str(exc)
             st.session_state.last_failed_job = getattr(exc, "job", None)
@@ -229,9 +320,26 @@ and `job.json`.
 
 def _show_llm_config_status() -> None:
     load_env_file()
-    st.write(f"Base URL: `{'present' if os.getenv('LLM_BASE_URL') else 'missing'}`")
-    st.write(f"API key: `{'present' if os.getenv('LLM_API_KEY') else 'missing'}`")
-    st.write(f"Default model: `{os.getenv('LLM_MODEL') or 'missing'}`")
+    deepseek_base = (
+        "present" if os.getenv("DEEPSEEK_BASE_URL") or os.getenv("LLM_BASE_URL") else "default"
+    )
+    deepseek_key = (
+        "present" if os.getenv("DEEPSEEK_API_KEY") or os.getenv("LLM_API_KEY") else "missing"
+    )
+    qwen_base = (
+        "present" if os.getenv("DASHSCOPE_BASE_URL") or os.getenv("QWEN_BASE_URL") else "default"
+    )
+    qwen_key = (
+        "present" if os.getenv("DASHSCOPE_API_KEY") or os.getenv("QWEN_API_KEY") else "missing"
+    )
+    st.write(f"DeepSeek base URL: `{deepseek_base}`")
+    st.write(f"DeepSeek API key: `{deepseek_key}`")
+    st.write(f"DashScope/Qwen base URL: `{qwen_base}`")
+    st.write(f"DashScope/Qwen API key: `{qwen_key}`")
+    st.write(f"LLM temperature: `{os.getenv('LLM_TEMPERATURE') or '0.2'}`")
+    provider = st.session_state.get("selected_llm_provider")
+    if provider:
+        st.write(f"Selected provider for this run: `{provider}`")
     selected = st.session_state.get("selected_llm_model")
     if selected:
         st.write(f"Selected model for this run: `{selected}`")

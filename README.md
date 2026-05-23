@@ -84,23 +84,42 @@ After `.env` is set, launch Streamlit normally:
 python -m streamlit run app.py
 ```
 
-The app uses the `.env` default model unless you choose a different model in
-Streamlit's LLM mode. Model overrides are per run only. `deepseek-v4-flash` is
-the faster/cheaper style option; `deepseek-v4-pro` is the better-quality style
-option.
+Streamlit LLM mode supports DeepSeek and Qwen as hosted OpenAI-compatible
+providers. Choose the provider, then choose one of its listed model IDs or use
+the custom model ID field. Model overrides are per run only. `deepseek-v4-flash`
+is the faster/cheaper DeepSeek style option; `deepseek-v4-pro` is the
+better-quality style option.
+
+For DeepSeek, set `DEEPSEEK_BASE_URL` and `DEEPSEEK_API_KEY`. The default
+DeepSeek base URL is `https://api.deepseek.com/v1`.
+
+For Qwen through Alibaba DashScope, Alibaba's official API key environment
+variable is `DASHSCOPE_API_KEY`. The Qwen base URL is
+`https://dashscope-intl.aliyuncs.com/compatible-mode/v1`; set
+`DASHSCOPE_BASE_URL` only if you need to override it. `QWEN_API_KEY` remains
+available as a fallback, and `QWEN_MODEL` can set the environment-default model.
+The app includes `qwen3.7-max` and `qwen3.6-plus` as Qwen model options. Qwen
+thinking mode sends `extra_body={"enable_thinking": True}` with the
+non-streaming chat completion request. Streaming is not implemented yet; the app
+uses the final response only. `qwen3.6-plus` is currently added as a
+text-generation model option. Actual visual/image understanding would require a
+later image-upload/multimodal feature.
 
 LLM mode also includes style presets. The default is `Basic study guide`; you
 can switch per run to baby-step explanation, exam cram, MCQ training, final
 solution, or Claude-style study guide. Each preset is a Markdown prompt in
 `prompts/`.
 
-Alternatively, launch Streamlit with DeepSeek environment variables using fish
+Alternatively, launch Streamlit with provider environment variables using fish
 shell:
 
 ```fish
-set -x LLM_BASE_URL "https://api.deepseek.com/v1"
-set -x LLM_API_KEY "your_key_here"
-set -x LLM_MODEL "deepseek-v4-flash"
+set -x DEEPSEEK_BASE_URL "https://api.deepseek.com/v1"
+set -x DEEPSEEK_API_KEY "your_deepseek_key_here"
+set -x DEEPSEEK_MODEL_FLASH "deepseek-v4-flash"
+set -x DASHSCOPE_BASE_URL "https://dashscope-intl.aliyuncs.com/compatible-mode/v1"
+set -x DASHSCOPE_API_KEY "your_dashscope_key_here"
+set -x QWEN_MODEL "qwen3.7-max"
 set -x LLM_TEMPERATURE "0.2"
 python -m streamlit run app.py
 ```

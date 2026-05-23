@@ -36,7 +36,7 @@ def run_llm_job(
             "prompt_name": prompt_name,
             "theme": theme,
             "strict_math": strict_math,
-            "provider": "openai_compatible",
+            "provider": resolved_config.provider,
             "model": resolved_config.model,
         }
     )

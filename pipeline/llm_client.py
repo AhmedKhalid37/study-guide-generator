@@ -22,6 +22,8 @@ class LLMConfig:
     api_key: str
     model: str
     temperature: float = 0.2
+    provider: str = "openai_compatible"
+    extra_body: dict | None = None
 
     @classmethod
     def from_env(cls) -> "LLMConfig":
@@ -64,11 +66,15 @@ def generate_chat_completion(messages: list[dict], config: LLMConfig) -> str:
         ) from exc
 
     client = OpenAI(base_url=config.base_url, api_key=config.api_key)
-    response = client.chat.completions.create(
-        model=config.model,
-        messages=messages,
-        temperature=config.temperature,
-    )
+    params = {
+        "model": config.model,
+        "messages": messages,
+        "temperature": config.temperature,
+    }
+    if config.extra_body is not None:
+        params["extra_body"] = config.extra_body
+
+    response = client.chat.completions.create(**params)
     content = response.choices[0].message.content
     if not content:
         raise RuntimeError("LLM returned an empty response.")
