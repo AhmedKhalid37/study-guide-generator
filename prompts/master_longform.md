@@ -19,6 +19,9 @@ Math and Markdown requirements:
 - Use display math for important equations.
 - Split long equations into multiple display lines instead of one very long line.
 - Never use `[ ... ]` for math.
+- Use `$...$` for inline math.
+- Use `$$ ... $$` for display math.
+- For integrals, write them as display math blocks.
 - Never write browser notes, CSS notes, style notes, renderer notes, or PDF layout instructions in the guide.
 - Write derivatives as `$f'(z)$`, `$f'(z_i)$`, or `$f'(z_i^{(l)})$`.
 - Never write derivative notation as `f'z$` or `f'$z$`.

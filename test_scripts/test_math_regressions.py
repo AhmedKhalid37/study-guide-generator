@@ -21,6 +21,7 @@ def main() -> None:
     test_broken_display_math_does_not_swallow_prose()
     test_derivative_inline_math_regressions()
     test_table_rows_keep_inline_math()
+    test_square_bracket_display_math_regressions()
     test_prompt_templates_render_with_latex_braces()
     test_html_renderer_inline_math()
     print("math regression tests passed")
@@ -233,6 +234,45 @@ $$
     result = validate(clean_path)
     assert result.ok, result.to_json_dict()
     assert not any("| $f'(z)$ |" in error.expr for error in result.errors)
+
+
+def test_square_bracket_display_math_regressions() -> None:
+    source = r"""[ a \le x \le b,\quad c \le y \le d,\quad p \le z \le q. ]
+
+[ \int_{z=p}^{z=q} f(x,y,z),dz ]
+
+[ \int_{y=c}^{y=d} \left[ \text{result from step 2} \right] dy ]
+
+[ \iiint\limits_{R} \sin x , \cos y , dz,dy,dx, ]
+
+\[
+\int \sin(k u),du = -\frac{1}{k}\cos(k u) + C
+\]
+
+[important note]
+[see chapter 3]
+[Google](https://google.com)
+"""
+    clean = sanitize(source)
+
+    assert "$$\na \\le x \\le b,\\quad c \\le y \\le d,\\quad p \\le z \\le q.\n$$" in clean
+    assert "$$\n\\int_{z=p}^{z=q} f(x,y,z)\\,dz\n$$" in clean
+    assert "$$\n\\int_{y=c}^{y=d} \\left[ \\text{result from step 2} \\right] dy\n$$" in clean
+    assert "$$\n\\iiint\\limits_{R} \\sin x , \\cos y \\,dz\\,dy\\,dx,\n$$" in clean
+    assert "$$\n\\int \\sin(k u)\\,du = -\\frac{1}{k}\\cos(k u) + C\n$$" in clean
+    assert "[ \\int" not in clean
+    assert "[ \\iiint" not in clean
+    assert "[important note]" in clean
+    assert "[see chapter 3]" in clean
+    assert "[Google](https://google.com)" in clean
+
+    with tempfile.NamedTemporaryFile("w", suffix=".md", delete=False, encoding="utf-8") as tmp:
+        tmp.write(clean)
+        clean_path = Path(tmp.name)
+
+    result = validate(clean_path)
+    assert result.ok, result.to_json_dict()
+    assert result.display_blocks == 5, result.to_json_dict()
 
 
 def test_prompt_templates_render_with_latex_braces() -> None:

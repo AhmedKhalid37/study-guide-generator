@@ -15,7 +15,9 @@ Requirements:
 - Split long equations into multiple display lines instead of one very long line.
 - When referring to variables in prose, use `$j$`, `$k$`, `$t_k$`, and `$x_i$` directly. Do not write variables in parentheses like `(j)` or `(t_k)`.
 - Never use `[ ... ]` for math.
+- Use `$...$` for inline math.
 - Use `$$ ... $$` for display math.
+- For integrals, write them as display math blocks.
 - If writing a formula on its own line, always wrap it in `$$ ... $$`.
 - Literal brackets should only be used for normal text, not formulas.
 - Do not invent facts not supported by the source text.

@@ -7,6 +7,7 @@ DOLLAR_PLACEHOLDER = "\uE002DOLLARMATH{}\uE003"
 DOLLAR_PLACEHOLDER_PREFIX = "\uE002DOLLARMATH"
 BRACKET_PLACEHOLDER = "\uE004BRACKETMATH{}\uE005"
 LINK_PLACEHOLDER = "\uE006LINK{}\uE007"
+LATEX_BRACKET_PLACEHOLDER = "\uE008LATEXBRACKETMATH{}\uE009"
 
 STRUCTURE_PREFIXES = (
     "#",
@@ -286,6 +287,9 @@ def fix_math_inner(s: str) -> str:
     # Example: \midB -> \mid B, \midmale -> \mid male
     s = re.sub(r"\\mid(?=[A-Za-z])", r"\\mid ", s)
 
+    # Common LLM integral typo: commas before differentials should be thin spaces.
+    s = re.sub(r"(?<!\\),\s*d([uvwxyz])\b", r"\\,d\1", s)
+
     return s
 
 
@@ -494,7 +498,7 @@ def protect_one_line_bracket_math(text: str) -> tuple[str, list[str]]:
             lines.append(line)
             continue
 
-        match = re.fullmatch(r"(\s*)\[(.+?)\](\s*)", line)
+        match = re.fullmatch(r"(\s*)\[(.+)\](\s*)", line)
         if not match:
             lines.append(line)
             continue
@@ -511,9 +515,83 @@ def protect_one_line_bracket_math(text: str) -> tuple[str, list[str]]:
     return "\n".join(lines), blocks
 
 
+def protect_latex_display_bracket_math(text: str) -> tuple[str, list[str]]:
+    blocks: list[str] = []
+    lines = text.splitlines(True)
+    out: list[str] = []
+    in_code = False
+    i = 0
+
+    while i < len(lines):
+        line = lines[i]
+        stripped = line.strip()
+
+        if stripped.startswith("```"):
+            in_code = not in_code
+            out.append(line)
+            i += 1
+            continue
+
+        if in_code:
+            out.append(line)
+            i += 1
+            continue
+
+        one_line = re.fullmatch(r"\\\[(.+)\\\]", stripped)
+        if one_line:
+            inner = one_line.group(1).strip()
+            if _looks_like_bracket_formula(inner):
+                idx = len(blocks)
+                blocks.append("\n\n$$\n" + fix_math_inner(inner) + "\n$$\n\n")
+                out.append(LATEX_BRACKET_PLACEHOLDER.format(idx) + _line_ending(line))
+                i += 1
+                continue
+
+        if stripped == r"\[":
+            j = i + 1
+            content: list[str] = []
+            blocked_by_structure = False
+
+            while j < len(lines) and j <= i + 40:
+                candidate = lines[j]
+                candidate_stripped = candidate.strip()
+                if candidate_stripped == r"\]":
+                    break
+                if _is_markdown_structure(candidate_stripped):
+                    blocked_by_structure = True
+                    break
+                content.append(candidate)
+                j += 1
+
+            if (
+                j < len(lines)
+                and j <= i + 40
+                and lines[j].strip() == r"\]"
+                and not blocked_by_structure
+            ):
+                inner = "".join(content).strip()
+                if inner and _looks_like_bracket_formula(inner):
+                    idx = len(blocks)
+                    blocks.append("\n\n$$\n" + fix_math_inner(inner) + "\n$$\n\n")
+                    out.append(LATEX_BRACKET_PLACEHOLDER.format(idx))
+                    i = j + 1
+                    continue
+
+        out.append(line)
+        i += 1
+
+    return "".join(out), blocks
+
+
 def restore_bracket_blocks(text: str, blocks: list[str]) -> str:
     for i, block in enumerate(blocks):
         text = text.replace(BRACKET_PLACEHOLDER.format(i), block)
+    return text
+
+
+def restore_latex_bracket_blocks(text: str, blocks: list[str]) -> str:
+    for i, block in enumerate(blocks):
+        text = text.replace(LATEX_BRACKET_PLACEHOLDER.format(i), block)
     return text
 
 
@@ -541,11 +619,16 @@ def _looks_like_markdown_link(line: str) -> bool:
 def _looks_like_bracket_formula(inner: str) -> bool:
     if not inner:
         return False
-    if re.search(r"\\(?:frac|mu|sigma|text|cap|mid)\b", inner):
+    if re.search(
+        r"\\(?:int|iint|iiint|oint|le|leq|ge|geq|frac|quad|text|left|right|limits|mu|sigma|cap|mid)\b",
+        inner,
+    ):
+        return True
+    if re.search(r"\\[A-Za-z]+\s*[_^]?\{[^}]+\}", inner):
+        return True
+    if re.search(r"[_^]\{[^}]+\}", inner):
         return True
     if re.search(r"[=<>^_]", inner):
-        return True
-    if re.search(r"\\(?:cap|mid)\b", inner):
         return True
     if re.search(r"\bP\s*\([^)]", inner):
         return True
@@ -566,6 +649,7 @@ def merge_bare_probability_notation(text: str) -> str:
 def sanitize_markdown_math(text: str) -> str:
     text = repair_malformed_derivative_notation(text)
     text, dollar_blocks = protect_existing_dollar_math(text)
+    text, latex_bracket_blocks = protect_latex_display_bracket_math(text)
     text, bracket_blocks = protect_one_line_bracket_math(text)
     text, link_blocks = protect_markdown_links(text)
     text = escape_currency(text)
@@ -588,6 +672,7 @@ def sanitize_markdown_math(text: str) -> str:
     out = merge_bare_probability_notation(out)
     out = restore_blocks(out, blocks)
     out = restore_bracket_blocks(out, bracket_blocks)
+    out = restore_latex_bracket_blocks(out, latex_bracket_blocks)
     out = restore_dollar_blocks(out, dollar_blocks)
     out = restore_markdown_links(out, link_blocks)
 
