@@ -18,7 +18,13 @@ import {
   Wand2,
   Zap
 } from "lucide-react";
-import { apiUrl, createLlmJob, createPasteJob, createUploadMarkdownJob } from "../api/client";
+import {
+  apiUrl,
+  createLlmJob,
+  createPasteJob,
+  createUploadMarkdownJob,
+  previewApiUrl
+} from "../api/client";
 
 const sourceTabs = [
   { id: "paste", label: "Paste text" },
@@ -491,7 +497,7 @@ function LivePreviewPanel({ result, artifacts, selectedStyle, length }) {
       setMarkdownPreviewState("loading");
       setMarkdownPreviewText("");
       try {
-        const response = await fetch(apiUrl(artifactUrls["clean.md"]));
+        const response = await fetch(previewApiUrl(artifactUrls["clean.md"]));
         if (!response.ok) {
           throw new Error(`Could not load Markdown preview (${response.status})`);
         }
@@ -637,7 +643,7 @@ function ArtifactPreview({ format, artifactUrls, markdownPreviewText, markdownPr
     return (
       <iframe
         title="Generated PDF preview"
-        src={apiUrl(artifactUrls["final.pdf"])}
+        src={previewApiUrl(artifactUrls["final.pdf"])}
         className="h-full min-h-[494px] w-full rounded-md border-0 bg-white"
       />
     );
@@ -650,7 +656,8 @@ function ArtifactPreview({ format, artifactUrls, markdownPreviewText, markdownPr
     return (
       <iframe
         title="Generated HTML preview"
-        src={apiUrl(artifactUrls["final.html"])}
+        src={previewApiUrl(artifactUrls["final.html"])}
+        sandbox="allow-same-origin"
         className="h-full min-h-[494px] w-full rounded-md border-0 bg-white"
       />
     );

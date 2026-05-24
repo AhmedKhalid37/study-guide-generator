@@ -84,3 +84,9 @@ export function artifactUrl(jobId, artifactName) {
 export function apiUrl(path) {
   return `${API_BASE_URL}${path}`;
 }
+
+export function previewApiUrl(path) {
+  const url = apiUrl(path);
+  const separator = url.includes("?") ? "&" : "?";
+  return `${url}${separator}disposition=inline`;
+}

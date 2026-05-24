@@ -40,11 +40,11 @@ STYLE_PRESETS = [
     "master_longform",
 ]
 ARTIFACTS = {
-    "clean.md": ("clean_md", "text/markdown"),
-    "final.html": ("final_html", "text/html"),
+    "clean.md": ("clean_md", "text/markdown; charset=utf-8"),
+    "final.html": ("final_html", "text/html; charset=utf-8"),
     "final.pdf": ("final_pdf", "application/pdf"),
     "validation.json": ("validation_json", "application/json"),
-    "render.log": ("render_log", "text/plain"),
+    "render.log": ("render_log", "text/plain; charset=utf-8"),
 }
 
 
@@ -206,12 +206,20 @@ def get_job(job_id: str) -> dict[str, Any]:
 
 
 @app.get("/api/jobs/{job_id}/artifacts/{artifact_name}")
-def get_artifact(job_id: str, artifact_name: str) -> FileResponse:
+def get_artifact(
+    job_id: str,
+    artifact_name: str,
+    disposition: str = "attachment",
+) -> FileResponse:
     job = _get_job(job_id)
     path, media_type = _artifact_path(job, artifact_name)
     if not path.exists() or not path.is_file():
         raise HTTPException(status_code=404, detail="Artifact not found.")
-    return FileResponse(path, media_type=media_type, filename=artifact_name)
+    return FileResponse(
+        path,
+        media_type=media_type,
+        headers={"Content-Disposition": _content_disposition(disposition, artifact_name)},
+    )
 
 
 def job_response(job: Job) -> dict[str, Any]:
@@ -294,6 +302,15 @@ def _artifact_path(job: Job, artifact_name: str) -> tuple[Path, str]:
     if key == "validation_json":
         return _validation_json_path(job), media_type
     return getattr(job, key), media_type
+
+
+def _content_disposition(disposition: str, filename: str) -> str:
+    disposition = disposition.lower().strip()
+    if disposition not in {"attachment", "inline"}:
+        raise HTTPException(status_code=400, detail="Unsupported artifact disposition.")
+
+    safe_filename = filename.replace("\\", "").replace('"', "")
+    return f'{disposition}; filename="{safe_filename}"'
 
 
 def _validation_json_path(job: Job) -> Path:
