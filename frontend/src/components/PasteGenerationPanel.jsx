@@ -38,6 +38,7 @@ const modelsByProvider = {
 export default function PasteGenerationPanel({
   onJobCreated,
   initialInputMethod = "paste",
+  initialPromptName = "basic_study_guide",
   embedded = false
 }) {
   const [inputMethod, setInputMethod] = useState(initialInputMethod);
@@ -45,7 +46,7 @@ export default function PasteGenerationPanel({
   const [file, setFile] = useState(null);
   const [llmTitle, setLlmTitle] = useState("Generated Study Guide");
   const [llmMode, setLlmMode] = useState("exam");
-  const [llmStyle, setLlmStyle] = useState("basic_study_guide");
+  const [llmStyle, setLlmStyle] = useState(initialPromptName);
   const [provider, setProvider] = useState("DeepSeek");
   const [model, setModel] = useState(modelsByProvider.DeepSeek[0]);
   const [qwenThinking, setQwenThinking] = useState(true);
@@ -160,7 +161,7 @@ export default function PasteGenerationPanel({
   }
 
   const shellClass = embedded
-    ? "w-full rounded-2xl border border-white/10 bg-navy-900/80 p-5 shadow-navy backdrop-blur-xl"
+    ? "w-full rounded-2xl border border-white/10 bg-white/[0.035] p-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.05)]"
     : "mx-auto mt-10 w-full max-w-[1536px] rounded-2xl border border-white/10 bg-navy-900/80 p-5 shadow-navy backdrop-blur-xl";
 
   return (
@@ -168,14 +169,14 @@ export default function PasteGenerationPanel({
       <div className="flex flex-col gap-2 border-b border-white/10 pb-4 sm:flex-row sm:items-end sm:justify-between">
         <div>
           <p className="text-xs font-bold uppercase tracking-[0.18em] text-ember-500">
-            Create
+            Create Guide
           </p>
           <h2 className="mt-1 text-xl font-bold text-white">Generate a PDF guide</h2>
         </div>
-        <p className="text-sm text-slate-400">Paste Text, Upload Markdown, and LLM are live</p>
+        <p className="text-sm text-slate-400">Paste, upload, or generate from source material</p>
       </div>
 
-      <form onSubmit={handleSubmit} className="mt-5 grid gap-5 xl:grid-cols-[280px_minmax(0,1fr)]">
+      <form onSubmit={handleSubmit} className="mt-5 grid gap-5 2xl:grid-cols-[240px_minmax(0,1fr)]">
         <div className="grid content-start gap-3">
           <label className="text-sm font-bold text-white" htmlFor="input-method">
             Input method
@@ -184,14 +185,14 @@ export default function PasteGenerationPanel({
             id="input-method"
             value={inputMethod}
             onChange={handleInputMethodChange}
-            className="h-11 rounded-xl border border-white/10 bg-[#071426] px-3 text-sm font-bold text-white outline-none transition focus:border-ember-500"
+            className="h-11 rounded-xl border border-white/10 bg-[#050f20] px-3 text-sm font-bold text-white outline-none transition focus:border-ember-500"
           >
             <option value="paste">Paste Text</option>
             <option value="upload">Upload Markdown</option>
             <option value="llm">Generate with LLM</option>
           </select>
 
-          <label className="flex items-center gap-3 rounded-xl border border-white/10 bg-white/[0.04] px-4 py-3 text-sm font-bold text-slate-100">
+          <label className="flex items-center gap-3 rounded-xl border border-white/10 bg-[#050f20] px-4 py-3 text-sm font-bold text-slate-100">
             <input
               type="checkbox"
               checked={strictMath}
@@ -204,7 +205,7 @@ export default function PasteGenerationPanel({
           <button
             type="submit"
             disabled={isGenerating}
-            className="inline-flex h-12 items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-ember-500 to-ember-700 px-4 text-sm font-extrabold text-white shadow-ember transition disabled:cursor-not-allowed disabled:opacity-55"
+            className="inline-flex h-12 items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-ember-500 to-ember-700 px-4 text-sm font-extrabold text-white shadow-ember transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-55"
           >
             {isGenerating ? (
               <>
@@ -231,7 +232,7 @@ export default function PasteGenerationPanel({
                 value={text}
                 onChange={(event) => setText(event.target.value)}
                 placeholder="# Chapter notes&#10;&#10;Paste Markdown or plain text here."
-                className="mt-3 min-h-[280px] w-full resize-y rounded-2xl border border-white/10 bg-[#071426] p-4 text-sm leading-6 text-slate-100 outline-none transition placeholder:text-slate-500 focus:border-ember-500"
+                className="mt-3 min-h-[230px] w-full resize-y rounded-2xl border border-white/10 bg-[#050f20] p-4 text-sm leading-6 text-slate-100 outline-none transition placeholder:text-slate-500 focus:border-ember-500"
               />
             </>
           )}
@@ -244,7 +245,7 @@ export default function PasteGenerationPanel({
                   <input
                     value={llmTitle}
                     onChange={(event) => setLlmTitle(event.target.value)}
-                    className="h-11 rounded-xl border border-white/10 bg-[#071426] px-3 text-sm font-medium text-white outline-none transition focus:border-ember-500"
+                    className="h-11 rounded-xl border border-white/10 bg-[#050f20] px-3 text-sm font-medium text-white outline-none transition focus:border-ember-500"
                   />
                 </label>
 
@@ -253,7 +254,7 @@ export default function PasteGenerationPanel({
                   <select
                     value={llmMode}
                     onChange={(event) => setLlmMode(event.target.value)}
-                    className="h-11 rounded-xl border border-white/10 bg-[#071426] px-3 text-sm font-medium text-white outline-none transition focus:border-ember-500"
+                    className="h-11 rounded-xl border border-white/10 bg-[#050f20] px-3 text-sm font-medium text-white outline-none transition focus:border-ember-500"
                   >
                     <option value="exam">exam</option>
                     <option value="theory">theory</option>
@@ -267,7 +268,7 @@ export default function PasteGenerationPanel({
                   <select
                     value={llmStyle}
                     onChange={(event) => setLlmStyle(event.target.value)}
-                    className="h-11 rounded-xl border border-white/10 bg-[#071426] px-3 text-sm font-medium text-white outline-none transition focus:border-ember-500"
+                    className="h-11 rounded-xl border border-white/10 bg-[#050f20] px-3 text-sm font-medium text-white outline-none transition focus:border-ember-500"
                   >
                     {styles.map((style) => (
                       <option key={style.promptName} value={style.promptName}>
@@ -282,7 +283,7 @@ export default function PasteGenerationPanel({
                   <select
                     value={provider}
                     onChange={handleProviderChange}
-                    className="h-11 rounded-xl border border-white/10 bg-[#071426] px-3 text-sm font-medium text-white outline-none transition focus:border-ember-500"
+                    className="h-11 rounded-xl border border-white/10 bg-[#050f20] px-3 text-sm font-medium text-white outline-none transition focus:border-ember-500"
                   >
                     <option value="DeepSeek">DeepSeek</option>
                     <option value="Qwen">Qwen</option>
@@ -294,7 +295,7 @@ export default function PasteGenerationPanel({
                   <select
                     value={model}
                     onChange={(event) => setModel(event.target.value)}
-                    className="h-11 rounded-xl border border-white/10 bg-[#071426] px-3 text-sm font-medium text-white outline-none transition focus:border-ember-500"
+                    className="h-11 rounded-xl border border-white/10 bg-[#050f20] px-3 text-sm font-medium text-white outline-none transition focus:border-ember-500"
                   >
                     {modelsByProvider[provider].map((modelId) => (
                       <option key={modelId} value={modelId}>
@@ -306,7 +307,7 @@ export default function PasteGenerationPanel({
               </div>
 
               {provider === "Qwen" && (
-                <label className="mt-4 flex items-center gap-3 rounded-xl border border-white/10 bg-white/[0.04] px-4 py-3 text-sm font-bold text-slate-100">
+                <label className="mt-4 flex items-center gap-3 rounded-xl border border-white/10 bg-[#050f20] px-4 py-3 text-sm font-bold text-slate-100">
                   <input
                     type="checkbox"
                     checked={qwenThinking}
@@ -325,7 +326,7 @@ export default function PasteGenerationPanel({
                 value={text}
                 onChange={(event) => setText(event.target.value)}
                 placeholder="Paste source notes, chapter text, or topic details for the AI-generated guide."
-                className="mt-3 min-h-[220px] w-full resize-y rounded-2xl border border-white/10 bg-[#071426] p-4 text-sm leading-6 text-slate-100 outline-none transition placeholder:text-slate-500 focus:border-ember-500"
+                className="mt-3 min-h-[190px] w-full resize-y rounded-2xl border border-white/10 bg-[#050f20] p-4 text-sm leading-6 text-slate-100 outline-none transition placeholder:text-slate-500 focus:border-ember-500"
               />
             </div>
           )}
@@ -335,7 +336,7 @@ export default function PasteGenerationPanel({
               <label className="text-sm font-bold text-white" htmlFor="markdown-file">
                 Markdown file
               </label>
-              <label className="mt-3 flex min-h-[280px] cursor-pointer flex-col items-center justify-center rounded-2xl border border-dashed border-white/15 bg-[#071426] p-6 text-center transition hover:border-ember-500/70">
+              <label className="mt-3 flex min-h-[230px] cursor-pointer flex-col items-center justify-center rounded-2xl border border-dashed border-white/15 bg-[#050f20] p-6 text-center transition hover:border-ember-500/70">
                 <Upload className="h-10 w-10 text-ember-500" />
                 <span className="mt-4 text-sm font-bold text-white">
                   {file ? file.name : "Choose a .md or .markdown file"}

@@ -118,15 +118,14 @@ export default function RecentJobsPanel({ refreshKey = 0, embedded = false, onSe
   );
 
   const listPanel = (
-      <div className="rounded-2xl border border-white/10 bg-white/[0.04] p-5 shadow-navy backdrop-blur-xl">
+      <div className="rounded-2xl border border-white/10 bg-white/[0.035] p-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.05)] backdrop-blur-xl">
         <div className="flex flex-col gap-2 border-b border-white/10 pb-4 sm:flex-row sm:items-end sm:justify-between">
           <div>
-            <p className="text-xs font-bold uppercase tracking-[0.18em] text-ember-500">
-              Live API
-            </p>
-            <h2 className="mt-1 text-xl font-bold text-white">Recent jobs</h2>
+            <h2 className="text-xl font-extrabold text-white">Recent Guides</h2>
           </div>
-          <p className="text-sm text-slate-400">Read-only history from FastAPI</p>
+          <button type="button" className="text-sm font-medium text-slate-300 hover:text-white">
+            View all
+          </button>
         </div>
 
         {loadingJobs && (
@@ -159,28 +158,31 @@ export default function RecentJobsPanel({ refreshKey = 0, embedded = false, onSe
                   key={job.id}
                   type="button"
                   onClick={() => setSelectedJobId(job.id)}
-                  className={`w-full rounded-xl border p-4 text-left transition ${
+                  className={`w-full rounded-xl border p-3 text-left transition ${
                     selected
-                      ? "border-ember-500/70 bg-ember-500/10 shadow-ember"
-                      : "border-white/10 bg-navy-900/70 hover:border-white/25 hover:bg-white/[0.06]"
+                      ? "border-ember-500/60 bg-ember-500/[0.08]"
+                      : "border-white/10 bg-white/[0.035] hover:border-white/20 hover:bg-white/[0.055]"
                   }`}
                 >
-                  <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                  <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                     <div className="min-w-0">
                       <p className="truncate text-sm font-bold text-white">{jobTitle(job)}</p>
-                      <p className="mt-1 break-all font-mono text-xs text-slate-400">{job.id}</p>
+                      <p className="mt-1 truncate text-xs text-slate-400">
+                        {[providerModel || "Study guide", job.created_at].filter(Boolean).join(" · ")}
+                      </p>
                     </div>
-                    <span
-                      className={`inline-flex w-fit rounded-full border px-2.5 py-1 text-xs font-bold ${statusClass(
-                        job.status
-                      )}`}
-                    >
-                      {job.status || "unknown"}
-                    </span>
-                  </div>
-                  <div className="mt-3 grid gap-1 text-sm text-slate-400 md:grid-cols-2">
-                    <span>{providerModel || "provider/model unavailable"}</span>
-                    <span className="md:text-right">{job.created_at || "created_at unavailable"}</span>
+                    <div className="flex items-center gap-3">
+                      <span
+                        className={`inline-flex w-fit rounded-full border px-2.5 py-1 text-xs font-bold ${statusClass(
+                          job.status
+                        )}`}
+                      >
+                        {job.status || "unknown"}
+                      </span>
+                      <span className="rounded-lg bg-white/[0.06] px-2.5 py-1 text-xs font-bold text-slate-300">
+                        PDF
+                      </span>
+                    </div>
                   </div>
                 </button>
               );
