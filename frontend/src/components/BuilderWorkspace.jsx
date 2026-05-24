@@ -73,7 +73,7 @@ export default function BuilderWorkspace({
   onJobCreated
 }) {
   const [source, setSource] = useState(initialSource);
-  const [title, setTitle] = useState("Calculus I - Limits & Continuity");
+  const [title, setTitle] = useState("Generated Study Guide");
   const [text, setText] = useState("");
   const [file, setFile] = useState(null);
   const [mode, setMode] = useState("exam");
@@ -89,6 +89,7 @@ export default function BuilderWorkspace({
 
   useEffect(() => {
     setSource(initialSource);
+    setError(null);
   }, [initialSource]);
 
   useEffect(() => {
@@ -115,7 +116,22 @@ export default function BuilderWorkspace({
     setLoading(true);
     setError(null);
     try {
-      const job = await createJob();
+      const { kind, payload } = buildBuilderPayload({
+        source,
+        text,
+        file,
+        title,
+        mode,
+        selectedStyle,
+        provider,
+        model,
+        strictMath,
+        qwenThinking,
+        length,
+        includes
+      });
+      assertBuilderPayload(kind, payload, { text, title, length, includes });
+      const job = await createJob(kind, payload);
       setResult(job);
       onJobCreated?.(job);
     } catch (requestError) {
@@ -148,24 +164,14 @@ export default function BuilderWorkspace({
     return "";
   }
 
-  function createJob() {
-    if (source === "upload") {
-      return createUploadMarkdownJob({ file, theme: "claude_clean", strictMath });
+  function createJob(kind, payload) {
+    if (kind === "upload") {
+      return createUploadMarkdownJob(payload);
     }
-    if (source === "llm") {
-      return createLlmJob({
-        source_text: augmentSourceText(text, length, includes),
-        title,
-        mode,
-        prompt_name: selectedStyle,
-        provider,
-        model,
-        theme: "claude_clean",
-        strict_math: strictMath,
-        qwen_thinking: qwenThinking
-      });
+    if (kind === "llm") {
+      return createLlmJob(payload);
     }
-    return createPasteJob({ text, theme: "claude_clean", strictMath });
+    return createPasteJob(payload);
   }
 
   function handleProviderChange(event) {
@@ -212,7 +218,12 @@ export default function BuilderWorkspace({
         >
           <div>
             <FieldLabel>Title</FieldLabel>
-            <input value={title} onChange={(event) => setTitle(event.target.value)} className={fieldClass} />
+            <input
+              value={title}
+              onChange={(event) => setTitle(event.target.value)}
+              placeholder="Enter guide title..."
+              className={fieldClass}
+            />
           </div>
 
           <div>
@@ -398,20 +409,15 @@ function SourceEditor({ source, text, setText, file, setFile, setError }) {
 
   return (
     <div className="relative mt-2.5 min-h-[200px] rounded-xl border border-white/[0.08] bg-[#070B14] p-3.5">
-      {!text && (
-        <div className="pointer-events-none absolute inset-3.5 font-mono text-[12.5px] leading-[1.7]">
-          <div className="text-[#F97316]"># Limits & Continuity</div>
-          <div className="text-[#6B7185]">A limit describes the value a function approaches as the</div>
-          <div className="text-[#6B7185]">input approaches some value. Formally, lim x→c f(x) = L if...</div>
-          <div className="mt-2 text-[#F97316]">## Definitions</div>
-          <div className="text-[#D4D4D8]">- One-sided limits: lim x→c⁻ f(x) and lim x→c⁺ f(x)</div>
-          <div className="text-[#D4D4D8]">- Two-sided: equal one-sided limits</div>
-        </div>
-      )}
       <textarea
         value={text}
         onChange={(event) => setText(event.target.value)}
         aria-label={source === "llm" ? "AI prompt and source material" : "Pasted source text"}
+        placeholder={
+          source === "llm"
+            ? "Describe the guide you want and paste the real source material here."
+            : "# Your notes\n\nPaste Markdown or plain text here."
+        }
         className="relative z-10 min-h-[172px] w-full resize-y bg-transparent font-mono text-[12.5px] leading-[1.7] text-[#D4D4D8] caret-[#F97316] outline-none placeholder:text-[#6B7185]"
       />
       <div className="absolute bottom-2 right-3 font-sans text-[11px] text-[#6B7185]">
@@ -449,7 +455,7 @@ function MiniStyle({ style, active, onClick }) {
 
 function LivePreviewPanel({ result, artifacts, selectedStyle, length }) {
   const primaryPdf = artifacts.find(([name]) => name === "final.pdf");
-  const title = result?.title || "Limits & Continuity";
+  const title = result?.title || "Sample Guide Preview";
   const styleLabel = styleChips.find((style) => style.promptName === selectedStyle)?.label?.toUpperCase() || "EXAM CRAM";
   const lengthLabel = lengthOptions.find((option) => option.id === length)?.label?.toUpperCase() || "MEDIUM";
 
@@ -472,7 +478,7 @@ function LivePreviewPanel({ result, artifacts, selectedStyle, length }) {
           {title}
         </div>
         <div className="mt-1 font-sans text-[10.5px] text-[#6B5A3F]">
-          {result ? `${result.status || "generated"} · ${result.job_id}` : "Calculus I · Chapter 2 · 18 min read"}
+          {result ? `${result.status || "generated"} · ${result.job_id}` : "Sample preview · not sent to backend"}
         </div>
         <div className="mt-3.5 h-px bg-gradient-to-r from-[#C2410C] to-transparent" />
 
@@ -656,6 +662,100 @@ function normalizeError(error) {
     return { message: "Could not generate guide.", details: message };
   }
   return { message };
+}
+
+export function buildBuilderPayload({
+  source,
+  text,
+  file,
+  title,
+  mode,
+  selectedStyle,
+  provider,
+  model,
+  strictMath,
+  qwenThinking,
+  length,
+  includes
+}) {
+  if (source === "upload") {
+    return {
+      kind: "upload",
+      payload: {
+        file,
+        theme: "claude_clean",
+        strictMath
+      }
+    };
+  }
+
+  if (source === "llm") {
+    return {
+      kind: "llm",
+      payload: buildLlmPayload({
+        text,
+        title,
+        mode,
+        selectedStyle,
+        provider,
+        model,
+        strictMath,
+        qwenThinking,
+        length,
+        includes
+      })
+    };
+  }
+
+  return {
+    kind: "paste",
+    payload: {
+      text,
+      theme: "claude_clean",
+      strictMath
+    }
+  };
+}
+
+export function buildLlmPayload({
+  text,
+  title,
+  mode,
+  selectedStyle,
+  provider,
+  model,
+  strictMath,
+  qwenThinking,
+  length,
+  includes
+}) {
+  return {
+    source_text: augmentSourceText(text, length, includes),
+    title,
+    mode,
+    prompt_name: selectedStyle,
+    provider,
+    model,
+    theme: "claude_clean",
+    strict_math: strictMath,
+    qwen_thinking: qwenThinking
+  };
+}
+
+function assertBuilderPayload(kind, payload, state) {
+  if (kind === "paste" && payload.text !== state.text) {
+    throw new Error("Builder payload mismatch: paste text does not match editor text.");
+  }
+
+  if (kind === "llm") {
+    const expectedSource = augmentSourceText(state.text, state.length, state.includes);
+    if (payload.title !== state.title) {
+      throw new Error("Builder payload mismatch: title does not match title field.");
+    }
+    if (payload.source_text !== expectedSource) {
+      throw new Error("Builder payload mismatch: source text does not match editor text.");
+    }
+  }
 }
 
 function augmentSourceText(text, length, includes) {
