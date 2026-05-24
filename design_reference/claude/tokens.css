@@ -1,0 +1,86 @@
+/* Shared design tokens for Study Guide Generator */
+@import url('https://fonts.googleapis.com/css2?family=Playfair+Display:wght@600;700;800&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap');
+
+:root {
+  /* Surfaces */
+  --bg: #0A0F1A;
+  --bg-elev: #0F1626;
+  --card: #131B2C;
+  --card-2: #1A2235;
+  --hairline: rgba(255,255,255,0.06);
+  --hairline-2: rgba(255,255,255,0.10);
+
+  /* Text */
+  --text: #F4F4F5;
+  --text-dim: #A8AEBC;
+  --text-faint: #6B7185;
+
+  /* Orange */
+  --o-50: #FFF7ED;
+  --o-300: #FDBA74;
+  --o-400: #FB923C;
+  --o-500: #F97316;
+  --o-600: #EA580C;
+  --o-700: #C2410C;
+  --o-glow: rgba(249,115,22,0.45);
+  --o-bloom: rgba(249,115,22,0.18);
+
+  /* Type */
+  --serif: 'Playfair Display', Georgia, serif;
+  --sans: 'Inter', -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
+  --mono: 'JetBrains Mono', ui-monospace, Menlo, monospace;
+}
+
+/* Reset for screen contents */
+.sg * { box-sizing: border-box; }
+.sg { font-family: var(--sans); color: var(--text); -webkit-font-smoothing: antialiased; }
+.sg button { font-family: inherit; }
+
+/* Common patterns */
+.sg-card {
+  background: linear-gradient(180deg, rgba(255,255,255,0.025) 0%, rgba(255,255,255,0) 100%), var(--card);
+  border: 1px solid var(--hairline);
+  border-radius: 22px;
+}
+.sg-pill {
+  display: inline-flex; align-items: center; gap: 6px;
+  height: 30px; padding: 0 12px; border-radius: 999px;
+  font-size: 13px; font-weight: 500;
+  background: rgba(255,255,255,0.04);
+  border: 1px solid var(--hairline-2);
+  color: var(--text);
+}
+.sg-pill-orange {
+  background: rgba(249,115,22,0.10);
+  border: 1px solid rgba(249,115,22,0.35);
+  color: var(--o-400);
+}
+.sg-cta {
+  width: 100%; height: 56px; border: 0; border-radius: 16px; cursor: pointer;
+  background: linear-gradient(180deg, #FB923C 0%, #F97316 55%, #EA580C 100%);
+  color: #1A1206;
+  font-family: var(--sans); font-weight: 600; font-size: 17px;
+  letter-spacing: -0.01em;
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,0.35),
+    inset 0 -1px 0 rgba(0,0,0,0.18),
+    0 12px 28px -8px rgba(249,115,22,0.55),
+    0 0 0 1px rgba(0,0,0,0.4);
+  display: flex; align-items: center; justify-content: center; gap: 10px;
+  position: relative;
+}
+.sg-cta::before {
+  content: ''; position: absolute; inset: 1px; border-radius: 15px;
+  background: linear-gradient(180deg, rgba(255,255,255,0.18) 0%, transparent 35%);
+  pointer-events: none;
+}
+
+/* Star background sparkles */
+.sg-sparkle-bg {
+  position: absolute; inset: 0; pointer-events: none;
+  background-image:
+    radial-gradient(1px 1px at 20% 30%, rgba(255,255,255,0.5), transparent 50%),
+    radial-gradient(1px 1px at 70% 65%, rgba(255,255,255,0.35), transparent 50%),
+    radial-gradient(1.5px 1.5px at 85% 20%, rgba(253,186,116,0.45), transparent 50%),
+    radial-gradient(1px 1px at 15% 75%, rgba(255,255,255,0.4), transparent 50%);
+}
