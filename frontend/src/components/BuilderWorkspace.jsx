@@ -48,6 +48,18 @@ const lengthOptions = [
   { id: "long", label: "Long", meta: "~30+ pages" }
 ];
 
+const modeOptions = [
+  { id: "exam", label: "Exam", meta: "test-ready guide", icon: Trophy },
+  { id: "theory", label: "Theory", meta: "concepts + depth", icon: Sparkles },
+  { id: "quick", label: "Quick", meta: "fast summary", icon: Zap },
+  { id: "deep", label: "Deep", meta: "detailed explanation", icon: ListChecks }
+];
+
+const providerOptions = [
+  { id: "DeepSeek", label: "DeepSeek", meta: "strong structured generation", icon: Wand2 },
+  { id: "Qwen", label: "Qwen", meta: "thinking + longform support", icon: Sparkles }
+];
+
 const includeOptions = [
   "Key concepts",
   "Mnemonics",
@@ -180,8 +192,7 @@ export default function BuilderWorkspace({
     return createPasteJob(payload);
   }
 
-  function handleProviderChange(event) {
-    const nextProvider = event.target.value;
+  function handleProviderSelect(nextProvider) {
     setProvider(nextProvider);
     setModel(modelsByProvider[nextProvider][0]);
   }
@@ -323,24 +334,34 @@ export default function BuilderWorkspace({
           </div>
 
           {source === "llm" && (
-            <div className="grid gap-3 rounded-xl border border-white/[0.06] bg-white/[0.025] p-3 xl:grid-cols-2">
-              <label>
+            <div className="grid gap-3 rounded-xl border border-white/[0.06] bg-white/[0.025] p-3">
+              <div>
                 <FieldLabel>Mode</FieldLabel>
-                <select value={mode} onChange={(event) => setMode(event.target.value)} className={selectClass}>
-                  <option value="exam">exam</option>
-                  <option value="theory">theory</option>
-                  <option value="quick">quick</option>
-                  <option value="deep">deep</option>
-                </select>
-              </label>
-              <label>
+                <div className="mt-1.5 grid grid-cols-2 gap-1.5 xl:grid-cols-4">
+                  {modeOptions.map((option) => (
+                    <OptionCard
+                      key={option.id}
+                      option={option}
+                      active={mode === option.id}
+                      onClick={() => setMode(option.id)}
+                    />
+                  ))}
+                </div>
+              </div>
+              <div>
                 <FieldLabel>Provider</FieldLabel>
-                <select value={provider} onChange={handleProviderChange} className={selectClass}>
-                  <option value="DeepSeek">DeepSeek</option>
-                  <option value="Qwen">Qwen</option>
-                </select>
-              </label>
-              <label className="xl:col-span-2">
+                <div className="mt-1.5 grid grid-cols-2 gap-1.5">
+                  {providerOptions.map((option) => (
+                    <OptionCard
+                      key={option.id}
+                      option={option}
+                      active={provider === option.id}
+                      onClick={() => handleProviderSelect(option.id)}
+                    />
+                  ))}
+                </div>
+              </div>
+              <label>
                 <FieldLabel>Model</FieldLabel>
                 <select value={model} onChange={(event) => setModel(event.target.value)} className={selectClass}>
                   {modelsByProvider[provider].map((modelId) => (
@@ -459,12 +480,39 @@ function MiniStyle({ style, active, onClick }) {
   );
 }
 
+function OptionCard({ option, active, onClick }) {
+  const Icon = option.icon;
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={`flex min-h-[58px] items-center gap-2 rounded-[10px] border px-2.5 py-2 text-left transition ${
+        active
+          ? "border-[rgba(249,115,22,0.45)] bg-[rgba(249,115,22,0.12)] shadow-[0_0_0_1px_rgba(249,115,22,0.08)]"
+          : "border-white/[0.07] bg-white/[0.025] hover:border-white/[0.14] hover:bg-white/[0.04]"
+      }`}
+    >
+      <span
+        className={`grid h-8 w-8 shrink-0 place-items-center rounded-[8px] border ${
+          active
+            ? "border-[rgba(255,180,120,0.4)] bg-gradient-to-br from-[#FB923C] via-[#F97316] to-[#C2410C] text-[#1B0F03]"
+            : "border-[rgba(255,180,120,0.16)] bg-[#111A2B] text-[#F97316]"
+        }`}
+      >
+        <Icon className="h-4 w-4" />
+      </span>
+      <span className="min-w-0">
+        <span className="block text-[12.5px] font-semibold text-[#F4F4F5]">{option.label}</span>
+        <span className="block truncate text-[10.5px] text-[#9098A8]">{option.meta}</span>
+      </span>
+    </button>
+  );
+}
+
 function LivePreviewPanel({ result, artifacts, selectedStyle, length }) {
-  const artifactUrls = result?.artifact_urls ?? {};
+  const artifactUrls = useMemo(() => result?.artifact_urls ?? {}, [result]);
   const primaryPdf = artifactUrls["final.pdf"];
   const [previewFormat, setPreviewFormat] = useState("sample");
-  const [markdownPreviewText, setMarkdownPreviewText] = useState("");
-  const [markdownPreviewState, setMarkdownPreviewState] = useState("idle");
   const title = result?.title || "Sample Guide Preview";
   const styleLabel = styleChips.find((style) => style.promptName === selectedStyle)?.label?.toUpperCase() || "EXAM CRAM";
   const lengthLabel = lengthOptions.find((option) => option.id === length)?.label?.toUpperCase() || "MEDIUM";
@@ -478,47 +526,10 @@ function LivePreviewPanel({ result, artifacts, selectedStyle, length }) {
       setPreviewFormat("pdf");
     } else if (artifactUrls["final.html"]) {
       setPreviewFormat("html");
-    } else if (artifactUrls["clean.md"]) {
-      setPreviewFormat("markdown");
     } else {
       setPreviewFormat("pdf");
     }
   }, [result, artifactUrls]);
-
-  useEffect(() => {
-    let cancelled = false;
-    if (!result || previewFormat !== "markdown" || !artifactUrls["clean.md"]) {
-      return () => {
-        cancelled = true;
-      };
-    }
-
-    async function loadMarkdownPreview() {
-      setMarkdownPreviewState("loading");
-      setMarkdownPreviewText("");
-      try {
-        const response = await fetch(previewApiUrl(artifactUrls["clean.md"]));
-        if (!response.ok) {
-          throw new Error(`Could not load Markdown preview (${response.status})`);
-        }
-        const text = await response.text();
-        if (!cancelled) {
-          setMarkdownPreviewText(text);
-          setMarkdownPreviewState("ready");
-        }
-      } catch (error) {
-        if (!cancelled) {
-          setMarkdownPreviewText(error.message || "Could not load Markdown preview.");
-          setMarkdownPreviewState("error");
-        }
-      }
-    }
-
-    loadMarkdownPreview();
-    return () => {
-      cancelled = true;
-    };
-  }, [result, previewFormat, artifactUrls]);
 
   return (
     <aside className="flex w-[420px] shrink-0 flex-col gap-3.5 bg-gradient-to-b from-[#060A12] to-[#0A0F1A] px-6 py-6">
@@ -532,7 +543,7 @@ function LivePreviewPanel({ result, artifacts, selectedStyle, length }) {
           </div>
         </div>
         <div className="flex gap-1">
-          {["pdf", "html", "markdown"].map((format) => (
+          {["pdf", "html"].map((format) => (
             <button
               key={format}
               type="button"
@@ -544,13 +555,13 @@ function LivePreviewPanel({ result, artifacts, selectedStyle, length }) {
                   : "border-white/[0.08] bg-white/[0.03] text-[#9098A8] hover:text-[#D4D4D8]"
               }`}
             >
-              {format === "markdown" ? "Markdown" : format.toUpperCase()}
+              {format.toUpperCase()}
             </button>
           ))}
         </div>
       </div>
 
-      <div className="min-h-[520px] flex-1 overflow-hidden rounded-lg bg-[#FAF7F2] p-3 text-[#1F1A14] shadow-[0_30px_60px_rgba(0,0,0,0.5),0_0_0_1px_rgba(255,255,255,0.06)]">
+      <div className="h-[540px] max-h-[540px] overflow-hidden rounded-lg bg-[#FAF7F2] p-3 text-[#1F1A14] shadow-[0_30px_60px_rgba(0,0,0,0.5),0_0_0_1px_rgba(255,255,255,0.06)]">
         {!result ? (
           <div className="relative h-full overflow-hidden p-[10px] font-serif">
             <div className="font-mono text-[9px] tracking-[0.15em] text-[#A78050]">
@@ -573,8 +584,6 @@ function LivePreviewPanel({ result, artifacts, selectedStyle, length }) {
           <ArtifactPreview
             format={previewFormat}
             artifactUrls={artifactUrls}
-            markdownPreviewText={markdownPreviewText}
-            markdownPreviewState={markdownPreviewState}
           />
         )}
       </div>
@@ -635,7 +644,7 @@ function LivePreviewPanel({ result, artifacts, selectedStyle, length }) {
   );
 }
 
-function ArtifactPreview({ format, artifactUrls, markdownPreviewText, markdownPreviewState }) {
+function ArtifactPreview({ format, artifactUrls }) {
   if (format === "pdf") {
     if (!artifactUrls["final.pdf"]) {
       return <PreviewUnavailable />;
@@ -644,7 +653,7 @@ function ArtifactPreview({ format, artifactUrls, markdownPreviewText, markdownPr
       <iframe
         title="Generated PDF preview"
         src={previewApiUrl(artifactUrls["final.pdf"])}
-        className="h-full min-h-[494px] w-full rounded-md border-0 bg-white"
+        className="h-full w-full rounded-md border-0 bg-white"
       />
     );
   }
@@ -658,45 +667,21 @@ function ArtifactPreview({ format, artifactUrls, markdownPreviewText, markdownPr
         title="Generated HTML preview"
         src={previewApiUrl(artifactUrls["final.html"])}
         sandbox="allow-same-origin"
-        className="h-full min-h-[494px] w-full rounded-md border-0 bg-white"
+        className="h-full w-full rounded-md border-0 bg-white"
       />
     );
   }
 
-  if (!artifactUrls["clean.md"]) {
-    return <PreviewUnavailable />;
-  }
-
-  if (markdownPreviewState === "loading") {
-    return (
-      <div className="grid h-full min-h-[494px] place-items-center rounded-md bg-white text-sm font-semibold text-slate-500">
-        Loading Markdown preview...
-      </div>
-    );
-  }
-
-  if (markdownPreviewState === "error") {
-    return (
-      <div className="grid h-full min-h-[494px] place-items-center rounded-md bg-white p-6 text-center text-sm font-semibold text-red-600">
-        {markdownPreviewText || "Could not load Markdown preview."}
-      </div>
-    );
-  }
-
-  return (
-    <pre className="h-full min-h-[494px] overflow-auto rounded-md bg-white p-4 font-mono text-[11px] leading-5 text-slate-800">
-      {markdownPreviewText}
-    </pre>
-  );
+  return <PreviewUnavailable />;
 }
 
 function PreviewUnavailable() {
   return (
-    <div className="grid h-full min-h-[494px] place-items-center rounded-md bg-white p-6 text-center">
+    <div className="grid h-full place-items-center rounded-md bg-white p-6 text-center">
       <div>
         <FileText className="mx-auto h-8 w-8 text-[#C2410C]" />
-        <p className="mt-3 text-sm font-bold text-slate-900">Preview not available for this format.</p>
-        <p className="mt-1 text-xs text-slate-500">Choose another preview format or generate the missing artifact.</p>
+        <p className="mt-3 text-sm font-bold text-slate-900">Preview not available yet.</p>
+        <p className="mt-1 text-xs text-slate-500">Choose PDF or HTML after the artifact is generated.</p>
       </div>
     </div>
   );
