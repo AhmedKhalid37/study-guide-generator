@@ -454,49 +454,162 @@ function MiniStyle({ style, active, onClick }) {
 }
 
 function LivePreviewPanel({ result, artifacts, selectedStyle, length }) {
-  const primaryPdf = artifacts.find(([name]) => name === "final.pdf");
+  const artifactUrls = result?.artifact_urls ?? {};
+  const primaryPdf = artifactUrls["final.pdf"];
+  const [previewFormat, setPreviewFormat] = useState("sample");
+  const [markdownPreviewText, setMarkdownPreviewText] = useState("");
+  const [markdownPreviewState, setMarkdownPreviewState] = useState("idle");
   const title = result?.title || "Sample Guide Preview";
   const styleLabel = styleChips.find((style) => style.promptName === selectedStyle)?.label?.toUpperCase() || "EXAM CRAM";
   const lengthLabel = lengthOptions.find((option) => option.id === length)?.label?.toUpperCase() || "MEDIUM";
 
+  useEffect(() => {
+    if (!result) {
+      setPreviewFormat("sample");
+      return;
+    }
+    if (artifactUrls["final.pdf"]) {
+      setPreviewFormat("pdf");
+    } else if (artifactUrls["final.html"]) {
+      setPreviewFormat("html");
+    } else if (artifactUrls["clean.md"]) {
+      setPreviewFormat("markdown");
+    } else {
+      setPreviewFormat("pdf");
+    }
+  }, [result, artifactUrls]);
+
+  useEffect(() => {
+    let cancelled = false;
+    if (!result || previewFormat !== "markdown" || !artifactUrls["clean.md"]) {
+      return () => {
+        cancelled = true;
+      };
+    }
+
+    async function loadMarkdownPreview() {
+      setMarkdownPreviewState("loading");
+      setMarkdownPreviewText("");
+      try {
+        const response = await fetch(apiUrl(artifactUrls["clean.md"]));
+        if (!response.ok) {
+          throw new Error(`Could not load Markdown preview (${response.status})`);
+        }
+        const text = await response.text();
+        if (!cancelled) {
+          setMarkdownPreviewText(text);
+          setMarkdownPreviewState("ready");
+        }
+      } catch (error) {
+        if (!cancelled) {
+          setMarkdownPreviewText(error.message || "Could not load Markdown preview.");
+          setMarkdownPreviewState("error");
+        }
+      }
+    }
+
+    loadMarkdownPreview();
+    return () => {
+      cancelled = true;
+    };
+  }, [result, previewFormat, artifactUrls]);
+
   return (
     <aside className="flex w-[420px] shrink-0 flex-col gap-3.5 bg-gradient-to-b from-[#060A12] to-[#0A0F1A] px-6 py-6">
-      <div className="flex items-center justify-between">
-        <div className="text-[12.5px] font-semibold text-[#D4D4D8]">Live preview</div>
+      <div className="grid gap-2">
+        <div className="flex items-center justify-between">
+          <div className="text-[12.5px] font-semibold text-[#D4D4D8]">Live preview</div>
+          <div className="flex gap-1">
+            <PreviewBtn>1×</PreviewBtn>
+            <PreviewBtn active>2×</PreviewBtn>
+            <PreviewBtn>Fit</PreviewBtn>
+          </div>
+        </div>
         <div className="flex gap-1">
-          <PreviewBtn>1×</PreviewBtn>
-          <PreviewBtn active>2×</PreviewBtn>
-          <PreviewBtn>Fit</PreviewBtn>
+          {["pdf", "html", "markdown"].map((format) => (
+            <button
+              key={format}
+              type="button"
+              disabled={!result}
+              onClick={() => setPreviewFormat(format)}
+              className={`h-7 rounded-md border px-2.5 text-[11.5px] font-semibold capitalize transition disabled:cursor-not-allowed disabled:opacity-45 ${
+                previewFormat === format
+                  ? "border-[rgba(249,115,22,0.45)] bg-[rgba(249,115,22,0.14)] text-[#F97316]"
+                  : "border-white/[0.08] bg-white/[0.03] text-[#9098A8] hover:text-[#D4D4D8]"
+              }`}
+            >
+              {format === "markdown" ? "Markdown" : format.toUpperCase()}
+            </button>
+          ))}
         </div>
       </div>
 
-      <div className="relative flex-1 overflow-hidden rounded-lg bg-[#FAF7F2] p-[22px] font-serif text-[#1F1A14] shadow-[0_30px_60px_rgba(0,0,0,0.5),0_0_0_1px_rgba(255,255,255,0.06)]">
-        <div className="font-mono text-[9px] tracking-[0.15em] text-[#A78050]">
-          {styleLabel} · {lengthLabel}
-        </div>
-        <div className="mt-1.5 text-[22px] font-bold leading-[1.1] tracking-[-0.02em]">
-          {title}
-        </div>
-        <div className="mt-1 font-sans text-[10.5px] text-[#6B5A3F]">
-          {result ? `${result.status || "generated"} · ${result.job_id}` : "Sample preview · not sent to backend"}
-        </div>
-        <div className="mt-3.5 h-px bg-gradient-to-r from-[#C2410C] to-transparent" />
-
-        {result ? (
-          <GeneratedPreview result={result} artifacts={artifacts} />
+      <div className="min-h-[520px] flex-1 overflow-hidden rounded-lg bg-[#FAF7F2] p-3 text-[#1F1A14] shadow-[0_30px_60px_rgba(0,0,0,0.5),0_0_0_1px_rgba(255,255,255,0.06)]">
+        {!result ? (
+          <div className="relative h-full overflow-hidden p-[10px] font-serif">
+            <div className="font-mono text-[9px] tracking-[0.15em] text-[#A78050]">
+              {styleLabel} · {lengthLabel}
+            </div>
+            <div className="mt-1.5 text-[22px] font-bold leading-[1.1] tracking-[-0.02em]">
+              {title}
+            </div>
+            <div className="mt-1 font-sans text-[10.5px] text-[#6B5A3F]">
+              Sample preview · not sent to backend
+            </div>
+            <div className="mt-3.5 h-px bg-gradient-to-r from-[#C2410C] to-transparent" />
+            <SamplePreview />
+            <div className="absolute bottom-0 left-[10px] right-[10px] flex justify-between font-mono text-[9px] text-[#A78050]">
+              <span>STUDY GUIDE</span>
+              <span>03 / 20</span>
+            </div>
+          </div>
         ) : (
-          <SamplePreview />
+          <ArtifactPreview
+            format={previewFormat}
+            artifactUrls={artifactUrls}
+            markdownPreviewText={markdownPreviewText}
+            markdownPreviewState={markdownPreviewState}
+          />
         )}
-
-        <div className="absolute bottom-4 left-[22px] right-[22px] flex justify-between font-mono text-[9px] text-[#A78050]">
-          <span>STUDY GUIDE</span>
-          <span>{result ? "READY" : "03 / 20"}</span>
-        </div>
       </div>
+
+      {result && (
+        <div className="rounded-lg border border-white/[0.08] bg-white/[0.03] p-3">
+          <div className="mb-2 flex items-center justify-between">
+            <span className="text-[12.5px] font-semibold text-[#D4D4D8]">Downloads</span>
+            <span className="font-mono text-[10px] text-[#6B7185]">{artifacts.length} files</span>
+          </div>
+          <div className="grid gap-1.5">
+            {artifacts.length === 0 && (
+              <div className="rounded-md border border-white/[0.08] bg-white/[0.03] px-3 py-2 text-[12px] text-[#9098A8]">
+                No artifacts available yet.
+              </div>
+            )}
+            {artifacts.map(([name, url]) => {
+              const artifact = artifactLabels[name];
+              const Icon = artifact.icon;
+              const label = name === "final.html" ? "View HTML" : name === "final.pdf" ? "Download PDF" : artifact.label;
+              return (
+                <a
+                  key={name}
+                  href={apiUrl(url)}
+                  className="flex items-center justify-between rounded-md border border-white/[0.08] bg-white/[0.035] px-3 py-2 text-[12px] font-semibold text-[#D4D4D8] transition hover:border-[rgba(249,115,22,0.45)] hover:text-white"
+                >
+                  <span className="inline-flex items-center gap-2">
+                    <Icon className="h-3.5 w-3.5 text-[#F97316]" />
+                    {label}
+                  </span>
+                  <Download className="h-3.5 w-3.5 text-[#6B7185]" />
+                </a>
+              );
+            })}
+          </div>
+        </div>
+      )}
 
       <div className="flex gap-2">
         <a
-          href={primaryPdf ? apiUrl(primaryPdf[1]) : undefined}
+          href={primaryPdf ? apiUrl(primaryPdf) : undefined}
           className={`flex h-9 flex-1 items-center justify-center rounded-lg border border-white/[0.08] bg-white/[0.03] text-[12.5px] font-medium text-[#D4D4D8] ${
             primaryPdf ? "" : "pointer-events-none opacity-55"
           }`}
@@ -513,6 +626,72 @@ function LivePreviewPanel({ result, artifacts, selectedStyle, length }) {
         </button>
       </div>
     </aside>
+  );
+}
+
+function ArtifactPreview({ format, artifactUrls, markdownPreviewText, markdownPreviewState }) {
+  if (format === "pdf") {
+    if (!artifactUrls["final.pdf"]) {
+      return <PreviewUnavailable />;
+    }
+    return (
+      <iframe
+        title="Generated PDF preview"
+        src={apiUrl(artifactUrls["final.pdf"])}
+        className="h-full min-h-[494px] w-full rounded-md border-0 bg-white"
+      />
+    );
+  }
+
+  if (format === "html") {
+    if (!artifactUrls["final.html"]) {
+      return <PreviewUnavailable />;
+    }
+    return (
+      <iframe
+        title="Generated HTML preview"
+        src={apiUrl(artifactUrls["final.html"])}
+        className="h-full min-h-[494px] w-full rounded-md border-0 bg-white"
+      />
+    );
+  }
+
+  if (!artifactUrls["clean.md"]) {
+    return <PreviewUnavailable />;
+  }
+
+  if (markdownPreviewState === "loading") {
+    return (
+      <div className="grid h-full min-h-[494px] place-items-center rounded-md bg-white text-sm font-semibold text-slate-500">
+        Loading Markdown preview...
+      </div>
+    );
+  }
+
+  if (markdownPreviewState === "error") {
+    return (
+      <div className="grid h-full min-h-[494px] place-items-center rounded-md bg-white p-6 text-center text-sm font-semibold text-red-600">
+        {markdownPreviewText || "Could not load Markdown preview."}
+      </div>
+    );
+  }
+
+  return (
+    <pre className="h-full min-h-[494px] overflow-auto rounded-md bg-white p-4 font-mono text-[11px] leading-5 text-slate-800">
+      {markdownPreviewText}
+    </pre>
+  );
+}
+
+function PreviewUnavailable() {
+  return (
+    <div className="grid h-full min-h-[494px] place-items-center rounded-md bg-white p-6 text-center">
+      <div>
+        <FileText className="mx-auto h-8 w-8 text-[#C2410C]" />
+        <p className="mt-3 text-sm font-bold text-slate-900">Preview not available for this format.</p>
+        <p className="mt-1 text-xs text-slate-500">Choose another preview format or generate the missing artifact.</p>
+      </div>
+    </div>
   );
 }
 
