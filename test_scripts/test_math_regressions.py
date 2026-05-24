@@ -22,6 +22,7 @@ def main() -> None:
     test_derivative_inline_math_regressions()
     test_table_rows_keep_inline_math()
     test_square_bracket_display_math_regressions()
+    test_evaluation_bar_mid_regressions()
     test_prompt_templates_render_with_latex_braces()
     test_html_renderer_inline_math()
     print("math regression tests passed")
@@ -273,6 +274,34 @@ def test_square_bracket_display_math_regressions() -> None:
     result = validate(clean_path)
     assert result.ok, result.to_json_dict()
     assert result.display_blocks == 5, result.to_json_dict()
+
+
+def test_evaluation_bar_mid_regressions() -> None:
+    source = r"""$-\cos(z)\Big\mid_{0}^{1}$
+$2\sin(x)\cos(y)\bigg\mid_{0}^{\pi/2}$
+$\sin(y)\Big\mid_{0}^{\pi}$
+$\cos(y) \cdot z \big\mid _{z=0}^{1}$
+$P(A \mid B)$ should remain valid
+$\{x \mid x > 0\}$ should remain valid
+"""
+    clean = sanitize(source)
+
+    assert "$-\\cos(z)\\Big|_{0}^{1}$" in clean
+    assert "$2\\sin(x)\\cos(y)\\bigg|_{0}^{\\pi/2}$" in clean
+    assert "$\\sin(y)\\Big|_{0}^{\\pi}$" in clean
+    assert "$\\cos(y) \\cdot z \\big|_{z=0}^{1}$" in clean
+    assert "$P(A \\mid B)$ should remain valid" in clean
+    assert "$\\{x \\mid x > 0\\}$ should remain valid" in clean
+    assert "\\Big\\mid" not in clean
+    assert "\\bigg\\mid" not in clean
+    assert "\\big\\mid _" not in clean
+
+    with tempfile.NamedTemporaryFile("w", suffix=".md", delete=False, encoding="utf-8") as tmp:
+        tmp.write(clean)
+        clean_path = Path(tmp.name)
+
+    result = validate(clean_path)
+    assert result.ok, result.to_json_dict()
 
 
 def test_prompt_templates_render_with_latex_braces() -> None:

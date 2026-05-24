@@ -287,9 +287,33 @@ def fix_math_inner(s: str) -> str:
     # Example: \midB -> \mid B, \midmale -> \mid male
     s = re.sub(r"\\mid(?=[A-Za-z])", r"\\mid ", s)
 
+    s = normalize_evaluation_bars(s)
+
     # Common LLM integral typo: commas before differentials should be thin spaces.
     s = re.sub(r"(?<!\\),\s*d([uvwxyz])\b", r"\\,d\1", s)
 
+    return s
+
+
+def normalize_evaluation_bars(s: str) -> str:
+    limit_pattern = r"((?:_\{[^}]+\}\s*)?(?:\^\{[^}]+\}\s*)?)"
+
+    def compact_limits(limits: str) -> str:
+        return re.sub(r"\s+", "", limits)
+
+    def replace_sized(match: re.Match) -> str:
+        return rf"\{match.group(1)}|" + compact_limits(match.group(2))
+
+    s = re.sub(
+        rf"\\(Bigg|bigg|Big|big)\s*\\mid\s*(?=[_^]){limit_pattern}",
+        replace_sized,
+        s,
+    )
+    s = re.sub(
+        rf"\\mid\s*(?=[_^]){limit_pattern}",
+        lambda match: "|" + compact_limits(match.group(1)),
+        s,
+    )
     return s
 
 
