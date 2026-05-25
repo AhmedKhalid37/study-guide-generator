@@ -1,34 +1,38 @@
-import React, { useCallback, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   Bot,
-  Box,
-  Brain,
-  Check,
-  ChevronDown,
   ChevronRight,
   Download,
   FileText,
-  Flame,
   Folder,
   Home,
   Layers3,
   Library,
-  ListChecks,
-  PackageCheck,
   PenLine,
-  Search,
-  Settings2,
+  Plus,
   Sparkles,
   Upload,
-  UserRound,
-  Wand2,
-  Zap
+  Wand2
 } from "lucide-react";
-import BrandMark from "./BrandMark";
 import BuilderWorkspace from "./BuilderWorkspace";
 import RecentJobsPanel from "./RecentJobsPanel";
+import { getJobs, getOptions } from "../api/client";
+import {
+  BoltGlyph,
+  BookGlyph,
+  DocGlyph,
+  LeafGlyph,
+  ListGlyph,
+  PDFGlyph,
+  SearchI,
+  SettingsI,
+  SparkleGlyph,
+  Tile,
+  TrophyGlyph,
+  UploadGlyph
+} from "./ClaudeIcons";
 
-const sections = [
+const navItems = [
   { id: "home", label: "Home", icon: Home },
   { id: "builder", label: "Builder", icon: PenLine },
   { id: "library", label: "Library", icon: Library },
@@ -37,74 +41,22 @@ const sections = [
   { id: "exports", label: "Exports", icon: Download }
 ];
 
-const folders = [
-  { label: "Computer Science", count: 12 },
-  { label: "Math", count: 8 },
-  { label: "Physics", count: 6 },
-  { label: "Chemistry", count: 4 }
+const promptStyles = [
+  { id: "baby_steps", name: "Baby-step", glyph: LeafGlyph, focus: "Step-by-step understanding", produces: "Plain language + tiny examples", best: "First exposure" },
+  { id: "exam_cram", name: "Exam Cram", glyph: BoltGlyph, focus: "High-yield exam material", produces: "Condensed explanations + memory cues", best: "Final revision" },
+  { id: "mcq_training", name: "MCQ Training", glyph: ListGlyph, focus: "Active recall via questions", produces: "MCQs with rationales", best: "Practice" },
+  { id: "final_solution", name: "Final Solutions", glyph: TrophyGlyph, focus: "Clean solution-key steps", produces: "Ordered worked solutions", best: "Assignments" },
+  { id: "claude_study_guide", name: "Editorial", glyph: SparkleGlyph, focus: "Narrative + clarity", produces: "Magazine-style chapter", best: "Deep reading" },
+  { id: "master_longform", name: "Master Longform", glyph: BookGlyph, focus: "Detailed longform study", produces: "Deep 10+ page guide", best: "Full chapters" }
 ];
 
-const actions = [
-  {
-    label: "Paste Text",
-    source: "paste",
-    icon: FileText,
-    color: "blue",
-    description: "Drop in notes and generate a polished guide."
-  },
-  {
-    label: "Upload Markdown",
-    source: "upload",
-    icon: Upload,
-    color: "purple",
-    description: "Turn a .md file into a styled PDF."
-  },
-  {
-    label: "Generate with AI",
-    source: "llm",
-    icon: Wand2,
-    color: "orange",
-    description: "Describe a topic and build from source material."
-  }
-];
-
-const guideStyles = [
-  {
-    label: "Baby-Step Explanations",
-    promptName: "baby_steps",
-    icon: Layers3,
-    description: "Simple, step-by-step explanations."
-  },
-  {
-    label: "Exam Cram",
-    promptName: "exam_cram",
-    icon: Zap,
-    description: "High-yield notes for revision."
-  },
-  {
-    label: "MCQ Training",
-    promptName: "mcq_training",
-    icon: ListChecks,
-    description: "Practice questions with reasoning."
-  },
-  {
-    label: "Final Solutions",
-    promptName: "final_solution",
-    icon: PackageCheck,
-    description: "Clean solution-key style steps."
-  },
-  {
-    label: "Claude-style Guides",
-    promptName: "claude_study_guide",
-    icon: Sparkles,
-    description: "Structured editorial study guides."
-  },
-  {
-    label: "Master Longform",
-    promptName: "master_longform",
-    icon: Brain,
-    description: "Deep 10+ page master guides."
-  }
+const smartTools = [
+  { id: "styles", title: "Compare Styles", subtitle: "Pick a generation format", icon: SparkleGlyph, route: "styles" },
+  { id: "library", title: "Find a Guide", subtitle: "Browse generated jobs", icon: DocGlyph, route: "library" },
+  { id: "exports", title: "Export Center", subtitle: "PDF, Markdown, HTML", icon: PDFGlyph, route: "exports" },
+  { id: "clean", title: "Clean Markdown", subtitle: "Available through Builder", icon: ListGlyph, disabled: true },
+  { id: "template", title: "Create Template", subtitle: "Placeholder", icon: BookGlyph, disabled: true },
+  { id: "improve", title: "Improve a Guide", subtitle: "Placeholder", icon: Wand2, disabled: true }
 ];
 
 export default function DesktopDashboard() {
@@ -113,6 +65,24 @@ export default function DesktopDashboard() {
   const [selectedStyle, setSelectedStyle] = useState("exam_cram");
   const [jobsRefreshKey, setJobsRefreshKey] = useState(0);
   const [latestJob, setLatestJob] = useState(null);
+  const [apiOptions, setApiOptions] = useState(null);
+  const [jobs, setJobs] = useState([]);
+
+  useEffect(() => {
+    let cancelled = false;
+    getOptions().then((options) => !cancelled && setApiOptions(options)).catch(() => !cancelled && setApiOptions(null));
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    getJobs().then((data) => !cancelled && setJobs(data.jobs ?? [])).catch(() => !cancelled && setJobs([]));
+    return () => {
+      cancelled = true;
+    };
+  }, [jobsRefreshKey]);
 
   const openBuilder = useCallback((source = "paste") => {
     setBuilderSource(source);
@@ -124,306 +94,454 @@ export default function DesktopDashboard() {
     setJobsRefreshKey((key) => key + 1);
   }, []);
 
-  const pageTitle = useMemo(
-    () => sections.find((section) => section.id === activeSection)?.label ?? "Home",
-    [activeSection]
-  );
-
   return (
-    <section className="mx-auto w-full max-w-[1920px]">
-      <div className="overflow-hidden rounded-[1.75rem] border border-white/15 bg-[radial-gradient(circle_at_32%_0%,rgba(21,67,116,0.48),transparent_34%),linear-gradient(135deg,#071426_0%,#020713_58%,#061225_100%)] shadow-[0_34px_140px_rgba(0,0,0,0.62),inset_0_1px_0_rgba(255,255,255,0.08)]">
-        <WindowChrome />
-        <div className="grid min-h-[780px] xl:grid-cols-[288px_minmax(0,1fr)]">
-          <Sidebar
-            activeSection={activeSection}
-            onSectionChange={setActiveSection}
-            onNewGuide={() => openBuilder("paste")}
+    <section className="sg mx-auto h-[calc(100vh-56px)] min-h-[820px] w-full max-w-[1920px]">
+      <ClaudeFrame activeSection={activeSection} onNavigate={setActiveSection} onNewGuide={() => openBuilder("paste")}>
+        {activeSection === "home" && (
+          <HomeCommandCenter
+            jobs={jobs}
+            onOpenBuilder={openBuilder}
+            onNavigate={setActiveSection}
+            jobsRefreshKey={jobsRefreshKey}
           />
-          <main className="min-w-0 border-l border-white/10">
-            <TopWorkspaceBar title={pageTitle} />
-            <div className="p-6 lg:p-8">
-              {activeSection === "home" && (
-                <HomeDashboard
-                  selectedStyle={selectedStyle}
-                  onSelectStyle={setSelectedStyle}
-                  onOpenBuilder={openBuilder}
-                  jobsRefreshKey={jobsRefreshKey}
-                />
-              )}
-              {activeSection === "builder" && (
-                <BuilderWorkspace
-                  initialSource={builderSource}
-                  selectedStyle={selectedStyle}
-                  onSelectStyle={setSelectedStyle}
-                  latestJob={latestJob}
-                  onJobCreated={handleJobCreated}
-                />
-              )}
-              {activeSection !== "home" && activeSection !== "builder" && (
-                <PlaceholderSection
-                  title={pageTitle}
-                  onOpenBuilder={() => openBuilder("paste")}
-                />
-              )}
-            </div>
-          </main>
-        </div>
-      </div>
+        )}
+        {activeSection === "builder" && (
+          <BuilderWorkspace
+            initialSource={builderSource}
+            selectedStyle={selectedStyle}
+            onSelectStyle={setSelectedStyle}
+            latestJob={latestJob}
+            onJobCreated={handleJobCreated}
+          />
+        )}
+        {activeSection === "models" && <ModelsPage apiOptions={apiOptions} />}
+        {activeSection === "styles" && (
+          <StylesPage selectedStyle={selectedStyle} onSelectStyle={setSelectedStyle} onOpenBuilder={openBuilder} />
+        )}
+        {activeSection === "library" && <LibraryPage jobsRefreshKey={jobsRefreshKey} onOpenBuilder={openBuilder} />}
+        {activeSection === "exports" && <ExportsPage jobsRefreshKey={jobsRefreshKey} onOpenBuilder={openBuilder} />}
+      </ClaudeFrame>
     </section>
   );
 }
 
-function WindowChrome() {
+function ClaudeFrame({ activeSection, onNavigate, onNewGuide, children }) {
   return (
-    <div className="flex h-9 items-center border-b border-white/10 px-5">
-      <div className="flex gap-2">
-        <span className="h-3 w-3 rounded-full bg-[#ff5f57]" />
-        <span className="h-3 w-3 rounded-full bg-[#febc2e]" />
-        <span className="h-3 w-3 rounded-full bg-[#28c840]" />
+    <div className="sg-frame">
+      <AmbientBackdrop />
+      <div className="sg-frame-content">
+        <TitleBar />
+        <div className="sg-main-row">
+          <Sidebar activeSection={activeSection} onNavigate={onNavigate} onNewGuide={onNewGuide} />
+          <main className="sg-route">{children}</main>
+        </div>
       </div>
     </div>
   );
 }
 
-function Sidebar({ activeSection, onSectionChange, onNewGuide }) {
+function AmbientBackdrop() {
   return (
-    <aside className="flex min-h-full flex-col bg-white/[0.025] px-5 py-7">
-      <BrandMark />
-
-      <button
-        type="button"
-        onClick={onNewGuide}
-        className="mt-8 inline-flex h-12 items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-ember-500 to-ember-700 px-4 text-sm font-extrabold text-white shadow-ember transition hover:brightness-110"
-      >
-        <PenLine className="h-4 w-4" />
-        New Guide
-        <span className="ml-auto rounded-md bg-white/15 px-1.5 py-0.5 text-[11px]">⌘ N</span>
-      </button>
-
-      <nav className="mt-7 grid gap-1.5">
-        {sections.map((item) => {
-          const Icon = item.icon;
-          const active = activeSection === item.id;
-          return (
-            <button
-              key={item.id}
-              type="button"
-              onClick={() => onSectionChange(item.id)}
-              className={`flex h-11 items-center gap-3 rounded-xl px-3 text-sm font-semibold transition ${
-                active
-                  ? "bg-white/[0.075] text-white"
-                  : "text-slate-300 hover:bg-white/[0.05] hover:text-white"
-              }`}
-            >
-              <Icon className={`h-4 w-4 ${active ? "text-ember-500" : "text-slate-400"}`} />
-              {item.label}
-            </button>
-          );
-        })}
-      </nav>
-
-      <div className="mt-8 border-t border-white/10 pt-5">
-        <div className="mb-3 flex items-center justify-between">
-          <p className="text-sm font-semibold text-slate-300">Folders</p>
-          <button type="button" className="text-lg leading-none text-slate-400 hover:text-white">
-            +
-          </button>
-        </div>
-        <div className="grid gap-2">
-          {folders.map((folder) => (
-            <button
-              key={folder.label}
-              type="button"
-              className="flex h-9 items-center gap-3 rounded-lg px-2 text-sm text-slate-300 transition hover:bg-white/[0.05] hover:text-white"
-            >
-              <Folder className="h-4 w-4 text-slate-400" />
-              <span className="flex-1 text-left">{folder.label}</span>
-              <span className="text-xs text-slate-500">{folder.count}</span>
-            </button>
-          ))}
-        </div>
+    <>
+      <div className="sg-glow sg-glow-a"><div className="sg-glow-inner" /></div>
+      <div className="sg-glow sg-glow-b"><div className="sg-glow-inner" /></div>
+      <div className="sg-stars">
+        {[{ x: 20, y: 30 }, { x: 70, y: 65 }, { x: 85, y: 20 }, { x: 15, y: 75 }, { x: 45, y: 12 }, { x: 92, y: 78 }].map((star, index) => (
+          <span
+            key={index}
+            className="sg-star"
+            style={{ left: `${star.x}%`, top: `${star.y}%`, animationDelay: `${index * -1.2}s` }}
+          />
+        ))}
       </div>
-
-      <div className="mt-auto rounded-2xl border border-white/10 bg-white/[0.04] p-4">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-2 text-sm font-bold text-white">
-            <span className="grid h-7 w-7 place-items-center rounded-lg bg-ember-500/20 text-ember-400">
-              <Flame className="h-4 w-4" />
-            </span>
-            Pro Plan
-          </div>
-          <button type="button" className="text-xs font-semibold text-slate-300 hover:text-white">
-            Manage
-          </button>
-        </div>
-        <div className="mt-4 h-1.5 overflow-hidden rounded-full bg-white/10">
-          <div className="h-full w-[58%] rounded-full bg-ember-500" />
-        </div>
-        <p className="mt-3 text-xs text-slate-300">23,450 / 50,000 AI credits used</p>
-        <p className="mt-1 text-xs text-slate-500">Resets in 12 days</p>
-      </div>
-
-      <div className="mt-5 flex items-center gap-3">
-        <div className="grid h-10 w-10 place-items-center rounded-full bg-slate-700 text-sm font-bold text-white">
-          AR
-        </div>
-        <div className="min-w-0 flex-1">
-          <p className="truncate text-sm font-semibold text-white">Ahmed R.</p>
-          <p className="truncate text-xs text-slate-400">local workspace</p>
-        </div>
-        <ChevronDown className="h-4 w-4 text-slate-500" />
-      </div>
-    </aside>
+    </>
   );
 }
 
-function TopWorkspaceBar({ title }) {
+function TitleBar() {
   return (
-    <header className="flex min-h-20 items-center justify-between gap-5 border-b border-white/10 px-6 lg:px-8">
-      <div>
-        <p className="text-xs font-bold uppercase tracking-[0.2em] text-ember-500">Workspace</p>
-        <h1 className="mt-1 text-xl font-extrabold text-white">{title}</h1>
+    <header className="sg-titlebar">
+      <div className="sg-title-left">
+        <Tile size={20} radius={6}>
+          <span className="sg-book-page"><BookGlyph size={12} /></span>
+        </Tile>
+        <span>Study Guide Generator</span>
       </div>
-      <div className="hidden min-w-[420px] items-center rounded-xl border border-white/10 bg-white/[0.045] px-4 py-3 text-sm text-slate-400 shadow-[inset_0_1px_0_rgba(255,255,255,0.05)] lg:flex">
-        <Search className="mr-3 h-4 w-4 text-slate-500" />
-        <span className="flex-1">Search guides, drafts, models, and exports...</span>
-        <span className="rounded-md border border-white/10 bg-white/[0.06] px-2 py-0.5 text-xs text-slate-300">
-          ⌘ K
-        </span>
+      <div className="sg-commandbar">
+        <SearchI size={13} stroke="#9098A8" sw={2} />
+        <span>Search guides, styles, or paste a URL...</span>
+        <kbd>Ctrl + K</kbd>
+      </div>
+      <div className="sg-window-buttons" aria-hidden>
+        <button><span /></button>
+        <button><i /></button>
+        <button className="sg-close"><b /></button>
       </div>
     </header>
   );
 }
 
-function HomeDashboard({ selectedStyle, onSelectStyle, onOpenBuilder, jobsRefreshKey }) {
+function Sidebar({ activeSection, onNavigate, onNewGuide }) {
+  const navRef = useRef(null);
+  const [barTop, setBarTop] = useState(0);
+  const activeIndex = navItems.findIndex((item) => item.id === activeSection);
+
+  useEffect(() => {
+    const nav = navRef.current;
+    if (!nav) return;
+    const row = nav.querySelectorAll("[data-side-row]")[activeIndex];
+    if (!row) return;
+    const navRect = nav.getBoundingClientRect();
+    const rowRect = row.getBoundingClientRect();
+    setBarTop(rowRect.top - navRect.top + rowRect.height / 2 - 9);
+  }, [activeIndex]);
+
   return (
-    <div className="mx-auto max-w-[1180px]">
-      <div className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
+    <aside className="sg-sidebar">
+      <div className="sg-sidebar-label">Workspace</div>
+      <button type="button" className="sg-sidebar-new sg-press-btn" onClick={onNewGuide}>
+        <Plus size={15} stroke="#1A1206" strokeWidth={2.5} />
+        New Guide
+      </button>
+      <nav ref={navRef} className="sg-sidebar-nav">
+        <span className="sg-side-bar" style={{ transform: `translate3d(-12px, ${barTop}px, 0)` }} />
+        {navItems.map((item) => {
+          const Icon = item.icon;
+          const active = item.id === activeSection;
+          return (
+            <button
+              key={item.id}
+              type="button"
+              data-side-row
+              onClick={() => onNavigate(item.id)}
+              className={`sg-side-row ${active ? "active" : ""}`}
+            >
+              <span className="sg-side-icon"><Icon size={18} /></span>
+              {item.label}
+            </button>
+          );
+        })}
+      </nav>
+      <div className="sg-sidebar-spacer" />
+      <div className="sg-storage-card">
         <div>
-          <h2 className="text-3xl font-extrabold tracking-normal text-white">
-            Good evening, Ahmed 👋
-          </h2>
-          <p className="mt-2 text-sm leading-6 text-slate-300">
-            Turn your content into high-quality study guides in seconds.
-          </p>
+          <span>Library</span>
+          <span>32/100</span>
         </div>
-        <button
-          type="button"
-          onClick={() => onOpenBuilder("paste")}
-          className="inline-flex h-11 items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-ember-500 to-ember-700 px-4 text-sm font-extrabold text-white shadow-ember transition hover:brightness-110"
-        >
-          <Wand2 className="h-4 w-4" />
-          Open Builder
+        <div className="sg-storage-meter"><i /></div>
+        <p>Generated guides stay in the local jobs store.</p>
+      </div>
+      <div className="sg-user-row">
+        <span>A</span>
+        <div>
+          <strong>Ahmed</strong>
+          <em>Local workspace</em>
+        </div>
+        <SettingsI size={16} stroke="#6B7185" sw={2} />
+      </div>
+    </aside>
+  );
+}
+
+function HomeCommandCenter({ jobs, onOpenBuilder, onNavigate, jobsRefreshKey }) {
+  const commandCards = [
+    { id: "paste", title: "Paste Text", subtitle: "Drop in notes and generate a polished guide.", pill: "Real flow", glyph: DocGlyph, accent: "#F97316", onClick: () => onOpenBuilder("paste") },
+    { id: "upload", title: "Upload Markdown", subtitle: "Turn a .md file into a styled PDF.", pill: "Real flow", glyph: UploadGlyph, accent: "#60A5FA", onClick: () => onOpenBuilder("upload") },
+    { id: "llm", title: "Generate with AI", subtitle: "Use source material with DeepSeek or Qwen.", pill: "Real flow", glyph: SparkleGlyph, accent: "#A855F7", onClick: () => onOpenBuilder("llm") },
+    { id: "exam", title: "Exam Tomorrow", subtitle: "Use the exam-cram preset and jump into Builder.", pill: "Exam Cram", glyph: BoltGlyph, accent: "#F59E0B", onClick: () => onOpenBuilder("paste") },
+    { id: "library", title: "Open Library", subtitle: "Browse the generated job archive.", pill: `${jobs.length} jobs`, glyph: BookGlyph, accent: "#34D399", onClick: () => onNavigate("library") },
+    { id: "exports", title: "Export Center", subtitle: "Find PDFs, Markdown, HTML, logs, and validation.", pill: "Artifacts", glyph: PDFGlyph, accent: "#F43F5E", onClick: () => onNavigate("exports") }
+  ];
+
+  return (
+    <div className="sg-page sg-home">
+      <div className="sg-grid-glow" />
+      <div className="sg-page-head">
+        <div>
+          <h1>Good evening, Ahmed</h1>
+          <p>Pick a goal. The real generator pipeline stays connected behind every guide action.</p>
+        </div>
+        <button type="button" className="sg-cta sg-press-btn" onClick={() => onOpenBuilder("paste")}>
+          <Plus size={16} stroke="#1A1206" strokeWidth={2.6} />
+          New Guide
         </button>
       </div>
 
-      <div className="mt-8 grid gap-5 lg:grid-cols-3">
-        {actions.map((action) => (
-          <ActionCard
-            key={action.source}
-            action={action}
-            onClick={() => onOpenBuilder(action.source)}
-          />
+      <div className="sg-section-head">
+        <h2>What are you preparing for?</h2>
+        <button type="button" className="sg-ghost-button" onClick={() => onNavigate("styles")}>Customize</button>
+      </div>
+
+      <div className="sg-command-grid">
+        {commandCards.map((card, index) => (
+          <CommandCard key={card.id} card={card} delay={index * 45} />
         ))}
       </div>
 
-      <div className="mt-8 flex items-center justify-between">
-        <h3 className="text-xl font-extrabold text-white">Choose a guide style</h3>
-        <button type="button" className="text-sm font-medium text-slate-300 hover:text-white">
-          See all
-        </button>
+      <div className="sg-section-head">
+        <h2>Smart Tools</h2>
+        <span>Lightweight workflows around the real guide pipeline</span>
       </div>
-      <div className="mt-4 grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
-        {guideStyles.map((style) => (
-          <StyleCard
-            key={style.promptName}
+      <div className="sg-smart-grid">
+        {smartTools.map((tool) => (
+          <SmartToolCard key={tool.id} tool={tool} onNavigate={onNavigate} />
+        ))}
+      </div>
+
+      <div className="sg-section-head sg-recent-head">
+        <h2>Recent Guides</h2>
+        <button type="button" className="sg-ghost-button" onClick={() => onNavigate("library")}>View all</button>
+      </div>
+      <RecentJobsPanel embedded refreshKey={jobsRefreshKey} />
+    </div>
+  );
+}
+
+function CommandCard({ card, delay }) {
+  const Glyph = card.glyph;
+  return (
+    <button
+      type="button"
+      className="sg-command-card sg-press-btn"
+      onClick={card.onClick}
+      style={{ "--accent": card.accent, animationDelay: `${delay}ms` }}
+    >
+      <span className="sg-card-corner" />
+      <span className="sg-card-top">
+        <span className="sg-card-icon"><Glyph size={26} color={card.accent} /></span>
+      </span>
+      <strong>{card.title}</strong>
+      <p>{card.subtitle}</p>
+      <span className="sg-card-bottom">
+        <em>{card.pill}</em>
+        <i><ChevronRight size={14} /></i>
+      </span>
+    </button>
+  );
+}
+
+function SmartToolCard({ tool, onNavigate }) {
+  const Icon = tool.icon;
+  const disabled = Boolean(tool.disabled);
+  return (
+    <button
+      type="button"
+      disabled={disabled}
+      className="sg-smart-card sg-press-btn"
+      onClick={() => !disabled && onNavigate(tool.route)}
+    >
+      <span>{typeof Icon === "function" && Icon.name?.endsWith("Glyph") ? <Icon size={19} color="#F97316" /> : <Icon size={18} />}</span>
+      <div>
+        <strong>{tool.title}</strong>
+        <p>{tool.subtitle}</p>
+      </div>
+      <ChevronRight size={13} />
+    </button>
+  );
+}
+
+function ModelsPage({ apiOptions }) {
+  const providers = apiOptions?.providers ?? ["DeepSeek", "Qwen"];
+  const models = apiOptions?.models ?? {};
+  const visible = [
+    ...providers.map((name) => ({ id: name.toLowerCase(), name, configured: true, models: models[name] ?? [] })),
+    { id: "local", name: "Local OpenAI-compatible", configured: false, models: [] },
+    { id: "openai", name: "OpenAI", configured: false, models: [] }
+  ];
+
+  return (
+    <div className="sg-page">
+      <PageHead title="Models" subtitle="Connect providers, manage keys, and pick the default model for new guides." />
+      <div className="sg-default-card">
+        <Tile size={42} radius={11}><SparkleGlyph size={20} /></Tile>
+        <div>
+          <span>Default model</span>
+          <strong>{providers[0] ?? "DeepSeek"} · {(models[providers[0]] ?? [])[0] ?? "configured in backend"}</strong>
+        </div>
+        <em>Server-side keys</em>
+      </div>
+      <SectionHeading title="Cloud providers" right="Real options from /api/options where available" />
+      <div className="sg-provider-grid">
+        {visible.map((provider, index) => (
+          <ProviderCard key={`${provider.id}-${index}`} provider={provider} />
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function ProviderCard({ provider }) {
+  return (
+    <div className="sg-provider-card sg-recent-row">
+      <div className="sg-provider-top">
+        <span>{provider.name.slice(0, 1)}</span>
+        <div>
+          <strong>{provider.name}</strong>
+          <p>{provider.configured ? `${provider.models.length} model${provider.models.length === 1 ? "" : "s"}` : "Placeholder"}</p>
+        </div>
+      </div>
+      <div className="sg-provider-tags">
+        {(provider.models.length ? provider.models.slice(0, 4) : ["Not configured"]).map((item) => (
+          <span key={item}>{item}</span>
+        ))}
+      </div>
+      <button type="button" className="sg-ghost-button" disabled={!provider.configured}>
+        {provider.configured ? "Available in Builder" : "Backend not implemented"}
+      </button>
+    </div>
+  );
+}
+
+function StylesPage({ selectedStyle, onSelectStyle, onOpenBuilder }) {
+  return (
+    <div className="sg-page">
+      <PageHead title="Styles" subtitle="Built-in prompt presets from the real generation pipeline." />
+      <SectionHeading title="Built-in" right="Real prompt_name values" />
+      <div className="sg-style-grid">
+        {promptStyles.map((style, index) => (
+          <StyleBigCard
+            key={style.id}
             style={style}
-            selected={selectedStyle === style.promptName}
-            onClick={() => onSelectStyle(style.promptName)}
+            active={selectedStyle === style.id}
+            delay={index * 35}
+            onSelect={() => onSelectStyle(style.id)}
+            onOpenBuilder={() => onOpenBuilder("llm")}
           />
         ))}
       </div>
+      <SectionHeading title="My Styles" right="Placeholder until custom prompt storage exists" />
+      <div className="sg-custom-style-row">
+        <div className="sg-add-custom">
+          <Tile size={36} radius={10} variant="soft"><Plus size={18} stroke="#F97316" /></Tile>
+          <div>
+            <strong>Describe a new style</strong>
+            <p>Visual placeholder. Custom style persistence is not implemented in this pass.</p>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
 
-      <div className="mt-8">
+function StyleBigCard({ style, active, delay, onSelect, onOpenBuilder }) {
+  const Glyph = style.glyph;
+  return (
+    <div className={`sg-style-big sg-recent-row ${active ? "active" : ""}`} style={{ animationDelay: `${delay}ms` }}>
+      <div className="sg-style-big-top">
+        <Tile size={40} radius={11} variant={active ? "orange" : "dark"}>
+          <Glyph size={20} color={active ? "#1B0F03" : "#F97316"} />
+        </Tile>
+        <div>
+          <strong>{style.name}</strong>
+          <p>{style.focus}</p>
+        </div>
+        <span>{active ? "Selected" : "Built-in"}</span>
+      </div>
+      <p><b>Produces:</b> {style.produces}</p>
+      <div className="sg-paper-mini">
+        <small>{style.name.toUpperCase()}</small>
+        <strong>Sample · {style.best}</strong>
+        <i />
+        <p>{style.produces.toLowerCase()}.</p>
+      </div>
+      <div className="sg-style-actions">
+        <button type="button" className="sg-ghost-button" onClick={onSelect}>Use</button>
+        <button type="button" className="sg-cta compact" onClick={onOpenBuilder}>Build</button>
+      </div>
+    </div>
+  );
+}
+
+function LibraryPage({ jobsRefreshKey, onOpenBuilder }) {
+  return (
+    <div className="sg-library-page">
+      <FolderRail />
+      <div className="sg-library-main">
+        <PageHead
+          title="Library"
+          subtitle="Real generated guides from the jobs store."
+          right={<button type="button" className="sg-cta compact" onClick={() => onOpenBuilder("paste")}><Plus size={14} />New Guide</button>}
+        />
+        <div className="sg-library-filter">
+          <SearchI size={14} stroke="#9098A8" sw={2} />
+          <span>Search guides...</span>
+          <em>Folders are visual placeholders</em>
+        </div>
         <RecentJobsPanel embedded refreshKey={jobsRefreshKey} />
       </div>
     </div>
   );
 }
 
-function ActionCard({ action, onClick }) {
-  const Icon = action.icon;
-  const iconClass =
-    action.color === "blue"
-      ? "bg-blue-500/15 text-blue-300"
-      : action.color === "purple"
-        ? "bg-violet-500/15 text-violet-300"
-        : "bg-ember-500/15 text-ember-400";
-
+function ExportsPage({ jobsRefreshKey, onOpenBuilder }) {
   return (
-    <button
-      type="button"
-      onClick={onClick}
-      className="min-h-[176px] rounded-2xl border border-white/10 bg-white/[0.035] p-5 text-left transition hover:border-ember-500/45 hover:bg-ember-500/[0.055]"
-    >
-      <div className="flex items-start justify-between">
-        <span className={`grid h-11 w-11 place-items-center rounded-xl ${iconClass}`}>
-          <Icon className="h-5 w-5" />
-        </span>
-        <ChevronRight className="mt-8 h-5 w-5 text-slate-400" />
+    <div className="sg-page">
+      <PageHead title="Exports" subtitle="PDF, Markdown, HTML, validation logs, and render logs from generated jobs." />
+      <div className="sg-export-grid">
+        {[
+          { label: "PDF", glyph: PDFGlyph, note: "Real artifact" },
+          { label: "Markdown", glyph: DocGlyph, note: "Real artifact" },
+          { label: "HTML", glyph: BookGlyph, note: "Real artifact" },
+          { label: "DOCX", glyph: FileText, note: "Placeholder" }
+        ].map((item) => {
+          const Glyph = item.glyph;
+          return (
+            <div key={item.label} className="sg-export-card">
+              <Tile size={42} radius={11} variant={item.note === "Placeholder" ? "dark" : "orange"}>
+                {item.note === "Placeholder" ? <Glyph size={20} /> : <Glyph size={20} />}
+              </Tile>
+              <strong>{item.label}</strong>
+              <p>{item.note}</p>
+            </div>
+          );
+        })}
       </div>
-      <p className="mt-5 text-base font-extrabold text-white">{action.label}</p>
-      <p className="mt-2 text-sm leading-6 text-slate-300">{action.description}</p>
-    </button>
+      <SectionHeading title="Recent exportable jobs" right="Uses real artifact URLs" />
+      <RecentJobsPanel refreshKey={jobsRefreshKey} />
+      <button type="button" className="sg-ghost-button sg-export-new" onClick={() => onOpenBuilder("paste")}>Generate another export</button>
+    </div>
   );
 }
 
-function StyleCard({ style, selected, onClick }) {
-  const Icon = style.icon;
+function FolderRail() {
   return (
-    <button
-      type="button"
-      onClick={onClick}
-      className={`relative min-h-[166px] rounded-2xl border p-4 text-left transition ${
-        selected
-          ? "border-ember-500 bg-ember-500/[0.06] shadow-[0_22px_80px_rgba(255,122,0,0.16)]"
-          : "border-white/10 bg-white/[0.035] hover:border-white/20 hover:bg-white/[0.055]"
-      }`}
-    >
-      {selected && (
-        <span className="absolute right-3 top-3 grid h-6 w-6 place-items-center rounded-full bg-ember-500 text-white">
-          <Check className="h-3.5 w-3.5" />
-        </span>
-      )}
-      <span className="grid h-12 w-12 place-items-center rounded-xl bg-ember-500/15 text-ember-400">
-        <Icon className="h-6 w-6" />
-      </span>
-      <p className="mt-4 text-base font-extrabold leading-5 text-white">{style.label}</p>
-      <p className="mt-2 text-sm leading-5 text-slate-400">{style.description}</p>
-    </button>
-  );
-}
-
-function PlaceholderSection({ title, onOpenBuilder }) {
-  return (
-    <div className="mx-auto grid min-h-[600px] max-w-4xl place-items-center">
-      <div className="rounded-3xl border border-white/10 bg-white/[0.035] p-10 text-center shadow-[inset_0_1px_0_rgba(255,255,255,0.05)]">
-        <div className="mx-auto grid h-14 w-14 place-items-center rounded-2xl bg-ember-500/15 text-ember-400">
-          <Box className="h-7 w-7" />
-        </div>
-        <h2 className="mt-5 text-2xl font-extrabold text-white">{title}</h2>
-        <p className="mx-auto mt-3 max-w-md text-sm leading-6 text-slate-400">
-          This workspace section is ready for the next UI phase. Guide creation is available in Builder.
-        </p>
-        <button
-          type="button"
-          onClick={onOpenBuilder}
-          className="mt-6 inline-flex h-11 items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-ember-500 to-ember-700 px-4 text-sm font-extrabold text-white shadow-ember"
-        >
-          <PenLine className="h-4 w-4" />
-          Go to Builder
+    <aside className="sg-folder-rail">
+      <SectionHeading title="Folders" />
+      {[
+        ["All Guides", 32, DocGlyph],
+        ["Recent", 8, BoltGlyph],
+        ["Favorites", 5, SparkleGlyph],
+        ["Exam Guides", 12, TrophyGlyph],
+        ["Reports", 4, BookGlyph]
+      ].map(([name, count, Glyph], index) => (
+        <button key={name} className={`sg-folder-row ${index === 0 ? "active" : ""}`}>
+          <Glyph size={14} color={index === 0 ? "#F97316" : "#9098A8"} />
+          <span>{name}</span>
+          <em>{count}</em>
         </button>
+      ))}
+      <p>Folder assignment is visual-only until library metadata is added.</p>
+    </aside>
+  );
+}
+
+function PageHead({ title, subtitle, right }) {
+  return (
+    <div className="sg-page-head">
+      <div>
+        <h1>{title}</h1>
+        {subtitle && <p>{subtitle}</p>}
       </div>
+      {right}
+    </div>
+  );
+}
+
+function SectionHeading({ title, right }) {
+  return (
+    <div className="sg-section-head">
+      <h2>{title}</h2>
+      {right && <span>{right}</span>}
     </div>
   );
 }

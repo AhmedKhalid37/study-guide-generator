@@ -219,6 +219,23 @@ body {
     break-inside: avoid;
   }
 
+  /* A PDF page can't scroll, so code/diagram lines that overflow get CLIPPED
+     (lost) instead of scrolled. In print, wrap them and shrink slightly so wide
+     lines fit on one line where possible and wrap (never clip) when they don't.
+     Screen/HTML keeps overflow-x: auto + white-space: pre (scrollable). */
+  .guide pre,
+  .guide pre code {
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+    overflow-x: visible;
+    font-size: 0.75em;
+  }
+
+  .guide code {
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+  }
+
   .guide,
   .guide * {
     scrollbar-width: none;

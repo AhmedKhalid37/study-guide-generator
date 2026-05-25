@@ -1,7 +1,6 @@
 import React, { useEffect, useMemo, useState } from "react";
 import {
   AlertCircle,
-  Check,
   ChevronRight,
   Download,
   FileCode2,
@@ -25,12 +24,30 @@ import {
   createUploadMarkdownJob,
   previewApiUrl
 } from "../api/client";
+import {
+  BoltGlyph,
+  DocGlyph,
+  LeafGlyph,
+  ListGlyph,
+  PDFGlyph,
+  SparkleGlyph,
+  Tile,
+  TrophyGlyph,
+  UploadGlyph
+} from "./ClaudeIcons";
 
 const sourceTabs = [
   { id: "paste", label: "Paste text" },
   { id: "upload", label: "Upload .md" },
   { id: "llm", label: "AI prompt" },
   { id: "url", label: "URL", disabled: true }
+];
+
+const builderTabs = [
+  { id: "builder", label: "Builder" },
+  { id: "outline", label: "Outline" },
+  { id: "style", label: "Style" },
+  { id: "preview", label: "Preview" }
 ];
 
 const styleChips = [
@@ -83,6 +100,17 @@ const artifactLabels = {
   "render.log": { label: "render.log", icon: FileText }
 };
 
+const outlineSections = [
+  "Big picture",
+  "Key definitions",
+  "Core formulas",
+  "Step-by-step explanation",
+  "Worked examples",
+  "Common mistakes",
+  "Practice questions",
+  "Final recap"
+];
+
 export default function BuilderWorkspace({
   initialSource = "paste",
   selectedStyle = "exam_cram",
@@ -90,6 +118,7 @@ export default function BuilderWorkspace({
   latestJob,
   onJobCreated
 }) {
+  const [activeBuilderTab, setActiveBuilderTab] = useState("builder");
   const [source, setSource] = useState(initialSource);
   const [title, setTitle] = useState("Generated Study Guide");
   const [text, setText] = useState("");
@@ -104,10 +133,12 @@ export default function BuilderWorkspace({
   const [result, setResult] = useState(latestJob);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
+  const [previewFormat, setPreviewFormat] = useState("sample");
 
   useEffect(() => {
     setSource(initialSource);
     setError(null);
+    setActiveBuilderTab("builder");
   }, [initialSource]);
 
   useEffect(() => {
@@ -122,6 +153,24 @@ export default function BuilderWorkspace({
     }
     return Object.entries(result.artifact_urls).filter(([name]) => artifactLabels[name]);
   }, [result]);
+
+  const artifactUrls = useMemo(() => result?.artifact_urls ?? {}, [result]);
+  const selectedStyleOption = styleChips.find((style) => style.promptName === selectedStyle);
+  const selectedLengthOption = lengthOptions.find((option) => option.id === length);
+
+  useEffect(() => {
+    if (!result) {
+      setPreviewFormat("sample");
+      return;
+    }
+    if (artifactUrls["final.pdf"]) {
+      setPreviewFormat("pdf");
+    } else if (artifactUrls["final.html"]) {
+      setPreviewFormat("html");
+    } else {
+      setPreviewFormat("pdf");
+    }
+  }, [result, artifactUrls]);
 
   async function handleSubmit(event) {
     event.preventDefault();
@@ -206,207 +255,487 @@ export default function BuilderWorkspace({
   }
 
   return (
-    <div className="overflow-hidden rounded-[22px] border border-white/[0.06] bg-[#0A0F1A] text-[#F4F4F5]">
-      <div className="flex h-11 items-center gap-[18px] border-b border-white/[0.05] px-7">
-        {["Builder", "Outline", "Style", "Preview"].map((tab, index) => (
+    <div className="sg-builder">
+      <div className="sg-builder-tabs">
+        {builderTabs.map((tab) => (
           <button
-            key={tab}
+            key={tab.id}
             type="button"
-            className={`h-11 border-b-2 px-0.5 text-[13px] font-medium ${
-              index === 0
-                ? "border-[#F97316] text-[#F4F4F5]"
-                : "border-transparent text-[#9098A8]"
-            }`}
+            onClick={() => setActiveBuilderTab(tab.id)}
+            className={activeBuilderTab === tab.id ? "active" : ""}
           >
-            {tab}
+            <BuilderTabIcon id={tab.id} active={activeBuilderTab === tab.id} />
+            {tab.label}
           </button>
         ))}
         <div className="flex-1" />
-        <span className="inline-flex h-[26px] items-center gap-1.5 rounded-full border border-white/10 bg-white/[0.04] px-3 text-[11.5px] font-medium text-[#F4F4F5]">
-          <span className="h-1.5 w-1.5 rounded-full bg-[#22C55E]" />
+        <span className="sg-autosave">
+          <i />
           Auto-saved · 2s ago
         </span>
       </div>
 
-      <div className="flex min-h-[720px]">
+      <div className="sg-builder-body">
         <form
           onSubmit={handleSubmit}
-          className="flex min-w-0 flex-1 flex-col gap-[22px] overflow-auto border-r border-white/[0.05] px-9 py-7"
+          className="sg-builder-pane"
         >
-          <div>
-            <FieldLabel>Title</FieldLabel>
-            <input
-              value={title}
-              onChange={(event) => setTitle(event.target.value)}
-              placeholder="Enter guide title..."
-              className={fieldClass}
-            />
-          </div>
-
-          <div>
-            <FieldLabel>Source</FieldLabel>
-            <div className="mt-1.5 flex w-fit gap-1 rounded-[10px] border border-white/[0.06] bg-white/[0.03] p-1">
-              {sourceTabs.map((tab) => (
-                <button
-                  key={tab.id}
-                  type="button"
-                  disabled={tab.disabled}
-                  onClick={() => {
-                    setSource(tab.id);
-                    setError(null);
-                  }}
-                  className={`h-8 rounded-[7px] border-0 px-3 text-[12.5px] font-medium transition disabled:cursor-not-allowed disabled:opacity-40 ${
-                    source === tab.id
-                      ? "bg-gradient-to-b from-[#FB923C] to-[#EA580C] font-semibold text-[#1A1206] shadow-[inset_0_1px_0_rgba(255,255,255,0.3)]"
-                      : "bg-transparent text-[#D4D4D8] hover:bg-white/[0.04]"
-                  }`}
-                >
-                  {tab.label}
-                </button>
-              ))}
-            </div>
-
-            <SourceEditor
+          {activeBuilderTab === "builder" && (
+            <BuilderComposer
+              title={title}
+              setTitle={setTitle}
               source={source}
+              setSource={setSource}
               text={text}
               setText={setText}
               file={file}
               setFile={setFile}
               setError={setError}
+              mode={mode}
+              setMode={setMode}
+              provider={provider}
+              handleProviderSelect={handleProviderSelect}
+              model={model}
+              setModel={setModel}
+              qwenThinking={qwenThinking}
+              setQwenThinking={setQwenThinking}
+              strictMath={strictMath}
+              setStrictMath={setStrictMath}
+              error={error}
+              loading={loading}
             />
-          </div>
+          )}
 
-          <div className="grid gap-4 xl:grid-cols-[1.4fr_1fr]">
-            <div>
-              <FieldLabel>Style</FieldLabel>
-              <div className="mt-1.5 grid grid-cols-3 gap-1.5 sm:grid-cols-6">
-                {styleChips.map((style) => (
-                  <MiniStyle
-                    key={style.promptName}
-                    style={style}
-                    active={selectedStyle === style.promptName}
-                    onClick={() => onSelectStyle?.(style.promptName)}
-                  />
-                ))}
-              </div>
-            </div>
-            <div>
-              <FieldLabel>Length</FieldLabel>
-              <div className="mt-1.5 grid grid-cols-3 gap-1.5">
-                {lengthOptions.map((option) => (
-                  <button
-                    key={option.id}
-                    type="button"
-                    onClick={() => setLength(option.id)}
-                    className={`rounded-[9px] border px-1.5 py-2 text-center ${
-                      length === option.id
-                        ? "border-[rgba(249,115,22,0.45)] bg-[rgba(249,115,22,0.12)]"
-                        : "border-white/[0.08] bg-transparent"
-                    }`}
-                  >
-                    <div className="text-[12.5px] font-semibold">{option.label}</div>
-                    <div className="text-[10.5px] text-[#9098A8]">{option.meta}</div>
-                  </button>
-                ))}
-              </div>
-            </div>
-          </div>
+          {activeBuilderTab === "outline" && (
+            <OutlinePanel
+              title={title}
+              source={source}
+              selectedStyle={selectedStyleOption}
+              selectedLength={selectedLengthOption}
+              includes={includes}
+              result={result}
+            />
+          )}
 
+          {activeBuilderTab === "style" && (
+            <StyleSettings
+              selectedStyle={selectedStyle}
+              onSelectStyle={onSelectStyle}
+              length={length}
+              setLength={setLength}
+              includes={includes}
+              toggleInclude={toggleInclude}
+            />
+          )}
+
+          {activeBuilderTab === "preview" && (
+            <PreviewWorkspacePanel
+              result={result}
+              artifacts={artifactEntries}
+              artifactUrls={artifactUrls}
+              previewFormat={previewFormat}
+              setPreviewFormat={setPreviewFormat}
+            />
+          )}
+        </form>
+
+        <LivePreviewPanel
+          result={result}
+          artifacts={artifactEntries}
+          selectedStyle={selectedStyle}
+          length={length}
+          previewFormat={previewFormat}
+          setPreviewFormat={setPreviewFormat}
+        />
+      </div>
+    </div>
+  );
+}
+
+function BuilderComposer({
+  title,
+  setTitle,
+  source,
+  setSource,
+  text,
+  setText,
+  file,
+  setFile,
+  setError,
+  mode,
+  setMode,
+  provider,
+  handleProviderSelect,
+  model,
+  setModel,
+  qwenThinking,
+  setQwenThinking,
+  strictMath,
+  setStrictMath,
+  error,
+  loading
+}) {
+  return (
+    <>
+      <div className="sg-field-block">
+        <FieldLabel>Title</FieldLabel>
+        <input
+          value={title}
+          onChange={(event) => setTitle(event.target.value)}
+          placeholder="Enter guide title..."
+          className="sg-input sg-input-lg"
+        />
+      </div>
+
+      <div className="sg-field-block">
+        <FieldLabel>Source</FieldLabel>
+        <SourceTabs source={source} setSource={setSource} setError={setError} />
+
+        <SourceEditor
+          source={source}
+          text={text}
+          setText={setText}
+          file={file}
+          setFile={setFile}
+          setError={setError}
+        />
+      </div>
+
+      {source === "llm" && (
+        <div className="sg-llm-panel">
           <div>
-            <FieldLabel>Include</FieldLabel>
-            <div className="mt-1.5 flex flex-wrap gap-1.5">
-              {includeOptions.map((option) => (
-                <button
-                  key={option}
-                  type="button"
-                  onClick={() => toggleInclude(option)}
-                  className={`inline-flex h-7 items-center gap-1.5 rounded-full border px-3 text-xs font-medium ${
-                    includes.includes(option)
-                      ? "border-[rgba(249,115,22,0.35)] bg-[rgba(249,115,22,0.10)] text-[#FB923C]"
-                      : "border-white/10 bg-white/[0.04] text-[#F4F4F5]"
-                  }`}
-                >
-                  {includes.includes(option) && <span className="text-[10px]">✓</span>}
-                  {option}
-                </button>
+            <FieldLabel>Mode</FieldLabel>
+            <div className="sg-option-grid four">
+              {modeOptions.map((option) => (
+                <OptionCard
+                  key={option.id}
+                  option={option}
+                  active={mode === option.id}
+                  onClick={() => setMode(option.id)}
+                />
               ))}
             </div>
           </div>
-
-          {source === "llm" && (
-            <div className="grid gap-3 rounded-xl border border-white/[0.06] bg-white/[0.025] p-3">
-              <div>
-                <FieldLabel>Mode</FieldLabel>
-                <div className="mt-1.5 grid grid-cols-2 gap-1.5 xl:grid-cols-4">
-                  {modeOptions.map((option) => (
-                    <OptionCard
-                      key={option.id}
-                      option={option}
-                      active={mode === option.id}
-                      onClick={() => setMode(option.id)}
-                    />
-                  ))}
-                </div>
-              </div>
-              <div>
-                <FieldLabel>Provider</FieldLabel>
-                <div className="mt-1.5 grid grid-cols-2 gap-1.5">
-                  {providerOptions.map((option) => (
-                    <OptionCard
-                      key={option.id}
-                      option={option}
-                      active={provider === option.id}
-                      onClick={() => handleProviderSelect(option.id)}
-                    />
-                  ))}
-                </div>
-              </div>
-              <label>
-                <FieldLabel>Model</FieldLabel>
-                <select value={model} onChange={(event) => setModel(event.target.value)} className={selectClass}>
-                  {modelsByProvider[provider].map((modelId) => (
-                    <option key={modelId} value={modelId}>
-                      {modelId}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              {provider === "Qwen" && (
-                <Toggle label="Qwen thinking mode" checked={qwenThinking} onChange={setQwenThinking} />
-              )}
-              <Toggle label="Strict math" checked={strictMath} onChange={setStrictMath} />
+          <div>
+            <FieldLabel>Provider</FieldLabel>
+            <div className="sg-option-grid">
+              {providerOptions.map((option) => (
+                <OptionCard
+                  key={option.id}
+                  option={option}
+                  active={provider === option.id}
+                  onClick={() => handleProviderSelect(option.id)}
+                />
+              ))}
             </div>
-          )}
-
-          {source !== "llm" && <Toggle label="Strict math" checked={strictMath} onChange={setStrictMath} />}
-          {error && <ErrorMessage error={error} />}
-
-          <div className="mt-auto flex items-center gap-3 border-t border-white/[0.05] pt-[18px]">
-            <div className="flex items-center gap-2.5 rounded-[10px] border border-white/[0.06] bg-white/[0.03] px-3 py-2">
-              <span className="h-2 w-2 rounded-full bg-[#F97316] shadow-[0_0_8px_rgba(249,115,22,0.8)]" />
-              <span className="text-[12.5px] font-medium">Best for accuracy</span>
-              <ChevronRight className="h-3.5 w-3.5 text-[#9098A8]" />
-            </div>
-            <div className="flex-1" />
-            <button
-              type="button"
-              className="inline-flex h-10 items-center gap-2 rounded-[10px] border border-white/10 bg-transparent px-4 text-[13px] font-medium text-[#D4D4D8]"
-            >
-              <Save className="h-4 w-4" />
-              Save draft
-            </button>
-            <button
-              type="submit"
-              disabled={loading}
-              className="relative inline-flex h-10 w-[200px] items-center justify-center gap-2 rounded-[10px] border-0 bg-gradient-to-b from-[#FB923C] via-[#F97316] to-[#EA580C] text-sm font-semibold text-[#1A1206] shadow-[inset_0_1px_0_rgba(255,255,255,0.35),inset_0_-1px_0_rgba(0,0,0,0.18),0_12px_28px_-8px_rgba(249,115,22,0.55),0_0_0_1px_rgba(0,0,0,0.4)] disabled:opacity-60"
-            >
-              {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-[18px] w-[18px]" />}
-              {loading ? "Generating..." : "Generate Guide"}
-            </button>
           </div>
-        </form>
+          <label>
+            <FieldLabel>Model</FieldLabel>
+            <select value={model} onChange={(event) => setModel(event.target.value)} className="sg-select">
+              {modelsByProvider[provider].map((modelId) => (
+                <option key={modelId} value={modelId}>
+                  {modelId}
+                </option>
+              ))}
+            </select>
+          </label>
+          {provider === "Qwen" && (
+            <Toggle label="Qwen thinking mode" checked={qwenThinking} onChange={setQwenThinking} />
+          )}
+          <Toggle label="Strict math" checked={strictMath} onChange={setStrictMath} />
+        </div>
+      )}
 
-        <LivePreviewPanel result={result} artifacts={artifactEntries} selectedStyle={selectedStyle} length={length} />
+      {source !== "llm" && <Toggle label="Strict math" checked={strictMath} onChange={setStrictMath} />}
+      {error && <ErrorMessage error={error} />}
+
+      <div className="sg-generate-bar">
+        <div className="sg-model-chip">
+          <i />
+          <span>{source === "llm" ? `${provider} · ${model}` : "Markdown pipeline"}</span>
+          <ChevronRight className="h-3.5 w-3.5 text-[#9098A8]" />
+        </div>
+        <div className="flex-1" />
+        <button
+          type="button"
+          className="sg-ghost-button"
+        >
+          <Save className="h-4 w-4" />
+          Save draft
+        </button>
+        <button
+          type="submit"
+          disabled={loading}
+          className="sg-cta sg-generate-button"
+        >
+          {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-[18px] w-[18px]" />}
+          {loading ? "Generating..." : "Generate Guide"}
+        </button>
+      </div>
+    </>
+  );
+}
+
+function BuilderTabIcon({ id, active }) {
+  const color = active ? "#F97316" : "#6B7185";
+  if (id === "outline") return <ListGlyph size={14} color={color} />;
+  if (id === "style") return <SparkleGlyph size={14} color={color} />;
+  if (id === "preview") return <PDFGlyph size={14} color={color} />;
+  return <DocGlyph size={14} color={color} />;
+}
+
+function SourceTabs({ source, setSource, setError }) {
+  const activeIndex = Math.max(0, sourceTabs.findIndex((tab) => tab.id === source));
+  const tabsRef = React.useRef(null);
+  const [slider, setSlider] = useState({ x: 4, w: 0 });
+
+  useEffect(() => {
+    const root = tabsRef.current;
+    if (!root) return;
+    const button = root.querySelectorAll("button.sg-tab")[activeIndex];
+    if (!button) return;
+    setSlider({ x: button.offsetLeft, w: button.offsetWidth });
+  }, [activeIndex]);
+
+  return (
+    <div ref={tabsRef} className="sg-tabs mt-1.5">
+      <span className="sg-tab-slider" style={{ transform: `translateX(${slider.x}px)`, width: slider.w }} />
+      {sourceTabs.map((tab) => (
+        <button
+          key={tab.id}
+          type="button"
+          disabled={tab.disabled}
+          onClick={() => {
+            setSource(tab.id);
+            setError(null);
+          }}
+          className={`sg-tab ${source === tab.id ? "active" : ""}`}
+        >
+          {tab.label}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+function OutlinePanel({ title, source, selectedStyle, selectedLength, includes, result }) {
+  const sourceLabel = sourceTabs.find((tab) => tab.id === source)?.label || "Paste text";
+  return (
+    <div className="grid gap-4">
+      <SectionHeader
+        eyebrow="Planning"
+        title="Guide outline"
+        description="A generation-ready plan based on the current builder settings."
+      />
+      <div className="grid gap-3 xl:grid-cols-4">
+        <InfoCard label="Title" value={title || "Untitled guide"} />
+        <InfoCard label="Source" value={sourceLabel} />
+        <InfoCard label="Style" value={selectedStyle?.label || "Exam Cram"} />
+        <InfoCard label="Length" value={`${selectedLength?.label || "Medium"} ${selectedLength?.meta || "~20 pages"}`} />
+      </div>
+      <div className="rounded-xl border border-white/[0.06] bg-white/[0.025] p-4">
+        <FieldLabel>Suggested structure</FieldLabel>
+        <div className="mt-2 grid gap-2">
+          {outlineSections.map((section, index) => (
+            <div
+              key={section}
+              className="flex items-center gap-3 rounded-[10px] border border-white/[0.06] bg-[#070B14] px-3 py-2.5"
+            >
+              <span className="grid h-7 w-7 place-items-center rounded-md bg-[rgba(249,115,22,0.12)] font-mono text-[11px] font-bold text-[#FB923C]">
+                {index + 1}
+              </span>
+              <span className="text-[13px] font-semibold text-[#F4F4F5]">{section}</span>
+            </div>
+          ))}
+        </div>
+      </div>
+      <div className="grid gap-3 xl:grid-cols-[1.2fr_0.8fr]">
+        <div className="rounded-xl border border-white/[0.06] bg-white/[0.025] p-4">
+          <FieldLabel>Included sections</FieldLabel>
+          <div className="mt-2 flex flex-wrap gap-1.5">
+            {includes.map((item) => (
+              <span
+                key={item}
+                className="inline-flex h-7 items-center rounded-full border border-[rgba(249,115,22,0.3)] bg-[rgba(249,115,22,0.10)] px-3 text-xs font-medium text-[#FB923C]"
+              >
+                {item}
+              </span>
+            ))}
+          </div>
+        </div>
+        <div className="rounded-xl border border-white/[0.06] bg-white/[0.025] p-4">
+          <FieldLabel>Latest job</FieldLabel>
+          {result ? (
+            <div className="mt-2 grid gap-2 text-[12.5px] text-[#D4D4D8]">
+              <MetaRow label="Job ID" value={result.job_id || result.id || "unknown"} />
+              <MetaRow label="Status" value={result.status || "unknown"} />
+              <MetaRow label="Model" value={result.model || "pipeline"} />
+            </div>
+          ) : (
+            <p className="mt-2 text-[12.5px] leading-5 text-[#9098A8]">
+              Generate a guide to attach job status and export metadata to this outline.
+            </p>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function StyleSettings({ selectedStyle, onSelectStyle, length, setLength, includes, toggleInclude }) {
+  return (
+    <div className="grid gap-5">
+      <SectionHeader
+        eyebrow="Guide design"
+        title="Style and depth"
+        description="Tune the preset, target length, and included learning aids used by generation."
+      />
+      <StyleControls selectedStyle={selectedStyle} onSelectStyle={onSelectStyle} />
+      <LengthControls length={length} setLength={setLength} />
+      <IncludeControls includes={includes} toggleInclude={toggleInclude} />
+    </div>
+  );
+}
+
+function PreviewWorkspacePanel({ result, artifacts, artifactUrls, previewFormat, setPreviewFormat }) {
+  return (
+    <div className="grid gap-4">
+      <SectionHeader
+        eyebrow="Preview"
+        title="Exports and artifacts"
+        description="Inspect the latest generated job and choose what to preview or download."
+      />
+      <div className="grid gap-3 xl:grid-cols-3">
+        <InfoCard label="Preview" value={previewFormat === "sample" ? "Sample" : previewFormat.toUpperCase()} />
+        <InfoCard label="Status" value={result?.status || "No generated job"} />
+        <InfoCard label="Artifacts" value={`${artifacts.length} available`} />
+      </div>
+      <div className="rounded-xl border border-white/[0.06] bg-white/[0.025] p-4">
+        <FieldLabel>Preview format</FieldLabel>
+        <div className="mt-2 flex gap-1.5">
+          {["pdf", "html"].map((format) => (
+            <button
+              key={format}
+              type="button"
+              disabled={!result}
+              onClick={() => setPreviewFormat(format)}
+              className={`h-8 rounded-md border px-3 text-[12px] font-semibold transition disabled:cursor-not-allowed disabled:opacity-45 ${
+                previewFormat === format
+                  ? "border-[rgba(249,115,22,0.45)] bg-[rgba(249,115,22,0.14)] text-[#F97316]"
+                  : "border-white/[0.08] bg-white/[0.03] text-[#9098A8] hover:text-[#D4D4D8]"
+              }`}
+            >
+              {format.toUpperCase()}
+            </button>
+          ))}
+        </div>
+      </div>
+      <div className="rounded-xl border border-white/[0.06] bg-white/[0.025] p-4">
+        <FieldLabel>Artifact availability</FieldLabel>
+        {result ? (
+          <div className="mt-2 grid gap-2 sm:grid-cols-2">
+            {Object.entries(artifactLabels).map(([name, artifact]) => {
+              const available = Boolean(artifactUrls[name]);
+              const Icon = artifact.icon;
+              return (
+                <div
+                  key={name}
+                  className={`flex items-center justify-between rounded-[10px] border px-3 py-2 ${
+                    available
+                      ? "border-[rgba(249,115,22,0.25)] bg-[rgba(249,115,22,0.08)]"
+                      : "border-white/[0.06] bg-[#070B14] opacity-70"
+                  }`}
+                >
+                  <span className="inline-flex items-center gap-2 text-[12px] font-semibold text-[#D4D4D8]">
+                    <Icon className="h-3.5 w-3.5 text-[#F97316]" />
+                    {artifact.label}
+                  </span>
+                  <span className="text-[10.5px] font-semibold uppercase tracking-[0.08em] text-[#9098A8]">
+                    {available ? "Ready" : "Missing"}
+                  </span>
+                </div>
+              );
+            })}
+          </div>
+        ) : (
+          <div className="mt-2 rounded-[10px] border border-white/[0.06] bg-[#070B14] p-4 text-[12.5px] leading-5 text-[#9098A8]">
+            Generate a guide first to enable PDF/HTML preview and artifact downloads.
+          </div>
+        )}
+      </div>
+      {result && (
+        <div className="rounded-xl border border-white/[0.06] bg-white/[0.025] p-4">
+          <FieldLabel>Downloads</FieldLabel>
+          <ArtifactDownloadGrid artifacts={artifacts} />
+        </div>
+      )}
+    </div>
+  );
+}
+
+function StyleControls({ selectedStyle, onSelectStyle }) {
+  return (
+    <div>
+      <FieldLabel>Style</FieldLabel>
+      <div className="mt-1.5 grid grid-cols-3 gap-1.5 sm:grid-cols-6">
+        {styleChips.map((style) => (
+          <MiniStyle
+            key={style.promptName}
+            style={style}
+            active={selectedStyle === style.promptName}
+            onClick={() => onSelectStyle?.(style.promptName)}
+          />
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function LengthControls({ length, setLength }) {
+  return (
+    <div>
+      <FieldLabel>Length</FieldLabel>
+      <div className="mt-1.5 grid grid-cols-3 gap-1.5">
+        {lengthOptions.map((option) => (
+          <button
+            key={option.id}
+            type="button"
+            onClick={() => setLength(option.id)}
+            className={`rounded-[9px] border px-1.5 py-2 text-center ${
+              length === option.id
+                ? "border-[rgba(249,115,22,0.45)] bg-[rgba(249,115,22,0.12)]"
+                : "border-white/[0.08] bg-transparent"
+            }`}
+          >
+            <div className="text-[12.5px] font-semibold">{option.label}</div>
+            <div className="text-[10.5px] text-[#9098A8]">{option.meta}</div>
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function IncludeControls({ includes, toggleInclude }) {
+  return (
+    <div>
+      <FieldLabel>Include</FieldLabel>
+      <div className="mt-1.5 flex flex-wrap gap-1.5">
+        {includeOptions.map((option) => (
+          <button
+            key={option}
+            type="button"
+            onClick={() => toggleInclude(option)}
+            className={`inline-flex h-7 items-center gap-1.5 rounded-full border px-3 text-xs font-medium ${
+              includes.includes(option)
+                ? "border-[rgba(249,115,22,0.35)] bg-[rgba(249,115,22,0.10)] text-[#FB923C]"
+                : "border-white/10 bg-white/[0.04] text-[#F4F4F5]"
+            }`}
+          >
+            {includes.includes(option) && <span className="text-[10px]">✓</span>}
+            {option}
+          </button>
+        ))}
       </div>
     </div>
   );
@@ -415,12 +744,12 @@ export default function BuilderWorkspace({
 function SourceEditor({ source, text, setText, file, setFile, setError }) {
   if (source === "upload") {
     return (
-      <label className="mt-2.5 flex min-h-[200px] cursor-pointer flex-col items-center justify-center rounded-xl border border-dashed border-white/[0.08] bg-[#070B14] p-5 text-center">
-        <Upload className="h-9 w-9 text-[#F97316]" />
-        <span className="mt-3 text-[12.5px] font-semibold text-[#F4F4F5]">
+      <label className="sg-source-drop">
+        <Tile size={46} radius={12}><UploadGlyph size={22} /></Tile>
+        <span>
           {file ? file.name : "Choose a .md or .markdown file"}
         </span>
-        <span className="mt-1 text-[11px] text-[#6B7185]">Upload Markdown and generate a PDF-ready guide.</span>
+        <em>Upload Markdown and generate a PDF-ready guide.</em>
         <input
           type="file"
           accept=".md,.markdown"
@@ -435,7 +764,7 @@ function SourceEditor({ source, text, setText, file, setFile, setError }) {
   }
 
   return (
-    <div className="relative mt-2.5 min-h-[200px] rounded-xl border border-white/[0.08] bg-[#070B14] p-3.5">
+    <div className="sg-source-editor">
       <textarea
         value={text}
         onChange={(event) => setText(event.target.value)}
@@ -445,9 +774,9 @@ function SourceEditor({ source, text, setText, file, setFile, setError }) {
             ? "Describe the guide you want and paste the real source material here."
             : "# Your notes\n\nPaste Markdown or plain text here."
         }
-        className="relative z-10 min-h-[172px] w-full resize-y bg-transparent font-mono text-[12.5px] leading-[1.7] text-[#D4D4D8] caret-[#F97316] outline-none placeholder:text-[#6B7185]"
+        className="sg-source-textarea"
       />
-      <div className="absolute bottom-2 right-3 font-sans text-[11px] text-[#6B7185]">
+      <div className="sg-char-count">
         {text.length.toLocaleString()} / 50,000 chars
       </div>
     </div>
@@ -460,11 +789,7 @@ function MiniStyle({ style, active, onClick }) {
     <button
       type="button"
       onClick={onClick}
-      className={`flex flex-col items-center gap-1 rounded-lg border px-1 py-1.5 ${
-        active
-          ? "border-[rgba(249,115,22,0.45)] bg-[rgba(249,115,22,0.12)]"
-          : "border-white/[0.06] bg-white/[0.02]"
-      }`}
+      className={`sg-mini-style ${active ? "active" : ""}`}
     >
       <span
         className={`grid h-[26px] w-[26px] place-items-center rounded-[7px] border ${
@@ -486,11 +811,7 @@ function OptionCard({ option, active, onClick }) {
     <button
       type="button"
       onClick={onClick}
-      className={`flex min-h-[58px] items-center gap-2 rounded-[10px] border px-2.5 py-2 text-left transition ${
-        active
-          ? "border-[rgba(249,115,22,0.45)] bg-[rgba(249,115,22,0.12)] shadow-[0_0_0_1px_rgba(249,115,22,0.08)]"
-          : "border-white/[0.07] bg-white/[0.025] hover:border-white/[0.14] hover:bg-white/[0.04]"
-      }`}
+      className={`sg-option-card ${active ? "active" : ""}`}
     >
       <span
         className={`grid h-8 w-8 shrink-0 place-items-center rounded-[8px] border ${
@@ -509,59 +830,118 @@ function OptionCard({ option, active, onClick }) {
   );
 }
 
-function LivePreviewPanel({ result, artifacts, selectedStyle, length }) {
-  const artifactUrls = useMemo(() => result?.artifact_urls ?? {}, [result]);
+function SectionHeader({ eyebrow, title, description }) {
+  return (
+    <div className="rounded-xl border border-white/[0.06] bg-white/[0.025] p-4">
+      <div className="font-mono text-[10px] font-semibold uppercase tracking-[0.14em] text-[#F97316]">
+        {eyebrow}
+      </div>
+      <h2 className="mt-1 text-[22px] font-semibold tracking-[-0.02em] text-[#F4F4F5]">{title}</h2>
+      <p className="mt-1 max-w-2xl text-[12.5px] leading-5 text-[#9098A8]">{description}</p>
+    </div>
+  );
+}
+
+function InfoCard({ label, value }) {
+  return (
+    <div className="rounded-xl border border-white/[0.06] bg-white/[0.025] p-3">
+      <div className="font-mono text-[9.5px] font-semibold uppercase tracking-[0.12em] text-[#6B7185]">
+        {label}
+      </div>
+      <div className="mt-1 truncate text-[13px] font-semibold text-[#F4F4F5]">{value}</div>
+    </div>
+  );
+}
+
+function MetaRow({ label, value }) {
+  return (
+    <div className="flex items-center justify-between gap-3 rounded-[9px] border border-white/[0.06] bg-[#070B14] px-3 py-2">
+      <span className="text-[#9098A8]">{label}</span>
+      <span className="truncate font-mono text-[11px] font-semibold text-[#F4F4F5]">{value}</span>
+    </div>
+  );
+}
+
+function PreviewFormatTabs({ result, previewFormat, setPreviewFormat }) {
+  return (
+    <div className="flex gap-1">
+      {["pdf", "html"].map((format) => (
+        <button
+          key={format}
+          type="button"
+          disabled={!result}
+          onClick={() => setPreviewFormat(format)}
+          className={`h-7 rounded-md border px-2.5 text-[11.5px] font-semibold transition disabled:cursor-not-allowed disabled:opacity-45 ${
+            previewFormat === format
+              ? "border-[rgba(249,115,22,0.45)] bg-[rgba(249,115,22,0.14)] text-[#F97316]"
+              : "border-white/[0.08] bg-white/[0.03] text-[#9098A8] hover:text-[#D4D4D8]"
+          }`}
+        >
+          {format.toUpperCase()}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+function ArtifactDownloadGrid({ artifacts, compact = false }) {
+  return (
+    <div className={`grid gap-1.5 ${compact ? "" : "sm:grid-cols-2"}`}>
+      {artifacts.length === 0 && (
+        <div className="rounded-md border border-white/[0.08] bg-white/[0.03] px-3 py-2 text-[12px] text-[#9098A8]">
+          No artifacts available yet.
+        </div>
+      )}
+      {artifacts.map(([name, url]) => {
+        const artifact = artifactLabels[name];
+        const Icon = artifact.icon;
+        const label = name === "final.html" ? "View HTML" : name === "final.pdf" ? "Download PDF" : artifact.label;
+        return (
+          <a
+            key={name}
+            href={apiUrl(url)}
+            className="flex items-center justify-between rounded-md border border-white/[0.08] bg-white/[0.035] px-3 py-2 text-[12px] font-semibold text-[#D4D4D8] transition hover:border-[rgba(249,115,22,0.45)] hover:text-white"
+          >
+            <span className="inline-flex items-center gap-2">
+              <Icon className="h-3.5 w-3.5 text-[#F97316]" />
+              {label}
+            </span>
+            <Download className="h-3.5 w-3.5 text-[#6B7185]" />
+          </a>
+        );
+      })}
+    </div>
+  );
+}
+
+function LivePreviewPanel({
+  result,
+  artifacts,
+  selectedStyle,
+  length,
+  previewFormat,
+  setPreviewFormat
+}) {
+  const artifactUrls = result?.artifact_urls ?? {};
   const primaryPdf = artifactUrls["final.pdf"];
-  const [previewFormat, setPreviewFormat] = useState("sample");
   const title = result?.title || "Sample Guide Preview";
   const styleLabel = styleChips.find((style) => style.promptName === selectedStyle)?.label?.toUpperCase() || "EXAM CRAM";
   const lengthLabel = lengthOptions.find((option) => option.id === length)?.label?.toUpperCase() || "MEDIUM";
 
-  useEffect(() => {
-    if (!result) {
-      setPreviewFormat("sample");
-      return;
-    }
-    if (artifactUrls["final.pdf"]) {
-      setPreviewFormat("pdf");
-    } else if (artifactUrls["final.html"]) {
-      setPreviewFormat("html");
-    } else {
-      setPreviewFormat("pdf");
-    }
-  }, [result, artifactUrls]);
-
   return (
-    <aside className="flex w-[420px] shrink-0 flex-col gap-3.5 bg-gradient-to-b from-[#060A12] to-[#0A0F1A] px-6 py-6">
-      <div className="grid gap-2">
-        <div className="flex items-center justify-between">
-          <div className="text-[12.5px] font-semibold text-[#D4D4D8]">Live preview</div>
-          <div className="flex gap-1">
-            <PreviewBtn>1×</PreviewBtn>
-            <PreviewBtn active>2×</PreviewBtn>
-            <PreviewBtn>Fit</PreviewBtn>
-          </div>
-        </div>
-        <div className="flex gap-1">
-          {["pdf", "html"].map((format) => (
-            <button
-              key={format}
-              type="button"
-              disabled={!result}
-              onClick={() => setPreviewFormat(format)}
-              className={`h-7 rounded-md border px-2.5 text-[11.5px] font-semibold capitalize transition disabled:cursor-not-allowed disabled:opacity-45 ${
-                previewFormat === format
-                  ? "border-[rgba(249,115,22,0.45)] bg-[rgba(249,115,22,0.14)] text-[#F97316]"
-                  : "border-white/[0.08] bg-white/[0.03] text-[#9098A8] hover:text-[#D4D4D8]"
-              }`}
-            >
-              {format.toUpperCase()}
-            </button>
-          ))}
+    <aside className="sg-preview-pane">
+      <div className="sg-preview-top">
+        <div>
+          <div className="sg-preview-title">Live preview</div>
+          <PreviewFormatTabs
+            result={result}
+            previewFormat={previewFormat}
+            setPreviewFormat={setPreviewFormat}
+          />
         </div>
       </div>
 
-      <div className="h-[540px] max-h-[540px] overflow-hidden rounded-lg bg-[#FAF7F2] p-3 text-[#1F1A14] shadow-[0_30px_60px_rgba(0,0,0,0.5),0_0_0_1px_rgba(255,255,255,0.06)]">
+      <div className="sg-paper-preview">
         {!result ? (
           <div className="relative h-full overflow-hidden p-[10px] font-serif">
             <div className="font-mono text-[9px] tracking-[0.15em] text-[#A78050]">
@@ -589,40 +969,16 @@ function LivePreviewPanel({ result, artifacts, selectedStyle, length }) {
       </div>
 
       {result && (
-        <div className="rounded-lg border border-white/[0.08] bg-white/[0.03] p-3">
+        <div className="sg-download-panel">
           <div className="mb-2 flex items-center justify-between">
             <span className="text-[12.5px] font-semibold text-[#D4D4D8]">Downloads</span>
             <span className="font-mono text-[10px] text-[#6B7185]">{artifacts.length} files</span>
           </div>
-          <div className="grid gap-1.5">
-            {artifacts.length === 0 && (
-              <div className="rounded-md border border-white/[0.08] bg-white/[0.03] px-3 py-2 text-[12px] text-[#9098A8]">
-                No artifacts available yet.
-              </div>
-            )}
-            {artifacts.map(([name, url]) => {
-              const artifact = artifactLabels[name];
-              const Icon = artifact.icon;
-              const label = name === "final.html" ? "View HTML" : name === "final.pdf" ? "Download PDF" : artifact.label;
-              return (
-                <a
-                  key={name}
-                  href={apiUrl(url)}
-                  className="flex items-center justify-between rounded-md border border-white/[0.08] bg-white/[0.035] px-3 py-2 text-[12px] font-semibold text-[#D4D4D8] transition hover:border-[rgba(249,115,22,0.45)] hover:text-white"
-                >
-                  <span className="inline-flex items-center gap-2">
-                    <Icon className="h-3.5 w-3.5 text-[#F97316]" />
-                    {label}
-                  </span>
-                  <Download className="h-3.5 w-3.5 text-[#6B7185]" />
-                </a>
-              );
-            })}
-          </div>
+          <ArtifactDownloadGrid artifacts={artifacts} compact />
         </div>
       )}
 
-      <div className="flex gap-2">
+      <div className="sg-preview-actions">
         <a
           href={primaryPdf ? apiUrl(primaryPdf) : undefined}
           className={`flex h-9 flex-1 items-center justify-center rounded-lg border border-white/[0.08] bg-white/[0.03] text-[12.5px] font-medium text-[#D4D4D8] ${
@@ -716,68 +1072,11 @@ function SamplePreview() {
   );
 }
 
-function GeneratedPreview({ result, artifacts }) {
-  return (
-    <div className="mt-3.5 font-sans">
-      <div className="grid grid-cols-2 gap-2 text-[10.5px]">
-        <PreviewMeta label="Status" value={result.status || "unknown"} />
-        <PreviewMeta label="Model" value={result.model || "pipeline"} />
-      </div>
-      <div className="mt-3.5 text-[13px] font-bold font-serif">Exports</div>
-      <div className="mt-2 grid gap-1.5">
-        {artifacts.length === 0 && (
-          <div className="rounded-md bg-[rgba(249,115,22,0.07)] p-2 text-[10.5px] text-[#6B5A3F]">
-            No artifacts available yet.
-          </div>
-        )}
-        {artifacts.map(([name, url]) => {
-          const artifact = artifactLabels[name];
-          const Icon = artifact.icon;
-          return (
-            <a
-              key={name}
-              href={apiUrl(url)}
-              className="flex items-center justify-between rounded-md border border-[#E9DDCD] bg-white/60 px-2.5 py-2 text-[10.5px] font-bold text-[#3A3528]"
-            >
-              <span>{artifact.label}</span>
-              <Icon className="h-3.5 w-3.5 text-[#C2410C]" />
-            </a>
-          );
-        })}
-      </div>
-    </div>
-  );
-}
-
-function PreviewMeta({ label, value }) {
-  return (
-    <div className="rounded-md bg-[rgba(249,115,22,0.07)] p-2">
-      <div className="font-mono text-[8.5px] tracking-[0.1em] text-[#A78050]">{label.toUpperCase()}</div>
-      <div className="mt-0.5 truncate text-[10.5px] font-semibold text-[#3A3528]">{value}</div>
-    </div>
-  );
-}
-
 function FieldLabel({ children }) {
   return (
     <div className="mb-1.5 text-[11px] font-semibold uppercase tracking-[0.06em] text-[#9098A8]">
       {children}
     </div>
-  );
-}
-
-function PreviewBtn({ children, active }) {
-  return (
-    <button
-      type="button"
-      className={`h-6 rounded-md border px-2 text-[11px] font-medium ${
-        active
-          ? "border-[rgba(249,115,22,0.4)] bg-[rgba(249,115,22,0.14)] text-[#F97316]"
-          : "border-white/[0.08] bg-transparent text-[#9098A8]"
-      }`}
-    >
-      {children}
-    </button>
   );
 }
 

@@ -1,0 +1,34 @@
+# Keep the build context small and, critically, keep secrets + generated junk
+# out of the image. node_modules/katex is reinstalled cleanly in the Dockerfile.
+
+.git
+.gitignore
+.venv
+venv
+__pycache__
+*.pyc
+
+# Dependencies (reinstalled in-image)
+node_modules
+frontend/node_modules
+frontend/dist
+
+# Secrets — never bake these into the image
+.env
+.env.save
+.env.*.local
+
+# Generated output / runtime data (mounted as a volume instead)
+jobs
+output
+
+# Design + docs not needed at runtime
+design_reference
+examples
+legacy_scripts
+test_scripts
+*.md
+!prompts/*.md
+*.zip
+*.pdf
+mockups

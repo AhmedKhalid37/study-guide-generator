@@ -1,0 +1,15 @@
+services:
+  app:
+    build: .
+    image: study-guide-generator
+    ports:
+      - "8000:8000"          # open http://localhost:8000
+    env_file:
+      - .env                 # each user's own keys live here (never commit it)
+    volumes:
+      - ./jobs:/app/jobs      # generated guides persist across restarts
+    extra_hosts:
+      - "host.docker.internal:host-gateway"   # lets the container reach a
+                                              # host-run llama.cpp / llama-server
+    shm_size: "512m"          # headroom for headless Chromium
+    restart: unless-stopped
