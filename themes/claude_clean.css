@@ -204,6 +204,18 @@ body {
   font-size: 0.94em;
 }
 
+/* Inline math in table cells: let it wrap rather than force the column wide
+   enough to overflow the page, and allow long cell content to break. */
+.guide td .katex,
+.guide th .katex {
+  white-space: normal;
+}
+
+.guide td,
+.guide th {
+  overflow-wrap: anywhere;
+}
+
 @media print {
   .guide h1,
   .guide h2,
@@ -217,6 +229,12 @@ body {
   .guide blockquote,
   .guide img {
     break-inside: avoid;
+  }
+
+  /* Shrink table text in print so formula-bearing columns fit the page width
+     instead of overflowing/clipping. */
+  .guide table {
+    font-size: 0.82em;
   }
 
   /* A PDF page can't scroll, so code/diagram lines that overflow get CLIPPED

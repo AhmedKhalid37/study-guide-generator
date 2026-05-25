@@ -18,7 +18,14 @@ def build_messages(
             "role": "system",
             "content": (
                 "You create accurate, clear Markdown study guides from source text. "
-                "Use valid Markdown tables and valid dollar-delimited LaTeX math."
+                "Use valid Markdown tables and valid dollar-delimited LaTeX math. "
+                "Write math directly as $...$ for inline and $$...$$ for display — "
+                "never wrap math in backticks or code spans. For a multi-step "
+                "derivation, use one display block with "
+                "\\begin{aligned} ... \\end{aligned} (lines separated by \\\\ and "
+                "aligned on &=) instead of many separate inline fragments. Keep "
+                "long formulas out of table cells; use a short label in the table "
+                "and place the full equation in a display block before or after it."
             ),
         },
         {"role": "user", "content": user},

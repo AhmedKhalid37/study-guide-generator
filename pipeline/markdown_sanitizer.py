@@ -36,6 +36,44 @@ STRUCTURE_PREFIXES = (
 )
 
 
+# A backtick code span whose entire content is a dollar-delimited expression,
+# e.g. `$x$`, `$\frac{a}{b}$`, `$$...$$`, or an over-escaped `\$...$`. The math
+# must start immediately after the opening backtick, so genuine code spans like
+# `print()`, `$PATH`, or `cost=$5` never match.
+INLINE_CODE_MATH = re.compile(r"`(\\?\${1,2}[^`\n]*?\${1,2})`")
+
+
+def unwrap_backtick_math(text: str) -> str:
+    """Models frequently wrap inline math in backtick code spans (`` `$x$` ``).
+
+    A code span is rendered literally — KaTeX skips it — so the math shows up as
+    raw LaTeX text (e.g. ``$\\frac{\\partial L}{\\partial w_2}$``). Unwrap spans
+    whose entire content is a dollar-delimited expression back into real
+    ``$...$`` math so the downstream math protection/rendering picks them up.
+    Fenced code blocks and non-math code spans are left untouched.
+    """
+
+    def _unwrap(match: re.Match) -> str:
+        inner = match.group(1)
+        if inner.startswith("\\$"):
+            # The model (or an earlier pass) escaped the opening delimiter.
+            inner = inner[1:]
+        return inner
+
+    out: list[str] = []
+    in_code = False
+    for line in text.splitlines():
+        if line.lstrip().startswith("```"):
+            in_code = not in_code
+            out.append(line)
+            continue
+        if in_code:
+            out.append(line)
+            continue
+        out.append(INLINE_CODE_MATH.sub(_unwrap, line))
+    return "\n".join(out)
+
+
 def escape_currency(text: str) -> str:
     # Escape literal money signs before numbers so they do not become math delimiters.
     text = re.sub(r"(?<!\\)\$\s+(?=\d)", r"\\$ ", text)
@@ -671,6 +709,7 @@ def merge_bare_probability_notation(text: str) -> str:
 
 
 def sanitize_markdown_math(text: str) -> str:
+    text = unwrap_backtick_math(text)
     text = repair_malformed_derivative_notation(text)
     text, dollar_blocks = protect_existing_dollar_math(text)
     text, latex_bracket_blocks = protect_latex_display_bracket_math(text)

@@ -25,6 +25,8 @@ def main() -> None:
     test_evaluation_bar_mid_regressions()
     test_prompt_templates_render_with_latex_braces()
     test_html_renderer_inline_math()
+    test_backtick_wrapped_math_is_unwrapped()
+    test_math_pdf_fixture_renders_without_raw_latex()
     print("math regression tests passed")
 
 
@@ -353,6 +355,90 @@ Money example: $70,000 should stay money.
     assert "$z=\\frac" not in html
     assert "$P(X<900)$" not in html
     assert "Money example: $70,000 should stay money." in html
+
+
+def test_backtick_wrapped_math_is_unwrapped() -> None:
+    source = r"""# Backtick math
+
+Inline `$x$` and `$\frac{\partial L}{\partial w_2}$` must become real math.
+
+**Update:**
+`$w_2$` new = `$0.5 - 0.1 \cdot 0.093 = 0.4907$`
+
+A genuine price like $5.00 off should stay as money.
+
+Real code: `pip install katex`, `$PATH`, and `print("$x")` must stay code.
+
+$$
+\begin{aligned}
+a &= b \\
+  &= c
+\end{aligned}
+$$
+"""
+    clean = sanitize(source)
+
+    # Backtick-wrapped math is unwrapped into real inline math.
+    assert "$x$" in clean
+    assert "`$x$`" not in clean
+    assert r"$\frac{\partial L}{\partial w_2}$" in clean
+    assert r"`$\frac" not in clean
+
+    # The numeric update line is real math now — no escaped math delimiter.
+    assert "$w_2$ new = $0.5 - 0.1 \\cdot 0.093 = 0.4907$" in clean
+    assert "\\$0.5" not in clean
+
+    # Genuine currency is still escaped so it is not treated as math.
+    assert "\\$5.00 off should stay as money." in clean
+
+    # Real code spans are preserved untouched.
+    assert "`pip install katex`" in clean
+    assert "`$PATH`" in clean
+    assert '`print("$x")`' in clean
+
+    # Aligned display block survives intact.
+    assert r"\begin{aligned}" in clean
+
+    with tempfile.NamedTemporaryFile("w", suffix=".md", delete=False, encoding="utf-8") as tmp:
+        tmp.write(clean)
+        clean_path = Path(tmp.name)
+
+    result = validate(clean_path)
+    assert result.ok, result.to_json_dict()
+
+
+def test_math_pdf_fixture_renders_without_raw_latex() -> None:
+    fixture = ROOT / "test_scripts" / "math_pdf_fixture.md"
+    clean = sanitize(fixture.read_text(encoding="utf-8"))
+    html = render_markdown(clean, title="Backprop Fixture")
+
+    import re
+
+    # Inline + display math actually rendered as KaTeX.
+    assert '<span class="katex"' in html
+    assert "katex-display" in html
+
+    # No raw LaTeX leaked into <code> spans (the "scattered fragments" symptom).
+    code_spans = re.findall(r"<code>(.*?)</code>", html, flags=re.DOTALL)
+    leaked = [
+        span
+        for span in code_spans
+        if any(tok in span for tok in ("\\frac", "\\partial", "\\cdot", "\\sigma", "\\leftarrow"))
+    ]
+    assert not leaked, f"raw LaTeX leaked into code spans: {leaked[:3]}"
+
+    # Backtick-wrapped math no longer renders as literal `$...$` code text.
+    dollar_code = [span for span in code_spans if span.strip().startswith("$") and span.strip().endswith("$")]
+    assert not dollar_code, f"dollar-math still rendered as code: {dollar_code[:3]}"
+
+    # Genuine code with a dollar is preserved (not turned into math).
+    assert "$PATH" in html
+
+    # Aligned multi-line derivation rendered (KaTeX emits an mtable for aligned).
+    assert "mtable" in html
+
+    # Table cell math rendered as KaTeX, not literal text.
+    assert html.count('<span class="katex"') >= 6
 
 
 if __name__ == "__main__":
