@@ -341,29 +341,30 @@ function SmartToolCard({ tool, onNavigate }) {
 }
 
 function ModelsPage({ apiOptions }) {
-  const providers = apiOptions?.providers ?? ["DeepSeek", "Qwen"];
-  const models = apiOptions?.models ?? {};
-  const visible = [
-    ...providers.map((name) => ({ id: name.toLowerCase(), name, configured: true, models: models[name] ?? [] })),
-    { id: "local", name: "Local OpenAI-compatible", configured: false, models: [] },
-    { id: "openai", name: "OpenAI", configured: false, models: [] }
-  ];
+  const providerDetails = normalizeModelProviders(apiOptions);
+  const defaultProvider =
+    providerDetails.find((provider) => provider.configured) ||
+    providerDetails[0];
 
   return (
     <div className="sg-page">
-      <PageHead title="Models" subtitle="Connect providers, manage keys, and pick the default model for new guides." />
+      <PageHead title="Models" subtitle="Server-side provider registry. Keys stay on the backend." />
       <div className="sg-default-card">
         <Tile size={42} radius={11}><SparkleGlyph size={20} /></Tile>
         <div>
           <span>Default model</span>
-          <strong>{providers[0] ?? "DeepSeek"} · {(models[providers[0]] ?? [])[0] ?? "configured in backend"}</strong>
+          <strong>
+            {defaultProvider
+              ? `${defaultProvider.display_name} · ${defaultProvider.default_model || defaultProvider.models[0] || "no model configured"}`
+              : "Waiting for /api/options"}
+          </strong>
         </div>
-        <em>Server-side keys</em>
+        <em>No secrets exposed</em>
       </div>
-      <SectionHeading title="Cloud providers" right="Real options from /api/options where available" />
+      <SectionHeading title="Provider registry" right="Real options from /api/options" />
       <div className="sg-provider-grid">
-        {visible.map((provider, index) => (
-          <ProviderCard key={`${provider.id}-${index}`} provider={provider} />
+        {providerDetails.map((provider) => (
+          <ProviderCard key={provider.id} provider={provider} />
         ))}
       </div>
     </div>
@@ -374,22 +375,63 @@ function ProviderCard({ provider }) {
   return (
     <div className="sg-provider-card sg-recent-row">
       <div className="sg-provider-top">
-        <span>{provider.name.slice(0, 1)}</span>
+        <span>{provider.display_name.slice(0, 1)}</span>
         <div>
-          <strong>{provider.name}</strong>
-          <p>{provider.configured ? `${provider.models.length} model${provider.models.length === 1 ? "" : "s"}` : "Placeholder"}</p>
+          <strong>{provider.display_name}</strong>
+          <p>
+            {provider.configured
+              ? `${provider.models.length || 1} model${provider.models.length === 1 ? "" : "s"} · default ${provider.default_model || "unset"}`
+              : "Not configured"}
+          </p>
         </div>
       </div>
       <div className="sg-provider-tags">
-        {(provider.models.length ? provider.models.slice(0, 4) : ["Not configured"]).map((item) => (
+        {(provider.models.length ? provider.models.slice(0, 4) : ["No models discovered"]).map((item) => (
           <span key={item}>{item}</span>
         ))}
       </div>
+      {provider.base_url && (
+        <p className="mt-2 break-all text-[11.5px] leading-5 text-[#9098A8]">
+          Base URL: {provider.base_url}
+        </p>
+      )}
+      {provider.discovery_error && (
+        <p className="mt-2 text-[11.5px] leading-5 text-[#FCA5A5]">
+          Discovery error: {provider.discovery_error}
+        </p>
+      )}
       <button type="button" className="sg-ghost-button" disabled={!provider.configured}>
-        {provider.configured ? "Available in Builder" : "Backend not implemented"}
+        {provider.configured ? "Available in Builder" : "Configure in .env"}
       </button>
     </div>
   );
+}
+
+function normalizeModelProviders(apiOptions) {
+  const details = apiOptions?.provider_details ?? apiOptions?.providers_v2;
+  if (Array.isArray(details) && details.length > 0) {
+    return details.map((provider) => ({
+      id: provider.id,
+      display_name: provider.display_name || provider.name || provider.id,
+      configured: Boolean(provider.configured),
+      models: Array.isArray(provider.available_models) ? provider.available_models : [],
+      default_model: provider.default_model || "",
+      base_url: provider.base_url || "",
+      discovery_error: provider.discovery_error || ""
+    }));
+  }
+
+  const providers = apiOptions?.providers ?? ["DeepSeek", "Qwen"];
+  const models = apiOptions?.models ?? {};
+  return providers.map((name) => ({
+    id: String(name).toLowerCase(),
+    display_name: name,
+    configured: false,
+    models: models[name] ?? [],
+    default_model: models[name]?.[0] ?? "",
+    base_url: "",
+    discovery_error: ""
+  }));
 }
 
 function StylesPage({ selectedStyle, onSelectStyle, onOpenBuilder }) {

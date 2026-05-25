@@ -39,13 +39,14 @@ Then uncomment the local-model block in `.env` — the compose file already maps
 `host.docker.internal` so the container can reach the host:
 
 ```
-LLM_BASE_URL=http://host.docker.internal:8080/v1
-LLM_API_KEY=local
-LLM_MODEL=your-model-name
+LOCAL_LLM_BASE_URL=http://host.docker.internal:8080/v1
+LOCAL_LLM_API_KEY=local
+LOCAL_LLM_MODEL=your-model-name
 ```
 
-(The proper Models-section UI for picking provider/model and discovering loaded
-local models is the next feature; this env wiring is the interim path.)
+The Models page discovers local models from the OpenAI-compatible
+`GET /v1/models` endpoint when the local server is running. If the server is
+offline, the app reports the discovery error but keeps running.
 
 ## Notes / limits
 

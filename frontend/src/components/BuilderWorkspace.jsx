@@ -22,6 +22,7 @@ import {
   createLlmJob,
   createPasteJob,
   createUploadMarkdownJob,
+  getOptions,
   previewApiUrl
 } from "../api/client";
 import {
@@ -72,11 +73,6 @@ const modeOptions = [
   { id: "deep", label: "Deep", meta: "detailed explanation", icon: ListChecks }
 ];
 
-const providerOptions = [
-  { id: "DeepSeek", label: "DeepSeek", meta: "strong structured generation", icon: Wand2 },
-  { id: "Qwen", label: "Qwen", meta: "thinking + longform support", icon: Sparkles }
-];
-
 const includeOptions = [
   "Key concepts",
   "Mnemonics",
@@ -87,10 +83,32 @@ const includeOptions = [
   "TL;DR"
 ];
 
-const modelsByProvider = {
-  DeepSeek: ["deepseek-v4-flash", "deepseek-v4-pro", "deepseek-chat", "deepseek-reasoner"],
-  Qwen: ["qwen3.7-max", "qwen3.6-plus", "qwen3-max", "qwen3.6-max-preview", "qwen-plus", "qwen-max"]
-};
+const fallbackProviderDetails = [
+  {
+    id: "deepseek",
+    display_name: "DeepSeek",
+    configured: false,
+    available_models: ["deepseek-v4-flash", "deepseek-v4-pro", "deepseek-chat", "deepseek-reasoner"],
+    default_model: "deepseek-v4-flash",
+    supports_thinking: false
+  },
+  {
+    id: "qwen",
+    display_name: "Qwen",
+    configured: false,
+    available_models: ["qwen3.7-max", "qwen3.6-plus", "qwen3-max", "qwen3.6-max-preview", "qwen-plus", "qwen-max"],
+    default_model: "qwen3.7-max",
+    supports_thinking: true
+  },
+  {
+    id: "local",
+    display_name: "Local llama.cpp",
+    configured: false,
+    available_models: [],
+    default_model: "",
+    supports_thinking: false
+  }
+];
 
 const artifactLabels = {
   "final.pdf": { label: "PDF", icon: Download },
@@ -124,8 +142,9 @@ export default function BuilderWorkspace({
   const [text, setText] = useState("");
   const [file, setFile] = useState(null);
   const [mode, setMode] = useState("exam");
-  const [provider, setProvider] = useState("DeepSeek");
-  const [model, setModel] = useState(modelsByProvider.DeepSeek[0]);
+  const [provider, setProvider] = useState("deepseek");
+  const [model, setModel] = useState(fallbackProviderDetails[0].default_model);
+  const [providerDetails, setProviderDetails] = useState(fallbackProviderDetails);
   const [qwenThinking, setQwenThinking] = useState(true);
   const [strictMath, setStrictMath] = useState(true);
   const [length, setLength] = useState("medium");
@@ -147,6 +166,27 @@ export default function BuilderWorkspace({
     }
   }, [latestJob]);
 
+  useEffect(() => {
+    let cancelled = false;
+    getOptions()
+      .then((options) => {
+        if (cancelled) return;
+        const details = normalizeProviderDetails(options);
+        setProviderDetails(details);
+        const selected = chooseInitialProvider(details, provider);
+        setProvider(selected.id);
+        setModel(selectDefaultModel(selected, model));
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setProviderDetails(fallbackProviderDetails);
+        }
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
   const artifactEntries = useMemo(() => {
     if (!result?.artifact_urls) {
       return [];
@@ -157,6 +197,15 @@ export default function BuilderWorkspace({
   const artifactUrls = useMemo(() => result?.artifact_urls ?? {}, [result]);
   const selectedStyleOption = styleChips.find((style) => style.promptName === selectedStyle);
   const selectedLengthOption = lengthOptions.find((option) => option.id === length);
+  const selectedProvider = useMemo(
+    () => providerDetails.find((item) => item.id === provider) ?? providerDetails[0],
+    [providerDetails, provider]
+  );
+  const selectedProviderModels = selectedProvider?.available_models?.length
+    ? selectedProvider.available_models
+    : selectedProvider?.default_model
+      ? [selectedProvider.default_model]
+      : [];
 
   useEffect(() => {
     if (!result) {
@@ -227,6 +276,12 @@ export default function BuilderWorkspace({
       if (!text.trim()) {
         return "No source text provided.";
       }
+      if (!selectedProvider?.configured) {
+        return `${selectedProvider?.display_name || "Selected provider"} is not configured on the server.`;
+      }
+      if (!model) {
+        return "No model selected.";
+      }
     }
     return "";
   }
@@ -243,7 +298,8 @@ export default function BuilderWorkspace({
 
   function handleProviderSelect(nextProvider) {
     setProvider(nextProvider);
-    setModel(modelsByProvider[nextProvider][0]);
+    const detail = providerDetails.find((item) => item.id === nextProvider);
+    setModel(selectDefaultModel(detail));
   }
 
   function toggleInclude(option) {
@@ -294,6 +350,9 @@ export default function BuilderWorkspace({
               mode={mode}
               setMode={setMode}
               provider={provider}
+              providerDetails={providerDetails}
+              selectedProvider={selectedProvider}
+              selectedProviderModels={selectedProviderModels}
               handleProviderSelect={handleProviderSelect}
               model={model}
               setModel={setModel}
@@ -365,6 +424,9 @@ function BuilderComposer({
   mode,
   setMode,
   provider,
+  providerDetails,
+  selectedProvider,
+  selectedProviderModels,
   handleProviderSelect,
   model,
   setModel,
@@ -419,27 +481,38 @@ function BuilderComposer({
           <div>
             <FieldLabel>Provider</FieldLabel>
             <div className="sg-option-grid">
-              {providerOptions.map((option) => (
+              {providerDetails.map((detail) => (
                 <OptionCard
-                  key={option.id}
-                  option={option}
-                  active={provider === option.id}
-                  onClick={() => handleProviderSelect(option.id)}
+                  key={detail.id}
+                  option={providerOptionFromDetail(detail)}
+                  active={provider === detail.id}
+                  disabled={!detail.configured}
+                  onClick={() => handleProviderSelect(detail.id)}
                 />
               ))}
             </div>
           </div>
           <label>
             <FieldLabel>Model</FieldLabel>
-            <select value={model} onChange={(event) => setModel(event.target.value)} className="sg-select">
-              {modelsByProvider[provider].map((modelId) => (
+            <select
+              value={model}
+              disabled={!selectedProvider?.configured || selectedProviderModels.length === 0}
+              onChange={(event) => setModel(event.target.value)}
+              className="sg-select"
+            >
+              {selectedProviderModels.map((modelId) => (
                 <option key={modelId} value={modelId}>
                   {modelId}
                 </option>
               ))}
             </select>
           </label>
-          {provider === "Qwen" && (
+          {selectedProvider?.discovery_error && (
+            <p className="text-[12px] leading-5 text-[#FCA5A5]">
+              Local discovery: {selectedProvider.discovery_error}
+            </p>
+          )}
+          {selectedProvider?.supports_thinking && (
             <Toggle label="Qwen thinking mode" checked={qwenThinking} onChange={setQwenThinking} />
           )}
           <Toggle label="Strict math" checked={strictMath} onChange={setStrictMath} />
@@ -452,7 +525,7 @@ function BuilderComposer({
       <div className="sg-generate-bar">
         <div className="sg-model-chip">
           <i />
-          <span>{source === "llm" ? `${provider} · ${model}` : "Markdown pipeline"}</span>
+          <span>{source === "llm" ? `${selectedProvider?.display_name || provider} · ${model || "No model"}` : "Markdown pipeline"}</span>
           <ChevronRight className="h-3.5 w-3.5 text-[#9098A8]" />
         </div>
         <div className="flex-1" />
@@ -805,13 +878,14 @@ function MiniStyle({ style, active, onClick }) {
   );
 }
 
-function OptionCard({ option, active, onClick }) {
+function OptionCard({ option, active, disabled = false, onClick }) {
   const Icon = option.icon;
   return (
     <button
       type="button"
+      disabled={disabled}
       onClick={onClick}
-      className={`sg-option-card ${active ? "active" : ""}`}
+      className={`sg-option-card ${active ? "active" : ""} ${disabled ? "opacity-55" : ""}`}
     >
       <span
         className={`grid h-8 w-8 shrink-0 place-items-center rounded-[8px] border ${
@@ -1120,6 +1194,58 @@ const fieldClass =
 
 const selectClass =
   "h-9 w-full rounded-[10px] border border-white/[0.08] bg-[#070B14] px-3 text-[13.5px] font-medium text-[#F4F4F5] outline-none";
+
+function normalizeProviderDetails(options) {
+  const details = options?.provider_details ?? options?.providers_v2;
+  if (Array.isArray(details) && details.length > 0) {
+    return details.map((detail) => ({
+      id: detail.id,
+      display_name: detail.display_name || detail.name || detail.id,
+      configured: Boolean(detail.configured),
+      available_models: Array.isArray(detail.available_models) ? detail.available_models : [],
+      default_model: detail.default_model || "",
+      base_url: detail.base_url || "",
+      discovery_error: detail.discovery_error || "",
+      supports_thinking: Boolean(detail.supports_thinking)
+    }));
+  }
+  return fallbackProviderDetails;
+}
+
+function chooseInitialProvider(details, currentProvider) {
+  return (
+    details.find((detail) => detail.id === currentProvider && detail.configured) ||
+    details.find((detail) => detail.configured) ||
+    details.find((detail) => detail.id === currentProvider) ||
+    details[0] ||
+    fallbackProviderDetails[0]
+  );
+}
+
+function selectDefaultModel(detail, currentModel = "") {
+  if (!detail) {
+    return currentModel || "";
+  }
+  const models = detail.available_models || [];
+  if (currentModel && models.includes(currentModel)) {
+    return currentModel;
+  }
+  return detail.default_model || models[0] || "";
+}
+
+function providerOptionFromDetail(detail) {
+  const modelCount = detail.available_models?.length || 0;
+  return {
+    id: detail.id,
+    label: detail.display_name || detail.id,
+    meta: detail.configured
+      ? `${modelCount || 1} model${modelCount === 1 ? "" : "s"} available`
+      : detail.base_url
+        ? "Configured, discovery needs a model"
+        : "Not configured",
+    icon: detail.id === "qwen" ? Sparkles : detail.id === "local" ? Zap : Wand2
+  };
+}
 
 function isMarkdownFile(file) {
   const name = file.name.toLowerCase();

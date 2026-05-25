@@ -12,7 +12,7 @@ from pydantic import BaseModel
 
 from pipeline.job_manager import JOBS_DIR, Job
 from pipeline.llm_client import MissingLLMConfigError
-from pipeline.provider_config import DEEPSEEK_MODELS, QWEN_MODELS, build_provider_config
+from pipeline.provider_config import build_provider_config, get_provider_registry, validate_provider_model
 from pipeline.run_llm_job import LLMJobError, run_llm_job
 from pipeline.run_markdown_job import MarkdownJobError, run_markdown_job, run_pasted_text_job
 
@@ -73,15 +73,18 @@ def health() -> dict[str, bool]:
 
 @app.get("/api/options")
 def options() -> dict[str, Any]:
+    provider_details = get_provider_registry()
     return {
         "themes": THEMES,
         "input_modes": INPUT_MODES,
         "styles": STYLE_PRESETS,
-        "providers": ["DeepSeek", "Qwen"],
+        "providers": [provider["display_name"] for provider in provider_details],
         "models": {
-            "DeepSeek": DEEPSEEK_MODELS,
-            "Qwen": QWEN_MODELS,
+            provider["display_name"]: provider["available_models"]
+            for provider in provider_details
         },
+        "provider_details": provider_details,
+        "providers_v2": provider_details,
     }
 
 
@@ -253,11 +256,10 @@ def _validate_prompt_name(prompt_name: str) -> None:
 
 
 def _validate_provider_model(provider: str, model: str) -> None:
-    if provider == "DeepSeek" and model in DEEPSEEK_MODELS:
+    valid, message = validate_provider_model(provider, model)
+    if valid:
         return
-    if provider == "Qwen" and model in QWEN_MODELS:
-        return
-    raise HTTPException(status_code=400, detail="Unsupported provider or model.")
+    raise HTTPException(status_code=400, detail=message or "Unsupported provider or model.")
 
 
 def _job_error(exc: Exception, job: Job | None = None) -> HTTPException:
