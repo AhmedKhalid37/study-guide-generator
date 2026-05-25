@@ -11,7 +11,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from pydantic import BaseModel, ValidationError
 
-from pipeline import style_store
+from pipeline import library_store, style_store
 from pipeline.job_manager import JOBS_DIR, Job
 from pipeline.llm_client import MissingLLMConfigError, generate_chat_completion
 from pipeline.provider_config import (
@@ -87,6 +87,26 @@ class StyleGenerateRequest(BaseModel):
     base_style: str | None = None
     provider: str | None = None
     model: str | None = None
+
+
+class FolderCreateRequest(BaseModel):
+    name: str
+    color: str | None = None
+
+
+class FolderUpdateRequest(BaseModel):
+    name: str | None = None
+    color: str | None = None
+    sort_order: int | None = None
+
+
+class MoveJobRequest(BaseModel):
+    folder_id: str | None = None
+
+
+class BatchMoveRequest(BaseModel):
+    job_ids: list[str]
+    folder_id: str | None = None
 
 
 @app.get("/api/health")
@@ -331,6 +351,202 @@ def list_jobs(limit: int = 20) -> dict[str, Any]:
         reverse=True,
     )
     return {"jobs": jobs[: max(limit, 0)]}
+
+
+@app.get("/api/library")
+def get_library(
+    q: str | None = None,
+    folder_id: str | None = None,
+    status: str | None = None,
+    provider: str | None = None,
+    style: str | None = None,
+    has_attachments: bool | None = None,
+    has_warnings: bool | None = None,
+    sort: str = "newest",
+) -> dict[str, Any]:
+    jobs = _all_library_jobs()
+    folders = _library_folders_with_counts(jobs)
+    filtered = _filter_library_jobs(
+        jobs,
+        q=q,
+        folder_id=folder_id,
+        status=status,
+        provider=provider,
+        style=style,
+        has_attachments=has_attachments,
+        has_warnings=has_warnings,
+    )
+    filtered = _sort_library_jobs(filtered, sort)
+    return {"folders": folders, "jobs": filtered, "sort": sort}
+
+
+@app.get("/api/library/folders")
+def list_library_folders() -> dict[str, Any]:
+    return {"folders": _library_folders_with_counts(_all_library_jobs())}
+
+
+@app.post("/api/library/folders")
+def create_library_folder(request: FolderCreateRequest) -> dict[str, Any]:
+    try:
+        return library_store.create_folder(name=request.name, color=request.color)
+    except library_store.LibraryStoreError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@app.put("/api/library/folders/{folder_id}")
+def update_library_folder(folder_id: str, request: FolderUpdateRequest) -> dict[str, Any]:
+    try:
+        return library_store.update_folder(
+            folder_id,
+            name=request.name,
+            color=request.color,
+            sort_order=request.sort_order,
+        )
+    except library_store.FolderNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except library_store.LibraryStoreError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@app.delete("/api/library/folders/{folder_id}")
+def delete_library_folder(folder_id: str) -> dict[str, Any]:
+    try:
+        reassigned = library_store.delete_folder(folder_id)
+    except library_store.FolderNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except library_store.LibraryStoreError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return {"ok": True, "reassigned": reassigned}
+
+
+@app.post("/api/library/jobs/move")
+def batch_move_library_jobs(request: BatchMoveRequest) -> dict[str, Any]:
+    valid_ids: list[str] = []
+    for jid in request.job_ids:
+        try:
+            valid_ids.append(_get_job(jid).id)
+        except HTTPException:
+            continue
+    try:
+        moved = library_store.move_jobs(valid_ids, request.folder_id)
+    except library_store.FolderNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except library_store.LibraryStoreError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return {"ok": True, "moved": moved}
+
+
+@app.post("/api/library/jobs/{job_id}/move")
+def move_library_job(job_id: str, request: MoveJobRequest) -> dict[str, Any]:
+    job = _get_job(job_id)
+    try:
+        folder = library_store.move_job(job.id, request.folder_id)
+    except library_store.FolderNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except library_store.LibraryStoreError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return {"ok": True, "job_id": job.id, "folder_id": folder}
+
+
+def _all_library_jobs() -> list[dict[str, Any]]:
+    jobs: list[dict[str, Any]] = []
+    if JOBS_DIR.exists():
+        for manifest_path in JOBS_DIR.glob("*/job.json"):
+            manifest = _read_json(manifest_path)
+            if manifest is None:
+                continue
+            job_id = str(manifest.get("id") or manifest_path.parent.name)
+            safe = _safe_manifest(manifest)
+            jobs.append(
+                {
+                    **safe,
+                    "id": job_id,
+                    "attachment_summary": _attachment_summary(safe),
+                    "artifact_availability": _artifact_availability(Job(job_id)),
+                    "folder_id": library_store.folder_id_for(job_id),
+                }
+            )
+    return jobs
+
+
+def _library_folders_with_counts(jobs: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    counts: dict[str, int] = {}
+    for job in jobs:
+        fid = job.get("folder_id") or library_store.VIRTUAL_UNFILED
+        counts[fid] = counts.get(fid, 0) + 1
+
+    folders: list[dict[str, Any]] = [
+        {"id": library_store.VIRTUAL_ALL, "name": "All Guides", "color": None, "system": True, "count": len(jobs)},
+        {
+            "id": library_store.VIRTUAL_UNFILED,
+            "name": "Unfiled",
+            "color": None,
+            "system": True,
+            "count": counts.get(library_store.VIRTUAL_UNFILED, 0),
+        },
+    ]
+    for folder in library_store.list_folders():
+        folders.append({**folder, "count": counts.get(folder["id"], 0)})
+    return folders
+
+
+def _job_has_warnings(job: dict[str, Any]) -> bool:
+    summary = job.get("attachment_summary") or {}
+    return bool(summary.get("has_warnings")) or bool(job.get("error"))
+
+
+def _filter_library_jobs(
+    jobs: list[dict[str, Any]],
+    *,
+    q: str | None,
+    folder_id: str | None,
+    status: str | None,
+    provider: str | None,
+    style: str | None,
+    has_attachments: bool | None,
+    has_warnings: bool | None,
+) -> list[dict[str, Any]]:
+    needle = (q or "").strip().lower()
+
+    def keep(job: dict[str, Any]) -> bool:
+        if folder_id and folder_id != library_store.VIRTUAL_ALL:
+            if job.get("folder_id") != folder_id:
+                return False
+        if needle:
+            haystack = " ".join(
+                str(job.get(field) or "")
+                for field in ("title", "id", "provider", "model", "prompt_name")
+            ).lower()
+            if needle not in haystack:
+                return False
+        if status and str(job.get("status") or "") != status:
+            return False
+        if provider and str(job.get("provider") or "").lower() != provider.lower():
+            return False
+        if style and str(job.get("prompt_name") or "") != style:
+            return False
+        if has_attachments is not None:
+            count = int((job.get("attachment_summary") or {}).get("count") or 0)
+            if has_attachments != (count > 0):
+                return False
+        if has_warnings is not None and has_warnings != _job_has_warnings(job):
+            return False
+        return True
+
+    return [job for job in jobs if keep(job)]
+
+
+def _sort_library_jobs(jobs: list[dict[str, Any]], sort: str) -> list[dict[str, Any]]:
+    def created_key(job: dict[str, Any]) -> str:
+        return str(job.get("created_at") or job.get("id") or "")
+
+    if sort == "oldest":
+        return sorted(jobs, key=created_key)
+    if sort == "title":
+        return sorted(jobs, key=lambda job: str(job.get("title") or "").lower())
+    if sort == "status":
+        return sorted(jobs, key=lambda job: str(job.get("status") or ""))
+    return sorted(jobs, key=created_key, reverse=True)
 
 
 @app.post("/api/jobs/paste")

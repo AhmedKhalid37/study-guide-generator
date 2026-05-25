@@ -339,7 +339,7 @@ function PreviewPanel({ loading, error, manifest, availableArtifacts, onOpenDeta
   );
 }
 
-function StylePill({ style }) {
+export function StylePill({ style }) {
   if (!style) {
     return null;
   }

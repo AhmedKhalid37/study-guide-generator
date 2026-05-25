@@ -80,6 +80,63 @@ export function generateStyle({ description, baseStyle = null, provider = null, 
   });
 }
 
+export function getLibrary(params = {}) {
+  const query = new URLSearchParams();
+  Object.entries(params).forEach(([key, value]) => {
+    if (value !== undefined && value !== null && value !== "") {
+      query.append(key, String(value));
+    }
+  });
+  const suffix = query.toString();
+  return requestJson(`/api/library${suffix ? `?${suffix}` : ""}`);
+}
+
+export function getFolders() {
+  return requestJson("/api/library/folders");
+}
+
+export function createFolder({ name, color = null }) {
+  return requestJson("/api/library/folders", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ name, color })
+  });
+}
+
+export function updateFolder(folderId, { name, color, sort_order } = {}) {
+  const body = {};
+  if (name !== undefined) body.name = name;
+  if (color !== undefined) body.color = color;
+  if (sort_order !== undefined) body.sort_order = sort_order;
+  return requestJson(`/api/library/folders/${encodeURIComponent(folderId)}`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body)
+  });
+}
+
+export function deleteFolder(folderId) {
+  return requestJson(`/api/library/folders/${encodeURIComponent(folderId)}`, {
+    method: "DELETE"
+  });
+}
+
+export function moveJobToFolder(jobId, folderId) {
+  return requestJson(`/api/library/jobs/${encodeURIComponent(jobId)}/move`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ folder_id: folderId })
+  });
+}
+
+export function moveJobsToFolder(jobIds, folderId) {
+  return requestJson("/api/library/jobs/move", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ job_ids: jobIds, folder_id: folderId })
+  });
+}
+
 export function getJob(jobId) {
   return requestJson(`/api/jobs/${encodeURIComponent(jobId)}`);
 }

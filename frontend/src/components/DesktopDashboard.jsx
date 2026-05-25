@@ -17,6 +17,7 @@ import {
 import BuilderWorkspace from "./BuilderWorkspace";
 import RecentJobsPanel from "./RecentJobsPanel";
 import StylesWorkspace from "./StylesWorkspace";
+import LibraryWorkspace from "./LibraryWorkspace";
 import { getJobs, getOptions } from "../api/client";
 import {
   BoltGlyph,
@@ -28,7 +29,6 @@ import {
   SettingsI,
   SparkleGlyph,
   Tile,
-  TrophyGlyph,
   UploadGlyph
 } from "./ClaudeIcons";
 
@@ -109,7 +109,7 @@ export default function DesktopDashboard() {
         {activeSection === "styles" && (
           <StylesWorkspace selectedStyle={selectedStyle} onSelectStyle={setSelectedStyle} onOpenBuilder={openBuilder} />
         )}
-        {activeSection === "library" && <LibraryPage jobsRefreshKey={jobsRefreshKey} onOpenBuilder={openBuilder} />}
+        {activeSection === "library" && <LibraryWorkspace refreshKey={jobsRefreshKey} onOpenBuilder={openBuilder} />}
         {activeSection === "exports" && <ExportsPage jobsRefreshKey={jobsRefreshKey} onOpenBuilder={openBuilder} />}
       </ClaudeFrame>
     </section>
@@ -426,27 +426,6 @@ function normalizeModelProviders(apiOptions) {
   }));
 }
 
-function LibraryPage({ jobsRefreshKey, onOpenBuilder }) {
-  return (
-    <div className="sg-library-page">
-      <FolderRail />
-      <div className="sg-library-main">
-        <PageHead
-          title="Library"
-          subtitle="Real generated guides from the jobs store."
-          right={<button type="button" className="sg-cta compact" onClick={() => onOpenBuilder("paste")}><Plus size={14} />New Guide</button>}
-        />
-        <div className="sg-library-filter">
-          <SearchI size={14} stroke="#9098A8" sw={2} />
-          <span>Search guides...</span>
-          <em>Folders are visual placeholders</em>
-        </div>
-        <RecentJobsPanel embedded refreshKey={jobsRefreshKey} />
-      </div>
-    </div>
-  );
-}
-
 function ExportsPage({ jobsRefreshKey, onOpenBuilder }) {
   return (
     <div className="sg-page">
@@ -474,28 +453,6 @@ function ExportsPage({ jobsRefreshKey, onOpenBuilder }) {
       <RecentJobsPanel refreshKey={jobsRefreshKey} />
       <button type="button" className="sg-ghost-button sg-export-new" onClick={() => onOpenBuilder("paste")}>Generate another export</button>
     </div>
-  );
-}
-
-function FolderRail() {
-  return (
-    <aside className="sg-folder-rail">
-      <SectionHeading title="Folders" />
-      {[
-        ["All Guides", 32, DocGlyph],
-        ["Recent", 8, BoltGlyph],
-        ["Favorites", 5, SparkleGlyph],
-        ["Exam Guides", 12, TrophyGlyph],
-        ["Reports", 4, BookGlyph]
-      ].map(([name, count, Glyph], index) => (
-        <button key={name} className={`sg-folder-row ${index === 0 ? "active" : ""}`}>
-          <Glyph size={14} color={index === 0 ? "#F97316" : "#9098A8"} />
-          <span>{name}</span>
-          <em>{count}</em>
-        </button>
-      ))}
-      <p>Folder assignment is visual-only until library metadata is added.</p>
-    </aside>
   );
 }
 
