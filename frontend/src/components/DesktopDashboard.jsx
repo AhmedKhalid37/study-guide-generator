@@ -239,6 +239,7 @@ function HomeCommandCenter({ jobs, onOpenBuilder, onNavigate, jobsRefreshKey }) 
     { id: "paste", title: "Paste Text", subtitle: "Drop in notes and generate a polished guide.", pill: "Real flow", glyph: DocGlyph, accent: "#F97316", onClick: () => onOpenBuilder("paste") },
     { id: "upload", title: "Upload Markdown", subtitle: "Turn a .md file into a styled PDF.", pill: "Real flow", glyph: UploadGlyph, accent: "#60A5FA", onClick: () => onOpenBuilder("upload") },
     { id: "llm", title: "Generate with AI", subtitle: "Use source material with DeepSeek or Qwen.", pill: "Real flow", glyph: SparkleGlyph, accent: "#A855F7", onClick: () => onOpenBuilder("llm") },
+    { id: "styles", title: "Manage Styles", subtitle: "Use built-in, custom, or AI-generated styles.", pill: "Styles", glyph: Layers3, accent: "#C084FC", onClick: () => onNavigate("styles") },
     { id: "exam", title: "Exam Tomorrow", subtitle: "Use the exam-cram preset and jump into Builder.", pill: "Exam Cram", glyph: BoltGlyph, accent: "#F59E0B", onClick: () => onOpenBuilder("paste") },
     { id: "library", title: "Open Library", subtitle: "Browse the generated job archive.", pill: `${jobs.length} jobs`, glyph: BookGlyph, accent: "#34D399", onClick: () => onNavigate("library") },
     { id: "exports", title: "Export Center", subtitle: "Find PDFs, Markdown, HTML, logs, and validation.", pill: "Artifacts", glyph: PDFGlyph, accent: "#F43F5E", onClick: () => onNavigate("exports") }

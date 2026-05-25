@@ -11,7 +11,8 @@ import {
   Paperclip,
   X
 } from "lucide-react";
-import { artifactUrl, getJob, getJobs } from "../api/client";
+import { artifactUrl, getJob, getJobs, getStyles } from "../api/client";
+import { buildStyleLookup, resolveStyle } from "../styleMeta";
 
 const artifactLinks = [
   { name: "final.pdf", label: "PDF", key: "final_pdf", icon: Download },
@@ -59,6 +60,17 @@ export default function RecentJobsPanel({ refreshKey = 0, embedded = false, onSe
   const [loadingJob, setLoadingJob] = useState(false);
   const [jobError, setJobError] = useState(null);
   const [detailsOpen, setDetailsOpen] = useState(false);
+  const [styleLookup, setStyleLookup] = useState({});
+
+  useEffect(() => {
+    let cancelled = false;
+    getStyles()
+      .then((data) => !cancelled && setStyleLookup(buildStyleLookup(data)))
+      .catch(() => !cancelled && setStyleLookup({}));
+    return () => {
+      cancelled = true;
+    };
+  }, [refreshKey]);
 
   useEffect(() => {
     let cancelled = false;
@@ -182,6 +194,7 @@ export default function RecentJobsPanel({ refreshKey = 0, embedded = false, onSe
               const selected = selectedJobId === job.id;
               const providerModel = formatProviderModel(job);
               const sources = attachmentSummary(job);
+              const jobStyle = resolveStyle(job.prompt_name, styleLookup);
               return (
                 <button
                   key={job.id}
@@ -199,10 +212,11 @@ export default function RecentJobsPanel({ refreshKey = 0, embedded = false, onSe
                       <p className="mt-1 truncate text-xs text-slate-400">
                         {[providerModel || "Study guide", job.created_at].filter(Boolean).join(" · ")}
                       </p>
-                      {sources.count > 0 && (
+                      {(jobStyle || sources.count > 0) && (
                         <div className="mt-2 flex flex-wrap gap-1.5">
-                          <AttachmentPill count={sources.count} />
-                          {sources.hasWarnings && <WarningPill count={sources.warningCount} />}
+                          {jobStyle && <StylePill style={jobStyle} />}
+                          {sources.count > 0 && <AttachmentPill count={sources.count} />}
+                          {sources.count > 0 && sources.hasWarnings && <WarningPill count={sources.warningCount} />}
                         </div>
                       )}
                     </div>
@@ -237,6 +251,7 @@ export default function RecentJobsPanel({ refreshKey = 0, embedded = false, onSe
           loading={loadingJob}
           error={jobError}
           details={selectedJob}
+          styleLookup={styleLookup}
         />
       </>
     );
@@ -263,6 +278,7 @@ export default function RecentJobsPanel({ refreshKey = 0, embedded = false, onSe
         loading={loadingJob}
         error={jobError}
         details={selectedJob}
+        styleLookup={styleLookup}
       />
     </>
   );
@@ -320,6 +336,21 @@ function PreviewPanel({ loading, error, manifest, availableArtifacts, onOpenDeta
         </div>
       )}
     </>
+  );
+}
+
+function StylePill({ style }) {
+  if (!style) {
+    return null;
+  }
+  const tone = style.isCustom
+    ? "border-violet-400/30 bg-violet-400/10 text-violet-200"
+    : "border-sky-400/25 bg-sky-400/10 text-sky-200";
+  return (
+    <span className={`inline-flex w-fit items-center gap-1.5 rounded-full border px-2 py-0.5 text-[11px] font-bold ${tone}`}>
+      {style.name}
+      <span className="opacity-70">· {style.isCustom ? "Custom" : "Built-in"}</span>
+    </span>
   );
 }
 
@@ -453,13 +484,14 @@ function ArtifactLinkGrid({ jobId, artifacts }) {
   );
 }
 
-export function JobDetailsDrawer({ open, onClose, loading, error, details }) {
+export function JobDetailsDrawer({ open, onClose, loading, error, details, styleLookup }) {
   const manifest = details?.job;
   const artifacts = details?.artifacts ?? artifactLinks
     .filter((artifact) => details?.artifact_availability?.[artifact.key])
     .map((artifact) => ({ ...artifact, available: true }));
   const validation = details?.validation_summary;
   const renderLog = details?.render_log_summary;
+  const style = resolveStyle(manifest?.prompt_name, styleLookup);
   const warnings = [
     ...(manifest?.extraction_warnings ?? []),
     ...(manifest?.error ? [String(manifest.error)] : [])
@@ -518,11 +550,15 @@ export function JobDetailsDrawer({ open, onClose, loading, error, details }) {
                       {formatProviderModel(manifest)}
                     </span>
                   )}
+                  {style && <StylePill style={style} />}
                 </div>
                 <dl className="mt-4 grid gap-3 text-sm sm:grid-cols-2">
                   <MetaTerm label="Created" value={manifest.created_at} />
                   <MetaTerm label="Input type" value={manifest.input_type || manifest.path_mode} />
-                  <MetaTerm label="Prompt/style" value={manifest.prompt_name || "markdown pipeline"} />
+                  <MetaTerm
+                    label="Style"
+                    value={style ? `${style.name} (${style.isCustom ? "Custom" : "Built-in"})` : "markdown pipeline"}
+                  />
                   <MetaTerm label="Theme" value={manifest.theme} />
                   <MetaTerm label="Mode" value={manifest.mode} />
                   <MetaTerm label="Strict math" value={String(Boolean(manifest.strict_math))} />

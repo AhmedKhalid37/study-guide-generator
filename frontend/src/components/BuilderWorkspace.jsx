@@ -39,6 +39,7 @@ import {
   UploadGlyph
 } from "./ClaudeIcons";
 import { JobDetailsDrawer } from "./RecentJobsPanel";
+import { BUILTIN_STYLE_NAMES } from "../styleMeta";
 
 const sourceTabs = [
   { id: "paste", label: "Paste text" },
@@ -68,6 +69,7 @@ const builtinStyleMeta = {
 const styleChips = Object.entries(builtinStyleMeta).map(([promptName, meta]) => ({
   promptName,
   label: meta.label,
+  name: BUILTIN_STYLE_NAMES[promptName] || meta.label,
   icon: meta.icon,
   custom: false
 }));
@@ -75,13 +77,15 @@ const styleChips = Object.entries(builtinStyleMeta).map(([promptName, meta]) => 
 function styleRecordToChip(style) {
   const meta = builtinStyleMeta[style.id];
   const isCustom = style.source === "custom";
-  let label = meta?.label || style.name || style.id;
+  const name = style.name || BUILTIN_STYLE_NAMES[style.id] || style.id;
+  let label = meta?.label || name;
   if (!meta && label.length > 12) {
     label = `${label.slice(0, 11)}…`;
   }
   return {
     promptName: style.id,
     label,
+    name,
     icon: meta?.icon || (isCustom ? Sparkles : FileText),
     custom: isCustom
   };
@@ -249,6 +253,16 @@ export default function BuilderWorkspace({
   const selectedStyleOption =
     styleOptions.find((style) => style.promptName === selectedStyle) ||
     styleChips.find((style) => style.promptName === selectedStyle);
+  const builderStyleLookup = useMemo(
+    () =>
+      Object.fromEntries(
+        styleOptions.map((style) => [
+          style.promptName,
+          { name: style.name, source: style.custom ? "custom" : "builtin" }
+        ])
+      ),
+    [styleOptions]
+  );
   const selectedLengthOption = lengthOptions.find((option) => option.id === length);
   const selectedProvider = useMemo(
     () => providerDetails.find((item) => item.id === provider) ?? providerDetails[0],
@@ -490,6 +504,7 @@ export default function BuilderWorkspace({
         loading={detailsLoading}
         error={detailsError}
         details={jobDetails}
+        styleLookup={builderStyleLookup}
       />
     </div>
   );
@@ -690,7 +705,7 @@ function OutlinePanel({ title, source, selectedStyle, selectedLength, includes, 
       <div className="grid gap-3 xl:grid-cols-4">
         <InfoCard label="Title" value={title || "Untitled guide"} />
         <InfoCard label="Source" value={sourceLabel} />
-        <InfoCard label="Style" value={selectedStyle?.label || "Exam Cram"} />
+        <InfoCard label="Style" value={selectedStyle?.name || selectedStyle?.label || "Exam Cram"} />
         <InfoCard label="Length" value={`${selectedLength?.label || "Medium"} ${selectedLength?.meta || "~20 pages"}`} />
       </div>
       <div className="rounded-xl border border-white/[0.06] bg-white/[0.025] p-4">
@@ -837,19 +852,42 @@ function PreviewWorkspacePanel({ result, artifacts, artifactUrls, previewFormat,
 }
 
 function StyleControls({ selectedStyle, onSelectStyle, styleOptions = styleChips }) {
+  const builtinStyles = styleOptions.filter((style) => !style.custom);
+  const customStyles = styleOptions.filter((style) => style.custom);
+
+  const renderGrid = (styles) => (
+    <div className="mt-1.5 grid grid-cols-3 gap-1.5 sm:grid-cols-6">
+      {styles.map((style) => (
+        <MiniStyle
+          key={style.promptName}
+          style={style}
+          active={selectedStyle === style.promptName}
+          onClick={() => onSelectStyle?.(style.promptName)}
+        />
+      ))}
+    </div>
+  );
+
   return (
     <div>
       <FieldLabel>Style</FieldLabel>
-      <div className="mt-1.5 grid grid-cols-3 gap-1.5 sm:grid-cols-6">
-        {styleOptions.map((style) => (
-          <MiniStyle
-            key={style.promptName}
-            style={style}
-            active={selectedStyle === style.promptName}
-            onClick={() => onSelectStyle?.(style.promptName)}
-          />
-        ))}
-      </div>
+      <StyleGroupLabel>Built-in</StyleGroupLabel>
+      {renderGrid(builtinStyles)}
+      {customStyles.length > 0 && (
+        <>
+          <StyleGroupLabel>Custom</StyleGroupLabel>
+          {renderGrid(customStyles)}
+        </>
+      )}
+    </div>
+  );
+}
+
+function StyleGroupLabel({ children }) {
+  return (
+    <div className="mt-2.5 mb-0.5 flex items-center gap-2 text-[10px] font-bold uppercase tracking-[0.16em] text-[#9098A8]">
+      <span>{children}</span>
+      <span className="h-px flex-1 bg-white/10" />
     </div>
   );
 }
@@ -1209,7 +1247,8 @@ function LivePreviewPanel({
   const artifactUrls = result?.artifact_urls ?? {};
   const primaryPdf = artifactUrls["final.pdf"];
   const title = result?.title || "Sample Guide Preview";
-  const styleLabel = styleOptions.find((style) => style.promptName === selectedStyle)?.label?.toUpperCase() || "EXAM CRAM";
+  const matchedStyle = styleOptions.find((style) => style.promptName === selectedStyle);
+  const styleLabel = (matchedStyle?.name || matchedStyle?.label || "Exam Cram").toUpperCase();
   const lengthLabel = lengthOptions.find((option) => option.id === length)?.label?.toUpperCase() || "MEDIUM";
 
   return (
