@@ -99,10 +99,12 @@ def list_jobs(limit: int = 20) -> dict[str, Any]:
             if manifest is None:
                 continue
             job_id = str(manifest.get("id") or manifest_path.parent.name)
+            safe_manifest = _safe_manifest(manifest)
             jobs.append(
                 {
-                    **manifest,
+                    **safe_manifest,
                     "id": job_id,
+                    "attachment_summary": _attachment_summary(safe_manifest),
                     "artifact_availability": _artifact_availability(Job(job_id)),
                 }
             )
@@ -210,9 +212,10 @@ async def create_llm_job(request: Request) -> dict[str, Any]:
 @app.get("/api/jobs/{job_id}")
 def get_job(job_id: str) -> dict[str, Any]:
     job = _get_job(job_id)
-    manifest = job.read_manifest()
+    manifest = _safe_manifest(job.read_manifest())
     return {
         "job": manifest,
+        "attachment_summary": _attachment_summary(manifest),
         "artifact_availability": _artifact_availability(job),
     }
 
@@ -249,9 +252,10 @@ def job_response(job: Job) -> dict[str, Any]:
         "provider": manifest.get("provider"),
         "model": manifest.get("model"),
         "created_at": manifest.get("created_at"),
-        "attachments": manifest.get("attachments", []),
-        "extraction_warnings": manifest.get("extraction_warnings", []),
+        "attachments": _safe_attachment_metadata(manifest.get("attachments", [])),
+        "extraction_warnings": _safe_warnings(manifest.get("extraction_warnings", [])),
         "total_extracted_chars": manifest.get("total_extracted_chars", 0),
+        "attachment_summary": _attachment_summary(manifest),
         "artifact_availability": availability,
         "artifact_urls": artifact_urls,
     }
@@ -265,6 +269,60 @@ def _validate_theme(theme: str) -> None:
 def _validate_prompt_name(prompt_name: str) -> None:
     if prompt_name not in STYLE_PRESETS:
         raise HTTPException(status_code=400, detail="Unsupported prompt_name.")
+
+
+def _safe_manifest(manifest: dict[str, Any]) -> dict[str, Any]:
+    safe = dict(manifest)
+    safe["attachments"] = _safe_attachment_metadata(manifest.get("attachments", []))
+    safe["extraction_warnings"] = _safe_warnings(manifest.get("extraction_warnings", []))
+    safe["total_extracted_chars"] = int(manifest.get("total_extracted_chars") or 0)
+    return safe
+
+
+def _safe_attachment_metadata(attachments: Any) -> list[dict[str, Any]]:
+    if not isinstance(attachments, list):
+        return []
+
+    safe: list[dict[str, Any]] = []
+    for attachment in attachments:
+        if not isinstance(attachment, dict):
+            continue
+        filename = str(attachment.get("filename") or attachment.get("original_filename") or "attachment")
+        safe.append(
+            {
+                "filename": filename,
+                "extension": Path(filename).suffix.lower(),
+                "mode": attachment.get("mode"),
+                "status": attachment.get("status") or "unknown",
+                "extracted_chars": int(attachment.get("extracted_chars") or 0),
+                "truncated": bool(attachment.get("truncated")),
+                "warnings": _safe_warnings(attachment.get("warnings", [])),
+            }
+        )
+    return safe
+
+
+def _safe_warnings(warnings: Any) -> list[str]:
+    if not isinstance(warnings, list):
+        return []
+    return [str(warning)[:500] for warning in warnings if warning]
+
+
+def _attachment_summary(manifest: dict[str, Any]) -> dict[str, Any]:
+    attachments = _safe_attachment_metadata(manifest.get("attachments", []))
+    warnings = _safe_warnings(manifest.get("extraction_warnings", []))
+    if not warnings:
+        warnings = [
+            warning
+            for attachment in attachments
+            for warning in attachment.get("warnings", [])
+        ]
+    return {
+        "count": len(attachments),
+        "warning_count": len(warnings),
+        "total_extracted_chars": int(manifest.get("total_extracted_chars") or 0),
+        "has_warnings": bool(warnings),
+    }
 
 
 async def _parse_llm_request(request: Request) -> tuple[LLMJobRequest, list[AttachmentSource]]:

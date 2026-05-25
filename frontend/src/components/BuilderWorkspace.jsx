@@ -744,6 +744,9 @@ function PreviewWorkspacePanel({ result, artifacts, artifactUrls, previewFormat,
         )}
       </div>
       {result && (
+        <AttachedSourcesSummary result={result} />
+      )}
+      {result && (
         <div className="rounded-xl border border-white/[0.06] bg-white/[0.025] p-4">
           <FieldLabel>Downloads</FieldLabel>
           <ArtifactDownloadGrid artifacts={artifacts} />
@@ -1053,6 +1056,66 @@ function ArtifactDownloadGrid({ artifacts, compact = false }) {
   );
 }
 
+function AttachedSourcesSummary({ result, compact = false }) {
+  const attachments = result?.attachments ?? [];
+  if (attachments.length === 0) {
+    return null;
+  }
+
+  const warnings = result?.extraction_warnings ?? attachments.flatMap((item) => item.warnings ?? []);
+  return (
+    <div className={`rounded-xl border border-white/[0.06] bg-white/[0.025] ${compact ? "mt-3 p-3" : "p-4"}`}>
+      <div className="flex items-center justify-between gap-3">
+        <FieldLabel>Attached sources</FieldLabel>
+        <div className="flex flex-wrap justify-end gap-1.5">
+          <span className="inline-flex h-6 items-center gap-1.5 rounded-full border border-emerald-400/25 bg-emerald-400/10 px-2 text-[10.5px] font-bold text-emerald-200">
+            <FileText className="h-3 w-3" />
+            {attachments.length} {attachments.length === 1 ? "source" : "sources"}
+          </span>
+          {warnings.length > 0 && (
+            <span className="inline-flex h-6 items-center gap-1.5 rounded-full border border-amber-300/30 bg-amber-300/10 px-2 text-[10.5px] font-bold text-amber-100">
+              <AlertCircle className="h-3 w-3" />
+              {warnings.length} warning{warnings.length === 1 ? "" : "s"}
+            </span>
+          )}
+        </div>
+      </div>
+      <div className={`mt-2 grid gap-2 ${compact ? "max-h-36 overflow-auto pr-1" : ""}`}>
+        {attachments.map((attachment, index) => {
+          const itemWarnings = attachment.warnings ?? [];
+          const extracted = Number(attachment.extracted_chars || 0);
+          return (
+            <div key={`${attachment.filename}-${index}`} className="rounded-[10px] border border-white/[0.06] bg-[#070B14] p-2.5">
+              <div className="flex items-center justify-between gap-2">
+                <span className="min-w-0 truncate text-[12px] font-semibold text-[#F4F4F5]">{attachment.filename}</span>
+                <span className={`rounded-full border px-2 py-0.5 text-[10px] font-bold ${
+                  attachment.status === "extracted"
+                    ? "border-emerald-400/25 bg-emerald-400/10 text-emerald-200"
+                    : "border-amber-300/30 bg-amber-300/10 text-amber-100"
+                }`}>
+                  {attachment.status || "unknown"}
+                </span>
+              </div>
+              <div className="mt-1.5 flex flex-wrap gap-1.5 text-[10.5px] font-semibold text-[#9098A8]">
+                <span>{attachment.mode || attachment.extension || "unsupported"}</span>
+                <span>{extracted.toLocaleString()} chars</span>
+                {attachment.truncated && <span>truncated</span>}
+              </div>
+              {itemWarnings.length > 0 && (
+                <div className="mt-2 grid gap-1 text-[11px] leading-4 text-amber-100">
+                  {itemWarnings.map((warning, warningIndex) => (
+                    <p key={warningIndex}>{warning}</p>
+                  ))}
+                </div>
+              )}
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 function LivePreviewPanel({
   result,
   artifacts,
@@ -1116,6 +1179,8 @@ function LivePreviewPanel({
           <ArtifactDownloadGrid artifacts={artifacts} compact />
         </div>
       )}
+
+      {result && <AttachedSourcesSummary result={result} compact />}
 
       <div className="sg-preview-actions">
         <a
