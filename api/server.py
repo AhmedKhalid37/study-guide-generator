@@ -213,10 +213,15 @@ async def create_llm_job(request: Request) -> dict[str, Any]:
 def get_job(job_id: str) -> dict[str, Any]:
     job = _get_job(job_id)
     manifest = _safe_manifest(job.read_manifest())
+    availability = _artifact_availability(job)
     return {
         "job": manifest,
         "attachment_summary": _attachment_summary(manifest),
-        "artifact_availability": _artifact_availability(job),
+        "artifact_availability": availability,
+        "artifact_urls": _artifact_urls(job, availability),
+        "artifacts": _artifact_details(job, availability),
+        "validation_summary": _validation_summary(job),
+        "render_log_summary": _render_log_summary(job),
     }
 
 
@@ -240,11 +245,7 @@ def get_artifact(
 def job_response(job: Job) -> dict[str, Any]:
     manifest = job.read_manifest()
     availability = _artifact_availability(job)
-    artifact_urls = {
-        artifact_name: f"/api/jobs/{job.id}/artifacts/{artifact_name}"
-        for artifact_name, (key, _media_type) in ARTIFACTS.items()
-        if availability.get(key)
-    }
+    artifact_urls = _artifact_urls(job, availability)
     return {
         "job_id": job.id,
         "status": manifest.get("status"),
@@ -261,6 +262,14 @@ def job_response(job: Job) -> dict[str, Any]:
     }
 
 
+def _artifact_urls(job: Job, availability: dict[str, bool]) -> dict[str, str]:
+    return {
+        artifact_name: f"/api/jobs/{job.id}/artifacts/{artifact_name}"
+        for artifact_name, (key, _media_type) in ARTIFACTS.items()
+        if availability.get(key)
+    }
+
+
 def _validate_theme(theme: str) -> None:
     if theme not in THEMES:
         raise HTTPException(status_code=400, detail="Unsupported theme.")
@@ -273,6 +282,16 @@ def _validate_prompt_name(prompt_name: str) -> None:
 
 def _safe_manifest(manifest: dict[str, Any]) -> dict[str, Any]:
     safe = dict(manifest)
+    for key in [
+        "input_path",
+        "source_path",
+        "raw_md",
+        "clean_md",
+        "final_html",
+        "final_pdf",
+        "validation_json",
+    ]:
+        safe.pop(key, None)
     safe["attachments"] = _safe_attachment_metadata(manifest.get("attachments", []))
     safe["extraction_warnings"] = _safe_warnings(manifest.get("extraction_warnings", []))
     safe["total_extracted_chars"] = int(manifest.get("total_extracted_chars") or 0)
@@ -323,6 +342,78 @@ def _attachment_summary(manifest: dict[str, Any]) -> dict[str, Any]:
         "total_extracted_chars": int(manifest.get("total_extracted_chars") or 0),
         "has_warnings": bool(warnings),
     }
+
+
+def _artifact_details(job: Job, availability: dict[str, bool]) -> list[dict[str, Any]]:
+    urls = _artifact_urls(job, availability)
+    details: list[dict[str, Any]] = []
+    for artifact_name, (key, media_type) in ARTIFACTS.items():
+        available = bool(availability.get(key))
+        details.append(
+            {
+                "name": artifact_name,
+                "key": key,
+                "label": _artifact_label(artifact_name),
+                "available": available,
+                "media_type": media_type,
+                "url": urls.get(artifact_name),
+            }
+        )
+    return details
+
+
+def _artifact_label(artifact_name: str) -> str:
+    return {
+        "final.pdf": "PDF",
+        "clean.md": "Markdown",
+        "final.html": "HTML",
+        "validation.json": "Validation JSON",
+        "render.log": "Render log",
+    }.get(artifact_name, artifact_name)
+
+
+def _validation_summary(job: Job) -> dict[str, Any]:
+    path = _validation_json_path(job)
+    if not path.exists() or not path.is_file():
+        manifest = job.read_manifest()
+        math_validation = manifest.get("math_validation")
+        if isinstance(math_validation, dict):
+            return {
+                "available": False,
+                "ok": bool(math_validation.get("ok")),
+                "error_count": int(math_validation.get("errors") or 0),
+                "display_blocks": int(math_validation.get("display_blocks") or 0),
+                "inline_formulas": int(math_validation.get("inline_formulas") or 0),
+            }
+        return {"available": False, "ok": None, "error_count": 0}
+
+    data = _read_json(path) or {}
+    errors = data.get("errors")
+    error_count = len(errors) if isinstance(errors, list) else int(errors or 0)
+    return {
+        "available": True,
+        "ok": bool(data.get("ok")),
+        "error_count": error_count,
+        "display_blocks": int(data.get("displayBlocks") or data.get("display_blocks") or 0),
+        "inline_formulas": int(data.get("inlineFormulas") or data.get("inline_formulas") or 0),
+    }
+
+
+def _render_log_summary(job: Job) -> dict[str, Any]:
+    if not job.render_log.exists() or not job.render_log.is_file():
+        return {"available": False, "line_count": 0, "last_lines": []}
+
+    text = job.render_log.read_text(encoding="utf-8", errors="replace")
+    lines = [line for line in text.splitlines() if line.strip()]
+    return {
+        "available": True,
+        "line_count": len(lines),
+        "last_lines": [_safe_log_line(line) for line in lines[-5:]],
+    }
+
+
+def _safe_log_line(line: str) -> str:
+    return str(line).replace(str(JOBS_DIR), "jobs")
 
 
 async def _parse_llm_request(request: Request) -> tuple[LLMJobRequest, list[AttachmentSource]]:

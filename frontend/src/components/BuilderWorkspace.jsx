@@ -22,6 +22,7 @@ import {
   createLlmJob,
   createPasteJob,
   createUploadMarkdownJob,
+  getJob,
   getOptions,
   previewApiUrl
 } from "../api/client";
@@ -36,6 +37,7 @@ import {
   TrophyGlyph,
   UploadGlyph
 } from "./ClaudeIcons";
+import { JobDetailsDrawer } from "./RecentJobsPanel";
 
 const sourceTabs = [
   { id: "paste", label: "Paste text" },
@@ -154,6 +156,10 @@ export default function BuilderWorkspace({
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   const [previewFormat, setPreviewFormat] = useState("sample");
+  const [detailsOpen, setDetailsOpen] = useState(false);
+  const [jobDetails, setJobDetails] = useState(null);
+  const [detailsLoading, setDetailsLoading] = useState(false);
+  const [detailsError, setDetailsError] = useState(null);
 
   useEffect(() => {
     setSource(initialSource);
@@ -312,6 +318,24 @@ export default function BuilderWorkspace({
     );
   }
 
+  async function openJobDetails() {
+    const jobId = result?.job_id || result?.id;
+    if (!jobId) {
+      return;
+    }
+    setDetailsOpen(true);
+    setDetailsLoading(true);
+    setDetailsError(null);
+    try {
+      setJobDetails(await getJob(jobId));
+    } catch (requestError) {
+      setDetailsError(requestError);
+      setJobDetails(null);
+    } finally {
+      setDetailsLoading(false);
+    }
+  }
+
   return (
     <div className="sg-builder">
       <div className="sg-builder-tabs">
@@ -409,8 +433,16 @@ export default function BuilderWorkspace({
           length={length}
           previewFormat={previewFormat}
           setPreviewFormat={setPreviewFormat}
+          onOpenDetails={openJobDetails}
         />
       </div>
+      <JobDetailsDrawer
+        open={detailsOpen}
+        onClose={() => setDetailsOpen(false)}
+        loading={detailsLoading}
+        error={detailsError}
+        details={jobDetails}
+      />
     </div>
   );
 }
@@ -1122,7 +1154,8 @@ function LivePreviewPanel({
   selectedStyle,
   length,
   previewFormat,
-  setPreviewFormat
+  setPreviewFormat,
+  onOpenDetails
 }) {
   const artifactUrls = result?.artifact_urls ?? {};
   const primaryPdf = artifactUrls["final.pdf"];
@@ -1194,10 +1227,11 @@ function LivePreviewPanel({
         </a>
         <button
           type="button"
+          onClick={onOpenDetails}
           className="flex h-9 flex-1 items-center justify-center rounded-lg border border-white/[0.08] bg-white/[0.03] text-[12.5px] font-medium text-[#D4D4D8]"
         >
           <Share2 className="h-3.5 w-3.5" />
-          <span className="ml-2">Share</span>
+          <span className="ml-2">Details</span>
         </button>
       </div>
     </aside>
