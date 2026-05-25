@@ -68,6 +68,24 @@ export function createUploadMarkdownJob({ file, theme = "claude_clean", strictMa
 }
 
 export function createLlmJob(payload) {
+  const attachments = payload.attachments ?? [];
+  if (attachments.length > 0) {
+    const formData = new FormData();
+    Object.entries(payload).forEach(([key, value]) => {
+      if (key === "attachments") {
+        return;
+      }
+      formData.append(key, String(value));
+    });
+    attachments.forEach((file) => {
+      formData.append("attachments", file);
+    });
+    return requestJson("/api/jobs/llm", {
+      method: "POST",
+      body: formData
+    });
+  }
+
   return requestJson("/api/jobs/llm", {
     method: "POST",
     headers: {

@@ -5,15 +5,15 @@ import tempfile
 from pathlib import Path
 from typing import Any
 
-from fastapi import FastAPI, File, Form, HTTPException, UploadFile
+from fastapi import FastAPI, File, Form, HTTPException, Request, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
-from pydantic import BaseModel
+from pydantic import BaseModel, ValidationError
 
 from pipeline.job_manager import JOBS_DIR, Job
 from pipeline.llm_client import MissingLLMConfigError
 from pipeline.provider_config import build_provider_config, get_provider_registry, validate_provider_model
-from pipeline.run_llm_job import LLMJobError, run_llm_job
+from pipeline.run_llm_job import AttachmentSource, LLMJobError, run_llm_job
 from pipeline.run_markdown_job import MarkdownJobError, run_markdown_job, run_pasted_text_job
 
 
@@ -46,6 +46,8 @@ ARTIFACTS = {
     "validation.json": ("validation_json", "application/json"),
     "render.log": ("render_log", "text/plain; charset=utf-8"),
 }
+MAX_LLM_ATTACHMENTS = 5
+MAX_LLM_ATTACHMENT_BYTES = 15 * 1024 * 1024
 
 
 class PasteJobRequest(BaseModel):
@@ -163,31 +165,35 @@ def create_upload_markdown_job(
 
 
 @app.post("/api/jobs/llm")
-def create_llm_job(request: LLMJobRequest) -> dict[str, Any]:
-    source_text = request.source_text.strip()
-    title = request.title.strip()
+async def create_llm_job(request: Request) -> dict[str, Any]:
+    llm_request, attachments = await _parse_llm_request(request)
+    source_text = llm_request.source_text.strip()
+    title = llm_request.title.strip()
+    if not source_text and attachments:
+        source_text = "Use the attached source files to generate the study guide."
     if not source_text:
         raise HTTPException(status_code=400, detail="source_text must not be empty.")
     if not title:
         raise HTTPException(status_code=400, detail="title must not be empty.")
-    _validate_theme(request.theme)
-    _validate_prompt_name(request.prompt_name)
-    _validate_provider_model(request.provider, request.model)
+    _validate_theme(llm_request.theme)
+    _validate_prompt_name(llm_request.prompt_name)
+    _validate_provider_model(llm_request.provider, llm_request.model)
 
     try:
         config = build_provider_config(
-            request.provider,
-            request.model,
-            qwen_thinking_enabled=request.qwen_thinking,
+            llm_request.provider,
+            llm_request.model,
+            qwen_thinking_enabled=llm_request.qwen_thinking,
         )
         job = run_llm_job(
             source_text,
             title=title,
-            mode=request.mode,
-            prompt_name=request.prompt_name,
-            theme=request.theme,
-            strict_math=request.strict_math,
+            mode=llm_request.mode,
+            prompt_name=llm_request.prompt_name,
+            theme=llm_request.theme,
+            strict_math=llm_request.strict_math,
             config=config,
+            attachments=attachments,
         )
     except MissingLLMConfigError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
@@ -195,6 +201,9 @@ def create_llm_job(request: LLMJobRequest) -> dict[str, Any]:
         raise _job_error(exc, job=getattr(exc, "job", None)) from exc
     except Exception as exc:
         raise _job_error(exc) from exc
+    finally:
+        for attachment in attachments:
+            attachment.path.unlink(missing_ok=True)
     return job_response(job)
 
 
@@ -240,6 +249,9 @@ def job_response(job: Job) -> dict[str, Any]:
         "provider": manifest.get("provider"),
         "model": manifest.get("model"),
         "created_at": manifest.get("created_at"),
+        "attachments": manifest.get("attachments", []),
+        "extraction_warnings": manifest.get("extraction_warnings", []),
+        "total_extracted_chars": manifest.get("total_extracted_chars", 0),
         "artifact_availability": availability,
         "artifact_urls": artifact_urls,
     }
@@ -253,6 +265,91 @@ def _validate_theme(theme: str) -> None:
 def _validate_prompt_name(prompt_name: str) -> None:
     if prompt_name not in STYLE_PRESETS:
         raise HTTPException(status_code=400, detail="Unsupported prompt_name.")
+
+
+async def _parse_llm_request(request: Request) -> tuple[LLMJobRequest, list[AttachmentSource]]:
+    content_type = request.headers.get("content-type", "")
+    if content_type.startswith("multipart/form-data"):
+        form = await request.form()
+        data = {
+            "source_text": _form_text(form, "source_text") or _form_text(form, "prompt") or _form_text(form, "topic") or "",
+            "title": _form_text(form, "title") or "Generated Study Guide",
+            "mode": _form_text(form, "mode") or "exam",
+            "prompt_name": _form_text(form, "prompt_name") or _form_text(form, "style") or "basic_study_guide",
+            "provider": _form_text(form, "provider") or "",
+            "model": _form_text(form, "model") or "",
+            "theme": _form_text(form, "theme") or "claude_clean",
+            "strict_math": _form_bool(form, "strict_math", True),
+            "qwen_thinking": _form_bool(form, "qwen_thinking", True),
+        }
+        uploads = [
+            value
+            for key, value in form.multi_items()
+            if key in {"attachments", "files", "file"} and hasattr(value, "filename") and hasattr(value, "read")
+        ]
+        attachments = await _save_llm_attachments(uploads)
+        try:
+            return LLMJobRequest(**data), attachments
+        except ValidationError as exc:
+            for attachment in attachments:
+                attachment.path.unlink(missing_ok=True)
+            raise HTTPException(status_code=400, detail="Invalid LLM job request.") from exc
+
+    try:
+        payload = await request.json()
+    except json.JSONDecodeError as exc:
+        raise HTTPException(status_code=400, detail="Invalid JSON request.") from exc
+    try:
+        return LLMJobRequest(**payload), []
+    except ValidationError as exc:
+        raise HTTPException(status_code=400, detail="Invalid LLM job request.") from exc
+
+
+def _form_text(form: Any, key: str) -> str | None:
+    value = form.get(key)
+    if isinstance(value, str):
+        return value
+    return None
+
+
+def _form_bool(form: Any, key: str, default: bool) -> bool:
+    value = form.get(key)
+    if value is None:
+        return default
+    if isinstance(value, bool):
+        return value
+    return str(value).strip().lower() in {"1", "true", "yes", "on"}
+
+
+async def _save_llm_attachments(uploads: list[UploadFile]) -> list[AttachmentSource]:
+    if len(uploads) > MAX_LLM_ATTACHMENTS:
+        raise HTTPException(status_code=400, detail=f"At most {MAX_LLM_ATTACHMENTS} attachments are allowed.")
+
+    attachments: list[AttachmentSource] = []
+    for upload in uploads:
+        filename = Path(upload.filename or "attachment").name
+        suffix = Path(filename).suffix.lower()
+        temp_path: Path | None = None
+        try:
+            with tempfile.NamedTemporaryFile(delete=False, suffix=suffix, prefix="llm-attachment-") as tmp:
+                temp_path = Path(tmp.name)
+                size = 0
+                while chunk := await upload.read(1024 * 1024):
+                    size += len(chunk)
+                    if size > MAX_LLM_ATTACHMENT_BYTES:
+                        raise HTTPException(
+                            status_code=400,
+                            detail=f"{filename} exceeds the {MAX_LLM_ATTACHMENT_BYTES // (1024 * 1024)} MB attachment limit.",
+                        )
+                    tmp.write(chunk)
+            attachments.append(AttachmentSource(path=temp_path, filename=filename))
+        except Exception:
+            if temp_path is not None:
+                temp_path.unlink(missing_ok=True)
+            raise
+        finally:
+            await upload.close()
+    return attachments
 
 
 def _validate_provider_model(provider: str, model: str) -> None:

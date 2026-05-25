@@ -147,6 +147,7 @@ export default function BuilderWorkspace({
   const [providerDetails, setProviderDetails] = useState(fallbackProviderDetails);
   const [qwenThinking, setQwenThinking] = useState(true);
   const [strictMath, setStrictMath] = useState(true);
+  const [attachments, setAttachments] = useState([]);
   const [length, setLength] = useState("medium");
   const [includes, setIncludes] = useState(["Key concepts", "Mnemonics", "Examples", "Diagrams"]);
   const [result, setResult] = useState(latestJob);
@@ -243,6 +244,7 @@ export default function BuilderWorkspace({
         model,
         strictMath,
         qwenThinking,
+        attachments,
         length,
         includes
       });
@@ -360,6 +362,8 @@ export default function BuilderWorkspace({
               setQwenThinking={setQwenThinking}
               strictMath={strictMath}
               setStrictMath={setStrictMath}
+              attachments={attachments}
+              setAttachments={setAttachments}
               error={error}
               loading={loading}
             />
@@ -434,6 +438,8 @@ function BuilderComposer({
   setQwenThinking,
   strictMath,
   setStrictMath,
+  attachments,
+  setAttachments,
   error,
   loading
 }) {
@@ -515,6 +521,7 @@ function BuilderComposer({
           {selectedProvider?.supports_thinking && (
             <Toggle label="Qwen thinking mode" checked={qwenThinking} onChange={setQwenThinking} />
           )}
+          <AttachmentsPicker attachments={attachments} setAttachments={setAttachments} />
           <Toggle label="Strict math" checked={strictMath} onChange={setStrictMath} />
         </div>
       )}
@@ -852,6 +859,64 @@ function SourceEditor({ source, text, setText, file, setFile, setError }) {
       <div className="sg-char-count">
         {text.length.toLocaleString()} / 50,000 chars
       </div>
+    </div>
+  );
+}
+
+function AttachmentsPicker({ attachments, setAttachments }) {
+  function addFiles(fileList) {
+    const nextFiles = Array.from(fileList || []);
+    if (nextFiles.length === 0) return;
+    setAttachments((current) => [...current, ...nextFiles].slice(0, 5));
+  }
+
+  function removeFile(index) {
+    setAttachments((current) => current.filter((_, fileIndex) => fileIndex !== index));
+  }
+
+  return (
+    <div className="rounded-xl border border-white/[0.06] bg-white/[0.025] p-3">
+      <FieldLabel>Attachments</FieldLabel>
+      <label className="mt-2 flex cursor-pointer items-center gap-3 rounded-[10px] border border-dashed border-white/[0.12] bg-[#070B14] p-3 transition hover:border-[rgba(249,115,22,0.35)]">
+        <span className="grid h-9 w-9 place-items-center rounded-[9px] border border-[rgba(255,180,120,0.16)] bg-[#111A2B] text-[#F97316]">
+          <Upload className="h-4 w-4" />
+        </span>
+        <span className="min-w-0 flex-1">
+          <span className="block text-[12.5px] font-semibold text-[#F4F4F5]">Attach source files</span>
+          <span className="block text-[11px] text-[#9098A8]">txt, md, csv, tsv, docx, pptx, pdf · max 5 files</span>
+        </span>
+        <input
+          type="file"
+          multiple
+          accept=".txt,.md,.markdown,.csv,.tsv,.docx,.pptx,.pdf"
+          onChange={(event) => {
+            addFiles(event.target.files);
+            event.target.value = "";
+          }}
+          className="sr-only"
+        />
+      </label>
+      {attachments.length > 0 && (
+        <div className="mt-2 grid gap-1.5">
+          {attachments.map((file, index) => (
+            <div
+              key={`${file.name}-${file.size}-${index}`}
+              className="flex items-center gap-2 rounded-[9px] border border-white/[0.06] bg-white/[0.03] px-2.5 py-2 text-[12px]"
+            >
+              <FileText className="h-3.5 w-3.5 text-[#F97316]" />
+              <span className="min-w-0 flex-1 truncate text-[#D4D4D8]">{file.name}</span>
+              <span className="text-[10.5px] text-[#9098A8]">{formatFileSize(file.size)}</span>
+              <button
+                type="button"
+                onClick={() => removeFile(index)}
+                className="rounded-md border border-white/[0.08] px-2 py-1 text-[10.5px] font-semibold text-[#9098A8] transition hover:text-[#F4F4F5]"
+              >
+                Remove
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 }
@@ -1271,6 +1336,7 @@ export function buildBuilderPayload({
   model,
   strictMath,
   qwenThinking,
+  attachments,
   length,
   includes
 }) {
@@ -1297,6 +1363,7 @@ export function buildBuilderPayload({
         model,
         strictMath,
         qwenThinking,
+        attachments,
         length,
         includes
       })
@@ -1322,6 +1389,7 @@ export function buildLlmPayload({
   model,
   strictMath,
   qwenThinking,
+  attachments = [],
   length,
   includes
 }) {
@@ -1334,8 +1402,22 @@ export function buildLlmPayload({
     model,
     theme: "claude_clean",
     strict_math: strictMath,
-    qwen_thinking: qwenThinking
+    qwen_thinking: qwenThinking,
+    attachments
   };
+}
+
+function formatFileSize(size) {
+  if (!Number.isFinite(size)) {
+    return "";
+  }
+  if (size < 1024) {
+    return `${size} B`;
+  }
+  if (size < 1024 * 1024) {
+    return `${Math.round(size / 1024)} KB`;
+  }
+  return `${(size / (1024 * 1024)).toFixed(1)} MB`;
 }
 
 function assertBuilderPayload(kind, payload, state) {
