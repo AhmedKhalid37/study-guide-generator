@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import re
 import tempfile
 from pathlib import Path
 from typing import Any
@@ -10,9 +11,15 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from pydantic import BaseModel, ValidationError
 
+from pipeline import style_store
 from pipeline.job_manager import JOBS_DIR, Job
-from pipeline.llm_client import MissingLLMConfigError
-from pipeline.provider_config import build_provider_config, get_provider_registry, validate_provider_model
+from pipeline.llm_client import MissingLLMConfigError, generate_chat_completion
+from pipeline.provider_config import (
+    build_provider_config,
+    get_provider_registry,
+    resolve_provider_id,
+    validate_provider_model,
+)
 from pipeline.run_llm_job import AttachmentSource, LLMJobError, run_llm_job
 from pipeline.run_markdown_job import MarkdownJobError, run_markdown_job, run_pasted_text_job
 
@@ -24,21 +31,13 @@ app.add_middleware(
         "http://127.0.0.1:5173",
         "http://localhost:5173",
     ],
-    allow_methods=["GET", "POST"],
+    allow_methods=["GET", "POST", "PUT", "DELETE"],
     allow_headers=["*"],
 )
 
 THEMES = ["claude_clean"]
 INPUT_MODES = ["upload_markdown", "paste_text", "generate_llm"]
-STYLE_PRESETS = [
-    "basic_study_guide",
-    "baby_steps",
-    "exam_cram",
-    "mcq_training",
-    "final_solution",
-    "claude_study_guide",
-    "master_longform",
-]
+STYLE_PRESETS = list(style_store.BUILTIN_STYLE_IDS)
 ARTIFACTS = {
     "clean.md": ("clean_md", "text/markdown; charset=utf-8"),
     "final.html": ("final_html", "text/html; charset=utf-8"),
@@ -68,6 +67,28 @@ class LLMJobRequest(BaseModel):
     qwen_thinking: bool = True
 
 
+class StyleCreateRequest(BaseModel):
+    name: str
+    description: str = ""
+    content: str
+    base_style: str | None = None
+    tags: list[str] = []
+
+
+class StyleUpdateRequest(BaseModel):
+    name: str | None = None
+    description: str | None = None
+    content: str | None = None
+    tags: list[str] | None = None
+
+
+class StyleGenerateRequest(BaseModel):
+    description: str
+    base_style: str | None = None
+    provider: str | None = None
+    model: str | None = None
+
+
 @app.get("/api/health")
 def health() -> dict[str, bool]:
     return {"ok": True}
@@ -88,6 +109,202 @@ def options() -> dict[str, Any]:
         "provider_details": provider_details,
         "providers_v2": provider_details,
     }
+
+
+@app.get("/api/styles")
+def list_styles() -> dict[str, Any]:
+    return style_store.list_styles()
+
+
+@app.get("/api/styles/{style_id}")
+def get_style(style_id: str) -> dict[str, Any]:
+    try:
+        return style_store.get_style(style_id)
+    except style_store.StyleNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except style_store.StyleStoreError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@app.post("/api/styles")
+def create_style(request: StyleCreateRequest) -> dict[str, Any]:
+    try:
+        return style_store.create_custom_style(
+            name=request.name,
+            description=request.description,
+            content=request.content,
+            base_style=request.base_style,
+            tags=request.tags,
+        )
+    except style_store.StyleStoreError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@app.put("/api/styles/{style_id}")
+def update_style(style_id: str, request: StyleUpdateRequest) -> dict[str, Any]:
+    try:
+        return style_store.update_custom_style(
+            style_id,
+            name=request.name,
+            description=request.description,
+            content=request.content,
+            tags=request.tags,
+        )
+    except style_store.StyleNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except style_store.StyleStoreError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@app.delete("/api/styles/{style_id}")
+def delete_style(style_id: str) -> dict[str, bool]:
+    try:
+        style_store.delete_custom_style(style_id)
+    except style_store.StyleNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except style_store.StyleStoreError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return {"ok": True}
+
+
+@app.post("/api/styles/generate")
+def generate_style(request: StyleGenerateRequest) -> dict[str, Any]:
+    description = request.description.strip()
+    if not description:
+        raise HTTPException(status_code=400, detail="description must not be empty.")
+
+    provider_id, fallback_model = _pick_generate_provider(request.provider)
+    model_choice = (request.model or "").strip() or fallback_model or "Use environment default"
+
+    base_content: str | None = None
+    if request.base_style:
+        try:
+            base_content = style_store.resolve_prompt_text(request.base_style)
+        except style_store.StyleNotFoundError:
+            base_content = None
+
+    try:
+        config = build_provider_config(provider_id, model_choice, qwen_thinking_enabled=True)
+        messages = _build_style_generation_messages(description, base_content)
+        raw = generate_chat_completion(messages, config)
+    except MissingLLMConfigError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail=f"Style generation failed: {exc}") from exc
+
+    draft = _parse_style_draft(raw, description)
+    draft["provider"] = provider_id
+    draft["model"] = config.model
+    draft["base_style"] = request.base_style if request.base_style in style_store.BUILTIN_STYLES else None
+    return draft
+
+
+def _pick_generate_provider(provider: str | None) -> tuple[str, str]:
+    registry = get_provider_registry(discover_local=False)
+    if provider:
+        provider_id = resolve_provider_id(provider)
+        entry = next((item for item in registry if item["id"] == provider_id), None)
+        if entry is None:
+            raise HTTPException(status_code=400, detail="Unsupported provider.")
+        if not entry["configured"]:
+            raise HTTPException(
+                status_code=400,
+                detail=f"{entry['display_name']} is not configured on the server.",
+            )
+        return entry["id"], entry.get("default_model") or ""
+
+    entry = next((item for item in registry if item["configured"]), None)
+    if entry is None:
+        raise HTTPException(
+            status_code=400,
+            detail="No LLM provider is configured on the server. Add a provider API key to enable style generation.",
+        )
+    return entry["id"], entry.get("default_model") or ""
+
+
+def _build_style_generation_messages(description: str, base_content: str | None) -> list[dict]:
+    system = (
+        "You are an expert prompt engineer. You design reusable instruction TEMPLATES. "
+        "Another AI model will later fill the template with a specific source document and "
+        "produce a Markdown study guide. You never write the study guide yourself; you only "
+        "write the instruction template."
+    )
+    parts = [
+        "Write a study-guide generation prompt template for the following requested style:",
+        "",
+        description,
+        "",
+    ]
+    if base_content:
+        parts += [
+            "Use this existing template as a structural reference (adapt it, do not copy verbatim):",
+            "",
+            "```",
+            base_content.strip(),
+            "```",
+            "",
+        ]
+    parts += [
+        "Rules for the template you write:",
+        "- It MUST contain these literal placeholders, each exactly once: {title}, {mode}, and {source}.",
+        "- {source} must appear near the end, where the source document will be injected.",
+        "- Instruct the assistant to output valid Markdown only and to start with `# {title}`.",
+        "- Instruct the assistant to use dollar-delimited LaTeX: $...$ for inline math and $$...$$ for display math.",
+        "- Do not include any real document content — only instructions and section scaffolding.",
+        "",
+        "Respond with a single JSON object and nothing else, using exactly these keys:",
+        '- "name": a short human title for the style (<= 60 characters)',
+        '- "description": one sentence describing the style',
+        '- "prompt": the full template text as a single string',
+    ]
+    return [
+        {"role": "system", "content": system},
+        {"role": "user", "content": "\n".join(parts)},
+    ]
+
+
+def _parse_style_draft(raw: str, description: str) -> dict[str, Any]:
+    text = (raw or "").strip()
+    candidates: list[str] = []
+    fenced = re.search(r"```(?:json)?\s*(\{.*\})\s*```", text, re.DOTALL)
+    if fenced:
+        candidates.append(fenced.group(1))
+    start, end = text.find("{"), text.rfind("}")
+    if start != -1 and end != -1 and end > start:
+        candidates.append(text[start : end + 1])
+    candidates.append(text)
+
+    parsed: dict[str, Any] | None = None
+    for candidate in candidates:
+        try:
+            data = json.loads(candidate)
+        except json.JSONDecodeError:
+            continue
+        if isinstance(data, dict):
+            parsed = data
+            break
+
+    if parsed and isinstance(parsed.get("prompt"), str) and parsed["prompt"].strip():
+        name = str(parsed.get("name") or "").strip() or _fallback_style_name(description)
+        draft_description = str(parsed.get("description") or "").strip()
+        content = parsed["prompt"].strip()
+    else:
+        name = _fallback_style_name(description)
+        draft_description = ""
+        content = text
+
+    return {
+        "name": name[:120],
+        "description": draft_description[:600],
+        "content": content,
+        "missing_placeholders": style_store.missing_placeholders(content),
+    }
+
+
+def _fallback_style_name(description: str) -> str:
+    words = description.strip().split()
+    name = " ".join(words[:6]).strip(" .,:;")
+    return (name or "Custom Style").title()[:60]
 
 
 @app.get("/api/jobs")
@@ -276,7 +493,7 @@ def _validate_theme(theme: str) -> None:
 
 
 def _validate_prompt_name(prompt_name: str) -> None:
-    if prompt_name not in STYLE_PRESETS:
+    if not style_store.style_exists(prompt_name):
         raise HTTPException(status_code=400, detail="Unsupported prompt_name.")
 
 

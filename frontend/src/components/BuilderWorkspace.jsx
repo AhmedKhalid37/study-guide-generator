@@ -24,6 +24,7 @@ import {
   createUploadMarkdownJob,
   getJob,
   getOptions,
+  getStyles,
   previewApiUrl
 } from "../api/client";
 import {
@@ -53,14 +54,38 @@ const builderTabs = [
   { id: "preview", label: "Preview" }
 ];
 
-const styleChips = [
-  { label: "Baby", promptName: "baby_steps", icon: Leaf },
-  { label: "Cram", promptName: "exam_cram", icon: Zap },
-  { label: "MCQ", promptName: "mcq_training", icon: ListChecks },
-  { label: "Final", promptName: "final_solution", icon: Trophy },
-  { label: "Editorial", promptName: "claude_study_guide", icon: Sparkles },
-  { label: "Master", promptName: "master_longform", icon: Wand2 }
-];
+const builtinStyleMeta = {
+  basic_study_guide: { label: "Basic", icon: FileText },
+  baby_steps: { label: "Baby", icon: Leaf },
+  exam_cram: { label: "Cram", icon: Zap },
+  mcq_training: { label: "MCQ", icon: ListChecks },
+  final_solution: { label: "Final", icon: Trophy },
+  claude_study_guide: { label: "Editorial", icon: Sparkles },
+  master_longform: { label: "Master", icon: Wand2 }
+};
+
+// Static fallback used until /api/styles resolves (and as the built-in icon source).
+const styleChips = Object.entries(builtinStyleMeta).map(([promptName, meta]) => ({
+  promptName,
+  label: meta.label,
+  icon: meta.icon,
+  custom: false
+}));
+
+function styleRecordToChip(style) {
+  const meta = builtinStyleMeta[style.id];
+  const isCustom = style.source === "custom";
+  let label = meta?.label || style.name || style.id;
+  if (!meta && label.length > 12) {
+    label = `${label.slice(0, 11)}…`;
+  }
+  return {
+    promptName: style.id,
+    label,
+    icon: meta?.icon || (isCustom ? Sparkles : FileText),
+    custom: isCustom
+  };
+}
 
 const lengthOptions = [
   { id: "short", label: "Short", meta: "~10 pages" },
@@ -150,6 +175,7 @@ export default function BuilderWorkspace({
   const [qwenThinking, setQwenThinking] = useState(true);
   const [strictMath, setStrictMath] = useState(true);
   const [attachments, setAttachments] = useState([]);
+  const [styleOptions, setStyleOptions] = useState(styleChips);
   const [length, setLength] = useState("medium");
   const [includes, setIncludes] = useState(["Key concepts", "Mnemonics", "Examples", "Diagrams"]);
   const [result, setResult] = useState(latestJob);
@@ -194,6 +220,24 @@ export default function BuilderWorkspace({
     };
   }, []);
 
+  useEffect(() => {
+    let cancelled = false;
+    getStyles()
+      .then((result) => {
+        if (cancelled) return;
+        const all = [...(result.builtin ?? []), ...(result.custom ?? [])];
+        if (all.length > 0) {
+          setStyleOptions(all.map(styleRecordToChip));
+        }
+      })
+      .catch(() => {
+        if (!cancelled) setStyleOptions(styleChips);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
   const artifactEntries = useMemo(() => {
     if (!result?.artifact_urls) {
       return [];
@@ -202,7 +246,9 @@ export default function BuilderWorkspace({
   }, [result]);
 
   const artifactUrls = useMemo(() => result?.artifact_urls ?? {}, [result]);
-  const selectedStyleOption = styleChips.find((style) => style.promptName === selectedStyle);
+  const selectedStyleOption =
+    styleOptions.find((style) => style.promptName === selectedStyle) ||
+    styleChips.find((style) => style.promptName === selectedStyle);
   const selectedLengthOption = lengthOptions.find((option) => option.id === length);
   const selectedProvider = useMemo(
     () => providerDetails.find((item) => item.id === provider) ?? providerDetails[0],
@@ -408,6 +454,7 @@ export default function BuilderWorkspace({
             <StyleSettings
               selectedStyle={selectedStyle}
               onSelectStyle={onSelectStyle}
+              styleOptions={styleOptions}
               length={length}
               setLength={setLength}
               includes={includes}
@@ -430,6 +477,7 @@ export default function BuilderWorkspace({
           result={result}
           artifacts={artifactEntries}
           selectedStyle={selectedStyle}
+          styleOptions={styleOptions}
           length={length}
           previewFormat={previewFormat}
           setPreviewFormat={setPreviewFormat}
@@ -694,7 +742,7 @@ function OutlinePanel({ title, source, selectedStyle, selectedLength, includes, 
   );
 }
 
-function StyleSettings({ selectedStyle, onSelectStyle, length, setLength, includes, toggleInclude }) {
+function StyleSettings({ selectedStyle, onSelectStyle, styleOptions, length, setLength, includes, toggleInclude }) {
   return (
     <div className="grid gap-5">
       <SectionHeader
@@ -702,7 +750,7 @@ function StyleSettings({ selectedStyle, onSelectStyle, length, setLength, includ
         title="Style and depth"
         description="Tune the preset, target length, and included learning aids used by generation."
       />
-      <StyleControls selectedStyle={selectedStyle} onSelectStyle={onSelectStyle} />
+      <StyleControls selectedStyle={selectedStyle} onSelectStyle={onSelectStyle} styleOptions={styleOptions} />
       <LengthControls length={length} setLength={setLength} />
       <IncludeControls includes={includes} toggleInclude={toggleInclude} />
     </div>
@@ -788,12 +836,12 @@ function PreviewWorkspacePanel({ result, artifacts, artifactUrls, previewFormat,
   );
 }
 
-function StyleControls({ selectedStyle, onSelectStyle }) {
+function StyleControls({ selectedStyle, onSelectStyle, styleOptions = styleChips }) {
   return (
     <div>
       <FieldLabel>Style</FieldLabel>
       <div className="mt-1.5 grid grid-cols-3 gap-1.5 sm:grid-cols-6">
-        {styleChips.map((style) => (
+        {styleOptions.map((style) => (
           <MiniStyle
             key={style.promptName}
             style={style}
@@ -1152,6 +1200,7 @@ function LivePreviewPanel({
   result,
   artifacts,
   selectedStyle,
+  styleOptions = styleChips,
   length,
   previewFormat,
   setPreviewFormat,
@@ -1160,7 +1209,7 @@ function LivePreviewPanel({
   const artifactUrls = result?.artifact_urls ?? {};
   const primaryPdf = artifactUrls["final.pdf"];
   const title = result?.title || "Sample Guide Preview";
-  const styleLabel = styleChips.find((style) => style.promptName === selectedStyle)?.label?.toUpperCase() || "EXAM CRAM";
+  const styleLabel = styleOptions.find((style) => style.promptName === selectedStyle)?.label?.toUpperCase() || "EXAM CRAM";
   const lengthLabel = lengthOptions.find((option) => option.id === length)?.label?.toUpperCase() || "MEDIUM";
 
   return (

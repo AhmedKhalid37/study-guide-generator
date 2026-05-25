@@ -1,6 +1,7 @@
 node_modules/
 output/
 jobs/
+user_prompts/
 .venv/
 .env
 __pycache__/

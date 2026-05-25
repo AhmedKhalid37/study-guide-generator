@@ -8,6 +8,7 @@ services:
       - .env                 # each user's own keys live here (never commit it)
     volumes:
       - ./jobs:/app/jobs      # generated guides persist across restarts
+      - ./user_prompts:/app/user_prompts   # custom/generated styles persist too
     extra_hosts:
       - "host.docker.internal:host-gateway"   # lets the container reach a
                                               # host-run llama.cpp / llama-server

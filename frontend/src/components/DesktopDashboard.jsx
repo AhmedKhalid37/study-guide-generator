@@ -16,12 +16,12 @@ import {
 } from "lucide-react";
 import BuilderWorkspace from "./BuilderWorkspace";
 import RecentJobsPanel from "./RecentJobsPanel";
+import StylesWorkspace from "./StylesWorkspace";
 import { getJobs, getOptions } from "../api/client";
 import {
   BoltGlyph,
   BookGlyph,
   DocGlyph,
-  LeafGlyph,
   ListGlyph,
   PDFGlyph,
   SearchI,
@@ -39,15 +39,6 @@ const navItems = [
   { id: "styles", label: "Styles", icon: Layers3 },
   { id: "models", label: "Models", icon: Bot },
   { id: "exports", label: "Exports", icon: Download }
-];
-
-const promptStyles = [
-  { id: "baby_steps", name: "Baby-step", glyph: LeafGlyph, focus: "Step-by-step understanding", produces: "Plain language + tiny examples", best: "First exposure" },
-  { id: "exam_cram", name: "Exam Cram", glyph: BoltGlyph, focus: "High-yield exam material", produces: "Condensed explanations + memory cues", best: "Final revision" },
-  { id: "mcq_training", name: "MCQ Training", glyph: ListGlyph, focus: "Active recall via questions", produces: "MCQs with rationales", best: "Practice" },
-  { id: "final_solution", name: "Final Solutions", glyph: TrophyGlyph, focus: "Clean solution-key steps", produces: "Ordered worked solutions", best: "Assignments" },
-  { id: "claude_study_guide", name: "Editorial", glyph: SparkleGlyph, focus: "Narrative + clarity", produces: "Magazine-style chapter", best: "Deep reading" },
-  { id: "master_longform", name: "Master Longform", glyph: BookGlyph, focus: "Detailed longform study", produces: "Deep 10+ page guide", best: "Full chapters" }
 ];
 
 const smartTools = [
@@ -116,7 +107,7 @@ export default function DesktopDashboard() {
         )}
         {activeSection === "models" && <ModelsPage apiOptions={apiOptions} />}
         {activeSection === "styles" && (
-          <StylesPage selectedStyle={selectedStyle} onSelectStyle={setSelectedStyle} onOpenBuilder={openBuilder} />
+          <StylesWorkspace selectedStyle={selectedStyle} onSelectStyle={setSelectedStyle} onOpenBuilder={openBuilder} />
         )}
         {activeSection === "library" && <LibraryPage jobsRefreshKey={jobsRefreshKey} onOpenBuilder={openBuilder} />}
         {activeSection === "exports" && <ExportsPage jobsRefreshKey={jobsRefreshKey} onOpenBuilder={openBuilder} />}
@@ -432,66 +423,6 @@ function normalizeModelProviders(apiOptions) {
     base_url: "",
     discovery_error: ""
   }));
-}
-
-function StylesPage({ selectedStyle, onSelectStyle, onOpenBuilder }) {
-  return (
-    <div className="sg-page">
-      <PageHead title="Styles" subtitle="Built-in prompt presets from the real generation pipeline." />
-      <SectionHeading title="Built-in" right="Real prompt_name values" />
-      <div className="sg-style-grid">
-        {promptStyles.map((style, index) => (
-          <StyleBigCard
-            key={style.id}
-            style={style}
-            active={selectedStyle === style.id}
-            delay={index * 35}
-            onSelect={() => onSelectStyle(style.id)}
-            onOpenBuilder={() => onOpenBuilder("llm")}
-          />
-        ))}
-      </div>
-      <SectionHeading title="My Styles" right="Placeholder until custom prompt storage exists" />
-      <div className="sg-custom-style-row">
-        <div className="sg-add-custom">
-          <Tile size={36} radius={10} variant="soft"><Plus size={18} stroke="#F97316" /></Tile>
-          <div>
-            <strong>Describe a new style</strong>
-            <p>Visual placeholder. Custom style persistence is not implemented in this pass.</p>
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function StyleBigCard({ style, active, delay, onSelect, onOpenBuilder }) {
-  const Glyph = style.glyph;
-  return (
-    <div className={`sg-style-big sg-recent-row ${active ? "active" : ""}`} style={{ animationDelay: `${delay}ms` }}>
-      <div className="sg-style-big-top">
-        <Tile size={40} radius={11} variant={active ? "orange" : "dark"}>
-          <Glyph size={20} color={active ? "#1B0F03" : "#F97316"} />
-        </Tile>
-        <div>
-          <strong>{style.name}</strong>
-          <p>{style.focus}</p>
-        </div>
-        <span>{active ? "Selected" : "Built-in"}</span>
-      </div>
-      <p><b>Produces:</b> {style.produces}</p>
-      <div className="sg-paper-mini">
-        <small>{style.name.toUpperCase()}</small>
-        <strong>Sample · {style.best}</strong>
-        <i />
-        <p>{style.produces.toLowerCase()}.</p>
-      </div>
-      <div className="sg-style-actions">
-        <button type="button" className="sg-ghost-button" onClick={onSelect}>Use</button>
-        <button type="button" className="sg-cta compact" onClick={onOpenBuilder}>Build</button>
-      </div>
-    </div>
-  );
 }
 
 function LibraryPage({ jobsRefreshKey, onOpenBuilder }) {

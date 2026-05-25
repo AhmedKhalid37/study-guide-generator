@@ -37,6 +37,49 @@ export function getJobs() {
   return requestJson("/api/jobs");
 }
 
+export function getStyles() {
+  return requestJson("/api/styles");
+}
+
+export function getStyle(styleId) {
+  return requestJson(`/api/styles/${encodeURIComponent(styleId)}`);
+}
+
+export function createStyle({ name, description = "", content, baseStyle = null, tags = [] }) {
+  return requestJson("/api/styles", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ name, description, content, base_style: baseStyle, tags })
+  });
+}
+
+export function updateStyle(styleId, { name, description, content, tags }) {
+  const body = {};
+  if (name !== undefined) body.name = name;
+  if (description !== undefined) body.description = description;
+  if (content !== undefined) body.content = content;
+  if (tags !== undefined) body.tags = tags;
+  return requestJson(`/api/styles/${encodeURIComponent(styleId)}`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body)
+  });
+}
+
+export function deleteStyle(styleId) {
+  return requestJson(`/api/styles/${encodeURIComponent(styleId)}`, {
+    method: "DELETE"
+  });
+}
+
+export function generateStyle({ description, baseStyle = null, provider = null, model = null }) {
+  return requestJson("/api/styles/generate", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ description, base_style: baseStyle, provider, model })
+  });
+}
+
 export function getJob(jobId) {
   return requestJson(`/api/jobs/${encodeURIComponent(jobId)}`);
 }

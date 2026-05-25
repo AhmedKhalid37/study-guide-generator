@@ -21,6 +21,7 @@ frontend/dist
 # Generated output / runtime data (mounted as a volume instead)
 jobs
 output
+user_prompts
 
 # Design + docs not needed at runtime
 design_reference
