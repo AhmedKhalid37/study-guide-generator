@@ -10,7 +10,7 @@ from typing import Any
 
 from pipeline.job_manager import Job
 from pipeline.extract import ExtractionError, extract_file
-from pipeline.llm_client import LLMConfig, MissingLLMConfigError
+from pipeline.llm_client import LLMConfig, LLMProviderError, MissingLLMConfigError
 from pipeline.orchestrator import generate_study_guide
 from pipeline.run_markdown_job import MarkdownJobError, run_raw_markdown_pipeline
 
@@ -91,12 +91,19 @@ def run_llm_job(
         job.update(raw_md=str(job.raw_md))
 
         return run_raw_markdown_pipeline(job, theme=theme, strict_math=strict_math)
+    except LLMProviderError as exc:
+        job.set_status("failed", str(exc), error_category=exc.category, log_path=str(job.render_log))
+        raise LLMJobError(str(exc), job) from exc
     except MarkdownJobError as exc:
+        # category already set in run_raw_markdown_pipeline
         raise LLMJobError(str(exc), exc.job) from exc
     except Exception as exc:
-        message = f"LLM job failed: {exc}"
-        job.set_status("failed", message)
-        raise LLMJobError(message, job) from exc
+        from pipeline.errors import classify_exception
+        category, user_message = classify_exception(
+            exc, base_url=getattr(resolved_config, "base_url", None)
+        )
+        job.set_status("failed", user_message, error_category=category, log_path=str(job.render_log))
+        raise LLMJobError(user_message, job) from exc
 
 
 def _attach_sources(
@@ -160,7 +167,7 @@ def _attach_sources(
 
             warnings.extend(result.warnings)
         except ExtractionError as exc:
-            warning = f"{safe_name}: {exc}"
+            warning = f"Couldn't read {safe_name}: the file may be corrupt or an unreadable scan. ({exc})"
             warnings.append(warning)
             entry["status"] = "failed"
             entry["warnings"] = [warning]

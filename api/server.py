@@ -16,7 +16,8 @@ from pydantic import BaseModel, ValidationError
 
 from pipeline import library_store, style_store
 from pipeline.job_manager import JOBS_DIR, Job
-from pipeline.llm_client import MissingLLMConfigError, generate_chat_completion
+from pipeline.llm_client import LLMProviderError, MissingLLMConfigError, generate_chat_completion
+from pipeline.orchestrator import generate_study_guide
 from pipeline.provider_config import (
     build_provider_config,
     get_provider_registry,
@@ -1122,6 +1123,108 @@ def get_artifact(
     )
 
 
+@app.get("/api/jobs/{job_id}/error")
+def get_job_error(job_id: str) -> dict[str, Any]:
+    """Return the error category, user-facing message, and a tail of the relevant log."""
+    job = _get_job(job_id)
+    manifest = job.read_manifest()
+    status = manifest.get("status", "")
+    if "failed" not in status:
+        raise HTTPException(status_code=404, detail="This job has not failed.")
+    category = manifest.get("error_category") or "unknown"
+    message = manifest.get("error") or "An unknown error occurred."
+    log_tail: list[str] = []
+    if job.render_log.exists():
+        text = job.render_log.read_text(encoding="utf-8", errors="replace")
+        lines = [line for line in text.splitlines() if line.strip()]
+        log_tail = [_safe_log_line(line) for line in lines[-20:]]
+    return {
+        "job_id": job_id,
+        "status": status,
+        "error_category": category,
+        "message": message,
+        "log_tail": log_tail,
+        "log_available": job.render_log.exists(),
+        "validation_available": _validation_json_path(job).exists(),
+    }
+
+
+@app.post("/api/jobs/{job_id}/retry")
+def retry_failed_job(job_id: str) -> dict[str, Any]:
+    """Re-run a failed job using its already-saved input — no re-upload needed."""
+    job = _get_job(job_id)
+    manifest = job.read_manifest()
+    status = manifest.get("status", "")
+    if "failed" not in status:
+        raise HTTPException(status_code=400, detail="Only failed jobs can be retried.")
+
+    path_mode = manifest.get("path_mode", "")
+    theme = str(manifest.get("theme") or "claude_clean")
+    strict_math = bool(manifest.get("strict_math", True))
+
+    if path_mode == "have_markdown":
+        if not job.raw_md.exists():
+            raise HTTPException(status_code=400, detail="raw.md is missing; cannot retry this job.")
+        job.set_status("created", None)
+        try:
+            from pipeline.run_markdown_job import run_raw_markdown_pipeline
+            run_raw_markdown_pipeline(job, theme=theme, strict_math=strict_math)
+        except MarkdownJobError as exc:
+            raise _job_error(exc, job=getattr(exc, "job", None)) from exc
+        except Exception as exc:
+            raise _job_error(exc, job=job) from exc
+        return job_response(job)
+
+    if path_mode == "generate":
+        source_path = job.input_dir / "source.txt"
+        if not source_path.exists():
+            raise HTTPException(
+                status_code=400,
+                detail="input/source.txt is missing; cannot retry this job.",
+            )
+        provider = str(manifest.get("provider") or "")
+        model_name = str(manifest.get("model") or "Use environment default")
+        title = str(manifest.get("title") or "Generated Study Guide")
+        mode = str(manifest.get("mode") or DEFAULT_MODE)
+        prompt_name = str(manifest.get("prompt_name") or "basic_study_guide")
+        qwen_thinking = bool(manifest.get("qwen_thinking", True))
+
+        try:
+            config = build_provider_config(provider, model_name, qwen_thinking_enabled=qwen_thinking)
+        except MissingLLMConfigError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+        source_text = source_path.read_text(encoding="utf-8", errors="replace")
+        job.set_status("created", None)
+
+        try:
+            job.set_status("generating")
+            raw_markdown = generate_study_guide(
+                source_text,
+                title=title,
+                mode=mode,
+                prompt_name=prompt_name,
+                config=config,
+            )
+            job.save_text(job.raw_md, raw_markdown)
+            job.update(raw_md=str(job.raw_md))
+            from pipeline.run_markdown_job import run_raw_markdown_pipeline
+            run_raw_markdown_pipeline(job, theme=theme, strict_math=strict_math)
+        except LLMProviderError as exc:
+            job.set_status("failed", str(exc), error_category=exc.category)
+            raise HTTPException(status_code=502, detail={"message": str(exc), "job": job_response(job)}) from exc
+        except MarkdownJobError as exc:
+            raise _job_error(exc, job=getattr(exc, "job", None)) from exc
+        except Exception as exc:
+            raise _job_error(exc, job=job) from exc
+        return job_response(job)
+
+    raise HTTPException(
+        status_code=400,
+        detail=f"Cannot retry a job with path_mode '{path_mode}'.",
+    )
+
+
 @app.post("/api/jobs/{job_id}/rerender")
 def rerender_existing_job(job_id: str, request: RerenderRequest | None = None) -> dict[str, Any]:
     job = _get_job(job_id)
@@ -1149,7 +1252,7 @@ def job_response(job: Job) -> dict[str, Any]:
     manifest = job.read_manifest()
     availability = _artifact_availability(job)
     artifact_urls = _artifact_urls(job, availability)
-    return {
+    response: dict[str, Any] = {
         "job_id": job.id,
         "status": manifest.get("status"),
         "title": manifest.get("title"),
@@ -1164,6 +1267,10 @@ def job_response(job: Job) -> dict[str, Any]:
         "artifact_urls": artifact_urls,
         **_outline_summary(manifest),
     }
+    if manifest.get("error"):
+        response["error"] = manifest["error"]
+        response["error_category"] = manifest.get("error_category") or "unknown"
+    return response
 
 
 def _artifact_urls(job: Job, availability: dict[str, bool]) -> dict[str, str]:
@@ -1247,6 +1354,7 @@ def _safe_manifest(manifest: dict[str, Any]) -> dict[str, Any]:
         "final_html",
         "final_pdf",
         "validation_json",
+        "error_log_path",  # filesystem path — never expose; use artifact endpoint instead
     ]:
         safe.pop(key, None)
     safe["attachments"] = _safe_attachment_metadata(manifest.get("attachments", []))

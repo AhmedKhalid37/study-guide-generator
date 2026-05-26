@@ -2,6 +2,8 @@ import React, { useEffect, useMemo, useState } from "react";
 import {
   AlertCircle,
   CheckCircle2,
+  ChevronDown,
+  ChevronUp,
   Download,
   ExternalLink,
   FileCode2,
@@ -10,9 +12,10 @@ import {
   FolderClosed,
   Loader2,
   Paperclip,
+  RefreshCw,
   X
 } from "lucide-react";
-import { artifactUrl, getJob, getJobs, getStyles } from "../api/client";
+import { artifactUrl, getJob, getJobs, getStyles, retryJob } from "../api/client";
 import { buildStyleLookup, resolveStyle } from "../styleMeta";
 import { folderColor } from "../folderMeta";
 
@@ -255,6 +258,20 @@ export default function RecentJobsPanel({ refreshKey = 0, embedded = false, onSe
       </div>
   );
 
+  // After a successful retry the drawer closes and the jobs list refreshes via
+  // the parent's refreshKey mechanism. Here we use a local key bump to reload.
+  const [localRefresh, setLocalRefresh] = useState(0);
+
+  function handleRetry() {
+    // Re-select the same job so its details reload, and re-fetch the list.
+    setLocalRefresh((k) => k + 1);
+    setSelectedJobId((id) => {
+      // Force effect to re-run even though id is the same.
+      setSelectedJob(null);
+      return id;
+    });
+  }
+
   if (embedded) {
     return (
       <>
@@ -266,6 +283,7 @@ export default function RecentJobsPanel({ refreshKey = 0, embedded = false, onSe
           error={jobError}
           details={selectedJob}
           styleLookup={styleLookup}
+          onRetry={handleRetry}
         />
       </>
     );
@@ -293,6 +311,7 @@ export default function RecentJobsPanel({ refreshKey = 0, embedded = false, onSe
         error={jobError}
         details={selectedJob}
         styleLookup={styleLookup}
+        onRetry={handleRetry}
       />
     </>
   );
@@ -510,7 +529,7 @@ function ArtifactLinkGrid({ jobId, artifacts }) {
   );
 }
 
-export function JobDetailsDrawer({ open, onClose, loading, error, details, styleLookup }) {
+export function JobDetailsDrawer({ open, onClose, loading, error, details, styleLookup, onRetry }) {
   const manifest = details?.job;
   const artifacts = details?.artifacts ?? artifactLinks
     .filter((artifact) => details?.artifact_availability?.[artifact.key])
@@ -519,10 +538,8 @@ export function JobDetailsDrawer({ open, onClose, loading, error, details, style
   const renderLog = details?.render_log_summary;
   const style = resolveStyle(manifest?.prompt_name, styleLookup);
   const folder = jobFolder(manifest);
-  const warnings = [
-    ...(manifest?.extraction_warnings ?? []),
-    ...(manifest?.error ? [String(manifest.error)] : [])
-  ];
+  const extractionWarnings = manifest?.extraction_warnings ?? [];
+  const isFailed = manifest?.status?.includes("failed");
 
   if (!open) {
     return null;
@@ -598,6 +615,17 @@ export function JobDetailsDrawer({ open, onClose, loading, error, details, style
                 </dl>
               </section>
 
+              {isFailed && (
+                <FailedJobPanel
+                  manifest={manifest}
+                  renderLog={renderLog}
+                  validation={validation}
+                  jobId={manifest.id}
+                  onRetry={onRetry}
+                  onClose={onClose}
+                />
+              )}
+
               {manifest.outline_enabled && (manifest.outline_titles?.length ?? 0) > 0 && (
                 <DetailsSection title={`Outline · ${manifest.outline_section_count || manifest.outline_titles.length} sections`}>
                   <ol className="grid gap-1.5">
@@ -616,9 +644,11 @@ export function JobDetailsDrawer({ open, onClose, loading, error, details, style
                 </DetailsSection>
               )}
 
-              <DetailsSection title="Artifacts">
-                <ArtifactLinkGrid jobId={manifest.id} artifacts={artifacts} />
-              </DetailsSection>
+              {!isFailed && (
+                <DetailsSection title="Artifacts">
+                  <ArtifactLinkGrid jobId={manifest.id} artifacts={artifacts} />
+                </DetailsSection>
+              )}
 
               <DetailsSection title="Validation">
                 <ValidationSummary validation={validation} manifest={manifest} />
@@ -630,10 +660,10 @@ export function JobDetailsDrawer({ open, onClose, loading, error, details, style
 
               <AttachmentDetails manifest={manifest} />
 
-              {warnings.length > 0 && (
-                <DetailsSection title="Warnings and errors">
+              {extractionWarnings.length > 0 && (
+                <DetailsSection title="Extraction warnings">
                   <div className="grid gap-2">
-                    {warnings.map((warning, index) => (
+                    {extractionWarnings.map((warning, index) => (
                       <p key={index} className="rounded-lg border border-amber-300/20 bg-amber-300/10 p-3 text-xs leading-5 text-amber-100">
                         {warning}
                       </p>
@@ -646,6 +676,118 @@ export function JobDetailsDrawer({ open, onClose, loading, error, details, style
         </div>
       </aside>
     </div>
+  );
+}
+
+const CATEGORY_LABELS = {
+  extraction: "Extraction error",
+  ocr: "OCR error",
+  math: "Math validation",
+  pdf: "PDF render error",
+  docx: "DOCX error",
+  provider_auth: "Auth error",
+  provider_model: "Model error",
+  provider_ratelimit: "Rate limit",
+  local_offline: "Server offline",
+  unknown: "Unknown error",
+};
+
+function ErrorCategoryBadge({ category }) {
+  const label = CATEGORY_LABELS[category] || category || "Error";
+  return (
+    <span className="inline-flex items-center rounded-full border border-red-400/30 bg-red-400/10 px-3 py-1 text-xs font-bold text-red-200">
+      {label}
+    </span>
+  );
+}
+
+function FailedJobPanel({ manifest, renderLog, validation, jobId, onRetry, onClose }) {
+  const [retrying, setRetrying] = useState(false);
+  const [retryError, setRetryError] = useState(null);
+  const [logsExpanded, setLogsExpanded] = useState(false);
+  const category = manifest?.error_category || "unknown";
+  const message = manifest?.error;
+  const hasLog = renderLog?.available;
+
+  async function handleRetry() {
+    setRetrying(true);
+    setRetryError(null);
+    try {
+      await retryJob(jobId);
+      onClose?.();
+      onRetry?.();
+    } catch (err) {
+      setRetryError(err.message || "Retry failed. Check the logs and try again.");
+    } finally {
+      setRetrying(false);
+    }
+  }
+
+  return (
+    <section className="rounded-2xl border border-red-400/20 bg-red-400/[0.04] p-4">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div className="flex flex-wrap items-center gap-2">
+          <AlertCircle className="h-4 w-4 shrink-0 text-red-400" />
+          <span className="text-sm font-bold text-white">Generation failed</span>
+          <ErrorCategoryBadge category={category} />
+        </div>
+        <div className="flex gap-2">
+          {(hasLog || validation?.available) && (
+            <button
+              type="button"
+              onClick={() => setLogsExpanded((v) => !v)}
+              className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-white/10 bg-white/[0.04] px-3 text-xs font-bold text-slate-300 transition hover:border-white/20 hover:text-white"
+            >
+              {logsExpanded ? <ChevronUp className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
+              View logs
+            </button>
+          )}
+          <button
+            type="button"
+            onClick={handleRetry}
+            disabled={retrying}
+            className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-ember-500/50 bg-ember-500/10 px-3 text-xs font-bold text-ember-300 transition hover:border-ember-500 hover:text-white disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            {retrying
+              ? <><Loader2 className="h-3.5 w-3.5 animate-spin" /> Retrying…</>
+              : <><RefreshCw className="h-3.5 w-3.5" /> Try again</>}
+          </button>
+        </div>
+      </div>
+
+      {message && (
+        <p className="mt-3 rounded-lg border border-red-400/15 bg-[#070B14] p-3 text-xs leading-5 text-red-200">
+          {message}
+        </p>
+      )}
+
+      {retryError && (
+        <p className="mt-2 text-xs text-red-300">{retryError}</p>
+      )}
+
+      {logsExpanded && (
+        <div className="mt-4 grid gap-3">
+          {hasLog && renderLog.last_lines?.length > 0 && (
+            <div>
+              <p className="mb-1.5 text-[11px] font-bold uppercase tracking-wide text-slate-500">Render log (last lines)</p>
+              <pre className="max-h-48 overflow-auto rounded-xl border border-white/10 bg-[#070B14] p-3 text-xs leading-5 text-slate-300">
+                {renderLog.last_lines.join("\n")}
+              </pre>
+            </div>
+          )}
+          {validation?.available && validation.error_count > 0 && (
+            <div>
+              <p className="mb-1.5 text-[11px] font-bold uppercase tracking-wide text-slate-500">
+                Math validation — {validation.error_count} issue{validation.error_count !== 1 ? "s" : ""}
+              </p>
+              <p className="text-xs text-amber-200">
+                Download <span className="font-mono">validation.json</span> from Artifacts for the full expression list.
+              </p>
+            </div>
+          )}
+        </div>
+      )}
+    </section>
   );
 }
 

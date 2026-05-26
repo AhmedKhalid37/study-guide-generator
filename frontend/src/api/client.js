@@ -198,6 +198,18 @@ export function rerenderJob(jobId, { theme } = {}) {
   });
 }
 
+export function retryJob(jobId) {
+  return requestJson(`/api/jobs/${encodeURIComponent(jobId)}/retry`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({})
+  });
+}
+
+export function getJobError(jobId) {
+  return requestJson(`/api/jobs/${encodeURIComponent(jobId)}/error`);
+}
+
 export function getJob(jobId) {
   return requestJson(`/api/jobs/${encodeURIComponent(jobId)}`);
 }

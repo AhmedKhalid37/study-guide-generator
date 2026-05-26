@@ -52,9 +52,10 @@ def run_markdown_job(
     except MarkdownJobError:
         raise
     except Exception as exc:
-        message = f"Markdown job failed: {exc}"
-        job.set_status("failed", message)
-        raise MarkdownJobError(message, job) from exc
+        from pipeline.errors import classify_exception
+        category, user_message = classify_exception(exc)
+        job.set_status("failed", user_message, error_category=category)
+        raise MarkdownJobError(user_message, job) from exc
 
 
 def run_pasted_text_job(
@@ -84,9 +85,10 @@ def run_pasted_text_job(
     except MarkdownJobError:
         raise
     except Exception as exc:
-        message = f"Pasted text job failed: {exc}"
-        job.set_status("failed", message)
-        raise MarkdownJobError(message, job) from exc
+        from pipeline.errors import classify_exception
+        category, user_message = classify_exception(exc)
+        job.set_status("failed", user_message, error_category=category)
+        raise MarkdownJobError(user_message, job) from exc
 
 
 def run_raw_markdown_pipeline(job: Job, *, theme: str, strict_math: bool) -> Job:
@@ -110,19 +112,29 @@ def run_raw_markdown_pipeline(job: Job, *, theme: str, strict_math: bool) -> Job
     )
     if not result.ok:
         message = _validation_error_message(result)
-        job.set_status("validation_failed", message)
-        print(f"Validation failed. Details saved to: {validation_path}", file=sys.stderr)
-        print(message, file=sys.stderr)
-        raise MarkdownJobError(message, job)
+        if strict_math:
+            job.set_status(
+                "failed",
+                message,
+                error_category="math",
+                log_path=str(validation_path),
+            )
+            print(f"Math validation failed. Details: {validation_path}", file=sys.stderr)
+            print(message, file=sys.stderr)
+            raise MarkdownJobError(message, job)
+        else:
+            # Warn but continue — KaTeX renders errors as styled spans (throwOnError=false).
+            job.update(math_warnings=message)
+            print(f"Math validation warnings (strict_math=False): {message}", file=sys.stderr)
 
     job.set_status("rendering")
     try:
         render_pdf(job.clean_md, job.final_pdf, theme=theme, strict_math=strict_math)
     except Exception as exc:
-        message = f"Rendering failed: {exc}"
+        message = f"PDF rendering failed: {exc}"
         job.save_text(job.render_log, message + "\n")
-        job.set_status("render_failed", message)
-        print(f"Rendering failed. Details saved to: {job.render_log}", file=sys.stderr)
+        job.set_status("failed", message, error_category="pdf", log_path=str(job.render_log))
+        print(f"PDF rendering failed. Details: {job.render_log}", file=sys.stderr)
         print(message, file=sys.stderr)
         raise MarkdownJobError(message, job) from exc
 
@@ -154,9 +166,9 @@ def rerender_job(job: Job, *, theme: str | None = None, strict_math: bool | None
     try:
         render_pdf(job.clean_md, job.final_pdf, theme=use_theme, strict_math=use_strict)
     except Exception as exc:
-        message = f"Re-render failed: {exc}"
+        message = f"PDF rendering failed: {exc}"
         job.save_text(job.render_log, message + "\n")
-        job.set_status("render_failed", message)
+        job.set_status("failed", message, error_category="pdf", log_path=str(job.render_log))
         raise MarkdownJobError(message, job) from exc
 
     job.save_text(job.render_log, f"Re-rendered PDF: {job.final_pdf}\nRe-rendered HTML: {job.final_html}\n")

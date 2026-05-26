@@ -113,8 +113,20 @@ class Job:
         manifest.update(fields)
         self._write_manifest(manifest)
 
-    def set_status(self, status: str, error: str | None = None) -> None:
-        self.update(status=status, error=error)
+    def set_status(
+        self,
+        status: str,
+        error: str | None = None,
+        *,
+        error_category: str | None = None,
+        log_path: str | None = None,
+    ) -> None:
+        updates: dict[str, Any] = {"status": status, "error": error}
+        if error_category is not None:
+            updates["error_category"] = error_category
+        if log_path is not None:
+            updates["error_log_path"] = log_path
+        self.update(**updates)
 
     def _write_manifest(self, manifest: dict[str, Any]) -> None:
         self.dir.mkdir(parents=True, exist_ok=True)

@@ -539,6 +539,7 @@ export default function BuilderWorkspace({
         error={detailsError}
         details={jobDetails}
         styleLookup={builderStyleLookup}
+        onRetry={openJobDetails}
       />
     </div>
   );

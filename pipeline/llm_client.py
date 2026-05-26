@@ -16,6 +16,14 @@ class MissingLLMConfigError(RuntimeError):
     pass
 
 
+class LLMProviderError(RuntimeError):
+    """A classified LLM API failure with a user-facing message."""
+
+    def __init__(self, category: str, message: str) -> None:
+        super().__init__(message)
+        self.category = category
+
+
 @dataclass(frozen=True)
 class LLMConfig:
     base_url: str
@@ -74,7 +82,12 @@ def generate_chat_completion(messages: list[dict], config: LLMConfig) -> str:
     if config.extra_body is not None:
         params["extra_body"] = config.extra_body
 
-    response = client.chat.completions.create(**params)
+    try:
+        response = client.chat.completions.create(**params)
+    except Exception as exc:
+        from pipeline.errors import classify_exception
+        category, user_message = classify_exception(exc, base_url=config.base_url)
+        raise LLMProviderError(category, user_message) from exc
     content = response.choices[0].message.content
     if not content:
         raise RuntimeError("LLM returned an empty response.")
