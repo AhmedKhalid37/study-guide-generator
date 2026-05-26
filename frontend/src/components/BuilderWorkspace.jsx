@@ -440,7 +440,7 @@ export default function BuilderWorkspace({
         <div className="flex-1" />
         <span className="sg-autosave">
           <i />
-          Auto-saved · 2s ago
+          Unsaved draft
         </span>
       </div>
 

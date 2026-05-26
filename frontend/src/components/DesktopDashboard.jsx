@@ -46,8 +46,8 @@ const smartTools = [
   { id: "library", title: "Find a Guide", subtitle: "Browse generated jobs", icon: DocGlyph, route: "library" },
   { id: "exports", title: "Export Center", subtitle: "PDF, Markdown, HTML", icon: PDFGlyph, route: "exports" },
   { id: "clean", title: "Clean Markdown", subtitle: "Available through Builder", icon: ListGlyph, disabled: true },
-  { id: "template", title: "Create Template", subtitle: "Placeholder", icon: BookGlyph, disabled: true },
-  { id: "improve", title: "Improve a Guide", subtitle: "Placeholder", icon: Wand2, disabled: true }
+  { id: "template", title: "Create Template", subtitle: "Coming soon", icon: BookGlyph, disabled: true },
+  { id: "improve", title: "Improve a Guide", subtitle: "Coming soon", icon: Wand2, disabled: true }
 ];
 
 export default function DesktopDashboard() {
@@ -219,7 +219,7 @@ function Sidebar({ activeSection, onNavigate, onNewGuide }) {
       <div className="sg-storage-card">
         <div>
           <span>Library</span>
-          <span>32/100</span>
+          <span>On disk</span>
         </div>
         <div className="sg-storage-meter"><i /></div>
         <p>Generated guides stay in the local jobs store.</p>
