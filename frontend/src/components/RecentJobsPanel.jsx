@@ -18,6 +18,7 @@ import { folderColor } from "../folderMeta";
 
 const artifactLinks = [
   { name: "final.pdf", label: "PDF", key: "final_pdf", icon: Download },
+  { name: "final.docx", label: "DOCX", key: "final_docx", icon: FileText },
   { name: "clean.md", label: "Markdown", key: "clean_md", icon: FileText },
   { name: "final.html", label: "HTML", key: "final_html", icon: FileCode2 },
   { name: "validation.json", label: "Validation", key: "validation_json", icon: FileJson },

@@ -52,7 +52,7 @@ const smartTools = [
 
 export default function DesktopDashboard() {
   const [activeSection, setActiveSection] = useState("home");
-  const [builderSource, setBuilderSource] = useState("paste");
+  const [builderSource, setBuilderSource] = useState("llm");
   const [selectedStyle, setSelectedStyle] = useState("exam_cram");
   const [jobsRefreshKey, setJobsRefreshKey] = useState(0);
   const [latestJob, setLatestJob] = useState(null);
@@ -75,7 +75,9 @@ export default function DesktopDashboard() {
     };
   }, [jobsRefreshKey]);
 
-  const openBuilder = useCallback((source = "paste") => {
+  // Generic "New Guide" opens the AI/LLM mode by default; explicit shortcuts
+  // (paste/upload/llm) still override by passing their source.
+  const openBuilder = useCallback((source = "llm") => {
     setBuilderSource(source);
     setActiveSection("builder");
   }, []);
@@ -87,7 +89,7 @@ export default function DesktopDashboard() {
 
   return (
     <section className="sg mx-auto h-[calc(100vh-56px)] min-h-[820px] w-full max-w-[1920px]">
-      <ClaudeFrame activeSection={activeSection} onNavigate={setActiveSection} onNewGuide={() => openBuilder("paste")}>
+      <ClaudeFrame activeSection={activeSection} onNavigate={setActiveSection} onNewGuide={() => openBuilder()}>
         {activeSection === "home" && (
           <HomeCommandCenter
             jobs={jobs}
@@ -253,7 +255,7 @@ function HomeCommandCenter({ jobs, onOpenBuilder, onNavigate, jobsRefreshKey }) 
           <h1>Good evening, Ahmed</h1>
           <p>Pick a goal. The real generator pipeline stays connected behind every guide action.</p>
         </div>
-        <button type="button" className="sg-cta sg-press-btn" onClick={() => onOpenBuilder("paste")}>
+        <button type="button" className="sg-cta sg-press-btn" onClick={() => onOpenBuilder()}>
           <Plus size={16} stroke="#1A1206" strokeWidth={2.6} />
           New Guide
         </button>

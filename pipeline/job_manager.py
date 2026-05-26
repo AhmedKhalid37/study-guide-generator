@@ -77,6 +77,10 @@ class Job:
         return self.dir / "final.pdf"
 
     @property
+    def final_docx(self) -> Path:
+        return self.dir / "final.docx"
+
+    @property
     def validation_json(self) -> Path:
         return self.dir / "validation.json"
 

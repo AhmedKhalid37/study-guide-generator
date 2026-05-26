@@ -49,9 +49,9 @@ import { JobDetailsDrawer } from "./RecentJobsPanel";
 import { BUILTIN_STYLE_NAMES } from "../styleMeta";
 
 const sourceTabs = [
+  { id: "llm", label: "AI prompt" },
   { id: "paste", label: "Paste text" },
   { id: "upload", label: "Upload .md" },
-  { id: "llm", label: "AI prompt" },
   { id: "url", label: "URL", disabled: true }
 ];
 
@@ -150,6 +150,7 @@ const fallbackProviderDetails = [
 
 const artifactLabels = {
   "final.pdf": { label: "PDF", icon: Download },
+  "final.docx": { label: "DOCX", icon: FileText },
   "clean.md": { label: "Markdown", icon: FileText },
   "final.html": { label: "HTML", icon: FileCode2 },
   "validation.json": { label: "validation.json", icon: FileJson },
@@ -168,7 +169,7 @@ const outlineSections = [
 ];
 
 export default function BuilderWorkspace({
-  initialSource = "paste",
+  initialSource = "llm",
   selectedStyle = "exam_cram",
   onSelectStyle,
   latestJob,

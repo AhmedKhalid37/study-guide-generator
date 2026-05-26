@@ -294,7 +294,7 @@ export default function LibraryWorkspace({ refreshKey = 0, onOpenBuilder }) {
             <h1>{folderMap[selectedFolder]?.name || "Library"}</h1>
             <p>{filteredJobs.length} of {data.jobs.length} guide{data.jobs.length === 1 ? "" : "s"}</p>
           </div>
-          <button type="button" className="sg-cta sg-press-btn" onClick={() => onOpenBuilder?.("paste")}>
+          <button type="button" className="sg-cta sg-press-btn" onClick={() => onOpenBuilder?.()}>
             <Plus size={16} stroke="#1A1206" strokeWidth={2.6} />
             New Guide
           </button>

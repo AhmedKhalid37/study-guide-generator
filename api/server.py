@@ -50,6 +50,10 @@ ARTIFACTS = {
     "clean.md": ("clean_md", "text/markdown; charset=utf-8"),
     "final.html": ("final_html", "text/html; charset=utf-8"),
     "final.pdf": ("final_pdf", "application/pdf"),
+    "final.docx": (
+        "final_docx",
+        "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    ),
     "validation.json": ("validation_json", "application/json"),
     "render.log": ("render_log", "text/plain; charset=utf-8"),
 }
@@ -61,6 +65,7 @@ MAX_LLM_ATTACHMENT_BYTES = 15 * 1024 * 1024
 # exposed. render.log is included only when explicitly selected.
 EXPORT_ARTIFACTS: dict[str, tuple[str, str]] = {
     "pdf": ("final.pdf", "final_pdf"),
+    "docx": ("final.docx", "final_docx"),
     "markdown": ("clean.md", "clean_md"),
     "html": ("final.html", "final_html"),
     "validation": ("validation.json", "validation_json"),
@@ -68,6 +73,9 @@ EXPORT_ARTIFACTS: dict[str, tuple[str, str]] = {
 }
 EXPORT_ARTIFACT_ALIASES = {
     "pdf": "pdf",
+    "docx": "docx",
+    "final.docx": "docx",
+    "word": "docx",
     "md": "markdown",
     "markdown": "markdown",
     "clean.md": "markdown",
@@ -563,6 +571,12 @@ def export_bundle(request: BundleRequest) -> Response:
             skipped: list[str] = []
             for selector in selectors:
                 artifact_name, _avail_key = EXPORT_ARTIFACTS[selector]
+                if selector == "docx":
+                    # Best-effort lazy generation; a failure just marks it skipped.
+                    try:
+                        _ensure_docx(job)
+                    except Exception:
+                        pass
                 path, _media = _artifact_path(job, artifact_name)
                 if path.exists() and path.is_file():
                     archive.write(path, f"{base_dir}/{artifact_name}")
@@ -887,6 +901,14 @@ def get_artifact(
     disposition: str = "attachment",
 ) -> FileResponse:
     job = _get_job(job_id)
+    if artifact_name == "final.docx":
+        try:
+            if _ensure_docx(job) is None:
+                raise HTTPException(status_code=404, detail="Artifact not found.")
+        except HTTPException:
+            raise
+        except Exception as exc:
+            raise HTTPException(status_code=500, detail=f"DOCX generation failed: {exc}") from exc
     path, media_type = _artifact_path(job, artifact_name)
     if not path.exists() or not path.is_file():
         raise HTTPException(status_code=404, detail="Artifact not found.")
@@ -911,6 +933,12 @@ def rerender_existing_job(job_id: str, request: RerenderRequest | None = None) -
         raise _job_error(exc, job=getattr(exc, "job", None)) from exc
     except Exception as exc:
         raise _job_error(exc) from exc
+    # Keep an already-generated DOCX in sync (best-effort; never fails rerender).
+    if job.final_docx.exists():
+        try:
+            _ensure_docx(job, regenerate=True)
+        except Exception:
+            pass
     return job_response(job)
 
 
@@ -1090,6 +1118,7 @@ def _artifact_details(job: Job, availability: dict[str, bool]) -> list[dict[str,
 def _artifact_label(artifact_name: str) -> str:
     return {
         "final.pdf": "PDF",
+        "final.docx": "DOCX",
         "clean.md": "Markdown",
         "final.html": "HTML",
         "validation.json": "Validation JSON",
@@ -1262,9 +1291,27 @@ def _artifact_availability(job: Job) -> dict[str, bool]:
         "clean_md": job.clean_md.exists(),
         "final_html": job.final_html.exists(),
         "final_pdf": job.final_pdf.exists(),
+        # DOCX is generated lazily from clean.md, so it is "available" (i.e.
+        # downloadable) whenever a clean.md exists, even if the file isn't on
+        # disk yet — the first request/bundle generates it.
+        "final_docx": job.final_docx.exists() or job.clean_md.exists(),
         "validation_json": _validation_json_path(job).exists(),
         "render_log": job.render_log.exists(),
     }
+
+
+def _ensure_docx(job: Job, *, regenerate: bool = False) -> Path | None:
+    """Lazily generate final.docx from clean.md. Returns the path, or None if
+    there is no clean.md to convert. Raises on a genuine conversion failure.
+    """
+    if not job.clean_md.exists():
+        return None
+    if job.final_docx.exists() and not regenerate:
+        return job.final_docx
+    from pipeline.docx_renderer import render_docx
+
+    render_docx(job.clean_md, job.final_docx)
+    return job.final_docx
 
 
 def _artifact_path(job: Job, artifact_name: str) -> tuple[Path, str]:

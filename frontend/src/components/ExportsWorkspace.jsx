@@ -29,6 +29,7 @@ import { JobDetailsDrawer, StylePill, FolderPill } from "./RecentJobsPanel";
 // Artifact selectors mirror the backend EXPORT_ARTIFACTS map.
 const ARTIFACT_TYPES = [
   { sel: "pdf", label: "PDF", availKey: "final_pdf", file: "final.pdf", icon: Download, openable: true },
+  { sel: "docx", label: "DOCX", availKey: "final_docx", file: "final.docx", icon: FileText, openable: false },
   { sel: "markdown", label: "Markdown", availKey: "clean_md", file: "clean.md", icon: FileText, openable: false },
   { sel: "html", label: "HTML", availKey: "final_html", file: "final.html", icon: FileCode2, openable: true },
   { sel: "validation", label: "Validation", availKey: "validation_json", file: "validation.json", icon: FileJson, openable: false },
@@ -259,7 +260,7 @@ export default function ExportsWorkspace({ refreshKey = 0, onOpenBuilder }) {
           <h1>Exports</h1>
           <p>{filteredJobs.length} of {data.jobs.length} guide{data.jobs.length === 1 ? "" : "s"} · download artifacts or bundle as ZIP</p>
         </div>
-        <button type="button" className="sg-cta sg-press-btn" onClick={() => onOpenBuilder?.("paste")}>
+        <button type="button" className="sg-cta sg-press-btn" onClick={() => onOpenBuilder?.()}>
           <Download size={16} stroke="#1A1206" strokeWidth={2.4} />
           New Guide
         </button>
@@ -609,6 +610,14 @@ function ExportCard({ job, style, folder, selected, onToggleSelect, onDetails, o
                 className="inline-flex h-8 items-center gap-1 rounded-lg border border-white/10 bg-white/[0.04] px-2.5 text-xs font-bold text-slate-200 transition hover:border-ember-500/60 hover:text-white"
               >
                 <Download size={13} /> PDF
+              </a>
+            )}
+            {availability.final_docx && (
+              <a
+                href={artifactUrl(job.id, "final.docx")}
+                className="inline-flex h-8 items-center gap-1 rounded-lg border border-white/10 bg-white/[0.04] px-2.5 text-xs font-bold text-slate-200 transition hover:border-ember-500/60 hover:text-white"
+              >
+                <Download size={13} /> DOCX
               </a>
             )}
             {availability.clean_md && (
