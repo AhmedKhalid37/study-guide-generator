@@ -137,6 +137,14 @@ export function moveJobsToFolder(jobIds, folderId) {
   });
 }
 
+export function generateOutline({ sourceText = "", title = "", provider = null, model = null }) {
+  return requestJson("/api/outline/generate", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ source_text: sourceText, title, provider, model })
+  });
+}
+
 export function getExports(params = {}) {
   const query = new URLSearchParams();
   Object.entries(params).forEach(([key, value]) => {
@@ -230,6 +238,10 @@ export function createLlmJob(payload) {
     const formData = new FormData();
     Object.entries(payload).forEach(([key, value]) => {
       if (key === "attachments" || value === null || value === undefined) {
+        return;
+      }
+      if (key === "outline" && typeof value === "object") {
+        formData.append("outline", JSON.stringify(value));
         return;
       }
       formData.append(key, String(value));

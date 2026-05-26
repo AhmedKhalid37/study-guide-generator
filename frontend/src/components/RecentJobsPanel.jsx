@@ -588,11 +588,33 @@ export function JobDetailsDrawer({ open, onClose, loading, error, details, style
                     value={style ? `${style.name} (${style.isCustom ? "Custom" : "Built-in"})` : "markdown pipeline"}
                   />
                   <MetaTerm label="Folder" value={folder?.name || "Unfiled"} />
+                  <MetaTerm
+                    label="Outline"
+                    value={manifest.outline_enabled ? `${manifest.outline_section_count || 0} sections` : "None"}
+                  />
                   <MetaTerm label="Theme" value={manifest.theme} />
                   <MetaTerm label="Mode" value={manifest.mode} />
                   <MetaTerm label="Strict math" value={String(Boolean(manifest.strict_math))} />
                 </dl>
               </section>
+
+              {manifest.outline_enabled && (manifest.outline_titles?.length ?? 0) > 0 && (
+                <DetailsSection title={`Outline · ${manifest.outline_section_count || manifest.outline_titles.length} sections`}>
+                  <ol className="grid gap-1.5">
+                    {manifest.outline_titles.map((sectionTitle, index) => (
+                      <li
+                        key={`${sectionTitle}-${index}`}
+                        className="flex items-center gap-2.5 rounded-lg border border-white/10 bg-[#070B14] px-3 py-2 text-xs text-slate-200"
+                      >
+                        <span className="grid h-5 w-5 shrink-0 place-items-center rounded bg-ember-500/15 font-mono text-[10px] font-bold text-ember-300">
+                          {index + 1}
+                        </span>
+                        <span className="min-w-0 truncate font-semibold">{sectionTitle}</span>
+                      </li>
+                    ))}
+                  </ol>
+                </DetailsSection>
+              )}
 
               <DetailsSection title="Artifacts">
                 <ArtifactLinkGrid jobId={manifest.id} artifacts={artifacts} />

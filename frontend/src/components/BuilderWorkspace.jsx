@@ -47,6 +47,7 @@ import {
 } from "./ClaudeIcons";
 import { JobDetailsDrawer } from "./RecentJobsPanel";
 import { BUILTIN_STYLE_NAMES } from "../styleMeta";
+import OutlineEditor from "./OutlineEditor";
 
 const sourceTabs = [
   { id: "llm", label: "AI prompt" },
@@ -104,13 +105,6 @@ const lengthOptions = [
   { id: "long", label: "Long", meta: "~30+ pages" }
 ];
 
-const modeOptions = [
-  { id: "exam", label: "Exam", meta: "test-ready guide", icon: Trophy },
-  { id: "theory", label: "Theory", meta: "concepts + depth", icon: Sparkles },
-  { id: "quick", label: "Quick", meta: "fast summary", icon: Zap },
-  { id: "deep", label: "Deep", meta: "detailed explanation", icon: ListChecks }
-];
-
 const includeOptions = [
   "Key concepts",
   "Mnemonics",
@@ -157,17 +151,6 @@ const artifactLabels = {
   "render.log": { label: "render.log", icon: FileText }
 };
 
-const outlineSections = [
-  "Big picture",
-  "Key definitions",
-  "Core formulas",
-  "Step-by-step explanation",
-  "Worked examples",
-  "Common mistakes",
-  "Practice questions",
-  "Final recap"
-];
-
 export default function BuilderWorkspace({
   initialSource = "llm",
   selectedStyle = "exam_cram",
@@ -180,7 +163,6 @@ export default function BuilderWorkspace({
   const [title, setTitle] = useState("Generated Study Guide");
   const [text, setText] = useState("");
   const [file, setFile] = useState(null);
-  const [mode, setMode] = useState("exam");
   const [provider, setProvider] = useState("deepseek");
   const [model, setModel] = useState(fallbackProviderDetails[0].default_model);
   const [providerDetails, setProviderDetails] = useState(fallbackProviderDetails);
@@ -192,6 +174,8 @@ export default function BuilderWorkspace({
   const [styleOptions, setStyleOptions] = useState(styleChips);
   const [length, setLength] = useState("medium");
   const [includes, setIncludes] = useState(["Key concepts", "Mnemonics", "Examples", "Diagrams"]);
+  const [outlineEnabled, setOutlineEnabled] = useState(false);
+  const [outlineSections, setOutlineSections] = useState([]);
   const [result, setResult] = useState(latestJob);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
@@ -346,7 +330,6 @@ export default function BuilderWorkspace({
         text,
         file,
         title,
-        mode,
         selectedStyle,
         provider,
         model,
@@ -355,7 +338,8 @@ export default function BuilderWorkspace({
         attachments,
         length,
         includes,
-        folderId
+        folderId,
+        outline: outlineEnabled ? { enabled: true, sections: outlineSections } : null
       });
       assertBuilderPayload(kind, payload, { text, title, length, includes });
       const job = await createJob(kind, payload);
@@ -476,8 +460,6 @@ export default function BuilderWorkspace({
               file={file}
               setFile={setFile}
               setError={setError}
-              mode={mode}
-              setMode={setMode}
               provider={provider}
               providerDetails={providerDetails}
               selectedProvider={selectedProvider}
@@ -495,19 +477,24 @@ export default function BuilderWorkspace({
               folderId={folderId}
               setFolderId={setFolderId}
               onCreateFolder={handleCreateFolder}
+              outlineEnabled={outlineEnabled}
+              outlineCount={outlineSections.filter((section) => section.title.trim()).length}
               error={error}
               loading={loading}
             />
           )}
 
           {activeBuilderTab === "outline" && (
-            <OutlinePanel
-              title={title}
+            <OutlineEditor
+              enabled={outlineEnabled}
+              setEnabled={setOutlineEnabled}
+              sections={outlineSections}
+              setSections={setOutlineSections}
               source={source}
-              selectedStyle={selectedStyleOption}
-              selectedLength={selectedLengthOption}
-              includes={includes}
-              result={result}
+              text={text}
+              title={title}
+              provider={provider}
+              model={model}
             />
           )}
 
@@ -567,8 +554,6 @@ function BuilderComposer({
   file,
   setFile,
   setError,
-  mode,
-  setMode,
   provider,
   providerDetails,
   selectedProvider,
@@ -586,6 +571,8 @@ function BuilderComposer({
   folderId,
   setFolderId,
   onCreateFolder,
+  outlineEnabled,
+  outlineCount,
   error,
   loading
 }) {
@@ -617,19 +604,6 @@ function BuilderComposer({
 
       {source === "llm" && (
         <div className="sg-llm-panel">
-          <div>
-            <FieldLabel>Mode</FieldLabel>
-            <div className="sg-option-grid four">
-              {modeOptions.map((option) => (
-                <OptionCard
-                  key={option.id}
-                  option={option}
-                  active={mode === option.id}
-                  onClick={() => setMode(option.id)}
-                />
-              ))}
-            </div>
-          </div>
           <div>
             <FieldLabel>Provider</FieldLabel>
             <div className="sg-option-grid">
@@ -681,6 +655,15 @@ function BuilderComposer({
           <span>{source === "llm" ? `${selectedProvider?.display_name || provider} · ${model || "No model"}` : "Markdown pipeline"}</span>
           <ChevronRight className="h-3.5 w-3.5 text-[#9098A8]" />
         </div>
+        {source === "llm" && outlineEnabled && outlineCount > 0 && (
+          <span
+            className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-[rgba(168,85,247,0.4)] bg-[rgba(168,85,247,0.12)] px-3 text-[12px] font-semibold text-[#D8B4FE]"
+            title="This guide will follow your outline"
+          >
+            <ListChecks className="h-3.5 w-3.5" />
+            Outline · {outlineCount}
+          </span>
+        )}
         <div className="flex-1" />
         <FolderPicker
           folders={folders}
@@ -864,70 +847,6 @@ function SourceTabs({ source, setSource, setError }) {
           {tab.label}
         </button>
       ))}
-    </div>
-  );
-}
-
-function OutlinePanel({ title, source, selectedStyle, selectedLength, includes, result }) {
-  const sourceLabel = sourceTabs.find((tab) => tab.id === source)?.label || "Paste text";
-  return (
-    <div className="grid gap-4">
-      <SectionHeader
-        eyebrow="Planning"
-        title="Guide outline"
-        description="A generation-ready plan based on the current builder settings."
-      />
-      <div className="grid gap-3 xl:grid-cols-4">
-        <InfoCard label="Title" value={title || "Untitled guide"} />
-        <InfoCard label="Source" value={sourceLabel} />
-        <InfoCard label="Style" value={selectedStyle?.name || selectedStyle?.label || "Exam Cram"} />
-        <InfoCard label="Length" value={`${selectedLength?.label || "Medium"} ${selectedLength?.meta || "~20 pages"}`} />
-      </div>
-      <div className="rounded-xl border border-white/[0.06] bg-white/[0.025] p-4">
-        <FieldLabel>Suggested structure</FieldLabel>
-        <div className="mt-2 grid gap-2">
-          {outlineSections.map((section, index) => (
-            <div
-              key={section}
-              className="flex items-center gap-3 rounded-[10px] border border-white/[0.06] bg-[#070B14] px-3 py-2.5"
-            >
-              <span className="grid h-7 w-7 place-items-center rounded-md bg-[rgba(249,115,22,0.12)] font-mono text-[11px] font-bold text-[#FB923C]">
-                {index + 1}
-              </span>
-              <span className="text-[13px] font-semibold text-[#F4F4F5]">{section}</span>
-            </div>
-          ))}
-        </div>
-      </div>
-      <div className="grid gap-3 xl:grid-cols-[1.2fr_0.8fr]">
-        <div className="rounded-xl border border-white/[0.06] bg-white/[0.025] p-4">
-          <FieldLabel>Included sections</FieldLabel>
-          <div className="mt-2 flex flex-wrap gap-1.5">
-            {includes.map((item) => (
-              <span
-                key={item}
-                className="inline-flex h-7 items-center rounded-full border border-[rgba(249,115,22,0.3)] bg-[rgba(249,115,22,0.10)] px-3 text-xs font-medium text-[#FB923C]"
-              >
-                {item}
-              </span>
-            ))}
-          </div>
-        </div>
-        <div className="rounded-xl border border-white/[0.06] bg-white/[0.025] p-4">
-          <FieldLabel>Latest job</FieldLabel>
-          {result ? (
-            <div className="mt-2 grid gap-2 text-[12.5px] text-[#D4D4D8]">
-              <MetaRow label="Job ID" value={result.job_id || result.id || "unknown"} />
-              <MetaRow label="Status" value={result.status || "unknown"} />
-              <MetaRow label="Model" value={result.model || "pipeline"} />
-            </div>
-          ) : (
-            <p className="mt-2 text-[12.5px] leading-5 text-[#9098A8]">
-              Generate a guide to attach job status and export metadata to this outline.
-            </p>
-          )}
-        </div>
-      </div>
     </div>
   );
 }
@@ -1692,7 +1611,6 @@ export function buildBuilderPayload({
   text,
   file,
   title,
-  mode,
   selectedStyle,
   provider,
   model,
@@ -1701,7 +1619,8 @@ export function buildBuilderPayload({
   attachments,
   length,
   includes,
-  folderId = "unfiled"
+  folderId = "unfiled",
+  outline = null
 }) {
   if (source === "upload") {
     return {
@@ -1721,7 +1640,6 @@ export function buildBuilderPayload({
       payload: buildLlmPayload({
         text,
         title,
-        mode,
         selectedStyle,
         provider,
         model,
@@ -1730,7 +1648,8 @@ export function buildBuilderPayload({
         attachments,
         length,
         includes,
-        folderId
+        folderId,
+        outline
       })
     };
   }
@@ -1749,7 +1668,7 @@ export function buildBuilderPayload({
 export function buildLlmPayload({
   text,
   title,
-  mode,
+  mode = "study_guide",
   selectedStyle,
   provider,
   model,
@@ -1758,8 +1677,10 @@ export function buildLlmPayload({
   attachments = [],
   length,
   includes,
-  folderId = "unfiled"
+  folderId = "unfiled",
+  outline = null
 }) {
+  const hasOutline = outline?.enabled && (outline.sections || []).some((section) => section.title?.trim());
   return {
     source_text: augmentSourceText(text, length, includes),
     title,
@@ -1771,6 +1692,7 @@ export function buildLlmPayload({
     strict_math: strictMath,
     qwen_thinking: qwenThinking,
     folder_id: folderId,
+    ...(hasOutline ? { outline } : {}),
     attachments
   };
 }
