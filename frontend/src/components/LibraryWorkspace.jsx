@@ -23,10 +23,12 @@ import {
   getLibrary,
   getStyles,
   moveJobToFolder,
+  moveJobsToFolder,
   updateFolder
 } from "../api/client";
 import { buildStyleLookup, resolveStyle } from "../styleMeta";
-import { JobDetailsDrawer, StylePill } from "./RecentJobsPanel";
+import { FOLDER_PRESET_COLORS, folderColor } from "../folderMeta";
+import { JobDetailsDrawer, StylePill, FolderPill } from "./RecentJobsPanel";
 
 const SORTS = [
   { id: "newest", label: "Newest" },
@@ -57,8 +59,11 @@ export default function LibraryWorkspace({ refreshKey = 0, onOpenBuilder }) {
   const [showFilters, setShowFilters] = useState(false);
 
   const [newFolderName, setNewFolderName] = useState("");
-  const [renaming, setRenaming] = useState(null); // { id, name }
+  const [newFolderColor, setNewFolderColor] = useState(FOLDER_PRESET_COLORS[0]);
+  const [renaming, setRenaming] = useState(null); // { id, name, color }
   const [folderError, setFolderError] = useState(null);
+
+  const [selectedIds, setSelectedIds] = useState(() => new Set());
 
   const [detailsOpen, setDetailsOpen] = useState(false);
   const [jobDetails, setJobDetails] = useState(null);
@@ -92,6 +97,17 @@ export default function LibraryWorkspace({ refreshKey = 0, onOpenBuilder }) {
       cancelled = true;
     };
   }, [refreshKey, internalRefresh]);
+
+  // Drop any selected ids that no longer exist after a reload (e.g. deleted).
+  useEffect(() => {
+    setSelectedIds((prev) => {
+      if (prev.size === 0) return prev;
+      const existing = new Set(data.jobs.map((job) => job.id));
+      const next = new Set();
+      prev.forEach((id) => existing.has(id) && next.add(id));
+      return next.size === prev.size ? prev : next;
+    });
+  }, [data.jobs]);
 
   const folderMap = useMemo(
     () => Object.fromEntries(data.folders.map((folder) => [folder.id, folder])),
@@ -182,13 +198,50 @@ export default function LibraryWorkspace({ refreshKey = 0, onOpenBuilder }) {
     [reload]
   );
 
+  const toggleSelect = useCallback((jobId) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      next.has(jobId) ? next.delete(jobId) : next.add(jobId);
+      return next;
+    });
+  }, []);
+
+  const clearSelection = useCallback(() => setSelectedIds(new Set()), []);
+
+  const visibleIds = useMemo(() => filteredJobs.map((job) => job.id), [filteredJobs]);
+  const allVisibleSelected =
+    visibleIds.length > 0 && visibleIds.every((id) => selectedIds.has(id));
+
+  const toggleSelectAllVisible = useCallback(() => {
+    setSelectedIds((prev) => {
+      const everySelected = visibleIds.length > 0 && visibleIds.every((id) => prev.has(id));
+      return everySelected ? new Set() : new Set(visibleIds);
+    });
+  }, [visibleIds]);
+
+  const handleBatchMove = useCallback(
+    async (folderId) => {
+      const ids = [...selectedIds];
+      if (ids.length === 0) return;
+      try {
+        await moveJobsToFolder(ids, folderId);
+        clearSelection();
+        reload();
+      } catch (err) {
+        setError(err.message || "Could not move selected guides.");
+      }
+    },
+    [selectedIds, clearSelection, reload]
+  );
+
   async function handleCreateFolder() {
     const name = newFolderName.trim();
     if (!name) return;
     setFolderError(null);
     try {
-      await createFolder({ name });
+      await createFolder({ name, color: newFolderColor });
       setNewFolderName("");
+      setNewFolderColor(FOLDER_PRESET_COLORS[0]);
       reload();
     } catch (err) {
       setFolderError(err.message || "Could not create folder.");
@@ -198,7 +251,7 @@ export default function LibraryWorkspace({ refreshKey = 0, onOpenBuilder }) {
   async function handleRenameFolder() {
     if (!renaming?.name.trim()) return;
     try {
-      await updateFolder(renaming.id, { name: renaming.name.trim() });
+      await updateFolder(renaming.id, { name: renaming.name.trim(), color: renaming.color });
       setRenaming(null);
       reload();
     } catch (err) {
@@ -225,6 +278,8 @@ export default function LibraryWorkspace({ refreshKey = 0, onOpenBuilder }) {
         onSelect={setSelectedFolder}
         newFolderName={newFolderName}
         setNewFolderName={setNewFolderName}
+        newFolderColor={newFolderColor}
+        setNewFolderColor={setNewFolderColor}
         onCreate={handleCreateFolder}
         renaming={renaming}
         setRenaming={setRenaming}
@@ -274,6 +329,28 @@ export default function LibraryWorkspace({ refreshKey = 0, onOpenBuilder }) {
           </div>
         )}
 
+        {selectedIds.size > 0 && (
+          <BulkBar
+            count={selectedIds.size}
+            folders={moveTargets.filter((folder) => folder.id !== "unfiled")}
+            onMove={handleBatchMove}
+            onUnfile={() => handleBatchMove("unfiled")}
+            onClear={clearSelection}
+          />
+        )}
+
+        {!loading && filteredJobs.length > 0 && (
+          <label className="mt-3 inline-flex w-fit cursor-pointer items-center gap-2 px-0.5 text-xs font-semibold text-slate-400 hover:text-slate-200">
+            <input
+              type="checkbox"
+              className="h-3.5 w-3.5 accent-ember-500"
+              checked={allVisibleSelected}
+              onChange={toggleSelectAllVisible}
+            />
+            Select all visible ({visibleIds.length})
+          </label>
+        )}
+
         <div className="mt-3 min-h-0 flex-1 overflow-y-auto pr-1">
           {loading ? (
             <div className="flex min-h-48 items-center justify-center gap-3 text-slate-300">
@@ -296,6 +373,8 @@ export default function LibraryWorkspace({ refreshKey = 0, onOpenBuilder }) {
                   moveTargets={moveTargets}
                   onMove={handleMove}
                   onDetails={() => openDetails(job.id)}
+                  selected={selectedIds.has(job.id)}
+                  onToggleSelect={toggleSelect}
                 />
               ))}
             </div>
@@ -321,6 +400,8 @@ function FolderRail({
   onSelect,
   newFolderName,
   setNewFolderName,
+  newFolderColor,
+  setNewFolderColor,
   onCreate,
   renaming,
   setRenaming,
@@ -338,20 +419,26 @@ function FolderRail({
           return (
             <div key={folder.id} className="group">
               {isRenaming ? (
-                <div className="flex items-center gap-1 px-1 py-1">
-                  <input
-                    autoFocus
-                    className="sg-input h-8 px-2 text-sm"
-                    value={renaming.name}
-                    onChange={(event) => setRenaming({ ...renaming, name: event.target.value })}
-                    onKeyDown={(event) => {
-                      if (event.key === "Enter") onRename();
-                      if (event.key === "Escape") setRenaming(null);
-                    }}
+                <div className="grid gap-1.5 px-1 py-1">
+                  <div className="flex items-center gap-1">
+                    <input
+                      autoFocus
+                      className="sg-input h-8 px-2 text-sm"
+                      value={renaming.name}
+                      onChange={(event) => setRenaming({ ...renaming, name: event.target.value })}
+                      onKeyDown={(event) => {
+                        if (event.key === "Enter") onRename();
+                        if (event.key === "Escape") setRenaming(null);
+                      }}
+                    />
+                    <button type="button" className="sg-icon-button" onClick={onRename} title="Save">
+                      <Plus size={13} />
+                    </button>
+                  </div>
+                  <ColorSwatches
+                    value={renaming.color}
+                    onChange={(color) => setRenaming({ ...renaming, color })}
                   />
-                  <button type="button" className="sg-icon-button" onClick={onRename} title="Save">
-                    <Plus size={13} />
-                  </button>
                 </div>
               ) : (
                 <button
@@ -372,7 +459,7 @@ function FolderRail({
                         className="grid h-5 w-5 place-items-center rounded text-slate-400 hover:text-white"
                         onClick={(event) => {
                           event.stopPropagation();
-                          setRenaming({ id: folder.id, name: folder.name });
+                          setRenaming({ id: folder.id, name: folder.name, color: folder.color || FOLDER_PRESET_COLORS[0] });
                         }}
                         title="Rename"
                       >
@@ -412,6 +499,9 @@ function FolderRail({
             <FolderPlus size={14} />
           </button>
         </div>
+        <div className="mt-1.5 px-1">
+          <ColorSwatches value={newFolderColor} onChange={setNewFolderColor} />
+        </div>
         {folderError && <p className="mt-1.5 px-1 text-[11px] text-red-300">{folderError}</p>}
       </div>
     </aside>
@@ -422,6 +512,29 @@ function FolderGlyph({ folder }) {
   const color = folder.color || (folder.system ? "#9098A8" : "#F97316");
   if (folder.id === "all") return <Layers3 size={15} color="#F97316" />;
   return <FolderClosed size={15} color={color} />;
+}
+
+function ColorSwatches({ value, onChange }) {
+  return (
+    <div className="flex items-center gap-1.5">
+      {FOLDER_PRESET_COLORS.map((color) => {
+        const active = (value || "").toLowerCase() === color.toLowerCase();
+        return (
+          <button
+            key={color}
+            type="button"
+            onClick={() => onChange(color)}
+            title={color}
+            aria-label={`Folder color ${color}`}
+            className={`h-4 w-4 rounded-full border transition ${
+              active ? "ring-2 ring-white/70 ring-offset-1 ring-offset-[#0B0F19]" : "border-white/20"
+            }`}
+            style={{ backgroundColor: color }}
+          />
+        );
+      })}
+    </div>
+  );
 }
 
 function Toolbar({ q, setQ, sort, setSort, showFilters, setShowFilters, activeFilterCount }) {
@@ -543,13 +656,28 @@ function ToggleChip({ active, onClick, children }) {
   );
 }
 
-function JobCard({ job, style, folder, moveTargets, onMove, onDetails }) {
+function JobCard({ job, style, folder, moveTargets, onMove, onDetails, selected, onToggleSelect }) {
   const availability = job.artifact_availability || {};
   const attachments = job.attachment_summary || {};
   const created = job.created_at || "";
   return (
-    <div className="rounded-xl border border-white/10 bg-white/[0.035] p-3 transition hover:border-white/20">
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+    <div
+      className={`flex gap-3 rounded-xl border p-3 transition ${
+        selected
+          ? "border-ember-500/60 bg-ember-500/[0.08]"
+          : "border-white/10 bg-white/[0.035] hover:border-white/20"
+      }`}
+    >
+      <label className="flex shrink-0 items-start pt-0.5" onClick={(event) => event.stopPropagation()}>
+        <input
+          type="checkbox"
+          className="h-4 w-4 accent-ember-500"
+          checked={selected}
+          onChange={() => onToggleSelect(job.id)}
+          aria-label={`Select ${job.title || "study guide"}`}
+        />
+      </label>
+      <div className="flex min-w-0 flex-1 flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
         <div className="min-w-0 flex-1">
           <p className="truncate text-sm font-bold text-white">{job.title || "Untitled study guide"}</p>
           <p className="mt-0.5 truncate text-xs text-slate-400">
@@ -560,12 +688,7 @@ function JobCard({ job, style, folder, moveTargets, onMove, onDetails }) {
               {job.status || "unknown"}
             </span>
             {style && <StylePill style={style} />}
-            {folder && folder.id !== "unfiled" && (
-              <span className="inline-flex items-center gap-1 rounded-full border border-white/10 bg-white/[0.05] px-2 py-0.5 text-[11px] font-semibold text-slate-300">
-                <FolderClosed size={11} color={folder.color || "#9098A8"} />
-                {folder.name}
-              </span>
-            )}
+            {folder && folder.id !== "unfiled" && <FolderPill folder={folder} />}
             {(attachments.count || 0) > 0 && (
               <span className="inline-flex items-center gap-1 rounded-full border border-emerald-400/25 bg-emerald-400/10 px-2 py-0.5 text-[11px] font-bold text-emerald-200">
                 <Paperclip size={11} /> {attachments.count}
@@ -608,6 +731,70 @@ function JobCard({ job, style, folder, moveTargets, onMove, onDetails }) {
           </button>
         </div>
       </div>
+    </div>
+  );
+}
+
+function BulkBar({ count, folders, onMove, onUnfile, onClear }) {
+  return (
+    <div className="mt-3 flex flex-wrap items-center gap-2 rounded-lg border border-ember-500/40 bg-ember-500/[0.08] px-3 py-2">
+      <span className="text-sm font-bold text-white">{count} selected</span>
+      <div className="ml-auto flex flex-wrap items-center gap-2">
+        <BatchMoveMenu folders={folders} onMove={onMove} />
+        <button
+          type="button"
+          onClick={onUnfile}
+          className="inline-flex h-8 items-center gap-1 rounded-lg border border-white/10 bg-white/[0.04] px-2.5 text-xs font-bold text-slate-200 transition hover:border-ember-500/60 hover:text-white"
+        >
+          <FolderClosed size={13} /> Move to Unfiled
+        </button>
+        <button
+          type="button"
+          onClick={onClear}
+          className="inline-flex h-8 items-center gap-1 rounded-lg border border-white/10 bg-white/[0.04] px-2.5 text-xs font-bold text-slate-300 transition hover:text-white"
+        >
+          <X size={13} /> Clear
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function BatchMoveMenu({ folders, onMove }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <div className="relative">
+      <button
+        type="button"
+        onClick={() => setOpen((value) => !value)}
+        className="inline-flex h-8 items-center gap-1 rounded-lg border border-ember-500/50 bg-ember-500/10 px-2.5 text-xs font-bold text-white transition hover:border-ember-500/70"
+      >
+        <FolderClosed size={13} /> Move to folder <ChevronDown size={12} />
+      </button>
+      {open && (
+        <>
+          <button type="button" className="fixed inset-0 z-40 cursor-default" aria-label="Close menu" onClick={() => setOpen(false)} />
+          <div className="absolute right-0 z-50 mt-1 max-h-64 w-48 overflow-y-auto rounded-xl border border-white/10 bg-[#0B0F19] p-1 shadow-2xl">
+            {folders.length === 0 && (
+              <p className="px-2.5 py-1.5 text-xs text-slate-500">No folders yet.</p>
+            )}
+            {folders.map((folder) => (
+              <button
+                key={folder.id}
+                type="button"
+                onClick={() => {
+                  setOpen(false);
+                  onMove(folder.id);
+                }}
+                className="flex w-full items-center gap-2 rounded-lg px-2.5 py-1.5 text-left text-sm text-slate-200 hover:bg-white/[0.06]"
+              >
+                <FolderClosed size={13} color={folderColor(folder)} />
+                <span className="min-w-0 flex-1 truncate">{folder.name}</span>
+              </button>
+            ))}
+          </div>
+        </>
+      )}
     </div>
   );
 }

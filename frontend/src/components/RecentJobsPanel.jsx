@@ -7,12 +7,14 @@ import {
   FileCode2,
   FileJson,
   FileText,
+  FolderClosed,
   Loader2,
   Paperclip,
   X
 } from "lucide-react";
 import { artifactUrl, getJob, getJobs, getStyles } from "../api/client";
 import { buildStyleLookup, resolveStyle } from "../styleMeta";
+import { folderColor } from "../folderMeta";
 
 const artifactLinks = [
   { name: "final.pdf", label: "PDF", key: "final_pdf", icon: Download },
@@ -38,6 +40,15 @@ function statusClass(status) {
     return "border-red-400/30 bg-red-400/10 text-red-200";
   }
   return "border-amber-300/30 bg-amber-300/10 text-amber-100";
+}
+
+// Build a {id, name, color} folder object from a job's flat folder_* fields,
+// or null when the job is unfiled. Works for /api/jobs and /api/jobs/{id}.
+function jobFolder(job) {
+  if (!job?.folder_id || !job?.folder_name) {
+    return null;
+  }
+  return { id: job.folder_id, name: job.folder_name, color: job.folder_color };
 }
 
 function attachmentSummary(job) {
@@ -195,6 +206,7 @@ export default function RecentJobsPanel({ refreshKey = 0, embedded = false, onSe
               const providerModel = formatProviderModel(job);
               const sources = attachmentSummary(job);
               const jobStyle = resolveStyle(job.prompt_name, styleLookup);
+              const folder = jobFolder(job);
               return (
                 <button
                   key={job.id}
@@ -212,9 +224,10 @@ export default function RecentJobsPanel({ refreshKey = 0, embedded = false, onSe
                       <p className="mt-1 truncate text-xs text-slate-400">
                         {[providerModel || "Study guide", job.created_at].filter(Boolean).join(" · ")}
                       </p>
-                      {(jobStyle || sources.count > 0) && (
+                      {(jobStyle || folder || sources.count > 0) && (
                         <div className="mt-2 flex flex-wrap gap-1.5">
                           {jobStyle && <StylePill style={jobStyle} />}
+                          {folder && <FolderPill folder={folder} />}
                           {sources.count > 0 && <AttachmentPill count={sources.count} />}
                           {sources.count > 0 && sources.hasWarnings && <WarningPill count={sources.warningCount} />}
                         </div>
@@ -350,6 +363,18 @@ export function StylePill({ style }) {
     <span className={`inline-flex w-fit items-center gap-1.5 rounded-full border px-2 py-0.5 text-[11px] font-bold ${tone}`}>
       {style.name}
       <span className="opacity-70">· {style.isCustom ? "Custom" : "Built-in"}</span>
+    </span>
+  );
+}
+
+export function FolderPill({ folder }) {
+  if (!folder || !folder.name) {
+    return null;
+  }
+  return (
+    <span className="inline-flex w-fit items-center gap-1.5 rounded-full border border-white/10 bg-white/[0.05] px-2 py-0.5 text-[11px] font-semibold text-slate-300">
+      <FolderClosed className="h-3 w-3" color={folderColor(folder)} />
+      {folder.name}
     </span>
   );
 }
@@ -492,6 +517,7 @@ export function JobDetailsDrawer({ open, onClose, loading, error, details, style
   const validation = details?.validation_summary;
   const renderLog = details?.render_log_summary;
   const style = resolveStyle(manifest?.prompt_name, styleLookup);
+  const folder = jobFolder(manifest);
   const warnings = [
     ...(manifest?.extraction_warnings ?? []),
     ...(manifest?.error ? [String(manifest.error)] : [])
@@ -551,6 +577,7 @@ export function JobDetailsDrawer({ open, onClose, loading, error, details, style
                     </span>
                   )}
                   {style && <StylePill style={style} />}
+                  {folder && <FolderPill folder={folder} />}
                 </div>
                 <dl className="mt-4 grid gap-3 text-sm sm:grid-cols-2">
                   <MetaTerm label="Created" value={manifest.created_at} />
@@ -559,6 +586,7 @@ export function JobDetailsDrawer({ open, onClose, loading, error, details, style
                     label="Style"
                     value={style ? `${style.name} (${style.isCustom ? "Custom" : "Built-in"})` : "markdown pipeline"}
                   />
+                  <MetaTerm label="Folder" value={folder?.name || "Unfiled"} />
                   <MetaTerm label="Theme" value={manifest.theme} />
                   <MetaTerm label="Mode" value={manifest.mode} />
                   <MetaTerm label="Strict math" value={String(Boolean(manifest.strict_math))} />

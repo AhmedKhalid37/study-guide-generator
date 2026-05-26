@@ -333,6 +333,7 @@ def _fallback_style_name(description: str) -> str:
 def list_jobs(limit: int = 20) -> dict[str, Any]:
     jobs = []
     if JOBS_DIR.exists():
+        folders_by_id = {folder["id"]: folder for folder in library_store.list_folders()}
         for manifest_path in JOBS_DIR.glob("*/job.json"):
             manifest = _read_json(manifest_path)
             if manifest is None:
@@ -345,6 +346,7 @@ def list_jobs(limit: int = 20) -> dict[str, Any]:
                     "id": job_id,
                     "attachment_summary": _attachment_summary(safe_manifest),
                     "artifact_availability": _artifact_availability(Job(job_id)),
+                    **_folder_meta(job_id, folders_by_id),
                 }
             )
 
@@ -655,6 +657,7 @@ async def create_llm_job(request: Request) -> dict[str, Any]:
 def get_job(job_id: str) -> dict[str, Any]:
     job = _get_job(job_id)
     manifest = _safe_manifest(job.read_manifest())
+    manifest.update(_folder_meta(job.id))
     availability = _artifact_availability(job)
     return {
         "job": manifest,
@@ -750,6 +753,29 @@ def _apply_folder_assignment(job_id: str, folder_target: str | None) -> None:
         library_store.move_job(job_id, folder_target)
     except library_store.LibraryStoreError:
         pass
+
+
+_EMPTY_FOLDER_META = {"folder_id": None, "folder_name": None, "folder_color": None}
+
+
+def _folder_meta(job_id: str, folders_by_id: dict[str, dict[str, Any]] | None = None) -> dict[str, Any]:
+    """Safe, flat folder metadata for a job: id/name/color (all None if unfiled).
+
+    Only exposes registry fields (id/name/color) — never any filesystem path.
+    ``folders_by_id`` is an optional precomputed ``list_folders`` map to avoid a
+    per-job folder read when listing many jobs.
+    """
+    folder_id = library_store.folder_id_for(job_id)
+    if folder_id == library_store.VIRTUAL_UNFILED:
+        return dict(_EMPTY_FOLDER_META)
+    folder = (folders_by_id or {}).get(folder_id) or library_store.get_folder(folder_id)
+    if not folder:
+        return dict(_EMPTY_FOLDER_META)
+    return {
+        "folder_id": folder["id"],
+        "folder_name": folder.get("name"),
+        "folder_color": folder.get("color"),
+    }
 
 
 def _safe_manifest(manifest: dict[str, Any]) -> dict[str, Any]:

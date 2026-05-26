@@ -1,12 +1,14 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
 import {
   AlertCircle,
+  Check,
   ChevronRight,
   Download,
   FileCode2,
   FileJson,
   FileText,
   Folder,
+  FolderPlus,
   Leaf,
   ListChecks,
   Loader2,
@@ -16,10 +18,12 @@ import {
   Trophy,
   Upload,
   Wand2,
+  X,
   Zap
 } from "lucide-react";
 import {
   apiUrl,
+  createFolder,
   createLlmJob,
   createPasteJob,
   createUploadMarkdownJob,
@@ -29,6 +33,7 @@ import {
   getStyles,
   previewApiUrl
 } from "../api/client";
+import { FOLDER_PRESET_COLORS } from "../folderMeta";
 import {
   BoltGlyph,
   DocGlyph,
@@ -246,22 +251,37 @@ export default function BuilderWorkspace({
     };
   }, []);
 
+  // Only real folders are selectable here; "All Guides"/"Unfiled" are virtual
+  // system views the API marks with `system: true`.
+  const loadFolders = useCallback(
+    () =>
+      getFolders()
+        .then((result) => {
+          const real = (result.folders ?? []).filter((folder) => !folder.system);
+          setFolders(real);
+          return real;
+        })
+        .catch(() => {
+          setFolders([]);
+          return [];
+        }),
+    []
+  );
+
   useEffect(() => {
-    let cancelled = false;
-    getFolders()
-      .then((result) => {
-        if (cancelled) return;
-        // Only real folders are selectable here; "All Guides"/"Unfiled" are
-        // virtual system views the API marks with `system: true`.
-        setFolders((result.folders ?? []).filter((folder) => !folder.system));
-      })
-      .catch(() => {
-        if (!cancelled) setFolders([]);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, []);
+    loadFolders();
+  }, [loadFolders]);
+
+  const handleCreateFolder = useCallback(
+    async ({ name, color }) => {
+      // Throws on invalid/duplicate so the popover can surface the message.
+      const created = await createFolder({ name, color });
+      await loadFolders();
+      setFolderId(created.id);
+      return created;
+    },
+    [loadFolders]
+  );
 
   const artifactEntries = useMemo(() => {
     if (!result?.artifact_urls) {
@@ -473,6 +493,7 @@ export default function BuilderWorkspace({
               folders={folders}
               folderId={folderId}
               setFolderId={setFolderId}
+              onCreateFolder={handleCreateFolder}
               error={error}
               loading={loading}
             />
@@ -563,6 +584,7 @@ function BuilderComposer({
   folders,
   folderId,
   setFolderId,
+  onCreateFolder,
   error,
   loading
 }) {
@@ -659,7 +681,12 @@ function BuilderComposer({
           <ChevronRight className="h-3.5 w-3.5 text-[#9098A8]" />
         </div>
         <div className="flex-1" />
-        <FolderPicker folders={folders} folderId={folderId} setFolderId={setFolderId} />
+        <FolderPicker
+          folders={folders}
+          folderId={folderId}
+          setFolderId={setFolderId}
+          onCreateFolder={onCreateFolder}
+        />
         <button
           type="button"
           className="sg-ghost-button"
@@ -680,27 +707,121 @@ function BuilderComposer({
   );
 }
 
-function FolderPicker({ folders = [], folderId, setFolderId }) {
+function FolderPicker({ folders = [], folderId, setFolderId, onCreateFolder }) {
+  const [creating, setCreating] = useState(false);
+
   return (
-    <label
-      className="inline-flex h-9 items-center gap-2 rounded-lg border border-white/[0.08] bg-white/[0.03] pl-3 pr-2 text-[12.5px] font-medium text-[#D4D4D8]"
-      title="Choose a Library folder for this guide"
-    >
-      <Folder className="h-3.5 w-3.5 text-[#F97316]" />
-      <span className="text-[#9098A8]">Save to</span>
-      <select
-        value={folderId}
-        onChange={(event) => setFolderId(event.target.value)}
-        className="h-7 max-w-[150px] truncate rounded-md border-0 bg-transparent pr-1 text-[12.5px] font-semibold text-[#F4F4F5] outline-none"
+    <div className="relative inline-flex items-center gap-1">
+      <label
+        className="inline-flex h-9 items-center gap-2 rounded-lg border border-white/[0.08] bg-white/[0.03] pl-3 pr-2 text-[12.5px] font-medium text-[#D4D4D8]"
+        title="Choose a Library folder for this guide"
       >
-        <option value="unfiled" className="bg-[#0B1220]">Unfiled</option>
-        {folders.map((folder) => (
-          <option key={folder.id} value={folder.id} className="bg-[#0B1220]">
-            {folder.name}
-          </option>
-        ))}
-      </select>
-    </label>
+        <Folder className="h-3.5 w-3.5 text-[#F97316]" />
+        <span className="text-[#9098A8]">Save to</span>
+        <select
+          value={folderId}
+          onChange={(event) => setFolderId(event.target.value)}
+          className="h-7 max-w-[150px] truncate rounded-md border-0 bg-transparent pr-1 text-[12.5px] font-semibold text-[#F4F4F5] outline-none"
+        >
+          <option value="unfiled" className="bg-[#0B1220]">Unfiled</option>
+          {folders.map((folder) => (
+            <option key={folder.id} value={folder.id} className="bg-[#0B1220]">
+              {folder.name}
+            </option>
+          ))}
+        </select>
+      </label>
+      {onCreateFolder && (
+        <button
+          type="button"
+          onClick={() => setCreating((open) => !open)}
+          title="Create folder"
+          className="grid h-9 w-9 shrink-0 place-items-center rounded-lg border border-white/[0.08] bg-white/[0.03] text-[#9098A8] transition hover:border-[rgba(249,115,22,0.45)] hover:text-[#F97316]"
+        >
+          <FolderPlus className="h-4 w-4" />
+        </button>
+      )}
+      {creating && (
+        <CreateFolderPopover
+          onClose={() => setCreating(false)}
+          onCreateFolder={onCreateFolder}
+        />
+      )}
+    </div>
+  );
+}
+
+function CreateFolderPopover({ onClose, onCreateFolder }) {
+  const [name, setName] = useState("");
+  const [color, setColor] = useState(FOLDER_PRESET_COLORS[0]);
+  const [error, setError] = useState(null);
+  const [busy, setBusy] = useState(false);
+
+  async function submit() {
+    const trimmed = name.trim();
+    if (!trimmed || busy) return;
+    setBusy(true);
+    setError(null);
+    try {
+      await onCreateFolder({ name: trimmed, color });
+      onClose();
+    } catch (err) {
+      setError(err?.message || "Could not create folder.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <>
+      <button type="button" className="fixed inset-0 z-40 cursor-default" aria-label="Close" onClick={onClose} />
+      <div className="absolute bottom-11 right-0 z-50 w-64 rounded-xl border border-white/10 bg-[#0B1220] p-3 shadow-2xl">
+        <div className="mb-2 flex items-center justify-between">
+          <span className="text-[11px] font-bold uppercase tracking-[0.12em] text-[#9098A8]">New folder</span>
+          <button type="button" onClick={onClose} className="text-[#9098A8] hover:text-white">
+            <X className="h-3.5 w-3.5" />
+          </button>
+        </div>
+        <input
+          autoFocus
+          value={name}
+          onChange={(event) => setName(event.target.value)}
+          onKeyDown={(event) => {
+            if (event.key === "Enter") submit();
+            if (event.key === "Escape") onClose();
+          }}
+          placeholder="Folder name…"
+          className="h-8 w-full rounded-md border border-white/[0.1] bg-[#070B14] px-2 text-[13px] text-[#F4F4F5] outline-none focus:border-[rgba(249,115,22,0.45)]"
+        />
+        <div className="mt-2 flex items-center gap-1.5">
+          {FOLDER_PRESET_COLORS.map((swatch) => {
+            const active = swatch.toLowerCase() === color.toLowerCase();
+            return (
+              <button
+                key={swatch}
+                type="button"
+                onClick={() => setColor(swatch)}
+                aria-label={`Color ${swatch}`}
+                className={`h-4 w-4 rounded-full border transition ${
+                  active ? "ring-2 ring-white/70 ring-offset-1 ring-offset-[#0B1220]" : "border-white/20"
+                }`}
+                style={{ backgroundColor: swatch }}
+              />
+            );
+          })}
+        </div>
+        {error && <p className="mt-2 text-[11px] text-red-300">{error}</p>}
+        <button
+          type="button"
+          onClick={submit}
+          disabled={!name.trim() || busy}
+          className="mt-2.5 inline-flex h-8 w-full items-center justify-center gap-1.5 rounded-md border border-[rgba(249,115,22,0.45)] bg-[rgba(249,115,22,0.14)] text-[12.5px] font-semibold text-[#F97316] transition disabled:cursor-not-allowed disabled:opacity-50"
+        >
+          {busy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Check className="h-3.5 w-3.5" />}
+          Create &amp; select
+        </button>
+      </div>
+    </>
   );
 }
 
