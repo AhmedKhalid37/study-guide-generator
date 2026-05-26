@@ -89,6 +89,15 @@ EXPORT_ARTIFACT_ALIASES = {
 }
 MAX_BUNDLE_JOBS = 100
 
+# The visible "mode" control was removed from the Builder (Styles now define guide
+# type). Templates still contain a {mode} placeholder, so we keep accepting mode
+# for request compatibility and default it to this stable value.
+DEFAULT_MODE = "study_guide"
+
+MAX_OUTLINE_SECTIONS = 50
+MAX_OUTLINE_TITLE_CHARS = 200
+MAX_OUTLINE_INSTRUCTION_CHARS = 600
+
 
 class PasteJobRequest(BaseModel):
     text: str
@@ -97,10 +106,20 @@ class PasteJobRequest(BaseModel):
     folder_id: str | None = None
 
 
+class OutlineSection(BaseModel):
+    title: str = ""
+    instructions: str = ""
+
+
+class OutlineData(BaseModel):
+    enabled: bool = False
+    sections: list[OutlineSection] = []
+
+
 class LLMJobRequest(BaseModel):
     source_text: str
     title: str = "Generated Study Guide"
-    mode: str = "exam"
+    mode: str = DEFAULT_MODE
     prompt_name: str = "basic_study_guide"
     provider: str
     model: str
@@ -108,6 +127,14 @@ class LLMJobRequest(BaseModel):
     strict_math: bool = True
     qwen_thinking: bool = True
     folder_id: str | None = None
+    outline: OutlineData | None = None
+
+
+class OutlineGenerateRequest(BaseModel):
+    source_text: str = ""
+    title: str = ""
+    provider: str | None = None
+    model: str | None = None
 
 
 class StyleCreateRequest(BaseModel):
@@ -377,6 +404,102 @@ def _fallback_style_name(description: str) -> str:
     words = description.strip().split()
     name = " ".join(words[:6]).strip(" .,:;")
     return (name or "Custom Style").title()[:60]
+
+
+@app.post("/api/outline/generate")
+def generate_outline(request: OutlineGenerateRequest) -> dict[str, Any]:
+    topic = (request.source_text or request.title or "").strip()
+    if not topic:
+        raise HTTPException(status_code=400, detail="Provide a topic or source text to outline.")
+
+    provider_id, fallback_model = _pick_generate_provider(request.provider)
+    model_choice = (request.model or "").strip() or fallback_model or "Use environment default"
+
+    try:
+        config = build_provider_config(provider_id, model_choice, qwen_thinking_enabled=True)
+        messages = _build_outline_messages(topic[:8000], request.title.strip())
+        raw = generate_chat_completion(messages, config)
+    except MissingLLMConfigError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail=f"Outline generation failed: {exc}") from exc
+
+    sections = _parse_outline_draft(raw)
+    if not sections:
+        raise HTTPException(status_code=502, detail="The model did not return a usable outline. Try again.")
+    return {"sections": sections, "provider": provider_id, "model": config.model}
+
+
+def _build_outline_messages(topic: str, title: str) -> list[dict]:
+    system = (
+        "You design study-guide OUTLINES. You output only a JSON array of section "
+        "objects — you never write the guide content itself."
+    )
+    parts = [
+        "Create a concise outline for a study guide.",
+        f"Guide title: {title}" if title else "",
+        "",
+        "Topic / source material:",
+        topic,
+        "",
+        "Rules:",
+        "- Return 6 to 9 sections covering the topic in a sensible teaching order.",
+        '- Each section is a JSON object with "title" (<= 8 words) and "instructions" '
+        "(one short sentence on what that section should cover).",
+        "- Do NOT write the actual guide content. Titles + one-line instructions only.",
+        "",
+        'Respond with a single JSON array and nothing else, e.g. '
+        '[{"title": "Big Picture", "instructions": "Explain the core idea simply."}]',
+    ]
+    return [
+        {"role": "system", "content": system},
+        {"role": "user", "content": "\n".join(part for part in parts if part is not None)},
+    ]
+
+
+def _parse_outline_draft(raw: str) -> list[dict[str, str]]:
+    text = (raw or "").strip()
+    candidates: list[str] = []
+    fenced = re.search(r"```(?:json)?\s*([\[{].*[\]}])\s*```", text, re.DOTALL)
+    if fenced:
+        candidates.append(fenced.group(1))
+    open_sq, close_sq = text.find("["), text.rfind("]")
+    if open_sq != -1 and close_sq != -1 and close_sq > open_sq:
+        candidates.append(text[open_sq : close_sq + 1])
+    open_br, close_br = text.find("{"), text.rfind("}")
+    if open_br != -1 and close_br != -1 and close_br > open_br:
+        candidates.append(text[open_br : close_br + 1])
+    candidates.append(text)
+
+    items: list[Any] | None = None
+    for candidate in candidates:
+        try:
+            parsed = json.loads(candidate)
+        except json.JSONDecodeError:
+            continue
+        if isinstance(parsed, list):
+            items = parsed
+            break
+        if isinstance(parsed, dict) and isinstance(parsed.get("sections"), list):
+            items = parsed["sections"]
+            break
+
+    sections: list[dict[str, str]] = []
+    for item in (items or [])[:MAX_OUTLINE_SECTIONS]:
+        if isinstance(item, str):
+            title, instructions = item, ""
+        elif isinstance(item, dict):
+            title = str(item.get("title") or item.get("name") or "")
+            instructions = str(
+                item.get("instructions") or item.get("instruction") or item.get("description") or ""
+            )
+        else:
+            continue
+        title = " ".join(title.split())[:MAX_OUTLINE_TITLE_CHARS]
+        if not title:
+            continue
+        sections.append({"title": title, "instructions": instructions.strip()[:MAX_OUTLINE_INSTRUCTION_CHARS]})
+    return sections
 
 
 @app.get("/api/jobs")
@@ -676,6 +799,82 @@ def _unique_bundle_dir(slug: str, job_id: str, used: set[str]) -> str:
     return candidate
 
 
+def _clean_outline_sections(outline: OutlineData | None) -> list[tuple[str, str]]:
+    """Return [(title, instructions)] for an enabled outline, sanitized + capped.
+
+    Titles/instructions are the user's own plain text; they are injected as prompt
+    text only (never executed) and trimmed to bound prompt size.
+    """
+    if outline is None or not outline.enabled:
+        return []
+    cleaned: list[tuple[str, str]] = []
+    for section in outline.sections[:MAX_OUTLINE_SECTIONS]:
+        title = " ".join(str(section.title or "").split())[:MAX_OUTLINE_TITLE_CHARS]
+        if not title:
+            continue
+        instructions = str(section.instructions or "").strip()[:MAX_OUTLINE_INSTRUCTION_CHARS]
+        cleaned.append((title, instructions))
+    return cleaned
+
+
+def _apply_outline_directive(source_text: str, outline: OutlineData | None) -> str:
+    """Prepend a clear "Required Outline" directive to the source for LLM jobs.
+
+    No-op when the outline is absent/disabled/empty, so non-outline generation is
+    byte-for-byte unchanged.
+    """
+    sections = _clean_outline_sections(outline)
+    if not sections:
+        return source_text
+    lines = [
+        "## Required Outline",
+        "",
+        "Follow this section structure in the exact order given. Every numbered "
+        "section below MUST appear as a heading in the study guide, in this order. "
+        "Do not skip, merge, or reorder required sections. You may add brief "
+        "connective text, but do not omit any required section.",
+        "",
+    ]
+    for index, (title, instructions) in enumerate(sections, start=1):
+        lines.append(f"{index}. {title}")
+        if instructions:
+            lines.append(f"   - {instructions}")
+    lines += ["", "---", "", "## Source Material", "", source_text]
+    return "\n".join(lines)
+
+
+def _outline_meta(outline: OutlineData | None) -> dict[str, Any]:
+    sections = _clean_outline_sections(outline)
+    if not sections:
+        return {}
+    return {
+        "outline_enabled": True,
+        "outline_section_count": len(sections),
+        "outline_titles": [title for title, _ in sections],
+    }
+
+
+def _store_outline_meta(job: Job, outline: OutlineData | None) -> None:
+    meta = _outline_meta(outline)
+    if meta:
+        job.update(**meta)
+
+
+def _outline_summary(manifest: dict[str, Any]) -> dict[str, Any]:
+    """Safe outline summary for API responses (never huge; titles capped)."""
+    titles = manifest.get("outline_titles")
+    safe_titles = (
+        [str(title)[:MAX_OUTLINE_TITLE_CHARS] for title in titles[:MAX_OUTLINE_SECTIONS]]
+        if isinstance(titles, list)
+        else []
+    )
+    return {
+        "outline_enabled": bool(manifest.get("outline_enabled")),
+        "outline_section_count": int(manifest.get("outline_section_count") or len(safe_titles)),
+        "outline_titles": safe_titles,
+    }
+
+
 def _all_library_jobs() -> list[dict[str, Any]]:
     jobs: list[dict[str, Any]] = []
     if JOBS_DIR.exists():
@@ -847,6 +1046,9 @@ async def create_llm_job(request: Request) -> dict[str, Any]:
     _validate_prompt_name(llm_request.prompt_name)
     _validate_provider_model(llm_request.provider, llm_request.model)
     folder_target = _resolve_folder_target(llm_request.folder_id)
+    # Prepend a "Required Outline" directive into the source so it works with any
+    # style (the {source} slot is the one injection point every template shares).
+    source_text = _apply_outline_directive(source_text, llm_request.outline)
 
     try:
         config = build_provider_config(
@@ -857,7 +1059,7 @@ async def create_llm_job(request: Request) -> dict[str, Any]:
         job = run_llm_job(
             source_text,
             title=title,
-            mode=llm_request.mode,
+            mode=(llm_request.mode or DEFAULT_MODE),
             prompt_name=llm_request.prompt_name,
             theme=llm_request.theme,
             strict_math=llm_request.strict_math,
@@ -874,6 +1076,7 @@ async def create_llm_job(request: Request) -> dict[str, Any]:
         for attachment in attachments:
             attachment.path.unlink(missing_ok=True)
     _apply_folder_assignment(job.id, folder_target)
+    _store_outline_meta(job, llm_request.outline)
     return job_response(job)
 
 
@@ -959,6 +1162,7 @@ def job_response(job: Job) -> dict[str, Any]:
         "attachment_summary": _attachment_summary(manifest),
         "artifact_availability": availability,
         "artifact_urls": artifact_urls,
+        **_outline_summary(manifest),
     }
 
 
@@ -1048,6 +1252,7 @@ def _safe_manifest(manifest: dict[str, Any]) -> dict[str, Any]:
     safe["attachments"] = _safe_attachment_metadata(manifest.get("attachments", []))
     safe["extraction_warnings"] = _safe_warnings(manifest.get("extraction_warnings", []))
     safe["total_extracted_chars"] = int(manifest.get("total_extracted_chars") or 0)
+    safe.update(_outline_summary(manifest))
     return safe
 
 
@@ -1177,7 +1382,7 @@ async def _parse_llm_request(request: Request) -> tuple[LLMJobRequest, list[Atta
         data = {
             "source_text": _form_text(form, "source_text") or _form_text(form, "prompt") or _form_text(form, "topic") or "",
             "title": _form_text(form, "title") or "Generated Study Guide",
-            "mode": _form_text(form, "mode") or "exam",
+            "mode": _form_text(form, "mode") or DEFAULT_MODE,
             "prompt_name": _form_text(form, "prompt_name") or _form_text(form, "style") or "basic_study_guide",
             "provider": _form_text(form, "provider") or "",
             "model": _form_text(form, "model") or "",
@@ -1186,6 +1391,12 @@ async def _parse_llm_request(request: Request) -> tuple[LLMJobRequest, list[Atta
             "qwen_thinking": _form_bool(form, "qwen_thinking", True),
             "folder_id": _form_text(form, "folder_id"),
         }
+        outline_raw = _form_text(form, "outline")
+        if outline_raw:
+            try:
+                data["outline"] = json.loads(outline_raw)
+            except json.JSONDecodeError:
+                data["outline"] = None
         uploads = [
             value
             for key, value in form.multi_items()
