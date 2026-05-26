@@ -137,6 +137,59 @@ export function moveJobsToFolder(jobIds, folderId) {
   });
 }
 
+export function getExports(params = {}) {
+  const query = new URLSearchParams();
+  Object.entries(params).forEach(([key, value]) => {
+    if (value !== undefined && value !== null && value !== "") {
+      query.append(key, String(value));
+    }
+  });
+  const suffix = query.toString();
+  return requestJson(`/api/exports${suffix ? `?${suffix}` : ""}`);
+}
+
+// Downloads a ZIP bundle of selected artifacts for the given jobs. Streams the
+// binary response into a browser download (cannot use requestJson — it's JSON).
+export async function downloadExportBundle(jobIds, artifacts) {
+  const response = await fetch(`${API_BASE_URL}/api/exports/bundle`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ job_ids: jobIds, artifacts })
+  });
+  if (!response.ok) {
+    let message = `Bundle failed: ${response.status}`;
+    try {
+      const data = await response.json();
+      if (typeof data.detail === "string") message = data.detail;
+      else if (data.detail?.message) message = data.detail.message;
+    } catch {
+      // keep status-based fallback
+    }
+    throw new Error(message);
+  }
+  const blob = await response.blob();
+  const disposition = response.headers.get("Content-Disposition") || "";
+  const match = disposition.match(/filename="?([^"]+)"?/);
+  const filename = match ? match[1] : "study-guides-export.zip";
+  const url = URL.createObjectURL(blob);
+  const anchor = document.createElement("a");
+  anchor.href = url;
+  anchor.download = filename;
+  document.body.appendChild(anchor);
+  anchor.click();
+  anchor.remove();
+  URL.revokeObjectURL(url);
+  return { filename };
+}
+
+export function rerenderJob(jobId, { theme } = {}) {
+  return requestJson(`/api/jobs/${encodeURIComponent(jobId)}/rerender`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(theme ? { theme } : {})
+  });
+}
+
 export function getJob(jobId) {
   return requestJson(`/api/jobs/${encodeURIComponent(jobId)}`);
 }

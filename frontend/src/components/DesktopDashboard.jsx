@@ -3,7 +3,6 @@ import {
   Bot,
   ChevronRight,
   Download,
-  FileText,
   Folder,
   Home,
   Layers3,
@@ -18,6 +17,7 @@ import BuilderWorkspace from "./BuilderWorkspace";
 import RecentJobsPanel from "./RecentJobsPanel";
 import StylesWorkspace from "./StylesWorkspace";
 import LibraryWorkspace from "./LibraryWorkspace";
+import ExportsWorkspace from "./ExportsWorkspace";
 import { getJobs, getOptions } from "../api/client";
 import {
   BoltGlyph,
@@ -110,7 +110,7 @@ export default function DesktopDashboard() {
           <StylesWorkspace selectedStyle={selectedStyle} onSelectStyle={setSelectedStyle} onOpenBuilder={openBuilder} />
         )}
         {activeSection === "library" && <LibraryWorkspace refreshKey={jobsRefreshKey} onOpenBuilder={openBuilder} />}
-        {activeSection === "exports" && <ExportsPage jobsRefreshKey={jobsRefreshKey} onOpenBuilder={openBuilder} />}
+        {activeSection === "exports" && <ExportsWorkspace refreshKey={jobsRefreshKey} onOpenBuilder={openBuilder} />}
       </ClaudeFrame>
     </section>
   );
@@ -424,36 +424,6 @@ function normalizeModelProviders(apiOptions) {
     base_url: "",
     discovery_error: ""
   }));
-}
-
-function ExportsPage({ jobsRefreshKey, onOpenBuilder }) {
-  return (
-    <div className="sg-page">
-      <PageHead title="Exports" subtitle="PDF, Markdown, HTML, validation logs, and render logs from generated jobs." />
-      <div className="sg-export-grid">
-        {[
-          { label: "PDF", glyph: PDFGlyph, note: "Real artifact" },
-          { label: "Markdown", glyph: DocGlyph, note: "Real artifact" },
-          { label: "HTML", glyph: BookGlyph, note: "Real artifact" },
-          { label: "DOCX", glyph: FileText, note: "Placeholder" }
-        ].map((item) => {
-          const Glyph = item.glyph;
-          return (
-            <div key={item.label} className="sg-export-card">
-              <Tile size={42} radius={11} variant={item.note === "Placeholder" ? "dark" : "orange"}>
-                {item.note === "Placeholder" ? <Glyph size={20} /> : <Glyph size={20} />}
-              </Tile>
-              <strong>{item.label}</strong>
-              <p>{item.note}</p>
-            </div>
-          );
-        })}
-      </div>
-      <SectionHeading title="Recent exportable jobs" right="Uses real artifact URLs" />
-      <RecentJobsPanel refreshKey={jobsRefreshKey} />
-      <button type="button" className="sg-ghost-button sg-export-new" onClick={() => onOpenBuilder("paste")}>Generate another export</button>
-    </div>
-  );
 }
 
 function PageHead({ title, subtitle, right }) {

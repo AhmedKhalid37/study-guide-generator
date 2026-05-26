@@ -1,14 +1,17 @@
 from __future__ import annotations
 
+import io
 import json
 import re
 import tempfile
+import zipfile
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
 from fastapi import FastAPI, File, Form, HTTPException, Request, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, Response
 from pydantic import BaseModel, ValidationError
 
 from pipeline import library_store, style_store
@@ -21,7 +24,12 @@ from pipeline.provider_config import (
     validate_provider_model,
 )
 from pipeline.run_llm_job import AttachmentSource, LLMJobError, run_llm_job
-from pipeline.run_markdown_job import MarkdownJobError, run_markdown_job, run_pasted_text_job
+from pipeline.run_markdown_job import (
+    MarkdownJobError,
+    rerender_job,
+    run_markdown_job,
+    run_pasted_text_job,
+)
 
 
 app = FastAPI(title="Study Guide Generator API")
@@ -47,6 +55,31 @@ ARTIFACTS = {
 }
 MAX_LLM_ATTACHMENTS = 5
 MAX_LLM_ATTACHMENT_BYTES = 15 * 1024 * 1024
+
+# Export bundle selectors -> (artifact filename, availability key). Only these
+# artifacts may ever be bundled; raw source, attachments, and .env are never
+# exposed. render.log is included only when explicitly selected.
+EXPORT_ARTIFACTS: dict[str, tuple[str, str]] = {
+    "pdf": ("final.pdf", "final_pdf"),
+    "markdown": ("clean.md", "clean_md"),
+    "html": ("final.html", "final_html"),
+    "validation": ("validation.json", "validation_json"),
+    "render_log": ("render.log", "render_log"),
+}
+EXPORT_ARTIFACT_ALIASES = {
+    "pdf": "pdf",
+    "md": "markdown",
+    "markdown": "markdown",
+    "clean.md": "markdown",
+    "html": "html",
+    "final.html": "html",
+    "validation": "validation",
+    "validation.json": "validation",
+    "log": "render_log",
+    "render_log": "render_log",
+    "render.log": "render_log",
+}
+MAX_BUNDLE_JOBS = 100
 
 
 class PasteJobRequest(BaseModel):
@@ -109,6 +142,15 @@ class MoveJobRequest(BaseModel):
 class BatchMoveRequest(BaseModel):
     job_ids: list[str]
     folder_id: str | None = None
+
+
+class BundleRequest(BaseModel):
+    job_ids: list[str]
+    artifacts: list[str] = ["pdf"]
+
+
+class RerenderRequest(BaseModel):
+    theme: str | None = None
 
 
 @app.get("/api/health")
@@ -452,6 +494,174 @@ def move_library_job(job_id: str, request: MoveJobRequest) -> dict[str, Any]:
     return {"ok": True, "job_id": job.id, "folder_id": folder}
 
 
+@app.get("/api/exports")
+def get_exports(
+    q: str | None = None,
+    folder_id: str | None = None,
+    status: str | None = None,
+    provider: str | None = None,
+    style: str | None = None,
+    artifact: str | None = None,
+    has_attachments: bool | None = None,
+    has_warnings: bool | None = None,
+    sort: str = "newest",
+) -> dict[str, Any]:
+    jobs = _all_export_jobs()
+    folders = _library_folders_with_counts(jobs)
+    filtered = _filter_library_jobs(
+        jobs,
+        q=q,
+        folder_id=folder_id,
+        status=status,
+        provider=provider,
+        style=style,
+        has_attachments=has_attachments,
+        has_warnings=has_warnings,
+    )
+    if artifact:
+        selector = EXPORT_ARTIFACT_ALIASES.get(artifact.strip().lower())
+        avail_key = EXPORT_ARTIFACTS[selector][1] if selector else None
+        if avail_key:
+            filtered = [job for job in filtered if (job.get("artifact_availability") or {}).get(avail_key)]
+    filtered = _sort_library_jobs(filtered, sort)
+    return {
+        "folders": folders,
+        "jobs": filtered,
+        "sort": sort,
+        "artifact_types": list(EXPORT_ARTIFACTS.keys()),
+    }
+
+
+@app.post("/api/exports/bundle")
+def export_bundle(request: BundleRequest) -> Response:
+    if not request.job_ids:
+        raise HTTPException(status_code=400, detail="Select at least one guide to export.")
+    if len(request.job_ids) > MAX_BUNDLE_JOBS:
+        raise HTTPException(status_code=400, detail=f"At most {MAX_BUNDLE_JOBS} guides per bundle.")
+    selectors = _normalize_export_selectors(request.artifacts)
+
+    buffer = io.BytesIO()
+    manifest_jobs: list[dict[str, Any]] = []
+    total_included = 0
+    used_dirs: set[str] = set()
+    with zipfile.ZipFile(buffer, "w", zipfile.ZIP_DEFLATED) as archive:
+        for raw_id in request.job_ids:
+            try:
+                job = _get_job(raw_id)
+            except HTTPException:
+                manifest_jobs.append(
+                    {"job_id": str(raw_id), "found": False, "included": [], "skipped": list(selectors)}
+                )
+                continue
+            meta = job.read_manifest()
+            raw_title = meta.get("title")
+            title = str(raw_title or job.id)
+            # Untitled (paste/upload) jobs fall back to "guide-<id>" rather than
+            # doubling the id when the slug would just be the job id.
+            base_dir = _unique_bundle_dir(_safe_slug(raw_title or ""), job.id, used_dirs)
+            included: list[str] = []
+            skipped: list[str] = []
+            for selector in selectors:
+                artifact_name, _avail_key = EXPORT_ARTIFACTS[selector]
+                path, _media = _artifact_path(job, artifact_name)
+                if path.exists() and path.is_file():
+                    archive.write(path, f"{base_dir}/{artifact_name}")
+                    included.append(selector)
+                    total_included += 1
+                else:
+                    skipped.append(selector)
+            manifest_jobs.append(
+                {"job_id": job.id, "title": title, "found": True, "included": included, "skipped": skipped}
+            )
+
+        if total_included == 0:
+            raise HTTPException(
+                status_code=404,
+                detail="None of the requested artifacts are available for the selected guides.",
+            )
+
+        bundle_manifest = {
+            "generated_at": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+            "artifacts_requested": selectors,
+            "guides_requested": len(request.job_ids),
+            "files_included": total_included,
+            "jobs": manifest_jobs,
+        }
+        archive.writestr("manifest.json", json.dumps(bundle_manifest, indent=2, ensure_ascii=False))
+
+    buffer.seek(0)
+    filename = f"study-guides-{datetime.now().strftime('%Y%m%d-%H%M%S')}.zip"
+    return Response(
+        content=buffer.getvalue(),
+        media_type="application/zip",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
+
+def _all_export_jobs() -> list[dict[str, Any]]:
+    """Library jobs enriched with artifact URLs + flat folder metadata.
+
+    Same safe shape as the library list, plus per-job ``artifact_urls`` so the
+    Exports Center can link/download artifacts directly. No filesystem paths.
+    """
+    jobs: list[dict[str, Any]] = []
+    if JOBS_DIR.exists():
+        folders_by_id = {folder["id"]: folder for folder in library_store.list_folders()}
+        for manifest_path in JOBS_DIR.glob("*/job.json"):
+            manifest = _read_json(manifest_path)
+            if manifest is None:
+                continue
+            job_id = str(manifest.get("id") or manifest_path.parent.name)
+            job_obj = Job(job_id)
+            safe = _safe_manifest(manifest)
+            availability = _artifact_availability(job_obj)
+            folder_id = library_store.folder_id_for(job_id)
+            folder = folders_by_id.get(folder_id)
+            jobs.append(
+                {
+                    **safe,
+                    "id": job_id,
+                    "attachment_summary": _attachment_summary(safe),
+                    "artifact_availability": availability,
+                    "artifact_urls": _artifact_urls(job_obj, availability),
+                    "folder_id": folder_id,
+                    "folder_name": folder.get("name") if folder else None,
+                    "folder_color": folder.get("color") if folder else None,
+                }
+            )
+    return jobs
+
+
+def _normalize_export_selectors(artifacts: list[str]) -> list[str]:
+    if not artifacts:
+        raise HTTPException(status_code=400, detail="Select at least one artifact type.")
+    selectors: list[str] = []
+    for raw in artifacts:
+        key = EXPORT_ARTIFACT_ALIASES.get(str(raw).strip().lower())
+        if key is None:
+            raise HTTPException(status_code=400, detail=f"Unsupported artifact type: {raw}")
+        if key not in selectors:
+            selectors.append(key)
+    return selectors
+
+
+def _safe_slug(text: str, *, fallback: str = "guide", limit: int = 60) -> str:
+    cleaned = re.sub(r"[^A-Za-z0-9._ -]+", "", str(text or ""))
+    cleaned = re.sub(r"\s+", "_", cleaned.strip()).strip("._-")
+    return cleaned[:limit] or fallback
+
+
+def _unique_bundle_dir(slug: str, job_id: str, used: set[str]) -> str:
+    base = f"{slug}-{job_id}"
+    candidate = base
+    counter = 2
+    while candidate in used:
+        candidate = f"{base}-{counter}"
+        counter += 1
+    used.add(candidate)
+    return candidate
+
+
 def _all_library_jobs() -> list[dict[str, Any]]:
     jobs: list[dict[str, Any]] = []
     if JOBS_DIR.exists():
@@ -685,6 +895,23 @@ def get_artifact(
         media_type=media_type,
         headers={"Content-Disposition": _content_disposition(disposition, artifact_name)},
     )
+
+
+@app.post("/api/jobs/{job_id}/rerender")
+def rerender_existing_job(job_id: str, request: RerenderRequest | None = None) -> dict[str, Any]:
+    job = _get_job(job_id)
+    theme = request.theme if request else None
+    if theme is not None:
+        _validate_theme(theme)
+    if not job.clean_md.exists():
+        raise HTTPException(status_code=400, detail="This guide has no clean.md to re-render.")
+    try:
+        rerender_job(job, theme=theme)
+    except MarkdownJobError as exc:
+        raise _job_error(exc, job=getattr(exc, "job", None)) from exc
+    except Exception as exc:
+        raise _job_error(exc) from exc
+    return job_response(job)
 
 
 def job_response(job: Job) -> dict[str, Any]:

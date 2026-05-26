@@ -135,6 +135,36 @@ def run_raw_markdown_pipeline(job: Job, *, theme: str, strict_math: bool) -> Job
     return job
 
 
+def rerender_job(job: Job, *, theme: str | None = None, strict_math: bool | None = None) -> Job:
+    """Re-render final.pdf/final.html from an existing clean.md.
+
+    This is a render-only operation: it never re-runs the LLM, re-sanitizes, or
+    touches the raw source / prompt. Use it when the theme or render CSS changed
+    and the existing clean Markdown should be re-rendered. The job's stored
+    ``theme``/``strict_math`` are reused unless overridden.
+    """
+    if not job.clean_md.exists():
+        raise MarkdownJobError("clean.md is missing; nothing to re-render.", job)
+
+    manifest = job.read_manifest()
+    use_theme = theme or manifest.get("theme") or "claude_clean"
+    use_strict = bool(manifest.get("strict_math", True)) if strict_math is None else bool(strict_math)
+
+    job.set_status("rendering")
+    try:
+        render_pdf(job.clean_md, job.final_pdf, theme=use_theme, strict_math=use_strict)
+    except Exception as exc:
+        message = f"Re-render failed: {exc}"
+        job.save_text(job.render_log, message + "\n")
+        job.set_status("render_failed", message)
+        raise MarkdownJobError(message, job) from exc
+
+    job.save_text(job.render_log, f"Re-rendered PDF: {job.final_pdf}\nRe-rendered HTML: {job.final_html}\n")
+    job.update(theme=use_theme, final_html=str(job.final_html), final_pdf=str(job.final_pdf))
+    job.set_status("done")
+    return job
+
+
 def _run_raw_markdown_pipeline(job: Job, *, theme: str, strict_math: bool) -> Job:
     return run_raw_markdown_pipeline(job, theme=theme, strict_math=strict_math)
 
