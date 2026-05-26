@@ -6,6 +6,7 @@ import {
   FileCode2,
   FileJson,
   FileText,
+  Folder,
   Leaf,
   ListChecks,
   Loader2,
@@ -22,6 +23,7 @@ import {
   createLlmJob,
   createPasteJob,
   createUploadMarkdownJob,
+  getFolders,
   getJob,
   getOptions,
   getStyles,
@@ -179,6 +181,8 @@ export default function BuilderWorkspace({
   const [qwenThinking, setQwenThinking] = useState(true);
   const [strictMath, setStrictMath] = useState(true);
   const [attachments, setAttachments] = useState([]);
+  const [folderId, setFolderId] = useState("unfiled");
+  const [folders, setFolders] = useState([]);
   const [styleOptions, setStyleOptions] = useState(styleChips);
   const [length, setLength] = useState("medium");
   const [includes, setIncludes] = useState(["Key concepts", "Mnemonics", "Examples", "Diagrams"]);
@@ -236,6 +240,23 @@ export default function BuilderWorkspace({
       })
       .catch(() => {
         if (!cancelled) setStyleOptions(styleChips);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    getFolders()
+      .then((result) => {
+        if (cancelled) return;
+        // Only real folders are selectable here; "All Guides"/"Unfiled" are
+        // virtual system views the API marks with `system: true`.
+        setFolders((result.folders ?? []).filter((folder) => !folder.system));
+      })
+      .catch(() => {
+        if (!cancelled) setFolders([]);
       });
     return () => {
       cancelled = true;
@@ -312,7 +333,8 @@ export default function BuilderWorkspace({
         qwenThinking,
         attachments,
         length,
-        includes
+        includes,
+        folderId
       });
       assertBuilderPayload(kind, payload, { text, title, length, includes });
       const job = await createJob(kind, payload);
@@ -448,6 +470,9 @@ export default function BuilderWorkspace({
               setStrictMath={setStrictMath}
               attachments={attachments}
               setAttachments={setAttachments}
+              folders={folders}
+              folderId={folderId}
+              setFolderId={setFolderId}
               error={error}
               loading={loading}
             />
@@ -535,6 +560,9 @@ function BuilderComposer({
   setStrictMath,
   attachments,
   setAttachments,
+  folders,
+  folderId,
+  setFolderId,
   error,
   loading
 }) {
@@ -631,6 +659,7 @@ function BuilderComposer({
           <ChevronRight className="h-3.5 w-3.5 text-[#9098A8]" />
         </div>
         <div className="flex-1" />
+        <FolderPicker folders={folders} folderId={folderId} setFolderId={setFolderId} />
         <button
           type="button"
           className="sg-ghost-button"
@@ -648,6 +677,30 @@ function BuilderComposer({
         </button>
       </div>
     </>
+  );
+}
+
+function FolderPicker({ folders = [], folderId, setFolderId }) {
+  return (
+    <label
+      className="inline-flex h-9 items-center gap-2 rounded-lg border border-white/[0.08] bg-white/[0.03] pl-3 pr-2 text-[12.5px] font-medium text-[#D4D4D8]"
+      title="Choose a Library folder for this guide"
+    >
+      <Folder className="h-3.5 w-3.5 text-[#F97316]" />
+      <span className="text-[#9098A8]">Save to</span>
+      <select
+        value={folderId}
+        onChange={(event) => setFolderId(event.target.value)}
+        className="h-7 max-w-[150px] truncate rounded-md border-0 bg-transparent pr-1 text-[12.5px] font-semibold text-[#F4F4F5] outline-none"
+      >
+        <option value="unfiled" className="bg-[#0B1220]">Unfiled</option>
+        {folders.map((folder) => (
+          <option key={folder.id} value={folder.id} className="bg-[#0B1220]">
+            {folder.name}
+          </option>
+        ))}
+      </select>
+    </label>
   );
 }
 
@@ -1525,7 +1578,8 @@ export function buildBuilderPayload({
   qwenThinking,
   attachments,
   length,
-  includes
+  includes,
+  folderId = "unfiled"
 }) {
   if (source === "upload") {
     return {
@@ -1533,7 +1587,8 @@ export function buildBuilderPayload({
       payload: {
         file,
         theme: "claude_clean",
-        strictMath
+        strictMath,
+        folderId
       }
     };
   }
@@ -1552,7 +1607,8 @@ export function buildBuilderPayload({
         qwenThinking,
         attachments,
         length,
-        includes
+        includes,
+        folderId
       })
     };
   }
@@ -1562,7 +1618,8 @@ export function buildBuilderPayload({
     payload: {
       text,
       theme: "claude_clean",
-      strictMath
+      strictMath,
+      folderId
     }
   };
 }
@@ -1578,7 +1635,8 @@ export function buildLlmPayload({
   qwenThinking,
   attachments = [],
   length,
-  includes
+  includes,
+  folderId = "unfiled"
 }) {
   return {
     source_text: augmentSourceText(text, length, includes),
@@ -1590,6 +1648,7 @@ export function buildLlmPayload({
     theme: "claude_clean",
     strict_math: strictMath,
     qwen_thinking: qwenThinking,
+    folder_id: folderId,
     attachments
   };
 }

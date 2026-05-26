@@ -333,6 +333,17 @@ def _normalize_target(folder_id: str | None) -> str | None:
     return folder_id
 
 
+def normalize_target(folder_id: str | None) -> str | None:
+    """Public validation of an assign/move target.
+
+    Returns a concrete folder id, or ``None`` to leave the job unfiled. Raises
+    :class:`FolderNotFoundError`/:class:`LibraryStoreError` for unknown folders
+    or the virtual "all" target. Use this to validate a target *before* running
+    an expensive job so a bad folder id fails fast.
+    """
+    return _normalize_target(folder_id)
+
+
 def move_job(job_id: str, folder_id: str | None) -> str:
     job_id = str(job_id or "").strip()
     if not job_id:

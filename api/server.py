@@ -53,6 +53,7 @@ class PasteJobRequest(BaseModel):
     text: str
     theme: str = "claude_clean"
     strict_math: bool = True
+    folder_id: str | None = None
 
 
 class LLMJobRequest(BaseModel):
@@ -65,6 +66,7 @@ class LLMJobRequest(BaseModel):
     theme: str = "claude_clean"
     strict_math: bool = True
     qwen_thinking: bool = True
+    folder_id: str | None = None
 
 
 class StyleCreateRequest(BaseModel):
@@ -555,6 +557,7 @@ def create_paste_job(request: PasteJobRequest) -> dict[str, Any]:
     if not text:
         raise HTTPException(status_code=400, detail="text must not be empty.")
     _validate_theme(request.theme)
+    folder_target = _resolve_folder_target(request.folder_id)
 
     try:
         job = run_pasted_text_job(
@@ -566,6 +569,7 @@ def create_paste_job(request: PasteJobRequest) -> dict[str, Any]:
         raise _job_error(exc, job=getattr(exc, "job", None)) from exc
     except Exception as exc:
         raise _job_error(exc) from exc
+    _apply_folder_assignment(job.id, folder_target)
     return job_response(job)
 
 
@@ -574,12 +578,14 @@ def create_upload_markdown_job(
     file: UploadFile = File(...),
     theme: str = Form("claude_clean"),
     strict_math: bool = Form(True),
+    folder_id: str | None = Form(None),
 ) -> dict[str, Any]:
     filename = file.filename or ""
     suffix = Path(filename).suffix.lower()
     if suffix not in {".md", ".markdown"}:
         raise HTTPException(status_code=400, detail="file must be .md or .markdown.")
     _validate_theme(theme)
+    folder_target = _resolve_folder_target(folder_id)
 
     temp_path: Path | None = None
     try:
@@ -596,6 +602,7 @@ def create_upload_markdown_job(
         if temp_path is not None:
             temp_path.unlink(missing_ok=True)
         file.file.close()
+    _apply_folder_assignment(job.id, folder_target)
     return job_response(job)
 
 
@@ -613,6 +620,7 @@ async def create_llm_job(request: Request) -> dict[str, Any]:
     _validate_theme(llm_request.theme)
     _validate_prompt_name(llm_request.prompt_name)
     _validate_provider_model(llm_request.provider, llm_request.model)
+    folder_target = _resolve_folder_target(llm_request.folder_id)
 
     try:
         config = build_provider_config(
@@ -639,6 +647,7 @@ async def create_llm_job(request: Request) -> dict[str, Any]:
     finally:
         for attachment in attachments:
             attachment.path.unlink(missing_ok=True)
+    _apply_folder_assignment(job.id, folder_target)
     return job_response(job)
 
 
@@ -711,6 +720,36 @@ def _validate_theme(theme: str) -> None:
 def _validate_prompt_name(prompt_name: str) -> None:
     if not style_store.style_exists(prompt_name):
         raise HTTPException(status_code=400, detail="Unsupported prompt_name.")
+
+
+def _resolve_folder_target(folder_id: str | None) -> str | None:
+    """Validate an optional Library folder target before a job runs.
+
+    Returns the concrete folder id to assign, or ``None`` to leave the job
+    unfiled (``None``/``""``/``"unfiled"``). Raises a clear HTTP error for an
+    unknown folder or the virtual "all" target.
+    """
+    try:
+        return library_store.normalize_target(folder_id)
+    except library_store.FolderNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except library_store.LibraryStoreError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+def _apply_folder_assignment(job_id: str, folder_target: str | None) -> None:
+    """Assign a freshly created job to a pre-validated folder (best effort).
+
+    ``folder_target`` must already have passed :func:`_resolve_folder_target`.
+    If the folder vanished between validation and assignment, the job is left
+    unfiled rather than failing an already-generated job.
+    """
+    if folder_target is None:
+        return
+    try:
+        library_store.move_job(job_id, folder_target)
+    except library_store.LibraryStoreError:
+        pass
 
 
 def _safe_manifest(manifest: dict[str, Any]) -> dict[str, Any]:
@@ -863,6 +902,7 @@ async def _parse_llm_request(request: Request) -> tuple[LLMJobRequest, list[Atta
             "theme": _form_text(form, "theme") or "claude_clean",
             "strict_math": _form_bool(form, "strict_math", True),
             "qwen_thinking": _form_bool(form, "qwen_thinking", True),
+            "folder_id": _form_text(form, "folder_id"),
         }
         uploads = [
             value

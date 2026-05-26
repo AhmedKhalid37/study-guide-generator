@@ -141,7 +141,7 @@ export function getJob(jobId) {
   return requestJson(`/api/jobs/${encodeURIComponent(jobId)}`);
 }
 
-export function createPasteJob({ text, theme = "claude_clean", strictMath = true }) {
+export function createPasteJob({ text, theme = "claude_clean", strictMath = true, folderId = null }) {
   return requestJson("/api/jobs/paste", {
     method: "POST",
     headers: {
@@ -150,16 +150,20 @@ export function createPasteJob({ text, theme = "claude_clean", strictMath = true
     body: JSON.stringify({
       text,
       theme,
-      strict_math: strictMath
+      strict_math: strictMath,
+      folder_id: folderId
     })
   });
 }
 
-export function createUploadMarkdownJob({ file, theme = "claude_clean", strictMath = true }) {
+export function createUploadMarkdownJob({ file, theme = "claude_clean", strictMath = true, folderId = null }) {
   const formData = new FormData();
   formData.append("file", file);
   formData.append("theme", theme);
   formData.append("strict_math", String(strictMath));
+  if (folderId) {
+    formData.append("folder_id", folderId);
+  }
 
   return requestJson("/api/jobs/upload-markdown", {
     method: "POST",
@@ -172,7 +176,7 @@ export function createLlmJob(payload) {
   if (attachments.length > 0) {
     const formData = new FormData();
     Object.entries(payload).forEach(([key, value]) => {
-      if (key === "attachments") {
+      if (key === "attachments" || value === null || value === undefined) {
         return;
       }
       formData.append(key, String(value));
