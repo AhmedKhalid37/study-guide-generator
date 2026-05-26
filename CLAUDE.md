@@ -36,14 +36,23 @@ main-app/
 │   └── server.py        # FastAPI: /api/* routes + static frontend serving
 ├── frontend/
 │   ├── src/             # React app
+│   │   ├── api/client.js              # all fetch helpers
+│   │   ├── styleMeta.js / folderMeta.js
 │   │   └── components/
 │   │       ├── DesktopDashboard.jsx   # Claude-style desktop shell / pages
-│   │       ├── BuilderWorkspace.jsx   # builder workflow (input → generate → result)
-│   │       └── RecentJobsPanel.jsx    # Recent Jobs list + Job Details drawer
+│   │       ├── BuilderWorkspace.jsx   # builder (input → outline → generate → result)
+│   │       ├── OutlineEditor.jsx      # editable outline tab
+│   │       ├── RecentJobsPanel.jsx    # Recent Jobs list + Job Details drawer
+│   │       ├── StylesWorkspace.jsx    # built-in/custom/generated styles
+│   │       ├── LibraryWorkspace.jsx   # folders + search/filter/sort + batch move
+│   │       └── ExportsWorkspace.jsx   # artifact center + ZIP bundles
 │   └── dist/            # built frontend (served by backend; gitignored)
-├── pipeline/            # markdown, LLM, extraction/OCR, math validation/rendering, provider config
+├── pipeline/            # markdown sanitizer, LLM orchestrator, extraction/OCR,
+│                        # math validate/render, pdf_renderer, docx_renderer,
+│                        # provider_config, style_store, library_store
 ├── prompts/             # built-in prompt styles (flat .md files + system/user prompts)
-├── user_prompts/        # (NOT YET PRESENT) future home for custom/generated styles
+├── user_prompts/        # custom/generated styles + styles.json (gitignored runtime)
+├── library/             # folders.json + job_folders.json (gitignored runtime)
 ├── jobs/                # generated job artifacts (gitignored)
 ├── output/              # convenience copies of final outputs (gitignored)
 ├── themes/              # PDF CSS themes (e.g. claude_clean.css)
@@ -59,10 +68,21 @@ main-app/
 mount is registered **after** the API routes, **`/api/*` always wins** over the
 static SPA fallback. Keep it that way.
 
-Key API routes (current): `GET /api/health`, `GET /api/options`,
-`GET /api/jobs`, `POST /api/jobs/paste`, `POST /api/jobs/upload-markdown`,
-`POST /api/jobs/llm`, `GET /api/jobs/{job_id}`,
-`GET /api/jobs/{job_id}/artifacts/{artifact_name}`.
+Key API routes (current):
+- Core: `GET /api/health`, `GET /api/options`, `GET /api/jobs`,
+  `GET /api/jobs/{job_id}`, `GET /api/jobs/{job_id}/artifacts/{artifact_name}`,
+  `POST /api/jobs/paste`, `POST /api/jobs/upload-markdown`, `POST /api/jobs/llm`,
+  `POST /api/jobs/{job_id}/rerender`.
+- Styles: `GET/POST /api/styles`, `GET/PUT/DELETE /api/styles/{id}`,
+  `POST /api/styles/generate`.
+- Library: `GET /api/library`, `GET/POST /api/library/folders`,
+  `PUT/DELETE /api/library/folders/{id}`, `POST /api/library/jobs/move`,
+  `POST /api/library/jobs/{job_id}/move`.
+- Exports: `GET /api/exports`, `POST /api/exports/bundle` (ZIP).
+- Outline: `POST /api/outline/generate`.
+
+Artifacts per job: `final.pdf`, `final.docx` (lazy-generated from clean.md),
+`final.html`, `clean.md`, `validation.json`, `render.log`.
 
 ---
 
@@ -83,7 +103,18 @@ All of the following are verified working as of the current commit:
 - **Attachment extraction metadata/warnings** are visible in the UI
   (Recent Jobs + Builder result panel).
 - **Job Details drawer** works (from Recent Jobs / Library / Exports / Builder).
-- **PDF / Markdown / HTML artifacts** generate and download correctly.
+- **PDF / Markdown / HTML / DOCX artifacts** generate and download correctly
+  (DOCX is generated lazily from `clean.md`, so old jobs can produce it too).
+- **Custom + AI-generated styles** work (`/api/styles*`, persisted under
+  `user_prompts/`); Builder selects built-in and custom styles.
+- **Library folders** work: search/filter/sort, create/rename/delete folders,
+  single + batch move, save-to-folder during generation (`library/`).
+- **Exports Center** works: artifact filters, per-job downloads, and multi-job
+  **ZIP bundles** (`POST /api/exports/bundle`) with an in-zip `manifest.json`.
+- **Builder Outline tab** works: editable sections + templates + AI draft;
+  outline is injected into LLM generation and summarized in Job Details.
+- The visible **"mode" control was retired** (Styles define guide type); the
+  backend still accepts `mode` and defaults it to `study_guide`.
 
 ---
 
@@ -139,16 +170,19 @@ Run build + compile + docker checks after changes (see §6).
 
 ---
 
-## 7. Current next planned feature
+## 7. Feature status
 
-**Custom and Generated Styles** — let users define their own study-guide styles
-(and generate new ones) alongside the built-in ones.
+The major product features are **implemented and verified** (see
+`docs/FEATURE_STATUS.md` for the full inventory and `test_scripts/smoke_release.py`
+for the end-to-end check): paste/upload/LLM generation, attachments + OCR,
+custom/AI styles, library folders + save-to-folder, exports center + ZIP bundles,
+DOCX export, and the editable Builder outline. The app is at a
+**release-readiness checkpoint** for personal/small-group use.
 
-Planned shape:
-- `user_prompts/` directory for user-defined styles.
-- `user_prompts/styles.json` registry/metadata for those styles.
-- New API routes: `GET / POST / PUT / DELETE /api/styles`.
-- `POST /api/styles/generate` to generate a new style.
-- Builder can select **both built-in and custom** styles.
+Intentionally deferred (not started — do not begin without an explicit slice):
+outline templates as saved presets, drag-and-drop reordering, server-side
+pagination, a second PDF theme / theme system, and wiring the cosmetic
+"Save draft" button.
 
-None of this exists yet — it is the next slice to implement, not current state.
+When picking up new work, prefer **small feature slices** with verification after
+each (build + compile + docker + smoke), and commit at stable milestones.

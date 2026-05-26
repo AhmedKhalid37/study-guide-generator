@@ -21,8 +21,12 @@ Open **http://localhost:8000**. That's it.
 
 - `.env` holds each user's own DeepSeek/Qwen keys. It is gitignored and excluded
   from the image — **never** commit it or ship it with your keys inside.
-- Generated guides persist on the host in `./jobs/` (mounted as a volume), so
-  they survive `docker compose down` / restarts.
+- Persistent host data (mounted as volumes, so it survives
+  `docker compose down` / restarts):
+  - `./jobs/` — generated guides + their artifacts (PDF/DOCX/HTML/MD/logs)
+  - `./user_prompts/` — your custom and AI-generated styles (`styles.json`)
+  - `./library/` — folder definitions + job→folder assignments
+  - `./output/` — convenience copies of final outputs
 - Rebuild after code changes with `docker compose up --build`. Stop with
   `docker compose down`.
 

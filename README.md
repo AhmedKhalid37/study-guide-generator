@@ -1,437 +1,145 @@
-# Claude-style Study Guide Pipeline for CachyOS — v2
+# Study Guide Generator
 
-This pipeline converts course material into a clean, exam-focused study guide:
+Turn course material into clean, exam-focused **study guides** and export them as
+**PDF, DOCX, HTML, or Markdown**. It runs as a single self-contained app:
 
-`PDF / DOCX / PPTX / TXT / MD -> extracted text -> LLM-generated guide -> Markdown sanitizer -> optional math validation -> PDF`
+- **Frontend:** React (Vite + Tailwind), Claude-style desktop UI.
+- **Backend:** FastAPI (`api/server.py`) — holds your API keys, runs the pipeline.
+- **Pipeline:** Markdown sanitizer, LLM generation, file extraction + OCR, KaTeX
+  math validation, and a headless-Chromium PDF renderer.
+- **Deployment:** Dockerized and **same-origin** — the backend serves the built
+  UI, so the whole app is one container on **port 8000** with no CORS setup.
 
-Note: `legacy_scripts/` contains a backup copy of the old working pipeline
-scripts as they existed before the Chrome renderer work.
-
-## Streamlit MVP
-
-Install Python dependencies:
-
-```bash
-python -m pip install -r requirements.txt
-```
-
-Install Node dependencies for KaTeX validation/rendering:
-
-```bash
-npm install
-```
-
-Chromium is required for Chrome/HTML PDF rendering. On CachyOS:
-
-```bash
-sudo pacman -S --needed chromium
-```
-
-Launch the app:
-
-```bash
-python -m streamlit run app.py
-```
-
-## UI Commands
-
-Existing Streamlit app:
-
-```bash
-python -m streamlit run app.py
-```
-
-React frontend preview:
-
-```bash
-cd frontend
-npm install
-npm run dev
-```
-
-React frontend build:
-
-```bash
-cd frontend
-npm run build
-```
-
-Read-only FastAPI wrapper:
-
-```bash
-python -m uvicorn api.server:app --reload
-```
-
-Create a paste job through the API:
-
-```bash
-curl -X POST http://127.0.0.1:8000/api/jobs/paste \
-  -H "Content-Type: application/json" \
-  -d '{
-    "text": "# Paste Test\n\nThe formula is $z=\\frac{x-\\mu}{\\sigma}$.",
-    "theme": "claude_clean",
-    "strict_math": true
-  }'
-```
-
-Create an LLM job through the API:
-
-```bash
-curl -X POST http://127.0.0.1:8000/api/jobs/llm \
-  -H "Content-Type: application/json" \
-  -d '{
-    "source_text": "Summarize Bayes theorem for an exam study guide.",
-    "title": "Bayes Theorem Study Guide",
-    "mode": "exam",
-    "prompt_name": "basic_study_guide",
-    "provider": "DeepSeek",
-    "model": "deepseek-v4-flash",
-    "theme": "claude_clean",
-    "strict_math": true,
-    "qwen_thinking": true
-  }'
-```
-
-To test upload mode, launch the app and upload `ch4_raw.md`.
-
-To test paste mode, paste this small example:
-
-```md
-# Paste Test
-
-The formula is (z=\frac{x-\mu}{\sigma}).
-```
-
-Run math sanitizer/renderer regression tests:
-
-```bash
-python test_scripts/test_math_regressions.py
-```
-
-## CLI LLM Mode
-
-The LLM path is CLI-first and uses one OpenAI-compatible client for hosted APIs
-or local servers.
-
-Create a local `.env` file from the example:
-
-```bash
-cp .env.example .env
-```
-
-Edit `.env` with your actual API key and model. Never commit `.env`; it is
-ignored by git so secrets stay local.
-
-For a local OpenAI-compatible server, point `LLM_BASE_URL` and `LLM_MODEL` at
-that server instead.
-
-Generate, sanitize, validate, and render from a text/Markdown source file:
-
-```bash
-python -m pipeline.run_llm_job \
-  --source-file ch6_raw.md \
-  --title "Chapter 6 Study Guide" \
-  --mode exam
-```
-
-The command creates a `jobs/<job_id>/` folder containing `input/source.txt`,
-`raw.md`, `clean.md`, `final.html`, `final.pdf`, logs, and `job.json`.
-
-After `.env` is set, launch Streamlit normally:
-
-```bash
-python -m streamlit run app.py
-```
-
-Streamlit LLM mode supports DeepSeek and Qwen as hosted OpenAI-compatible
-providers. Choose the provider, then choose one of its listed model IDs or use
-the custom model ID field. Model overrides are per run only. `deepseek-v4-flash`
-is the faster/cheaper DeepSeek style option; `deepseek-v4-pro` is the
-better-quality style option.
-
-For DeepSeek, set `DEEPSEEK_BASE_URL` and `DEEPSEEK_API_KEY`. The default
-DeepSeek base URL is `https://api.deepseek.com/v1`.
-
-For Qwen through Alibaba DashScope, Alibaba's official API key environment
-variable is `DASHSCOPE_API_KEY`. The Qwen base URL is
-`https://dashscope-intl.aliyuncs.com/compatible-mode/v1`; set
-`DASHSCOPE_BASE_URL` only if you need to override it. `QWEN_API_KEY` remains
-available as a fallback, and `QWEN_MODEL` can set the environment-default model.
-The app includes `qwen3.7-max` and `qwen3.6-plus` as Qwen model options. Qwen
-thinking mode sends `extra_body={"enable_thinking": True}` with the
-non-streaming chat completion request. Streaming is not implemented yet; the app
-uses the final response only. `qwen3.6-plus` is currently added as a
-text-generation model option. Actual visual/image understanding would require a
-later image-upload/multimodal feature.
-
-LLM mode also includes style presets. The default is `Basic study guide`; you
-can switch per run to baby-step explanation, exam cram, MCQ training, final
-solution, Claude-style study guide, or master-level longform guide. Each preset
-is a Markdown prompt in `prompts/`.
-
-The `Master-level longform guide` preset is intended for deep 10+ page guides.
-It asks the model for a 4500-6500 word treatment with derivations, examples,
-exam questions, a cheat sheet, and glossary, so it uses more tokens and may cost
-more than the shorter presets.
-
-Alternatively, launch Streamlit with provider environment variables using fish
-shell:
-
-```fish
-set -x DEEPSEEK_BASE_URL "https://api.deepseek.com/v1"
-set -x DEEPSEEK_API_KEY "your_deepseek_key_here"
-set -x DEEPSEEK_MODEL_FLASH "deepseek-v4-flash"
-set -x DASHSCOPE_BASE_URL "https://dashscope-intl.aliyuncs.com/compatible-mode/v1"
-set -x DASHSCOPE_API_KEY "your_dashscope_key_here"
-set -x QWEN_MODEL "qwen3.7-max"
-set -x LLM_TEMPERATURE "0.2"
-python -m streamlit run app.py
-```
-
-This v2 upgrade adds the most useful ideas from the second Claude run:
-
-- a **math sanitizer** that repairs broken Markdown math
-- display math conversion: `[ ... ]` blocks -> `$$ ... $$`
-- inline math conversion: `(P(X=2))` -> `$P(X=2)$`
-- balanced-parentheses scanning so nested formulas like `(P(X\ge1)=1-P(X=0))` work
-- protection for display math blocks so inline scanning does not corrupt them
-- currency escaping, e.g. `$70,000` -> `\$70,000`
-- percent escaping inside math, e.g. `37.5%` -> `37.5\%`
-- table-safe conditional probability bars: `P(A|B)` -> `P(A\mid B)`
-- combinatorics prescript fixes: `_5C_2` -> `{}_5C_2`
-- optional KaTeX validation to catch math rendering errors before PDF export
-
-It is designed for your CachyOS + NVIDIA GPU setup and works with either:
-
-1. a local OpenAI-compatible server such as `llama-server`, or
-2. a hosted OpenAI-compatible API endpoint.
+> Looking for the old Streamlit/pandoc/xelatex `v2` pipeline? It's gone. The
+> current app is the React + FastAPI + Docker one described here. A backup of the
+> old scripts lives in `legacy_scripts/`.
 
 ---
 
-## 1. Install system dependencies on CachyOS
+## Quick start (Docker)
+
+You only need **Docker** (Docker Desktop, or Docker Engine + the Compose plugin).
+No Python/Node/Chromium/Tesseract on your machine.
 
 ```bash
-sudo pacman -Syu
-sudo pacman -S --needed python python-pip python-virtualenv pandoc texlive-binextra texlive-latexrecommended texlive-fontsrecommended nodejs npm poppler
+cp .env.example .env      # then put YOUR OWN API keys in .env
+docker compose up --build
 ```
 
-Optional OCR for scanned PDFs:
+Open **http://localhost:8000**. A friend on your LAN can reach it at
+`http://<your-ip>:8000`. Stop with `docker compose down`; rebuild after code
+changes with `docker compose up --build`.
+
+See **[DOCKER.md](DOCKER.md)** for more detail.
+
+### `.env` setup
+
+`.env` holds each user's own provider keys. It is **gitignored and kept out of the
+image** — never commit it. Start from `.env.example`:
+
+- **DeepSeek:** `DEEPSEEK_BASE_URL`, `DEEPSEEK_API_KEY` (default base
+  `https://api.deepseek.com/v1`).
+- **Qwen (Alibaba DashScope):** `DASHSCOPE_API_KEY` (or `QWEN_API_KEY`),
+  `DASHSCOPE_BASE_URL`, `QWEN_MODEL`.
+
+The Models page shows which providers are **configured** — keys themselves never
+leave the backend.
+
+### Local models (llama.cpp), optional
+
+Local models run on the **host** (they need your GPU), not in the container. Run
+an OpenAI-compatible server, e.g.:
 
 ```bash
-sudo pacman -S --needed tesseract tesseract-data-eng
+llama-server -m ./models/your-model.gguf --port 8080
 ```
+
+Then uncomment the local block in `.env` (compose already maps
+`host.docker.internal`):
+
+```
+LOCAL_LLM_BASE_URL=http://host.docker.internal:8080/v1
+LOCAL_LLM_API_KEY=local
+LOCAL_LLM_MODEL=your-model-name
+```
+
+The Models page discovers local models from `GET /v1/models` when the server is
+up; if it's offline the app reports the discovery error and keeps running.
 
 ---
 
-## 2. Python setup
+## Major features
 
-```bash
-cd studyguide_pipeline_cachyos_v2
-python -m venv .venv
-source .venv/bin/activate
-pip install -U pip
-pip install -r requirements.txt
-```
+- **Three ways to make a guide:** generate with **AI** (default), **paste** text,
+  or **upload Markdown**. AI generation supports source **attachments** (with OCR).
+- **Styles:** built-in presets plus your own **custom** and **AI-generated**
+  styles (Styles page).
+- **Outline tab:** shape the guide's sections (templates, add/reorder/instructions,
+  or AI-drafted) before generating — the AI follows it in order.
+- **Library:** folders, search, filters, sort, single + **batch move**, and
+  **save-to-folder** at generation time.
+- **Exports Center:** filter by artifact, download per job, or bundle multiple
+  guides into a **ZIP** (with an in-zip `manifest.json`).
+- **Re-render:** regenerate PDF/HTML/DOCX from an existing guide without re-running
+  the LLM.
 
-Optional KaTeX validation:
+## Supported uploads
 
-```bash
-npm install
-```
+- **Upload Markdown** input: `.md`, `.markdown`.
+- **AI attachments** (source material): `.txt`, `.md`, `.markdown`, `.csv`,
+  `.tsv`, `.docx`, `.pptx`, `.pdf`. Image-only PDFs go through **OCR** (Tesseract).
 
----
+## Artifact outputs
 
-## 3. Use with an API model
+Every generated guide produces: **`final.pdf`**, **`final.docx`**,
+**`final.html`**, **`clean.md`**, plus `validation.json` and `render.log`.
 
-Set an OpenAI-compatible endpoint:
+## Where data persists
 
-```bash
-export LLM_BASE_URL="https://api.openai.com/v1"
-export LLM_API_KEY="YOUR_KEY"
-export LLM_MODEL="gpt-4.1"
-```
+All host-mounted (survive restarts; all gitignored):
 
-Then run:
-
-```bash
-python scripts/build_guide.py input.pdf \
-  --title "Chapter 5 — Discrete Probability Distributions" \
-  --out output/chapter5.md \
-  --mode exam \
-  --validate-math
-```
+- `jobs/` — generated guides + their artifacts
+- `user_prompts/` — your custom / AI-generated styles (`styles.json`)
+- `library/` — folder definitions + job→folder assignments
+- `output/` — convenience copies of final outputs
 
 ---
 
-## 4. Use locally with your 5070 Ti
+## Troubleshooting
 
-Build llama.cpp with CUDA:
-
-```bash
-git clone https://github.com/ggml-org/llama.cpp ~/projects/llama.cpp
-cd ~/projects/llama.cpp
-cmake -B build -DGGML_CUDA=ON -DCMAKE_BUILD_TYPE=Release
-cmake --build build -j$(nproc)
-```
-
-Start a GGUF model:
-
-```bash
-bash scripts/run_llama_server.sh ~/models/YOUR_MODEL.gguf
-```
-
-In another terminal:
-
-```bash
-export LLM_BASE_URL="http://127.0.0.1:8080/v1"
-export LLM_API_KEY="local"
-export LLM_MODEL="local-model"
-```
-
-Generate:
-
-```bash
-python scripts/build_guide.py chapter.pdf \
-  --title "Chapter 8 — Intrusion Detection" \
-  --out output/chapter8.md \
-  --mode exam \
-  --validate-math
-```
-
-Recommended local models for a 16 GB GPU:
-
-- Qwen2.5-14B-Instruct GGUF Q4/Q5
-- Mistral-Small / Nemo-style instruct models in Q4/Q5
-- 7B/8B instruct models if you want faster generation
-
-For very long chapters, use chunked generation automatically handled by the script.
+- **Port 8000 already in use:** stop the other process, or change the host port in
+  `docker-compose.yml` (e.g. `"8080:8000"`) and open that port instead.
+- **Missing `.env`:** copy it first (`cp .env.example .env`) and add real keys, or
+  providers show as *not configured* and AI generation is disabled.
+- **Local model offline:** the Models page shows a discovery error; hosted
+  providers (DeepSeek/Qwen) still work. Start your `llama-server` to enable it.
+- **OCR quality:** extracted text from scanned PDFs is only as good as the scan —
+  low-resolution or skewed pages produce weak text. Prefer text-based PDFs.
+- **`docker compose config` prints secrets:** it expands `.env` values in
+  plaintext. Don't paste its output into shared logs or issues.
 
 ---
 
-## 5. Sanitize existing Claude/ChatGPT Markdown only
-
-Use this when you already have a study guide but formulas are broken:
+## Develop without Docker (optional)
 
 ```bash
-python scripts/sanitize_markdown_math.py raw_guide.md clean_guide.md --validate
+pip install -r requirements.txt        # Python deps
+npm install                            # root: KaTeX for math validation/render
+npm --prefix frontend run build        # build the UI the backend serves
+python -m uvicorn api.server:app --reload   # http://127.0.0.1:8000
 ```
 
-Example broken input:
+Chromium and Tesseract must be installed locally for PDF rendering and OCR.
 
-```md
-[
-P(X\ge1)=1-P(X=0)
-]
-
-The mean is (\mu=np).
-```
-
-Clean output:
-
-```md
-$$
-P(X\ge1)=1-P(X=0)
-$$
-
-The mean is $\mu=np$.
-```
-
----
-
-## 6. Convert Markdown to PDF
+### Verification commands
 
 ```bash
-bash scripts/render_pdf.sh output/chapter5.md output/chapter5.pdf
+npm --prefix frontend run build        # build the React UI
+python -m compileall api pipeline      # compile-check backend + pipeline
+docker compose config                  # validate compose (expands secrets!)
+docker compose build                   # build the image
+python test_scripts/smoke_release.py   # end-to-end smoke against a running app
 ```
 
-The PDF renderer uses:
-
-- `pandoc`
-- `xelatex`
-- `DejaVu Sans`
-- Markdown dollar math
-
----
-
-## 7. Best prompt style
-
-The included prompt tries to reproduce the guide structure you liked:
-
-- “What this chapter is about”
-- simple explanations
-- tables for comparisons
-- formula section
-- exam clues
-- common mistakes
-- memory hints
-- final cheat sheet
-- practice questions with answers
-
-You can edit:
-
-```text
-prompts/study_guide_system.md
-prompts/study_guide_user.md
-```
-
----
-
-## 8. Troubleshooting
-
-### `--flash-attn` error
-
-Newer `llama.cpp` expects:
-
-```bash
--fa auto
-```
-
-or:
-
-```bash
---flash-attn auto
-```
-
-This package uses `--flash-attn auto`.
-
-### PDF font errors
-
-Install the recommended TeX/font packages:
-
-```bash
-sudo pacman -S --needed texlive-binextra texlive-latexrecommended texlive-fontsrecommended ttf-dejavu
-```
-
-### Math validation fails
-
-Run:
-
-```bash
-python scripts/sanitize_markdown_math.py raw.md clean.md --validate --show-math
-```
-
-Then fix the specific formula it reports.
-
----
-
-## 9. Folder layout
-
-```text
-studyguide_pipeline_cachyos_v2/
-├── scripts/
-│   ├── build_guide.py
-│   ├── sanitize_markdown_math.py
-│   ├── validate_math.js
-│   ├── render_pdf.sh
-│   ├── run_llama_server.sh
-│   └── setup_cachyos.sh
-├── prompts/
-│   ├── study_guide_system.md
-│   └── study_guide_user.md
-├── examples/
-│   ├── example_command.txt
-│   └── broken_math_example.md
-├── requirements.txt
-├── package.json
-└── README.md
-```
+See **[docs/FEATURE_STATUS.md](docs/FEATURE_STATUS.md)** for the full feature
+inventory and known limitations.
