@@ -92,6 +92,41 @@ class Job:
     def repair_log(self) -> Path:
         return self.logs_dir / "repair.log"
 
+    @property
+    def versions_dir(self) -> Path:
+        return self.dir / "versions"
+
+    def save_clean_md(self, new_text: str, source: str) -> None:
+        """Single chokepoint for ALL clean.md writes.
+
+        Snapshots the new content as the next numbered version under
+        versions/<n>/clean.md, then writes it to the canonical clean.md, then
+        appends version metadata to job.json.  source must be one of:
+        generated | edited | rerendered | reverted.
+        """
+        existing = sorted(
+            int(p.name)
+            for p in (self.versions_dir.glob("*/") if self.versions_dir.exists() else [])
+            if p.is_dir() and p.name.isdigit()
+        )
+        next_n = (existing[-1] + 1) if existing else 1
+        v_dir = self.versions_dir / str(next_n)
+        v_dir.mkdir(parents=True, exist_ok=True)
+        (v_dir / "clean.md").write_text(new_text, encoding="utf-8")
+        self.clean_md.parent.mkdir(parents=True, exist_ok=True)
+        self.clean_md.write_text(new_text, encoding="utf-8")
+        manifest = self.read_manifest()
+        versions_list: list[dict] = manifest.get("versions", [])
+        versions_list.append(
+            {
+                "version": next_n,
+                "created_at": datetime.now().isoformat(timespec="seconds"),
+                "source": source,
+            }
+        )
+        manifest["versions"] = versions_list
+        self._write_manifest(manifest)
+
     def save_text(self, path: Path, text: str) -> Path:
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(text, encoding="utf-8")

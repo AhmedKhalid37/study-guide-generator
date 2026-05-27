@@ -189,6 +189,10 @@ class RerenderRequest(BaseModel):
     theme: str | None = None
 
 
+class EditCleanMdRequest(BaseModel):
+    text: str
+
+
 @app.get("/api/health")
 def health() -> dict[str, bool]:
     return {"ok": True}
@@ -1246,6 +1250,86 @@ def rerender_existing_job(job_id: str, request: RerenderRequest | None = None) -
         except Exception:
             pass
     return job_response(job)
+
+
+@app.get("/api/jobs/{job_id}/versions")
+def list_job_versions(job_id: str) -> dict[str, Any]:
+    job = _get_job(job_id)
+    manifest = job.read_manifest()
+    return {"versions": manifest.get("versions", [])}
+
+
+@app.get("/api/jobs/{job_id}/clean_md")
+def get_clean_md(job_id: str) -> Response:
+    job = _get_job(job_id)
+    if not job.clean_md.exists():
+        raise HTTPException(status_code=404, detail="clean.md not found.")
+    return Response(
+        content=job.clean_md.read_text(encoding="utf-8"),
+        media_type="text/markdown; charset=utf-8",
+    )
+
+
+@app.put("/api/jobs/{job_id}/clean_md")
+def put_clean_md(job_id: str, body: EditCleanMdRequest) -> dict[str, Any]:
+    job = _get_job(job_id)
+    if not job.clean_md.exists():
+        raise HTTPException(status_code=404, detail="No clean.md for this job.")
+    job.save_clean_md(body.text, "edited")
+    try:
+        rerender_job(job)
+    except MarkdownJobError as exc:
+        raise _job_error(exc, job=getattr(exc, "job", None)) from exc
+    except Exception as exc:
+        raise _job_error(exc, job=job) from exc
+    if job.final_docx.exists():
+        try:
+            _ensure_docx(job, regenerate=True)
+        except Exception:
+            pass
+    manifest = job.read_manifest()
+    return {
+        "artifact_availability": _artifact_availability(job),
+        "versions": manifest.get("versions", []),
+    }
+
+
+@app.get("/api/jobs/{job_id}/versions/{version}/clean_md")
+def get_version_clean_md(job_id: str, version: int) -> Response:
+    job = _get_job(job_id)
+    v_path = job.versions_dir / str(version) / "clean.md"
+    if not _is_job_path(job, v_path) or not v_path.exists():
+        raise HTTPException(status_code=404, detail=f"Version {version} not found.")
+    return Response(
+        content=v_path.read_text(encoding="utf-8"),
+        media_type="text/markdown; charset=utf-8",
+    )
+
+
+@app.post("/api/jobs/{job_id}/revert/{version}")
+def revert_job_version(job_id: str, version: int) -> dict[str, Any]:
+    job = _get_job(job_id)
+    v_path = job.versions_dir / str(version) / "clean.md"
+    if not _is_job_path(job, v_path) or not v_path.exists():
+        raise HTTPException(status_code=404, detail=f"Version {version} not found.")
+    old_text = v_path.read_text(encoding="utf-8")
+    job.save_clean_md(old_text, "reverted")
+    try:
+        rerender_job(job)
+    except MarkdownJobError as exc:
+        raise _job_error(exc, job=getattr(exc, "job", None)) from exc
+    except Exception as exc:
+        raise _job_error(exc, job=job) from exc
+    if job.final_docx.exists():
+        try:
+            _ensure_docx(job, regenerate=True)
+        except Exception:
+            pass
+    manifest = job.read_manifest()
+    return {
+        "artifact_availability": _artifact_availability(job),
+        "versions": manifest.get("versions", []),
+    }
 
 
 def job_response(job: Job) -> dict[str, Any]:

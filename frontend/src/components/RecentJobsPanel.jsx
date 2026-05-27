@@ -1,11 +1,15 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import {
   AlertCircle,
   CheckCircle2,
   ChevronDown,
   ChevronUp,
+  Clock,
   Download,
+  Edit3,
   ExternalLink,
+  Eye,
+  EyeOff,
   FileCode2,
   FileJson,
   FileText,
@@ -13,9 +17,21 @@ import {
   Loader2,
   Paperclip,
   RefreshCw,
+  RotateCcw,
   X
 } from "lucide-react";
-import { artifactUrl, getJob, getJobs, getStyles, retryJob } from "../api/client";
+import {
+  artifactUrl,
+  getCleanMd,
+  getJob,
+  getJobs,
+  getJobVersions,
+  getStyles,
+  getVersionCleanMd,
+  putCleanMd,
+  retryJob,
+  revertJobVersion
+} from "../api/client";
 import { buildStyleLookup, resolveStyle } from "../styleMeta";
 import { folderColor } from "../folderMeta";
 
@@ -540,10 +556,24 @@ export function JobDetailsDrawer({ open, onClose, loading, error, details, style
   const folder = jobFolder(manifest);
   const extractionWarnings = manifest?.extraction_warnings ?? [];
   const isFailed = manifest?.status?.includes("failed");
+  const canEdit = details?.artifact_availability?.clean_md && !isFailed;
+
+  const [drawerTab, setDrawerTab] = useState("details");
+
+  // Reset to details tab when a new job is opened
+  useEffect(() => {
+    if (open) setDrawerTab("details");
+  }, [manifest?.id, open]);
 
   if (!open) {
     return null;
   }
+
+  const tabs = [
+    { key: "details", label: "Details" },
+    { key: "edit", label: "Edit Markdown", icon: Edit3, disabled: !canEdit },
+    { key: "history", label: "Version History", icon: Clock, disabled: !canEdit },
+  ];
 
   return (
     <div className="fixed inset-0 z-50 flex justify-end bg-black/55 backdrop-blur-sm">
@@ -566,6 +596,31 @@ export function JobDetailsDrawer({ open, onClose, loading, error, details, style
           </button>
         </div>
 
+        {/* Tab bar */}
+        {!loading && !error && manifest && (
+          <div className="flex gap-1 border-b border-white/10 px-5 pt-3">
+            {tabs.map((tab) => {
+              const Icon = tab.icon;
+              return (
+                <button
+                  key={tab.key}
+                  type="button"
+                  disabled={tab.disabled}
+                  onClick={() => setDrawerTab(tab.key)}
+                  className={`inline-flex items-center gap-1.5 rounded-t-lg border border-b-0 px-3 py-2 text-xs font-bold transition ${
+                    drawerTab === tab.key
+                      ? "border-white/10 bg-[#090D16] text-ember-400"
+                      : "border-transparent text-slate-400 hover:text-white disabled:cursor-not-allowed disabled:opacity-35"
+                  }`}
+                >
+                  {Icon && <Icon className="h-3.5 w-3.5" />}
+                  {tab.label}
+                </button>
+              );
+            })}
+          </div>
+        )}
+
         <div className="min-h-0 flex-1 overflow-y-auto p-5">
           {loading && (
             <div className="flex min-h-72 items-center justify-center gap-3 text-slate-300">
@@ -581,7 +636,7 @@ export function JobDetailsDrawer({ open, onClose, loading, error, details, style
             </div>
           )}
 
-          {!loading && !error && manifest && (
+          {!loading && !error && manifest && drawerTab === "details" && (
             <div className="grid gap-5">
               <section className="rounded-2xl border border-white/10 bg-white/[0.035] p-4">
                 <div className="flex flex-wrap gap-2">
@@ -672,6 +727,14 @@ export function JobDetailsDrawer({ open, onClose, loading, error, details, style
                 </DetailsSection>
               )}
             </div>
+          )}
+
+          {!loading && !error && manifest && drawerTab === "edit" && canEdit && (
+            <EditMarkdownTab jobId={manifest.id} onSaved={onRetry} />
+          )}
+
+          {!loading && !error && manifest && drawerTab === "history" && canEdit && (
+            <VersionHistoryTab jobId={manifest.id} onReverted={onRetry} />
           )}
         </div>
       </aside>
@@ -873,4 +936,396 @@ function artifactUrlFromPath(path) {
     return path;
   }
   return artifactUrl(match[1], decodeURIComponent(match[2]));
+}
+
+// --- Edit Markdown tab ---
+
+function EditMarkdownTab({ jobId, onSaved }) {
+  const [text, setText] = useState(null);
+  const [original, setOriginal] = useState(null);
+  const [loadError, setLoadError] = useState(null);
+  const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState(null);
+  const [saveOk, setSaveOk] = useState(false);
+  const [showPreview, setShowPreview] = useState(false);
+  const [previewKey, setPreviewKey] = useState(0);
+
+  useEffect(() => {
+    let cancelled = false;
+    setText(null);
+    setOriginal(null);
+    setLoadError(null);
+    setSaveError(null);
+    setSaveOk(false);
+    getCleanMd(jobId)
+      .then((t) => {
+        if (!cancelled) { setText(t); setOriginal(t); }
+      })
+      .catch((e) => { if (!cancelled) setLoadError(e.message); });
+    return () => { cancelled = true; };
+  }, [jobId]);
+
+  async function handleSave() {
+    if (text === null) return;
+    setSaving(true);
+    setSaveError(null);
+    setSaveOk(false);
+    try {
+      await putCleanMd(jobId, text);
+      setOriginal(text);
+      setSaveOk(true);
+      setPreviewKey((k) => k + 1);
+      onSaved?.();
+    } catch (e) {
+      setSaveError(e.message || "Save failed.");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  const isDirty = text !== null && text !== original;
+
+  if (loadError) {
+    return (
+      <div className="flex min-h-48 items-center justify-center gap-2 text-red-300 text-sm">
+        <AlertCircle className="h-4 w-4 shrink-0" />
+        {loadError}
+      </div>
+    );
+  }
+
+  if (text === null) {
+    return (
+      <div className="flex min-h-48 items-center justify-center gap-3 text-slate-300">
+        <Loader2 className="h-5 w-5 animate-spin text-ember-500" />
+        <span>Loading markdown…</span>
+      </div>
+    );
+  }
+
+  return (
+    <div className="grid gap-4">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div className="flex items-center gap-2">
+          <h3 className="text-sm font-bold text-white">Edit Markdown</h3>
+          {isDirty && (
+            <span className="rounded-full border border-amber-300/30 bg-amber-300/10 px-2 py-0.5 text-[10px] font-bold text-amber-200">
+              unsaved
+            </span>
+          )}
+          {saveOk && !isDirty && (
+            <span className="rounded-full border border-emerald-400/30 bg-emerald-400/10 px-2 py-0.5 text-[10px] font-bold text-emerald-200">
+              saved
+            </span>
+          )}
+        </div>
+        <div className="flex gap-2">
+          <button
+            type="button"
+            onClick={() => setShowPreview((v) => !v)}
+            className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-white/10 bg-white/[0.04] px-3 text-xs font-bold text-slate-300 transition hover:border-white/20 hover:text-white"
+          >
+            {showPreview ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
+            {showPreview ? "Hide Preview" : "Show Preview"}
+          </button>
+          <button
+            type="button"
+            onClick={handleSave}
+            disabled={saving || !isDirty}
+            className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-ember-500/50 bg-ember-500/10 px-3 text-xs font-bold text-ember-300 transition hover:border-ember-500 hover:text-white disabled:cursor-not-allowed disabled:opacity-40"
+          >
+            {saving ? (
+              <><Loader2 className="h-3.5 w-3.5 animate-spin" /> Saving…</>
+            ) : (
+              <><RefreshCw className="h-3.5 w-3.5" /> Save & Re-render</>
+            )}
+          </button>
+        </div>
+      </div>
+
+      {saveError && (
+        <p className="rounded-lg border border-red-400/20 bg-red-400/10 p-2.5 text-xs text-red-300">{saveError}</p>
+      )}
+
+      <div className={showPreview ? "grid gap-3 lg:grid-cols-2" : ""}>
+        <textarea
+          value={text}
+          onChange={(e) => { setText(e.target.value); setSaveOk(false); }}
+          spellCheck={false}
+          className="min-h-[480px] w-full rounded-xl border border-white/10 bg-[#070B14] p-3 font-mono text-xs leading-5 text-slate-200 outline-none focus:border-ember-500/40 resize-y"
+        />
+        {showPreview && (
+          <iframe
+            key={previewKey}
+            src={`/api/jobs/${encodeURIComponent(jobId)}/artifacts/final.html?disposition=inline`}
+            title="HTML preview"
+            sandbox="allow-same-origin allow-scripts"
+            className="min-h-[480px] w-full rounded-xl border border-white/10 bg-white"
+          />
+        )}
+      </div>
+
+      <p className="text-[11px] text-slate-500">
+        Saving re-renders PDF and HTML from the edited markdown. A version snapshot is created automatically before each save.
+      </p>
+    </div>
+  );
+}
+
+// --- Version History tab ---
+
+function computeLineDiff(oldText, newText) {
+  const a = (oldText || "").split("\n");
+  const b = (newText || "").split("\n");
+  if (a.length > 600 || b.length > 600) {
+    return [{ type: "info", text: "(File too large for inline diff — download both versions to compare)" }];
+  }
+  const m = a.length, n = b.length;
+  const dp = Array.from({ length: m + 1 }, () => new Uint16Array(n + 1));
+  for (let i = 1; i <= m; i++) {
+    for (let j = 1; j <= n; j++) {
+      dp[i][j] = a[i - 1] === b[j - 1] ? dp[i - 1][j - 1] + 1 : Math.max(dp[i - 1][j], dp[i][j - 1]);
+    }
+  }
+  const result = [];
+  let i = m, j = n;
+  while (i > 0 || j > 0) {
+    if (i > 0 && j > 0 && a[i - 1] === b[j - 1]) {
+      result.unshift({ type: "same", text: a[i - 1] });
+      i--; j--;
+    } else if (j > 0 && (i === 0 || dp[i][j - 1] >= dp[i - 1][j])) {
+      result.unshift({ type: "added", text: b[j - 1] });
+      j--;
+    } else {
+      result.unshift({ type: "removed", text: a[i - 1] });
+      i--;
+    }
+  }
+  return result;
+}
+
+function VersionHistoryTab({ jobId, onReverted }) {
+  const [versions, setVersions] = useState([]);
+  const [currentText, setCurrentText] = useState(null);
+  const [loadError, setLoadError] = useState(null);
+  const [reverting, setReverting] = useState(null);
+  const [revertError, setRevertError] = useState(null);
+  const [expandedDiff, setExpandedDiff] = useState(null);
+  const [diffContent, setDiffContent] = useState({});
+  const [loadingDiff, setLoadingDiff] = useState(null);
+
+  function reload() {
+    return Promise.all([getJobVersions(jobId), getCleanMd(jobId)])
+      .then(([vData, text]) => {
+        setVersions(vData.versions ?? []);
+        setCurrentText(text);
+      });
+  }
+
+  useEffect(() => {
+    setVersions([]);
+    setCurrentText(null);
+    setLoadError(null);
+    setExpandedDiff(null);
+    setDiffContent({});
+    reload().catch((e) => setLoadError(e.message));
+  }, [jobId]);
+
+  async function handleRevert(version) {
+    setReverting(version);
+    setRevertError(null);
+    try {
+      await revertJobVersion(jobId, version);
+      await reload();
+      setExpandedDiff(null);
+      setDiffContent({});
+      onReverted?.();
+    } catch (e) {
+      setRevertError(e.message || "Revert failed.");
+    } finally {
+      setReverting(null);
+    }
+  }
+
+  async function handleToggleDiff(version) {
+    if (expandedDiff === version) {
+      setExpandedDiff(null);
+      return;
+    }
+    setExpandedDiff(version);
+    if (diffContent[version] !== undefined) return;
+    setLoadingDiff(version);
+    try {
+      const text = await getVersionCleanMd(jobId, version);
+      setDiffContent((prev) => ({ ...prev, [version]: text }));
+    } catch {
+      setDiffContent((prev) => ({ ...prev, [version]: null }));
+    } finally {
+      setLoadingDiff(null);
+    }
+  }
+
+  const SOURCE_LABELS = {
+    generated: { label: "Generated", tone: "border-sky-400/25 bg-sky-400/10 text-sky-200" },
+    edited: { label: "Edited", tone: "border-violet-400/30 bg-violet-400/10 text-violet-200" },
+    rerendered: { label: "Re-rendered", tone: "border-white/10 bg-white/[0.04] text-slate-300" },
+    reverted: { label: "Reverted", tone: "border-amber-300/30 bg-amber-300/10 text-amber-200" },
+  };
+
+  if (loadError) {
+    return (
+      <div className="flex min-h-48 items-center justify-center gap-2 text-red-300 text-sm">
+        <AlertCircle className="h-4 w-4 shrink-0" />
+        {loadError}
+      </div>
+    );
+  }
+
+  if (currentText === null) {
+    return (
+      <div className="flex min-h-48 items-center justify-center gap-3 text-slate-300">
+        <Loader2 className="h-5 w-5 animate-spin text-ember-500" />
+        <span>Loading history…</span>
+      </div>
+    );
+  }
+
+  if (versions.length === 0) {
+    return <p className="mt-4 text-sm text-slate-400">No version history yet.</p>;
+  }
+
+  const latestVersion = versions[versions.length - 1]?.version;
+
+  return (
+    <div className="grid gap-3">
+      <h3 className="text-sm font-bold text-white">{versions.length} version{versions.length !== 1 ? "s" : ""}</h3>
+
+      {revertError && (
+        <p className="rounded-lg border border-red-400/20 bg-red-400/10 p-2.5 text-xs text-red-300">{revertError}</p>
+      )}
+
+      <div className="grid gap-2">
+        {[...versions].reverse().map((v) => {
+          const isLatest = v.version === latestVersion;
+          const srcInfo = SOURCE_LABELS[v.source] ?? { label: v.source, tone: "border-white/10 bg-white/[0.04] text-slate-300" };
+          const isExpanded = expandedDiff === v.version;
+          const vDiff = isExpanded ? diffContent[v.version] : undefined;
+          const diff = vDiff !== undefined && currentText !== null ? computeLineDiff(vDiff, currentText) : null;
+
+          return (
+            <div key={v.version} className="rounded-xl border border-white/10 bg-white/[0.035] p-3">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="font-mono text-xs font-bold text-white">v{v.version}</span>
+                  <span className={`rounded-full border px-2 py-0.5 text-[10px] font-bold ${srcInfo.tone}`}>
+                    {srcInfo.label}
+                  </span>
+                  {isLatest && (
+                    <span className="rounded-full border border-emerald-400/25 bg-emerald-400/10 px-2 py-0.5 text-[10px] font-bold text-emerald-200">
+                      current
+                    </span>
+                  )}
+                  <span className="text-[11px] text-slate-500">{v.created_at}</span>
+                </div>
+                <div className="flex gap-2">
+                  <button
+                    type="button"
+                    onClick={() => handleToggleDiff(v.version)}
+                    className="inline-flex h-7 items-center gap-1.5 rounded-lg border border-white/10 bg-white/[0.04] px-2.5 text-[11px] font-bold text-slate-300 transition hover:border-white/20 hover:text-white"
+                  >
+                    {loadingDiff === v.version ? (
+                      <Loader2 className="h-3 w-3 animate-spin" />
+                    ) : (
+                      <Eye className="h-3 w-3" />
+                    )}
+                    {isExpanded ? "Hide" : "Diff vs current"}
+                  </button>
+                  {!isLatest && (
+                    <button
+                      type="button"
+                      onClick={() => handleRevert(v.version)}
+                      disabled={reverting !== null}
+                      className="inline-flex h-7 items-center gap-1.5 rounded-lg border border-ember-500/40 bg-ember-500/10 px-2.5 text-[11px] font-bold text-ember-300 transition hover:border-ember-500 hover:text-white disabled:cursor-not-allowed disabled:opacity-40"
+                    >
+                      {reverting === v.version ? (
+                        <Loader2 className="h-3 w-3 animate-spin" />
+                      ) : (
+                        <RotateCcw className="h-3 w-3" />
+                      )}
+                      Restore
+                    </button>
+                  )}
+                </div>
+              </div>
+
+              {isExpanded && (
+                <div className="mt-3">
+                  {loadingDiff === v.version || vDiff === undefined ? (
+                    <div className="flex h-12 items-center gap-2 text-xs text-slate-400">
+                      <Loader2 className="h-3.5 w-3.5 animate-spin text-ember-500" /> Loading…
+                    </div>
+                  ) : vDiff === null ? (
+                    <p className="text-xs text-red-300">Could not load version content.</p>
+                  ) : isLatest ? (
+                    <pre className="max-h-72 overflow-auto rounded-lg border border-white/10 bg-[#070B14] p-2.5 font-mono text-[11px] leading-5 text-slate-300 whitespace-pre-wrap">{vDiff}</pre>
+                  ) : diff ? (
+                    <DiffView diff={diff} />
+                  ) : null}
+                </div>
+              )}
+            </div>
+          );
+        })}
+      </div>
+
+      <p className="text-[11px] text-slate-500">
+        Restoring a version creates a new snapshot — history is never deleted.
+      </p>
+    </div>
+  );
+}
+
+function DiffView({ diff }) {
+  const [showUnchanged, setShowUnchanged] = useState(false);
+
+  const hasChanges = diff.some((l) => l.type !== "same" && l.type !== "info");
+
+  if (!hasChanges) {
+    return <p className="text-xs text-slate-400">No differences — versions are identical.</p>;
+  }
+
+  const addedCount = diff.filter((l) => l.type === "added").length;
+  const removedCount = diff.filter((l) => l.type === "removed").length;
+
+  return (
+    <div className="grid gap-2">
+      <div className="flex items-center justify-between gap-3">
+        <div className="flex gap-2 text-[11px]">
+          {addedCount > 0 && <span className="text-emerald-300">+{addedCount} added</span>}
+          {removedCount > 0 && <span className="text-red-300">−{removedCount} removed</span>}
+        </div>
+        <button
+          type="button"
+          onClick={() => setShowUnchanged((v) => !v)}
+          className="text-[11px] text-slate-500 hover:text-slate-300"
+        >
+          {showUnchanged ? "Hide unchanged" : "Show all lines"}
+        </button>
+      </div>
+      <pre className="max-h-72 overflow-auto rounded-lg border border-white/10 bg-[#070B14] p-2.5 font-mono text-[11px] leading-5 whitespace-pre-wrap">
+        {diff.map((line, i) => {
+          if (line.type === "same" && !showUnchanged) return null;
+          const cls =
+            line.type === "added" ? "text-emerald-300 bg-emerald-900/20" :
+            line.type === "removed" ? "text-red-300 bg-red-900/20 line-through opacity-70" :
+            line.type === "info" ? "text-slate-500 italic" :
+            "text-slate-400";
+          const prefix = line.type === "added" ? "+ " : line.type === "removed" ? "− " : "  ";
+          return (
+            <span key={i} className={`block ${cls}`}>{prefix}{line.text}</span>
+          );
+        })}
+      </pre>
+    </div>
+  );
 }

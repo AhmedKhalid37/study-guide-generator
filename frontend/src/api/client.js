@@ -276,6 +276,43 @@ export function createLlmJob(payload) {
   });
 }
 
+export function getJobVersions(jobId) {
+  return requestJson(`/api/jobs/${encodeURIComponent(jobId)}/versions`);
+}
+
+export async function getCleanMd(jobId) {
+  const response = await fetch(`${API_BASE_URL}/api/jobs/${encodeURIComponent(jobId)}/clean_md`);
+  if (!response.ok) {
+    throw new Error(`Failed to load markdown: ${response.status}`);
+  }
+  return response.text();
+}
+
+export function putCleanMd(jobId, text) {
+  return requestJson(`/api/jobs/${encodeURIComponent(jobId)}/clean_md`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ text })
+  });
+}
+
+export async function getVersionCleanMd(jobId, version) {
+  const response = await fetch(
+    `${API_BASE_URL}/api/jobs/${encodeURIComponent(jobId)}/versions/${version}/clean_md`
+  );
+  if (!response.ok) {
+    throw new Error(`Failed to load version ${version}: ${response.status}`);
+  }
+  return response.text();
+}
+
+export function revertJobVersion(jobId, version) {
+  return requestJson(
+    `/api/jobs/${encodeURIComponent(jobId)}/revert/${version}`,
+    { method: "POST" }
+  );
+}
+
 export function artifactUrl(jobId, artifactName) {
   return `${API_BASE_URL}/api/jobs/${encodeURIComponent(jobId)}/artifacts/${encodeURIComponent(
     artifactName

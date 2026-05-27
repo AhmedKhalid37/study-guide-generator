@@ -94,7 +94,7 @@ def run_pasted_text_job(
 def run_raw_markdown_pipeline(job: Job, *, theme: str, strict_math: bool) -> Job:
     job.set_status("sanitizing")
     raw = job.raw_md.read_text(encoding="utf-8", errors="replace")
-    job.save_text(job.clean_md, sanitize(raw))
+    job.save_clean_md(sanitize(raw), "generated")
     job.update(clean_md=str(job.clean_md))
     print(f"clean.md: {job.clean_md}")
 
