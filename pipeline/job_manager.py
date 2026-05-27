@@ -33,6 +33,7 @@ class Job:
             "created_at": datetime.now().isoformat(timespec="seconds"),
             "status": "created",
             "error": None,
+            "favorite": False,
             "timings": {},
         }
         if meta:
@@ -151,6 +152,9 @@ class Job:
         manifest = self.read_manifest()
         manifest.update(fields)
         self._write_manifest(manifest)
+
+    def set_favorite(self, value: bool) -> None:
+        self.update(favorite=bool(value))
 
     def set_status(
         self,

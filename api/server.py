@@ -14,7 +14,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, Response
 from pydantic import BaseModel, ValidationError
 
-from pipeline import library_store, style_store
+from pipeline import library_store, presets as preset_store, style_store
 from pipeline.job_manager import JOBS_DIR, Job
 from pipeline.llm_client import LLMProviderError, MissingLLMConfigError, generate_chat_completion
 from pipeline.markdown_sections import (
@@ -178,6 +178,10 @@ class FolderUpdateRequest(BaseModel):
 
 class MoveJobRequest(BaseModel):
     folder_id: str | None = None
+
+
+class FavoriteRequest(BaseModel):
+    value: bool
 
 
 class BatchMoveRequest(BaseModel):
@@ -452,6 +456,19 @@ def _fallback_style_name(description: str) -> str:
     return (name or "Custom Style").title()[:60]
 
 
+@app.get("/api/presets")
+def list_presets() -> dict[str, Any]:
+    return {"presets": preset_store.list_presets()}
+
+
+@app.post("/api/presets/{preset_id}/apply")
+def apply_preset(preset_id: str) -> dict[str, Any]:
+    applied = preset_store.apply_preset(preset_id)
+    if applied is None:
+        raise HTTPException(status_code=404, detail="Unknown preset.")
+    return applied
+
+
 @app.post("/api/outline/generate")
 def generate_outline(request: OutlineGenerateRequest) -> dict[str, Any]:
     topic = (request.source_text or request.title or "").strip()
@@ -569,10 +586,13 @@ def list_jobs(limit: int = 20) -> dict[str, Any]:
                 }
             )
 
+    # Newest first, then float favorites to the top. The second sort is stable, so
+    # newest-first order is preserved within the favorite and non-favorite groups.
     jobs.sort(
         key=lambda item: str(item.get("created_at") or item.get("id") or ""),
         reverse=True,
     )
+    jobs.sort(key=lambda item: not bool(item.get("favorite")))
     return {"jobs": jobs[: max(limit, 0)]}
 
 
@@ -1014,12 +1034,17 @@ def _sort_library_jobs(jobs: list[dict[str, Any]], sort: str) -> list[dict[str, 
         return str(job.get("created_at") or job.get("id") or "")
 
     if sort == "oldest":
-        return sorted(jobs, key=created_key)
-    if sort == "title":
-        return sorted(jobs, key=lambda job: str(job.get("title") or "").lower())
-    if sort == "status":
-        return sorted(jobs, key=lambda job: str(job.get("status") or ""))
-    return sorted(jobs, key=created_key, reverse=True)
+        ordered = sorted(jobs, key=created_key)
+    elif sort == "title":
+        ordered = sorted(jobs, key=lambda job: str(job.get("title") or "").lower())
+    elif sort == "status":
+        ordered = sorted(jobs, key=lambda job: str(job.get("status") or ""))
+    else:
+        ordered = sorted(jobs, key=created_key, reverse=True)
+    # Favorites float to the top regardless of the chosen sort; the stable sort
+    # keeps the chosen ordering within the favorite and non-favorite groups.
+    ordered.sort(key=lambda job: not bool(job.get("favorite")))
+    return ordered
 
 
 @app.post("/api/jobs/paste")
@@ -1141,6 +1166,13 @@ def get_job(job_id: str) -> dict[str, Any]:
         "validation_summary": _validation_summary(job),
         "render_log_summary": _render_log_summary(job),
     }
+
+
+@app.post("/api/jobs/{job_id}/favorite")
+def set_job_favorite(job_id: str, request: FavoriteRequest) -> dict[str, Any]:
+    job = _get_job(job_id)
+    job.set_favorite(request.value)
+    return {"ok": True, "job_id": job.id, "favorite": request.value}
 
 
 @app.get("/api/jobs/{job_id}/artifacts/{artifact_name}")
@@ -1978,6 +2010,7 @@ def _safe_manifest(manifest: dict[str, Any]) -> dict[str, Any]:
     safe["attachments"] = _safe_attachment_metadata(manifest.get("attachments", []))
     safe["extraction_warnings"] = _safe_warnings(manifest.get("extraction_warnings", []))
     safe["total_extracted_chars"] = int(manifest.get("total_extracted_chars") or 0)
+    safe["favorite"] = bool(manifest.get("favorite", False))
     safe.update(_outline_summary(manifest))
     return safe
 
@@ -2247,7 +2280,13 @@ def _ensure_docx(job: Job, *, regenerate: bool = False) -> Path | None:
         return job.final_docx
     from pipeline.docx_renderer import render_docx
 
-    render_docx(job.clean_md, job.final_docx)
+    manifest = job.read_manifest()
+    render_docx(
+        job.clean_md,
+        job.final_docx,
+        title=manifest.get("title"),
+        generated_date=manifest.get("created_at"),
+    )
     return job.final_docx
 
 

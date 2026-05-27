@@ -1,17 +1,20 @@
-import React, { useCallback, useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   AlertCircle,
   Check,
   ChevronRight,
+  Clock,
   Download,
   FileCode2,
   FileJson,
   FileText,
   Folder,
   FolderPlus,
+  LayoutTemplate,
   Leaf,
   ListChecks,
   Loader2,
+  RotateCcw,
   Save,
   Share2,
   Sparkles,
@@ -23,6 +26,7 @@ import {
 } from "lucide-react";
 import {
   apiUrl,
+  applyPreset,
   createFolder,
   createLlmJob,
   createPasteJob,
@@ -30,6 +34,7 @@ import {
   getFolders,
   getJob,
   getOptions,
+  getPresets,
   getStyles,
   previewApiUrl
 } from "../api/client";
@@ -105,6 +110,33 @@ const lengthOptions = [
   { id: "long", label: "Long", meta: "~30+ pages" }
 ];
 
+const DRAFT_KEY = "builder_draft_v1";
+const DEFAULT_TITLE = "Generated Study Guide";
+
+function draftHasContent(draft) {
+  if (!draft) return false;
+  const title = (draft.title || "").trim();
+  const text = (draft.text || "").trim();
+  const sections = draft.outline?.sections || [];
+  return Boolean(
+    text ||
+      (title && title !== DEFAULT_TITLE) ||
+      sections.some((section) => (section?.title || "").trim())
+  );
+}
+
+function formatDraftTime(iso) {
+  if (!iso) return "";
+  const then = new Date(iso);
+  if (Number.isNaN(then.getTime())) return "";
+  const diffMs = Date.now() - then.getTime();
+  const diffMin = Math.round(diffMs / 60000);
+  if (diffMin < 1) return "just now";
+  if (diffMin === 1) return "1 minute ago";
+  if (diffMin < 60) return `${diffMin} minutes ago`;
+  return then.toLocaleString();
+}
+
 const includeOptions = [
   "Key concepts",
   "Mnemonics",
@@ -176,6 +208,12 @@ export default function BuilderWorkspace({
   const [includes, setIncludes] = useState(["Key concepts", "Mnemonics", "Examples", "Diagrams"]);
   const [outlineEnabled, setOutlineEnabled] = useState(false);
   const [outlineSections, setOutlineSections] = useState([]);
+  const [presets, setPresets] = useState([]);
+  const [selectedPreset, setSelectedPreset] = useState("");
+  const [presetBusy, setPresetBusy] = useState(false);
+  const [restoreDraft, setRestoreDraft] = useState(null);
+  const [draftSavedAt, setDraftSavedAt] = useState(null);
+  const saveTimerRef = useRef(null);
   const [result, setResult] = useState(latestJob);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
@@ -268,6 +306,137 @@ export default function BuilderWorkspace({
     [loadFolders]
   );
 
+  useEffect(() => {
+    let cancelled = false;
+    getPresets()
+      .then((result) => {
+        if (!cancelled) setPresets(result.presets ?? []);
+      })
+      .catch(() => {
+        if (!cancelled) setPresets([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  // Selecting a template pre-fills the outline + style; "Custom" clears the
+  // template selection without touching the user's current outline/style.
+  const handleApplyPreset = useCallback(
+    async (presetId) => {
+      if (!presetId || presetId === "custom") {
+        setSelectedPreset("");
+        return;
+      }
+      setPresetBusy(true);
+      try {
+        const applied = await applyPreset(presetId);
+        const sections = applied.outline?.sections ?? [];
+        setOutlineSections(sections);
+        setOutlineEnabled(Boolean(applied.outline?.enabled) && sections.length > 0);
+        if (applied.style) onSelectStyle?.(applied.style);
+        setSelectedPreset(presetId);
+      } catch (presetError) {
+        setError(normalizeError(presetError));
+      } finally {
+        setPresetBusy(false);
+      }
+    },
+    [onSelectStyle]
+  );
+
+  const buildDraft = useCallback(
+    () => ({
+      savedAt: new Date().toISOString(),
+      title,
+      text,
+      source,
+      outline: { enabled: outlineEnabled, sections: outlineSections },
+      style: selectedStyle,
+      folderId,
+      template: selectedPreset,
+      length,
+      includes
+    }),
+    [title, text, source, outlineEnabled, outlineSections, selectedStyle, folderId, selectedPreset, length, includes]
+  );
+
+  const clearDraft = useCallback(() => {
+    if (saveTimerRef.current) {
+      clearTimeout(saveTimerRef.current);
+      saveTimerRef.current = null;
+    }
+    try {
+      window.localStorage.removeItem(DRAFT_KEY);
+    } catch {
+      // localStorage unavailable (private mode / SSR) — nothing to clear.
+    }
+    setDraftSavedAt(null);
+    setRestoreDraft(null);
+  }, []);
+
+  // On mount, surface (but never auto-apply) any saved draft with real content.
+  useEffect(() => {
+    try {
+      const raw = window.localStorage.getItem(DRAFT_KEY);
+      if (!raw) return;
+      const parsed = JSON.parse(raw);
+      if (draftHasContent(parsed)) setRestoreDraft(parsed);
+    } catch {
+      // Corrupt/unavailable draft — ignore it.
+    }
+  }, []);
+
+  // Debounced autosave. Only writes when there is meaningful content so an empty
+  // form on first mount can never clobber a real saved draft before the user
+  // decides whether to restore it.
+  useEffect(() => {
+    const draft = buildDraft();
+    if (!draftHasContent(draft)) return undefined;
+    if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
+    saveTimerRef.current = setTimeout(() => {
+      try {
+        window.localStorage.setItem(DRAFT_KEY, JSON.stringify(draft));
+        setDraftSavedAt(draft.savedAt);
+      } catch {
+        // Ignore quota / unavailable storage.
+      }
+    }, 800);
+    return () => {
+      if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
+    };
+  }, [buildDraft]);
+
+  const handleSaveDraft = useCallback(() => {
+    const draft = buildDraft();
+    if (saveTimerRef.current) {
+      clearTimeout(saveTimerRef.current);
+      saveTimerRef.current = null;
+    }
+    try {
+      window.localStorage.setItem(DRAFT_KEY, JSON.stringify(draft));
+      setDraftSavedAt(draft.savedAt);
+    } catch {
+      // Ignore quota / unavailable storage.
+    }
+  }, [buildDraft]);
+
+  const handleRestoreDraft = useCallback(() => {
+    const draft = restoreDraft;
+    if (!draft) return;
+    setTitle(draft.title ?? DEFAULT_TITLE);
+    setText(draft.text ?? "");
+    if (draft.source) setSource(draft.source);
+    setOutlineEnabled(Boolean(draft.outline?.enabled));
+    setOutlineSections(Array.isArray(draft.outline?.sections) ? draft.outline.sections : []);
+    if (draft.style) onSelectStyle?.(draft.style);
+    if (draft.folderId) setFolderId(draft.folderId);
+    setSelectedPreset(draft.template || "");
+    if (draft.length) setLength(draft.length);
+    if (Array.isArray(draft.includes)) setIncludes(draft.includes);
+    setRestoreDraft(null);
+  }, [restoreDraft, onSelectStyle]);
+
   const artifactEntries = useMemo(() => {
     if (!result?.artifact_urls) {
       return [];
@@ -345,6 +514,7 @@ export default function BuilderWorkspace({
       const job = await createJob(kind, payload);
       setResult(job);
       onJobCreated?.(job);
+      clearDraft();
     } catch (requestError) {
       setError(normalizeError(requestError));
     } finally {
@@ -440,9 +610,17 @@ export default function BuilderWorkspace({
         <div className="flex-1" />
         <span className="sg-autosave">
           <i />
-          Unsaved draft
+          {draftSavedAt ? `Draft saved · ${formatDraftTime(draftSavedAt)}` : "Unsaved draft"}
         </span>
       </div>
+
+      {restoreDraft && (
+        <DraftRestoreBanner
+          draft={restoreDraft}
+          onRestore={handleRestoreDraft}
+          onDiscard={clearDraft}
+        />
+      )}
 
       <div className="sg-builder-body">
         <form
@@ -479,6 +657,12 @@ export default function BuilderWorkspace({
               onCreateFolder={handleCreateFolder}
               outlineEnabled={outlineEnabled}
               outlineCount={outlineSections.filter((section) => section.title.trim()).length}
+              presets={presets}
+              selectedPreset={selectedPreset}
+              onApplyPreset={handleApplyPreset}
+              presetBusy={presetBusy}
+              onSaveDraft={handleSaveDraft}
+              draftSavedAt={draftSavedAt}
               error={error}
               loading={loading}
             />
@@ -574,6 +758,11 @@ function BuilderComposer({
   onCreateFolder,
   outlineEnabled,
   outlineCount,
+  presets = [],
+  selectedPreset = "",
+  onApplyPreset,
+  presetBusy = false,
+  onSaveDraft,
   error,
   loading
 }) {
@@ -588,6 +777,13 @@ function BuilderComposer({
           className="sg-input sg-input-lg"
         />
       </div>
+
+      <TemplatePicker
+        presets={presets}
+        selectedPreset={selectedPreset}
+        onApplyPreset={onApplyPreset}
+        busy={presetBusy}
+      />
 
       <div className="sg-field-block">
         <FieldLabel>Source</FieldLabel>
@@ -674,6 +870,7 @@ function BuilderComposer({
         />
         <button
           type="button"
+          onClick={onSaveDraft}
           className="sg-ghost-button"
         >
           <Save className="h-4 w-4" />
@@ -807,6 +1004,67 @@ function CreateFolderPopover({ onClose, onCreateFolder }) {
         </button>
       </div>
     </>
+  );
+}
+
+function TemplatePicker({ presets = [], selectedPreset = "", onApplyPreset, busy = false }) {
+  const active = presets.find((preset) => preset.id === selectedPreset);
+  return (
+    <div className="sg-field-block">
+      <FieldLabel>Template</FieldLabel>
+      <div className="flex items-center gap-2">
+        <span className="grid h-9 w-9 shrink-0 place-items-center rounded-lg border border-white/[0.08] bg-white/[0.03] text-[#F97316]">
+          {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <LayoutTemplate className="h-4 w-4" />}
+        </span>
+        <select
+          value={selectedPreset || "custom"}
+          disabled={busy}
+          onChange={(event) => onApplyPreset?.(event.target.value)}
+          className="h-9 min-w-0 flex-1 rounded-lg border border-white/[0.08] bg-[#070B14] px-3 text-[13px] font-medium text-[#F4F4F5] outline-none disabled:opacity-60"
+        >
+          <option value="custom" className="bg-[#0B1220]">Custom (no template)</option>
+          {presets.map((preset) => (
+            <option key={preset.id} value={preset.id} className="bg-[#0B1220]">
+              {preset.name}
+            </option>
+          ))}
+        </select>
+      </div>
+      <p className="mt-1.5 text-[11.5px] leading-4 text-[#9098A8]">
+        {active
+          ? `${active.description} You can still edit the outline and style before generating.`
+          : "Pick a template to pre-fill the outline and style. Custom leaves them as-is."}
+      </p>
+    </div>
+  );
+}
+
+function DraftRestoreBanner({ draft, onRestore, onDiscard }) {
+  return (
+    <div className="mx-1 mb-1 flex flex-wrap items-center gap-3 rounded-xl border border-[rgba(249,115,22,0.35)] bg-[rgba(249,115,22,0.10)] px-4 py-2.5">
+      <Clock className="h-4 w-4 shrink-0 text-[#F97316]" />
+      <span className="min-w-0 flex-1 text-[12.5px] font-medium text-[#F4F4F5]">
+        Restore unsaved draft from {formatDraftTime(draft.savedAt)}?
+      </span>
+      <div className="flex items-center gap-2">
+        <button
+          type="button"
+          onClick={onRestore}
+          className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-[rgba(249,115,22,0.5)] bg-[rgba(249,115,22,0.16)] px-3 text-[12px] font-semibold text-[#F97316] transition hover:bg-[rgba(249,115,22,0.24)]"
+        >
+          <RotateCcw className="h-3.5 w-3.5" />
+          Restore
+        </button>
+        <button
+          type="button"
+          onClick={onDiscard}
+          className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-white/[0.1] bg-white/[0.04] px-3 text-[12px] font-semibold text-[#9098A8] transition hover:text-[#F4F4F5]"
+        >
+          <X className="h-3.5 w-3.5" />
+          Discard
+        </button>
+      </div>
+    </div>
   );
 }
 

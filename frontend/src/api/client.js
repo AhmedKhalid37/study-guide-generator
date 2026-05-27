@@ -37,6 +37,24 @@ export function getJobs() {
   return requestJson("/api/jobs");
 }
 
+export function getPresets() {
+  return requestJson("/api/presets");
+}
+
+export function applyPreset(presetId) {
+  return requestJson(`/api/presets/${encodeURIComponent(presetId)}/apply`, {
+    method: "POST"
+  });
+}
+
+export function setJobFavorite(jobId, value) {
+  return requestJson(`/api/jobs/${encodeURIComponent(jobId)}/favorite`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ value })
+  });
+}
+
 export function getStyles() {
   return requestJson("/api/styles");
 }

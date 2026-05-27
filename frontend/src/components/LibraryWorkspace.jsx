@@ -12,6 +12,7 @@ import {
   Pencil,
   Plus,
   Search,
+  Star,
   Trash2,
   X
 } from "lucide-react";
@@ -24,6 +25,7 @@ import {
   getStyles,
   moveJobToFolder,
   moveJobsToFolder,
+  setJobFavorite,
   updateFolder
 } from "../api/client";
 import { buildStyleLookup, resolveStyle } from "../styleMeta";
@@ -169,6 +171,9 @@ export default function LibraryWorkspace({ refreshKey = 0, onOpenBuilder }) {
     else if (sort === "title") list = [...list].sort((a, b) => String(a.title || "").localeCompare(String(b.title || "")));
     else if (sort === "status") list = [...list].sort((a, b) => String(a.status || "").localeCompare(String(b.status || "")));
     else list = [...list].sort((a, b) => created(b).localeCompare(created(a)));
+    // Favorites float to the top regardless of sort; Array.prototype.sort is
+    // stable, so the chosen ordering is preserved within each group.
+    list = [...list].sort((a, b) => (b.favorite ? 1 : 0) - (a.favorite ? 1 : 0));
     return list;
   }, [data.jobs, selectedFolder, q, filters, sort]);
 
@@ -197,6 +202,24 @@ export default function LibraryWorkspace({ refreshKey = 0, onOpenBuilder }) {
     },
     [reload]
   );
+
+  const handleToggleFavorite = useCallback(async (jobId, nextValue) => {
+    // Optimistic: flip locally so the list re-orders immediately, then reconcile
+    // with the server's confirmed value (reverting on failure).
+    const apply = (value) =>
+      setData((prev) => ({
+        ...prev,
+        jobs: prev.jobs.map((job) => (job.id === jobId ? { ...job, favorite: value } : job))
+      }));
+    apply(nextValue);
+    try {
+      const result = await setJobFavorite(jobId, nextValue);
+      apply(Boolean(result.favorite));
+    } catch (err) {
+      apply(!nextValue);
+      setError(err.message || "Could not update favorite.");
+    }
+  }, []);
 
   const toggleSelect = useCallback((jobId) => {
     setSelectedIds((prev) => {
@@ -375,6 +398,7 @@ export default function LibraryWorkspace({ refreshKey = 0, onOpenBuilder }) {
                   onDetails={() => openDetails(job.id)}
                   selected={selectedIds.has(job.id)}
                   onToggleSelect={toggleSelect}
+                  onToggleFavorite={handleToggleFavorite}
                 />
               ))}
             </div>
@@ -657,10 +681,11 @@ function ToggleChip({ active, onClick, children }) {
   );
 }
 
-function JobCard({ job, style, folder, moveTargets, onMove, onDetails, selected, onToggleSelect }) {
+function JobCard({ job, style, folder, moveTargets, onMove, onDetails, selected, onToggleSelect, onToggleFavorite }) {
   const availability = job.artifact_availability || {};
   const attachments = job.attachment_summary || {};
   const created = job.created_at || "";
+  const favorite = Boolean(job.favorite);
   return (
     <div
       className={`flex gap-3 rounded-xl border p-3 transition ${
@@ -678,6 +703,18 @@ function JobCard({ job, style, folder, moveTargets, onMove, onDetails, selected,
           aria-label={`Select ${job.title || "study guide"}`}
         />
       </label>
+      <button
+        type="button"
+        onClick={() => onToggleFavorite?.(job.id, !favorite)}
+        title={favorite ? "Remove from favorites" : "Add to favorites"}
+        aria-label={favorite ? "Remove from favorites" : "Add to favorites"}
+        aria-pressed={favorite}
+        className={`flex shrink-0 items-start pt-0.5 transition ${
+          favorite ? "text-ember-400" : "text-slate-500 hover:text-ember-300"
+        }`}
+      >
+        <Star size={16} fill={favorite ? "currentColor" : "none"} />
+      </button>
       <div className="flex min-w-0 flex-1 flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
         <div className="min-w-0 flex-1">
           <p className="truncate text-sm font-bold text-white">{job.title || "Untitled study guide"}</p>
