@@ -313,6 +313,25 @@ export function revertJobVersion(jobId, version) {
   );
 }
 
+export function getJobSections(jobId) {
+  return requestJson(`/api/jobs/${encodeURIComponent(jobId)}/sections`);
+}
+
+export function getOutlineCompliance(jobId) {
+  return requestJson(`/api/jobs/${encodeURIComponent(jobId)}/outline_compliance`);
+}
+
+export function regenerateSection(jobId, sectionIndex, { action, instruction = "", provider = null, model = null, qwenThinking = true } = {}) {
+  return requestJson(
+    `/api/jobs/${encodeURIComponent(jobId)}/sections/${sectionIndex}/regenerate`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action, instruction, provider, model, qwen_thinking: qwenThinking })
+    }
+  );
+}
+
 export function artifactUrl(jobId, artifactName) {
   return `${API_BASE_URL}/api/jobs/${encodeURIComponent(jobId)}/artifacts/${encodeURIComponent(
     artifactName

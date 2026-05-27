@@ -17,6 +17,11 @@ from pydantic import BaseModel, ValidationError
 from pipeline import library_store, style_store
 from pipeline.job_manager import JOBS_DIR, Job
 from pipeline.llm_client import LLMProviderError, MissingLLMConfigError, generate_chat_completion
+from pipeline.markdown_sections import (
+    check_outline_compliance,
+    parse_sections,
+    splice_section,
+)
 from pipeline.orchestrator import generate_study_guide
 from pipeline.provider_config import (
     build_provider_config,
@@ -191,6 +196,24 @@ class RerenderRequest(BaseModel):
 
 class EditCleanMdRequest(BaseModel):
     text: str
+
+
+class SectionRegenerateRequest(BaseModel):
+    action: str
+    instruction: str = ""
+    provider: str | None = None
+    model: str | None = None
+    qwen_thinking: bool = True
+
+
+SECTION_REGEN_ACTIONS: dict[str, str] = {
+    "simplify": "Simplify this section using plainer language and fewer details, keeping all key facts.",
+    "expand": "Expand this section with more detail, examples, and thorough explanations.",
+    "add_mcqs": "Add 5–8 multiple-choice questions (with answers) at the end of this section.",
+    "summarize": "Replace the section body with a concise bullet-point summary, keeping the heading.",
+    "exam_notes": "Rewrite this section as tight bullet-point exam notes, keeping the heading.",
+    "expand_formulas": "Expand each formula with a worked example and a step-by-step derivation.",
+}
 
 
 @app.get("/api/health")
@@ -1329,6 +1352,180 @@ def revert_job_version(job_id: str, version: int) -> dict[str, Any]:
     return {
         "artifact_availability": _artifact_availability(job),
         "versions": manifest.get("versions", []),
+    }
+
+
+@app.get("/api/jobs/{job_id}/sections")
+def list_job_sections(job_id: str) -> dict[str, Any]:
+    """Return all heading sections parsed from clean.md (preamble excluded)."""
+    job = _get_job(job_id)
+    if not job.clean_md.exists():
+        raise HTTPException(status_code=404, detail="No clean.md for this job.")
+    text = job.clean_md.read_text(encoding="utf-8")
+    sections = parse_sections(text)
+    return {
+        "sections": [
+            {
+                "index": s.index,
+                "heading_text": s.heading_text,
+                "heading_level": s.heading_level,
+                "start_line": s.start_line,
+                "end_line": s.end_line,
+                "preview": s.raw_markdown[:200],
+            }
+            for s in sections
+            if s.heading_level > 0
+        ]
+    }
+
+
+@app.get("/api/jobs/{job_id}/outline_compliance")
+def get_outline_compliance(job_id: str) -> dict[str, Any]:
+    """Compare the job's required outline sections against headings in clean.md."""
+    job = _get_job(job_id)
+    manifest = job.read_manifest()
+
+    if not manifest.get("outline_enabled"):
+        return {"has_outline": False, "sections": []}
+
+    outline_titles: list[str] = manifest.get("outline_titles") or []
+    if not outline_titles:
+        return {"has_outline": False, "sections": []}
+
+    if not job.clean_md.exists():
+        raise HTTPException(status_code=404, detail="No clean.md for this job.")
+
+    text = job.clean_md.read_text(encoding="utf-8")
+    doc_sections = parse_sections(text)
+    results = check_outline_compliance(outline_titles, doc_sections)
+    return {"has_outline": True, "sections": results}
+
+
+@app.post("/api/jobs/{job_id}/sections/{section_index}/regenerate")
+def regenerate_job_section(
+    job_id: str,
+    section_index: int,
+    request: SectionRegenerateRequest,
+) -> dict[str, Any]:
+    """Regenerate a single section of clean.md with the LLM, then re-render.
+
+    Writes through save_clean_md (auto-snapshots for version history).
+    Splices by token-derived line position, not string matching.
+    """
+    job = _get_job(job_id)
+    manifest = job.read_manifest()
+
+    # Validate action
+    valid_actions = set(SECTION_REGEN_ACTIONS.keys()) | {"custom"}
+    if request.action not in valid_actions:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Invalid action. Must be one of: {', '.join(sorted(valid_actions))}",
+        )
+    if request.action == "custom" and not request.instruction.strip():
+        raise HTTPException(status_code=400, detail="instruction is required for action=custom.")
+
+    if not job.clean_md.exists():
+        raise HTTPException(status_code=404, detail="No clean.md for this job.")
+
+    text = job.clean_md.read_text(encoding="utf-8")
+    sections = parse_sections(text)
+
+    target = next((s for s in sections if s.index == section_index), None)
+    if target is None:
+        raise HTTPException(status_code=404, detail=f"Section {section_index} not found.")
+    if target.heading_level == 0:
+        raise HTTPException(status_code=400, detail="Cannot regenerate the preamble section.")
+
+    # Resolve provider / model — fall back to what the job was originally generated with.
+    provider_str = (request.provider or manifest.get("provider") or "").strip()
+    model_str = (request.model or manifest.get("model") or "").strip()
+    if not provider_str:
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                "provider is required (pass it in the request or generate "
+                "the guide with an LLM so the provider is stored in the job)."
+            ),
+        )
+
+    try:
+        config = build_provider_config(
+            provider_str,
+            model_str or "Use environment default",
+            qwen_thinking_enabled=request.qwen_thinking,
+        )
+    except MissingLLMConfigError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    # Build the LLM prompt (section only — not the whole guide).
+    title = manifest.get("title") or "Study Guide"
+    action_desc = (
+        request.instruction.strip()
+        if request.action == "custom" and request.instruction.strip()
+        else SECTION_REGEN_ACTIONS.get(request.action, request.instruction.strip())
+    )
+    messages = [
+        {
+            "role": "system",
+            "content": (
+                "You are an expert study guide editor. "
+                "You rewrite individual sections of a study guide. "
+                "Output ONLY the rewritten section as valid Markdown. "
+                "Use dollar-delimited LaTeX for math ($...$ inline, $$...$$ display). "
+                "Begin your response with the section heading line."
+            ),
+        },
+        {
+            "role": "user",
+            "content": "\n".join([
+                f"Guide title: {title}",
+                "",
+                f"Task: {action_desc}",
+                "",
+                "Section to rewrite:",
+                "",
+                target.raw_markdown.rstrip(),
+            ]),
+        },
+    ]
+
+    try:
+        new_section_md = generate_chat_completion(messages, config)
+    except LLMProviderError as exc:
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail=f"Section regeneration failed: {exc}") from exc
+
+    new_section_md = new_section_md.strip()
+    # Guard: if the LLM omitted the heading, prepend the original one.
+    if not new_section_md.startswith("#"):
+        heading_line = target.raw_markdown.split("\n", 1)[0]
+        new_section_md = heading_line + "\n" + new_section_md
+
+    # Splice by line position (not string match) and write through the chokepoint.
+    new_text = splice_section(text, target, new_section_md + "\n")
+    job.save_clean_md(new_text, "edited")
+
+    try:
+        rerender_job(job)
+    except MarkdownJobError as exc:
+        raise _job_error(exc, job=getattr(exc, "job", None)) from exc
+    except Exception as exc:
+        raise _job_error(exc, job=job) from exc
+
+    if job.final_docx.exists():
+        try:
+            _ensure_docx(job, regenerate=True)
+        except Exception:
+            pass
+
+    updated = job.read_manifest()
+    return {
+        "ok": True,
+        "section_index": section_index,
+        "artifact_availability": _artifact_availability(job),
+        "versions": updated.get("versions", []),
     }
 
 

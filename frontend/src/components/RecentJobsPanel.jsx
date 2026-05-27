@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import {
   AlertCircle,
+  AlertTriangle,
   CheckCircle2,
   ChevronDown,
   ChevronUp,
@@ -14,21 +15,29 @@ import {
   FileJson,
   FileText,
   FolderClosed,
+  Layers,
+  ListChecks,
   Loader2,
   Paperclip,
   RefreshCw,
   RotateCcw,
-  X
+  Sparkles,
+  X,
+  XCircle
 } from "lucide-react";
 import {
   artifactUrl,
   getCleanMd,
   getJob,
+  getJobSections,
   getJobs,
   getJobVersions,
+  getOptions,
+  getOutlineCompliance,
   getStyles,
   getVersionCleanMd,
   putCleanMd,
+  regenerateSection,
   retryJob,
   revertJobVersion
 } from "../api/client";
@@ -571,6 +580,8 @@ export function JobDetailsDrawer({ open, onClose, loading, error, details, style
 
   const tabs = [
     { key: "details", label: "Details" },
+    { key: "outline", label: "Outline", icon: ListChecks, disabled: !canEdit },
+    { key: "sections", label: "Sections", icon: Layers, disabled: !canEdit },
     { key: "edit", label: "Edit Markdown", icon: Edit3, disabled: !canEdit },
     { key: "history", label: "Version History", icon: Clock, disabled: !canEdit },
   ];
@@ -727,6 +738,14 @@ export function JobDetailsDrawer({ open, onClose, loading, error, details, style
                 </DetailsSection>
               )}
             </div>
+          )}
+
+          {!loading && !error && manifest && drawerTab === "outline" && canEdit && (
+            <OutlineComplianceTab jobId={manifest.id} manifest={manifest} />
+          )}
+
+          {!loading && !error && manifest && drawerTab === "sections" && canEdit && (
+            <SectionRegenerateTab jobId={manifest.id} manifest={manifest} onRegenerated={onRetry} />
           )}
 
           {!loading && !error && manifest && drawerTab === "edit" && canEdit && (
@@ -936,6 +955,378 @@ function artifactUrlFromPath(path) {
     return path;
   }
   return artifactUrl(match[1], decodeURIComponent(match[2]));
+}
+
+// --- Outline Compliance tab ---
+
+function OutlineComplianceTab({ jobId, manifest }) {
+  const [compliance, setCompliance] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    setCompliance(null);
+    setLoading(true);
+    setError(null);
+    getOutlineCompliance(jobId)
+      .then((d) => { if (!cancelled) setCompliance(d); })
+      .catch((e) => { if (!cancelled) setError(e.message); })
+      .finally(() => { if (!cancelled) setLoading(false); });
+    return () => { cancelled = true; };
+  }, [jobId]);
+
+  if (loading) {
+    return (
+      <div className="flex min-h-48 items-center justify-center gap-3 text-slate-300">
+        <Loader2 className="h-5 w-5 animate-spin text-ember-500" />
+        <span>Checking outline compliance…</span>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="flex min-h-48 items-center justify-center gap-2 text-red-300 text-sm">
+        <AlertCircle className="h-4 w-4 shrink-0" />
+        {error}
+      </div>
+    );
+  }
+
+  if (!compliance?.has_outline) {
+    return (
+      <div className="flex min-h-48 items-center justify-center text-slate-400 text-sm">
+        No outline was set for this guide.
+      </div>
+    );
+  }
+
+  const sections = compliance.sections ?? [];
+  const counts = sections.reduce(
+    (acc, s) => { acc[s.status] = (acc[s.status] || 0) + 1; return acc; },
+    {}
+  );
+
+  return (
+    <div className="grid gap-4">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <h3 className="text-sm font-bold text-white">Outline Compliance</h3>
+        <div className="flex flex-wrap gap-1.5 text-[11px]">
+          {counts.found > 0 && (
+            <span className="rounded-full border border-emerald-400/25 bg-emerald-400/10 px-2 py-0.5 font-bold text-emerald-200">
+              {counts.found} found
+            </span>
+          )}
+          {counts.renamed > 0 && (
+            <span className="rounded-full border border-amber-300/30 bg-amber-300/10 px-2 py-0.5 font-bold text-amber-200">
+              {counts.renamed} renamed
+            </span>
+          )}
+          {counts.missing > 0 && (
+            <span className="rounded-full border border-red-400/30 bg-red-400/10 px-2 py-0.5 font-bold text-red-200">
+              {counts.missing} missing
+            </span>
+          )}
+        </div>
+      </div>
+
+      <ol className="grid gap-2">
+        {sections.map((section, i) => {
+          const isFound = section.status === "found";
+          const isRenamed = section.status === "renamed";
+          const isMissing = section.status === "missing";
+          return (
+            <li
+              key={i}
+              className={`flex items-start gap-3 rounded-xl border p-3 text-xs ${
+                isFound
+                  ? "border-emerald-400/20 bg-emerald-400/[0.04]"
+                  : isRenamed
+                  ? "border-amber-300/20 bg-amber-300/[0.04]"
+                  : "border-red-400/20 bg-red-400/[0.04]"
+              }`}
+            >
+              <span className="mt-0.5 shrink-0">
+                {isFound && <CheckCircle2 className="h-3.5 w-3.5 text-emerald-400" />}
+                {isRenamed && <AlertTriangle className="h-3.5 w-3.5 text-amber-300" />}
+                {isMissing && <XCircle className="h-3.5 w-3.5 text-red-400" />}
+              </span>
+              <div className="min-w-0 flex-1">
+                <p className={`font-semibold ${isFound ? "text-emerald-200" : isRenamed ? "text-amber-200" : "text-red-200"}`}>
+                  {section.required_title}
+                </p>
+                {isRenamed && section.matched_heading && (
+                  <p className="mt-0.5 text-[11px] text-slate-400">
+                    Found as: <span className="text-amber-300">{section.matched_heading}</span>
+                  </p>
+                )}
+                {isMissing && (
+                  <p className="mt-0.5 text-[11px] text-slate-500">Not found in the guide</p>
+                )}
+              </div>
+              <span className={`shrink-0 rounded-full border px-2 py-0.5 text-[10px] font-bold ${
+                isFound ? "border-emerald-400/25 text-emerald-300" :
+                isRenamed ? "border-amber-300/30 text-amber-300" :
+                "border-red-400/30 text-red-300"
+              }`}>
+                {section.status}
+              </span>
+            </li>
+          );
+        })}
+      </ol>
+
+      <p className="text-[11px] text-slate-500">
+        Compliance is checked by comparing the required outline titles against the headings in the guide's Markdown.
+      </p>
+    </div>
+  );
+}
+
+// --- Section Regeneration tab ---
+
+const SECTION_ACTIONS = [
+  { value: "simplify", label: "Simplify" },
+  { value: "expand", label: "Expand" },
+  { value: "add_mcqs", label: "Add MCQs" },
+  { value: "summarize", label: "Summarize" },
+  { value: "exam_notes", label: "Exam Notes" },
+  { value: "expand_formulas", label: "Expand Formulas" },
+  { value: "custom", label: "Custom instruction…" },
+];
+
+function SectionRegenerateTab({ jobId, manifest, onRegenerated }) {
+  const [sections, setSections] = useState(null);
+  const [loadError, setLoadError] = useState(null);
+  const [selectedIdx, setSelectedIdx] = useState(null);
+  const [action, setAction] = useState("simplify");
+  const [instruction, setInstruction] = useState("");
+  const [provider, setProvider] = useState(manifest?.provider || "");
+  const [model, setModel] = useState(manifest?.model || "");
+  const [configuredProviders, setConfiguredProviders] = useState([]);
+  const [regenerating, setRegenerating] = useState(false);
+  const [regenError, setRegenError] = useState(null);
+  const [successMsg, setSuccessMsg] = useState(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    setSections(null);
+    setLoadError(null);
+    setSelectedIdx(null);
+    setSuccessMsg(null);
+    setRegenError(null);
+    getJobSections(jobId)
+      .then((d) => { if (!cancelled) setSections(d.sections ?? []); })
+      .catch((e) => { if (!cancelled) setLoadError(e.message); });
+    return () => { cancelled = true; };
+  }, [jobId]);
+
+  useEffect(() => {
+    let cancelled = false;
+    getOptions()
+      .then((d) => {
+        if (!cancelled) {
+          const configured = (d.providers_v2 || []).filter((p) => p.configured);
+          setConfiguredProviders(configured);
+        }
+      })
+      .catch(() => {});
+    return () => { cancelled = true; };
+  }, []);
+
+  async function handleRegenerate() {
+    if (selectedIdx === null) return;
+    setRegenerating(true);
+    setRegenError(null);
+    setSuccessMsg(null);
+    try {
+      await regenerateSection(jobId, selectedIdx, {
+        action,
+        instruction: action === "custom" ? instruction : "",
+        provider: provider || null,
+        model: model || null,
+      });
+      setSuccessMsg("Section regenerated. Use Version History to revert if needed.");
+      onRegenerated?.();
+    } catch (e) {
+      setRegenError(e.message || "Regeneration failed.");
+    } finally {
+      setRegenerating(false);
+    }
+  }
+
+  if (loadError) {
+    return (
+      <div className="flex min-h-48 items-center justify-center gap-2 text-red-300 text-sm">
+        <AlertCircle className="h-4 w-4 shrink-0" />
+        {loadError}
+      </div>
+    );
+  }
+
+  if (sections === null) {
+    return (
+      <div className="flex min-h-48 items-center justify-center gap-3 text-slate-300">
+        <Loader2 className="h-5 w-5 animate-spin text-ember-500" />
+        <span>Loading sections…</span>
+      </div>
+    );
+  }
+
+  if (sections.length === 0) {
+    return (
+      <div className="flex min-h-48 items-center justify-center text-slate-400 text-sm">
+        No heading sections found in this guide.
+      </div>
+    );
+  }
+
+  const canRegenerate = selectedIdx !== null && (action !== "custom" || instruction.trim()) && provider.trim();
+
+  return (
+    <div className="grid gap-4">
+      <div>
+        <h3 className="text-sm font-bold text-white">Select a section</h3>
+        <div className="mt-2 grid gap-1.5 max-h-56 overflow-y-auto pr-1">
+          {sections.map((section) => (
+            <button
+              key={section.index}
+              type="button"
+              onClick={() => { setSelectedIdx(section.index); setSuccessMsg(null); setRegenError(null); }}
+              className={`w-full rounded-lg border px-3 py-2 text-left text-xs transition ${
+                selectedIdx === section.index
+                  ? "border-ember-500/60 bg-ember-500/[0.08] text-white"
+                  : "border-white/10 bg-white/[0.03] text-slate-300 hover:border-white/20 hover:text-white"
+              }`}
+            >
+              <span className="font-mono text-[10px] text-slate-500 mr-2">
+                {"#".repeat(section.heading_level)}
+              </span>
+              <span className="font-semibold">{section.heading_text || "(untitled)"}</span>
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {selectedIdx !== null && (
+        <div className="grid gap-3 rounded-xl border border-white/10 bg-white/[0.025] p-3">
+          <div>
+            <label className="block text-[11px] font-bold uppercase tracking-wide text-slate-500 mb-1">
+              Action
+            </label>
+            <select
+              value={action}
+              onChange={(e) => setAction(e.target.value)}
+              className="w-full rounded-lg border border-white/10 bg-[#070B14] px-3 py-2 text-xs text-slate-200 outline-none focus:border-ember-500/40"
+            >
+              {SECTION_ACTIONS.map((a) => (
+                <option key={a.value} value={a.value}>{a.label}</option>
+              ))}
+            </select>
+          </div>
+
+          {action === "custom" && (
+            <div>
+              <label className="block text-[11px] font-bold uppercase tracking-wide text-slate-500 mb-1">
+                Instruction
+              </label>
+              <textarea
+                value={instruction}
+                onChange={(e) => setInstruction(e.target.value)}
+                placeholder="Describe what you want done to this section…"
+                rows={3}
+                className="w-full rounded-lg border border-white/10 bg-[#070B14] px-3 py-2 text-xs text-slate-200 placeholder-slate-600 outline-none focus:border-ember-500/40 resize-y"
+              />
+            </div>
+          )}
+
+          <div className="grid grid-cols-2 gap-2">
+            <div>
+              <label className="block text-[11px] font-bold uppercase tracking-wide text-slate-500 mb-1">
+                Provider
+              </label>
+              {configuredProviders.length > 0 ? (
+                <select
+                  value={provider}
+                  onChange={(e) => { setProvider(e.target.value); setModel(""); }}
+                  className="w-full rounded-lg border border-white/10 bg-[#070B14] px-3 py-2 text-xs text-slate-200 outline-none focus:border-ember-500/40"
+                >
+                  <option value="">Select provider…</option>
+                  {configuredProviders.map((p) => (
+                    <option key={p.id} value={p.id}>{p.display_name}</option>
+                  ))}
+                </select>
+              ) : (
+                <input
+                  type="text"
+                  value={provider}
+                  onChange={(e) => setProvider(e.target.value)}
+                  placeholder="e.g. deepseek"
+                  className="w-full rounded-lg border border-white/10 bg-[#070B14] px-3 py-2 text-xs text-slate-200 placeholder-slate-600 outline-none focus:border-ember-500/40"
+                />
+              )}
+            </div>
+            <div>
+              <label className="block text-[11px] font-bold uppercase tracking-wide text-slate-500 mb-1">
+                Model
+              </label>
+              {configuredProviders.length > 0 && provider ? (
+                <select
+                  value={model}
+                  onChange={(e) => setModel(e.target.value)}
+                  className="w-full rounded-lg border border-white/10 bg-[#070B14] px-3 py-2 text-xs text-slate-200 outline-none focus:border-ember-500/40"
+                >
+                  <option value="">Default</option>
+                  {(configuredProviders.find((p) => p.id === provider)?.available_models ?? []).map((m) => (
+                    <option key={m} value={m}>{m}</option>
+                  ))}
+                </select>
+              ) : (
+                <input
+                  type="text"
+                  value={model}
+                  onChange={(e) => setModel(e.target.value)}
+                  placeholder="default"
+                  className="w-full rounded-lg border border-white/10 bg-[#070B14] px-3 py-2 text-xs text-slate-200 placeholder-slate-600 outline-none focus:border-ember-500/40"
+                />
+              )}
+            </div>
+          </div>
+
+          {regenError && (
+            <p className="rounded-lg border border-red-400/20 bg-red-400/10 p-2.5 text-xs text-red-300">
+              {regenError}
+            </p>
+          )}
+
+          {successMsg && (
+            <p className="rounded-lg border border-emerald-400/20 bg-emerald-400/10 p-2.5 text-xs text-emerald-200">
+              {successMsg}{" "}
+              <span className="text-slate-400">To undo, open the Version History tab.</span>
+            </p>
+          )}
+
+          <button
+            type="button"
+            onClick={handleRegenerate}
+            disabled={!canRegenerate || regenerating}
+            className="inline-flex h-9 items-center justify-center gap-2 rounded-lg border border-ember-500/50 bg-ember-500/10 px-4 text-xs font-bold text-ember-300 transition hover:border-ember-500 hover:text-white disabled:cursor-not-allowed disabled:opacity-40"
+          >
+            {regenerating ? (
+              <><Loader2 className="h-3.5 w-3.5 animate-spin" /> Regenerating…</>
+            ) : (
+              <><Sparkles className="h-3.5 w-3.5" /> Regenerate Section</>
+            )}
+          </button>
+        </div>
+      )}
+
+      <p className="text-[11px] text-slate-500">
+        Only the selected section is rewritten. A version snapshot is created automatically — use Version History to revert.
+      </p>
+    </div>
+  );
 }
 
 // --- Edit Markdown tab ---
