@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useRef, useState } from "react";
 import {
   AlertCircle,
   AlertTriangle,
+  BookOpen,
   CheckCircle2,
   ChevronDown,
   ChevronUp,
@@ -27,6 +28,7 @@ import {
 } from "lucide-react";
 import {
   artifactUrl,
+  generateQuiz,
   getCleanMd,
   getJob,
   getJobSections,
@@ -34,9 +36,12 @@ import {
   getJobVersions,
   getOptions,
   getOutlineCompliance,
+  getQuiz,
   getStyles,
   getVersionCleanMd,
+  listQuizzes,
   putCleanMd,
+  quizExportUrl,
   regenerateSection,
   retryJob,
   revertJobVersion
@@ -580,6 +585,7 @@ export function JobDetailsDrawer({ open, onClose, loading, error, details, style
 
   const tabs = [
     { key: "details", label: "Details" },
+    { key: "quiz", label: "Quiz", icon: BookOpen, disabled: !canEdit },
     { key: "outline", label: "Outline", icon: ListChecks, disabled: !canEdit },
     { key: "sections", label: "Sections", icon: Layers, disabled: !canEdit },
     { key: "edit", label: "Edit Markdown", icon: Edit3, disabled: !canEdit },
@@ -738,6 +744,10 @@ export function JobDetailsDrawer({ open, onClose, loading, error, details, style
                 </DetailsSection>
               )}
             </div>
+          )}
+
+          {!loading && !error && manifest && drawerTab === "quiz" && canEdit && (
+            <QuizTab jobId={manifest.id} manifest={manifest} />
           )}
 
           {!loading && !error && manifest && drawerTab === "outline" && canEdit && (
@@ -1717,6 +1727,384 @@ function DiffView({ diff }) {
           );
         })}
       </pre>
+    </div>
+  );
+}
+
+// --- Quiz / Flashcards tab ---
+
+const QUIZ_TYPE_OPTIONS = [
+  { value: "mcq", label: "Multiple Choice" },
+  { value: "true_false", label: "True / False" },
+  { value: "fill_blank", label: "Fill in the Blank" },
+  { value: "short_answer", label: "Short Answer" },
+  { value: "flashcards", label: "Flashcards" },
+];
+
+const QUIZ_COUNT_OPTIONS = [10, 25, 50, 100];
+const QUIZ_DIFFICULTY_OPTIONS = ["easy", "medium", "exam"];
+const QUIZ_FOCUS_OPTIONS = [
+  { value: "all", label: "All concepts" },
+  { value: "definitions", label: "Definitions & terms" },
+  { value: "formulas", label: "Formulas & math" },
+  { value: "examples", label: "Examples & applications" },
+];
+
+function QuizTab({ jobId, manifest }) {
+  // Config
+  const [questionTypes, setQuestionTypes] = useState(["mcq", "flashcards"]);
+  const [count, setCount] = useState(25);
+  const [difficulty, setDifficulty] = useState("medium");
+  const [focus, setFocus] = useState("all");
+
+  // Generation
+  const [generating, setGenerating] = useState(false);
+  const [genError, setGenError] = useState(null);
+
+  // Quiz list
+  const [quizzes, setQuizzes] = useState(null);
+  const [quizzesError, setQuizzesError] = useState(null);
+
+  // Active quiz view
+  const [activeQuiz, setActiveQuiz] = useState(null);
+  const [showAnswers, setShowAnswers] = useState(false);
+  const [openAnswerIdx, setOpenAnswerIdx] = useState(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    setQuizzes(null);
+    setQuizzesError(null);
+    setActiveQuiz(null);
+    listQuizzes(jobId)
+      .then((d) => { if (!cancelled) setQuizzes(d.quizzes ?? []); })
+      .catch((e) => { if (!cancelled) setQuizzesError(e.message); });
+    return () => { cancelled = true; };
+  }, [jobId]);
+
+  function toggleType(type) {
+    setQuestionTypes((prev) =>
+      prev.includes(type) ? prev.filter((t) => t !== type) : [...prev, type]
+    );
+  }
+
+  async function handleGenerate() {
+    if (questionTypes.length === 0) return;
+    setGenerating(true);
+    setGenError(null);
+    try {
+      const data = await generateQuiz(jobId, { questionTypes, count, difficulty, focus });
+      setQuizzes((prev) => [...(prev ?? []), {
+        n: data.n,
+        created_at: data.created_at,
+        item_count: data.item_count,
+        config: data.config,
+      }]);
+      setActiveQuiz(data);
+      setShowAnswers(false);
+      setOpenAnswerIdx(null);
+    } catch (e) {
+      setGenError(e.message || "Quiz generation failed.");
+    } finally {
+      setGenerating(false);
+    }
+  }
+
+  async function handleLoadQuiz(n) {
+    if (activeQuiz?.n === n) return;
+    try {
+      const data = await getQuiz(jobId, n);
+      setActiveQuiz(data);
+      setShowAnswers(false);
+      setOpenAnswerIdx(null);
+    } catch (e) {
+      setGenError(e.message || "Could not load quiz.");
+    }
+  }
+
+  const canGenerate = questionTypes.length > 0 && !generating;
+
+  return (
+    <div className="grid gap-5">
+      {/* Config panel */}
+      <section className="rounded-2xl border border-white/10 bg-white/[0.035] p-4">
+        <h3 className="text-sm font-bold text-white mb-3">Generate Quiz</h3>
+
+        <div className="grid gap-3">
+          <div>
+            <label className="block text-[11px] font-bold uppercase tracking-wide text-slate-500 mb-2">
+              Question Types
+            </label>
+            <div className="flex flex-wrap gap-2">
+              {QUIZ_TYPE_OPTIONS.map((opt) => {
+                const checked = questionTypes.includes(opt.value);
+                return (
+                  <button
+                    key={opt.value}
+                    type="button"
+                    onClick={() => toggleType(opt.value)}
+                    className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-[11px] font-bold transition ${
+                      checked
+                        ? "border-ember-500/60 bg-ember-500/15 text-ember-300"
+                        : "border-white/10 bg-white/[0.035] text-slate-400 hover:border-white/20 hover:text-white"
+                    }`}
+                  >
+                    {checked && <CheckCircle2 className="h-3 w-3" />}
+                    {opt.label}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
+          <div className="grid grid-cols-3 gap-2">
+            <div>
+              <label className="block text-[11px] font-bold uppercase tracking-wide text-slate-500 mb-1">
+                Count
+              </label>
+              <select
+                value={count}
+                onChange={(e) => setCount(Number(e.target.value))}
+                className="w-full rounded-lg border border-white/10 bg-[#070B14] px-3 py-2 text-xs text-slate-200 outline-none focus:border-ember-500/40"
+              >
+                {QUIZ_COUNT_OPTIONS.map((n) => (
+                  <option key={n} value={n}>{n} questions</option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label className="block text-[11px] font-bold uppercase tracking-wide text-slate-500 mb-1">
+                Difficulty
+              </label>
+              <select
+                value={difficulty}
+                onChange={(e) => setDifficulty(e.target.value)}
+                className="w-full rounded-lg border border-white/10 bg-[#070B14] px-3 py-2 text-xs text-slate-200 outline-none focus:border-ember-500/40"
+              >
+                {QUIZ_DIFFICULTY_OPTIONS.map((d) => (
+                  <option key={d} value={d}>{d.charAt(0).toUpperCase() + d.slice(1)}</option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label className="block text-[11px] font-bold uppercase tracking-wide text-slate-500 mb-1">
+                Focus
+              </label>
+              <select
+                value={focus}
+                onChange={(e) => setFocus(e.target.value)}
+                className="w-full rounded-lg border border-white/10 bg-[#070B14] px-3 py-2 text-xs text-slate-200 outline-none focus:border-ember-500/40"
+              >
+                {QUIZ_FOCUS_OPTIONS.map((f) => (
+                  <option key={f.value} value={f.value}>{f.label}</option>
+                ))}
+              </select>
+            </div>
+          </div>
+
+          {genError && (
+            <p className="rounded-lg border border-red-400/20 bg-red-400/10 p-2.5 text-xs text-red-300">
+              {genError}
+            </p>
+          )}
+
+          <button
+            type="button"
+            onClick={handleGenerate}
+            disabled={!canGenerate}
+            className="inline-flex h-9 items-center justify-center gap-2 rounded-lg border border-ember-500/50 bg-ember-500/10 px-4 text-xs font-bold text-ember-300 transition hover:border-ember-500 hover:text-white disabled:cursor-not-allowed disabled:opacity-40"
+          >
+            {generating ? (
+              <><Loader2 className="h-3.5 w-3.5 animate-spin" /> Generating…</>
+            ) : (
+              <><Sparkles className="h-3.5 w-3.5" /> Generate Quiz</>
+            )}
+          </button>
+        </div>
+      </section>
+
+      {/* Previously generated quizzes */}
+      {quizzesError && (
+        <p className="text-xs text-red-300">{quizzesError}</p>
+      )}
+
+      {quizzes === null && !quizzesError && (
+        <div className="flex items-center gap-2 text-xs text-slate-400">
+          <Loader2 className="h-3.5 w-3.5 animate-spin text-ember-500" />
+          Loading quizzes…
+        </div>
+      )}
+
+      {quizzes !== null && quizzes.length > 0 && (
+        <section className="rounded-2xl border border-white/10 bg-white/[0.035] p-4">
+          <h3 className="text-sm font-bold text-white mb-2">Saved Quizzes</h3>
+          <div className="grid gap-1.5">
+            {[...quizzes].reverse().map((q) => {
+              const isActive = activeQuiz?.n === q.n;
+              const types = (q.config?.question_types ?? []).join(", ");
+              return (
+                <button
+                  key={q.n}
+                  type="button"
+                  onClick={() => handleLoadQuiz(q.n)}
+                  className={`w-full rounded-xl border px-3 py-2 text-left text-xs transition ${
+                    isActive
+                      ? "border-ember-500/60 bg-ember-500/[0.08] text-white"
+                      : "border-white/10 bg-[#070B14] text-slate-300 hover:border-white/20 hover:text-white"
+                  }`}
+                >
+                  <span className="font-bold">Quiz #{q.n}</span>
+                  <span className="ml-2 text-slate-400">{q.item_count} questions · {types} · {q.config?.difficulty}</span>
+                  <span className="ml-2 text-slate-500">{q.created_at?.slice(0, 10)}</span>
+                </button>
+              );
+            })}
+          </div>
+        </section>
+      )}
+
+      {/* Active quiz display */}
+      {activeQuiz && (
+        <section className="rounded-2xl border border-white/10 bg-white/[0.035] p-4">
+          <div className="flex flex-wrap items-center justify-between gap-3 mb-3">
+            <div>
+              <h3 className="text-sm font-bold text-white">
+                Quiz #{activeQuiz.n} · {activeQuiz.item_count} questions
+              </h3>
+              <p className="mt-0.5 text-[11px] text-slate-400">
+                {(activeQuiz.config?.question_types ?? []).join(", ")} · {activeQuiz.config?.difficulty} · {activeQuiz.config?.focus}
+              </p>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              <button
+                type="button"
+                onClick={() => { setShowAnswers((v) => !v); setOpenAnswerIdx(null); }}
+                className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-white/10 bg-white/[0.04] px-3 text-xs font-bold text-slate-300 transition hover:border-white/20 hover:text-white"
+              >
+                {showAnswers ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
+                {showAnswers ? "Hide All Answers" : "Show All Answers"}
+              </button>
+            </div>
+          </div>
+
+          {/* Export buttons */}
+          <div className="flex flex-wrap gap-2 mb-4 pb-3 border-b border-white/10">
+            <span className="self-center text-[11px] font-bold uppercase tracking-wide text-slate-500">Export:</span>
+            {[
+              { format: "csv", label: "CSV" },
+              { format: "anki_tsv", label: "Anki TSV" },
+              { format: "quizlet", label: "Quizlet" },
+            ].map(({ format, label }) => (
+              <a
+                key={format}
+                href={quizExportUrl(jobId, activeQuiz.n, format)}
+                download
+                className="inline-flex h-7 items-center gap-1.5 rounded-lg border border-white/10 bg-white/[0.04] px-3 text-[11px] font-bold text-slate-300 transition hover:border-ember-500/60 hover:text-white"
+              >
+                <Download className="h-3 w-3" />
+                {label}
+              </a>
+            ))}
+          </div>
+
+          {/* Questions list */}
+          <div className="grid gap-3">
+            {(activeQuiz.items ?? []).map((item, idx) => {
+              const answerVisible = showAnswers || openAnswerIdx === idx;
+              return (
+                <QuizQuestionCard
+                  key={idx}
+                  item={item}
+                  index={idx}
+                  answerVisible={answerVisible}
+                  onToggleAnswer={() => setOpenAnswerIdx(openAnswerIdx === idx ? null : idx)}
+                  showAllAnswers={showAnswers}
+                />
+              );
+            })}
+          </div>
+        </section>
+      )}
+    </div>
+  );
+}
+
+function QuizQuestionCard({ item, index, answerVisible, onToggleAnswer, showAllAnswers }) {
+  const typeLabel = {
+    mcq: "MCQ",
+    true_false: "T/F",
+    fill_blank: "Fill",
+    short_answer: "Short",
+    flashcards: "Flash",
+  }[item.type] ?? item.type;
+
+  const typeTone = {
+    mcq: "border-sky-400/25 bg-sky-400/10 text-sky-200",
+    true_false: "border-violet-400/30 bg-violet-400/10 text-violet-200",
+    fill_blank: "border-amber-300/30 bg-amber-300/10 text-amber-100",
+    short_answer: "border-emerald-400/25 bg-emerald-400/10 text-emerald-200",
+    flashcards: "border-ember-500/30 bg-ember-500/10 text-ember-200",
+  }[item.type] ?? "border-white/10 bg-white/[0.04] text-slate-300";
+
+  return (
+    <div className="rounded-xl border border-white/10 bg-[#070B14] p-3">
+      <div className="flex items-start justify-between gap-2">
+        <div className="flex items-start gap-2 min-w-0">
+          <span className="mt-0.5 shrink-0 grid h-5 w-5 place-items-center rounded bg-white/[0.06] font-mono text-[10px] font-bold text-slate-400">
+            {index + 1}
+          </span>
+          <div className="min-w-0">
+            <p className="text-xs font-semibold text-slate-100 leading-5">{item.question}</p>
+            {item.type === "mcq" && item.options && (
+              <ul className="mt-2 grid gap-1">
+                {item.options.map((opt, oi) => {
+                  const letter = opt.charAt(0).toUpperCase();
+                  const isCorrect = answerVisible && letter === (item.answer ?? "").toUpperCase();
+                  return (
+                    <li
+                      key={oi}
+                      className={`rounded-lg border px-2.5 py-1 text-[11px] transition ${
+                        isCorrect
+                          ? "border-emerald-400/30 bg-emerald-400/10 text-emerald-200 font-bold"
+                          : "border-white/[0.06] bg-white/[0.025] text-slate-300"
+                      }`}
+                    >
+                      {opt}
+                    </li>
+                  );
+                })}
+              </ul>
+            )}
+          </div>
+        </div>
+        <div className="shrink-0 flex items-center gap-1.5">
+          <span className={`rounded-full border px-2 py-0.5 text-[10px] font-bold ${typeTone}`}>
+            {typeLabel}
+          </span>
+        </div>
+      </div>
+
+      {item.topic && (
+        <p className="mt-2 text-[10px] text-slate-500 ml-7">Topic: {item.topic}</p>
+      )}
+
+      {/* Answer toggle (individual) — only when not showing all answers */}
+      {!showAllAnswers && (
+        <button
+          type="button"
+          onClick={onToggleAnswer}
+          className="mt-2 ml-7 inline-flex items-center gap-1.5 text-[11px] font-bold text-slate-500 transition hover:text-ember-300"
+        >
+          {answerVisible ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
+          {answerVisible ? "Hide answer" : "Show answer"}
+        </button>
+      )}
+
+      {answerVisible && (
+        <div className="mt-2 ml-7 rounded-lg border border-emerald-400/20 bg-emerald-400/[0.06] px-3 py-2">
+          <p className="text-[11px] font-bold uppercase tracking-wide text-emerald-500 mb-0.5">Answer</p>
+          <p className="text-xs text-emerald-200">{item.answer}</p>
+        </div>
+      )}
     </div>
   );
 }

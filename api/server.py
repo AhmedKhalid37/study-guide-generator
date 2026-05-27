@@ -206,6 +206,24 @@ class SectionRegenerateRequest(BaseModel):
     qwen_thinking: bool = True
 
 
+class QuizRequest(BaseModel):
+    question_types: list[str] = ["mcq", "flashcards"]
+    count: int = 25
+    difficulty: str = "medium"
+    focus: str = "all"
+    section_indices: list[int] | None = None
+    provider: str | None = None
+    model: str | None = None
+    qwen_thinking: bool = True
+
+
+VALID_QUESTION_TYPES = {"mcq", "true_false", "fill_blank", "short_answer", "flashcards"}
+VALID_QUIZ_COUNTS = {10, 25, 50, 100}
+VALID_DIFFICULTIES = {"easy", "medium", "exam"}
+VALID_FOCUS = {"definitions", "formulas", "examples", "all"}
+VALID_EXPORT_FORMATS = {"csv", "anki_tsv", "quizlet"}
+
+
 SECTION_REGEN_ACTIONS: dict[str, str] = {
     "simplify": "Simplify this section using plainer language and fewer details, keeping all key facts.",
     "expand": "Expand this section with more detail, examples, and thorough explanations.",
@@ -1527,6 +1545,325 @@ def regenerate_job_section(
         "artifact_availability": _artifact_availability(job),
         "versions": updated.get("versions", []),
     }
+
+
+@app.post("/api/jobs/{job_id}/quiz")
+def generate_quiz(job_id: str, request: QuizRequest) -> dict[str, Any]:
+    """Generate a quiz from a job's clean.md and persist it under jobs/<id>/quizzes/<n>.json."""
+    job = _get_job(job_id)
+    if not job.clean_md.exists():
+        raise HTTPException(status_code=404, detail="No clean.md for this job.")
+
+    # Validate inputs
+    bad_types = [t for t in request.question_types if t not in VALID_QUESTION_TYPES]
+    if bad_types:
+        raise HTTPException(status_code=400, detail=f"Invalid question_types: {bad_types}. Allowed: {sorted(VALID_QUESTION_TYPES)}")
+    if not request.question_types:
+        raise HTTPException(status_code=400, detail="question_types must not be empty.")
+    if request.count not in VALID_QUIZ_COUNTS:
+        raise HTTPException(status_code=400, detail=f"count must be one of {sorted(VALID_QUIZ_COUNTS)}.")
+    if request.difficulty not in VALID_DIFFICULTIES:
+        raise HTTPException(status_code=400, detail=f"difficulty must be one of {sorted(VALID_DIFFICULTIES)}.")
+    if request.focus not in VALID_FOCUS:
+        raise HTTPException(status_code=400, detail=f"focus must be one of {sorted(VALID_FOCUS)}.")
+
+    # Resolve provider/model: prefer request > job manifest > any configured provider
+    manifest = job.read_manifest()
+    provider_str = (request.provider or manifest.get("provider") or "").strip()
+    model_str = (request.model or manifest.get("model") or "").strip()
+    if not provider_str:
+        provider_id, fallback_model = _pick_generate_provider(None)
+        provider_str = provider_id
+        if not model_str:
+            model_str = fallback_model or "Use environment default"
+
+    try:
+        config = build_provider_config(
+            provider_str,
+            model_str or "Use environment default",
+            qwen_thinking_enabled=request.qwen_thinking,
+        )
+    except MissingLLMConfigError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    # Build content from selected sections
+    text = job.clean_md.read_text(encoding="utf-8")
+    sections = parse_sections(text)
+    title = manifest.get("title") or "Study Guide"
+
+    if request.section_indices is not None:
+        idx_set = set(request.section_indices)
+        selected = [s for s in sections if s.index in idx_set and s.heading_level > 0]
+        if not selected:
+            raise HTTPException(status_code=400, detail="No valid sections found for the given section_indices.")
+        content_parts = [s.raw_markdown for s in selected]
+    else:
+        content_parts = [s.raw_markdown for s in sections if s.heading_level > 0]
+        if not content_parts:
+            # Preamble-only guide — use full text
+            content_parts = [text]
+
+    content = "\n\n".join(content_parts)
+
+    # Truncate if very long (keep ~120 KB of guide text for the prompt)
+    MAX_CONTENT_CHARS = 120_000
+    if len(content) > MAX_CONTENT_CHARS:
+        content = content[:MAX_CONTENT_CHARS] + "\n\n[Guide truncated — additional content not shown]"
+
+    messages = _build_quiz_messages(
+        title=title,
+        content=content,
+        question_types=request.question_types,
+        count=request.count,
+        difficulty=request.difficulty,
+        focus=request.focus,
+    )
+
+    try:
+        raw = generate_chat_completion(messages, config)
+    except LLMProviderError as exc:
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail=f"Quiz generation failed: {exc}") from exc
+
+    items = _parse_quiz_response(raw)
+
+    # Persist
+    quiz_dir = job.quizzes_dir
+    quiz_dir.mkdir(parents=True, exist_ok=True)
+    existing = sorted(
+        int(p.stem) for p in quiz_dir.glob("*.json") if p.stem.isdigit()
+    )
+    n = (existing[-1] + 1) if existing else 1
+    quiz_data: dict[str, Any] = {
+        "n": n,
+        "created_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+        "config": {
+            "question_types": request.question_types,
+            "count": request.count,
+            "difficulty": request.difficulty,
+            "focus": request.focus,
+            "section_indices": request.section_indices,
+            "provider": config.provider,
+            "model": config.model,
+        },
+        "item_count": len(items),
+        "items": items,
+    }
+    (quiz_dir / f"{n}.json").write_text(
+        json.dumps(quiz_data, indent=2, ensure_ascii=False), encoding="utf-8"
+    )
+    return quiz_data
+
+
+@app.get("/api/jobs/{job_id}/quizzes")
+def list_quizzes(job_id: str) -> dict[str, Any]:
+    """List previously generated quizzes for a job."""
+    job = _get_job(job_id)
+    quizzes: list[dict[str, Any]] = []
+    if job.quizzes_dir.exists():
+        for path in sorted(job.quizzes_dir.glob("*.json"), key=lambda p: int(p.stem) if p.stem.isdigit() else 0):
+            data = _read_json(path)
+            if data is None:
+                continue
+            quizzes.append({
+                "n": data.get("n"),
+                "created_at": data.get("created_at"),
+                "item_count": data.get("item_count") or len(data.get("items") or []),
+                "config": data.get("config"),
+            })
+    return {"quizzes": quizzes}
+
+
+@app.get("/api/jobs/{job_id}/quizzes/{quiz_n}")
+def get_quiz(job_id: str, quiz_n: int) -> dict[str, Any]:
+    """Return a specific quiz (items included)."""
+    job = _get_job(job_id)
+    path = job.quizzes_dir / f"{quiz_n}.json"
+    if not _is_job_path(job, path) or not path.exists():
+        raise HTTPException(status_code=404, detail=f"Quiz {quiz_n} not found.")
+    data = _read_json(path)
+    if data is None:
+        raise HTTPException(status_code=404, detail=f"Quiz {quiz_n} could not be read.")
+    return data
+
+
+@app.get("/api/jobs/{job_id}/quizzes/{quiz_n}/export")
+def export_quiz(job_id: str, quiz_n: int, format: str = "csv") -> Response:
+    """Export a quiz as csv, anki_tsv, or quizlet format."""
+    if format not in VALID_EXPORT_FORMATS:
+        raise HTTPException(status_code=400, detail=f"format must be one of {sorted(VALID_EXPORT_FORMATS)}.")
+    job = _get_job(job_id)
+    path = job.quizzes_dir / f"{quiz_n}.json"
+    if not _is_job_path(job, path) or not path.exists():
+        raise HTTPException(status_code=404, detail=f"Quiz {quiz_n} not found.")
+    data = _read_json(path)
+    if data is None:
+        raise HTTPException(status_code=500, detail="Quiz file could not be read.")
+    items = data.get("items") or []
+
+    content, media_type, ext = _render_quiz_export(items, format)
+    filename = f"quiz-{job_id}-{quiz_n}.{ext}"
+    return Response(
+        content=content,
+        media_type=media_type,
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
+
+def _build_quiz_messages(
+    *,
+    title: str,
+    content: str,
+    question_types: list[str],
+    count: int,
+    difficulty: str,
+    focus: str,
+) -> list[dict]:
+    focus_desc = {
+        "definitions": "key terms, definitions, and vocabulary",
+        "formulas": "formulas, equations, and mathematical relationships",
+        "examples": "specific examples, case studies, and applications",
+        "all": "all concepts in the material",
+    }.get(focus, "all concepts in the material")
+
+    type_instructions: list[str] = []
+    for qt in question_types:
+        if qt == "mcq":
+            type_instructions.append('- "mcq": include "options" (array of exactly 4 strings, each prefixed A./B./C./D.); "answer" is the letter only (A, B, C, or D)')
+        elif qt == "true_false":
+            type_instructions.append('- "true_false": no "options" field; "answer" is "True" or "False"')
+        elif qt == "fill_blank":
+            type_instructions.append('- "fill_blank": question contains a blank (_____); "answer" is the missing word(s)')
+        elif qt == "short_answer":
+            type_instructions.append('- "short_answer": open-ended question; "answer" is a concise model answer (1–3 sentences)')
+        elif qt == "flashcards":
+            type_instructions.append('- "flashcards": "question" is the term/prompt; "answer" is the definition or explanation')
+
+    types_joined = ", ".join(f'"{t}"' for t in question_types)
+    system = (
+        "You are an expert quiz generator. You produce structured quiz questions from study material. "
+        "You output ONLY valid JSON — no prose, no markdown fences, no explanation before or after."
+    )
+    user_parts = [
+        f"Generate exactly {count} quiz questions for the study guide titled: {title}",
+        "",
+        f"Distribute questions across these types: {types_joined}",
+        f"Difficulty: {difficulty}",
+        f"Focus on: {focus_desc}",
+        "",
+        "RETURN A JSON ARRAY AND NOTHING ELSE. Each element must have:",
+        '  "type": one of the types listed above',
+        '  "question": question text',
+        '  "answer": see per-type rules below',
+        '  "topic": the section heading this question comes from (exact text)',
+        f'  "difficulty": "{difficulty}"',
+        "",
+        "Per-type rules:",
+        *type_instructions,
+        "",
+        "Do not include any text outside the JSON array. Do not wrap in markdown fences.",
+        "",
+        "=== STUDY GUIDE CONTENT ===",
+        "",
+        content,
+    ]
+    return [
+        {"role": "system", "content": system},
+        {"role": "user", "content": "\n".join(user_parts)},
+    ]
+
+
+def _parse_quiz_response(raw: str) -> list[dict[str, Any]]:
+    text = (raw or "").strip()
+    # Strip accidental markdown fences
+    fenced = re.search(r"```(?:json)?\s*(\[.*\])\s*```", text, re.DOTALL)
+    if fenced:
+        text = fenced.group(1)
+    # Find outermost array
+    start, end = text.find("["), text.rfind("]")
+    if start != -1 and end != -1 and end > start:
+        text = text[start : end + 1]
+
+    try:
+        parsed = json.loads(text)
+    except json.JSONDecodeError as exc:
+        raise HTTPException(
+            status_code=502,
+            detail=f"Quiz parse error: the model returned invalid JSON. ({exc})",
+        ) from exc
+
+    if not isinstance(parsed, list):
+        raise HTTPException(
+            status_code=502,
+            detail="Quiz parse error: expected a JSON array from the model.",
+        )
+
+    items: list[dict[str, Any]] = []
+    for item in parsed:
+        if not isinstance(item, dict):
+            continue
+        qtype = str(item.get("type") or "").strip()
+        if qtype not in VALID_QUESTION_TYPES:
+            continue
+        question = str(item.get("question") or "").strip()
+        answer = str(item.get("answer") or "").strip()
+        if not question or not answer:
+            continue
+        clean: dict[str, Any] = {
+            "type": qtype,
+            "question": question,
+            "answer": answer,
+            "topic": str(item.get("topic") or "").strip(),
+            "difficulty": str(item.get("difficulty") or "").strip(),
+        }
+        if qtype == "mcq" and isinstance(item.get("options"), list):
+            clean["options"] = [str(o) for o in item["options"]]
+        items.append(clean)
+    return items
+
+
+def _render_quiz_export(items: list[dict[str, Any]], format: str) -> tuple[bytes, str, str]:
+    """Return (content_bytes, media_type, file_extension)."""
+    def front(item: dict) -> str:
+        return item.get("question", "")
+
+    def back(item: dict) -> str:
+        ans = item.get("answer", "")
+        if item.get("type") == "mcq" and item.get("options"):
+            # Include the full option text for the answer letter
+            letter = ans.upper()
+            opts: list[str] = item["options"]
+            match = next((o for o in opts if o.upper().startswith(f"{letter}.")), ans)
+            return match
+        return ans
+
+    def topic(item: dict) -> str:
+        return item.get("topic", "")
+
+    def diff(item: dict) -> str:
+        return item.get("difficulty", "")
+
+    if format == "csv":
+        import csv
+        import io as _io
+        buf = _io.StringIO()
+        writer = csv.writer(buf, lineterminator="\n")
+        writer.writerow(["Front", "Back", "Topic", "Difficulty"])
+        for item in items:
+            writer.writerow([front(item), back(item), topic(item), diff(item)])
+        return buf.getvalue().encode("utf-8"), "text/csv; charset=utf-8", "csv"
+
+    if format == "anki_tsv":
+        rows = [f"{front(item)}\t{back(item)}\t{topic(item)}\t{diff(item)}" for item in items]
+        return "\n".join(rows).encode("utf-8"), "text/tab-separated-values; charset=utf-8", "tsv"
+
+    if format == "quizlet":
+        # Quizlet import: term<TAB>definition<NEWLINE>
+        rows = [f"{front(item)}\t{back(item)}" for item in items]
+        return "\n".join(rows).encode("utf-8"), "text/plain; charset=utf-8", "txt"
+
+    raise ValueError(f"Unknown format: {format}")
 
 
 def job_response(job: Job) -> dict[str, Any]:

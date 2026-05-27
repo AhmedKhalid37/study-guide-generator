@@ -96,6 +96,10 @@ class Job:
     def versions_dir(self) -> Path:
         return self.dir / "versions"
 
+    @property
+    def quizzes_dir(self) -> Path:
+        return self.dir / "quizzes"
+
     def save_clean_md(self, new_text: str, source: str) -> None:
         """Single chokepoint for ALL clean.md writes.
 

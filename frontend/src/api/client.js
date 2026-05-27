@@ -332,6 +332,35 @@ export function regenerateSection(jobId, sectionIndex, { action, instruction = "
   );
 }
 
+export function generateQuiz(jobId, { questionTypes, count, difficulty, focus, sectionIndices = null, provider = null, model = null, qwenThinking = true } = {}) {
+  return requestJson(`/api/jobs/${encodeURIComponent(jobId)}/quiz`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      question_types: questionTypes,
+      count,
+      difficulty,
+      focus,
+      section_indices: sectionIndices,
+      provider,
+      model,
+      qwen_thinking: qwenThinking,
+    }),
+  });
+}
+
+export function listQuizzes(jobId) {
+  return requestJson(`/api/jobs/${encodeURIComponent(jobId)}/quizzes`);
+}
+
+export function getQuiz(jobId, quizN) {
+  return requestJson(`/api/jobs/${encodeURIComponent(jobId)}/quizzes/${quizN}`);
+}
+
+export function quizExportUrl(jobId, quizN, format) {
+  return `${API_BASE_URL}/api/jobs/${encodeURIComponent(jobId)}/quizzes/${quizN}/export?format=${encodeURIComponent(format)}`;
+}
+
 export function artifactUrl(jobId, artifactName) {
   return `${API_BASE_URL}/api/jobs/${encodeURIComponent(jobId)}/artifacts/${encodeURIComponent(
     artifactName
