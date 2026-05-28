@@ -55,6 +55,34 @@ export function setJobFavorite(jobId, value) {
   });
 }
 
+export function trashJob(jobId) {
+  return requestJson(`/api/jobs/${encodeURIComponent(jobId)}/trash`, {
+    method: "POST"
+  });
+}
+
+export function restoreJob(jobId) {
+  return requestJson(`/api/jobs/${encodeURIComponent(jobId)}/restore`, {
+    method: "POST"
+  });
+}
+
+export function getTrash() {
+  return requestJson("/api/jobs/trash");
+}
+
+export function purgeTrashedJob(jobId) {
+  return requestJson(`/api/jobs/trash/${encodeURIComponent(jobId)}`, {
+    method: "DELETE"
+  });
+}
+
+export function emptyTrash() {
+  return requestJson("/api/jobs/trash", {
+    method: "DELETE"
+  });
+}
+
 export function getStyles() {
   return requestJson("/api/styles");
 }

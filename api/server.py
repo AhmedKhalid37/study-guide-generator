@@ -15,7 +15,17 @@ from fastapi.responses import FileResponse, Response
 from pydantic import BaseModel, ValidationError
 
 from pipeline import library_store, presets as preset_store, style_store
-from pipeline.job_manager import JOBS_DIR, Job
+from pipeline.job_manager import (
+    JOBS_DIR,
+    Job,
+    JobManagerError,
+    empty_trash,
+    is_trashed,
+    list_trashed,
+    purge_trashed_job,
+    restore_job,
+    trash_job,
+)
 from pipeline.llm_client import LLMProviderError, MissingLLMConfigError, generate_chat_completion
 from pipeline.markdown_sections import (
     check_outline_compliance,
@@ -1151,6 +1161,80 @@ async def create_llm_job(request: Request) -> dict[str, Any]:
     return job_response(job)
 
 
+# ── Trash (soft delete) + permanent delete ──────────────────────────────────
+# NOTE: these /api/jobs/trash* routes are registered BEFORE the catch-all
+# /api/jobs/{job_id} so "trash" is never mistaken for a job id.
+
+
+@app.get("/api/jobs/trash")
+def list_trash() -> dict[str, Any]:
+    """List jobs currently in the trash (newest-trashed first)."""
+    items: list[dict[str, Any]] = []
+    for entry in list_trashed():
+        safe = _safe_manifest(entry.get("manifest") or {})
+        items.append(
+            {
+                **safe,
+                "id": entry["id"],
+                "trashed_at": entry.get("trashed_at"),
+                "attachment_summary": _attachment_summary(safe),
+            }
+        )
+    items.sort(key=lambda item: str(item.get("trashed_at") or ""), reverse=True)
+    return {"jobs": items}
+
+
+@app.post("/api/jobs/{job_id}/trash")
+def trash_job_route(job_id: str) -> dict[str, Any]:
+    """Soft-delete: move an ACTIVE job into the trash (restorable)."""
+    job = _get_job(job_id)  # validates id + confirms it's an active job
+    try:
+        marker = trash_job(job.id)
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=404, detail="Job not found.") from exc
+    except (JobManagerError, ValueError) as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return {"ok": True, "job_id": job.id, "trashed_at": marker.get("trashed_at")}
+
+
+@app.post("/api/jobs/{job_id}/restore")
+def restore_job_route(job_id: str) -> dict[str, Any]:
+    """Restore a trashed job back to the active library."""
+    _require_trashed_job(job_id)
+    try:
+        restore_job(job_id)
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=404, detail="Trashed job not found.") from exc
+    except (JobManagerError, ValueError) as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return {"ok": True, "job_id": job_id}
+
+
+@app.delete("/api/jobs/trash")
+def empty_trash_route() -> dict[str, Any]:
+    """PERMANENTLY delete every job currently in the trash."""
+    removed = empty_trash()
+    for jid in removed:
+        library_store.move_job(jid, None)  # drop any stale folder assignment
+    return {"ok": True, "purged": len(removed), "job_ids": removed}
+
+
+@app.delete("/api/jobs/trash/{job_id}")
+def purge_trashed_route(job_id: str) -> dict[str, Any]:
+    """PERMANENTLY delete ONE job that is already in the trash. 404 if the id is
+    not currently trashed — there is no one-click permanent delete of an active
+    job."""
+    _require_trashed_job(job_id)
+    try:
+        purge_trashed_job(job_id)
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=404, detail="Trashed job not found.") from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    library_store.move_job(job_id, None)  # drop any stale folder assignment
+    return {"ok": True, "job_id": job_id}
+
+
 @app.get("/api/jobs/{job_id}")
 def get_job(job_id: str) -> dict[str, Any]:
     job = _get_job(job_id)
@@ -2254,6 +2338,18 @@ def _get_job(job_id: str) -> Job:
     if not job_dir.is_relative_to(jobs_dir) or not job.manifest.exists():
         raise HTTPException(status_code=404, detail="Job not found.")
     return job
+
+
+def _require_trashed_job(job_id: str) -> str:
+    """Validate an id (same slash/dot rejection as :func:`_get_job`) and confirm
+    it is CURRENTLY in the trash. 404 otherwise — you cannot permanently delete
+    or restore something that hasn't been trashed first.
+    """
+    if "/" in job_id or "\\" in job_id or job_id in {"", ".", ".."}:
+        raise HTTPException(status_code=404, detail="Trashed job not found.")
+    if not is_trashed(job_id):
+        raise HTTPException(status_code=404, detail="Trashed job not found.")
+    return job_id
 
 
 def _artifact_availability(job: Job) -> dict[str, bool]:

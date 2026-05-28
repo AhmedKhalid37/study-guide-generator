@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import {
   AlertCircle,
+  AlertTriangle,
   ChevronDown,
   Download,
   ExternalLink,
@@ -11,6 +12,7 @@ import {
   Paperclip,
   Pencil,
   Plus,
+  RotateCcw,
   Search,
   Star,
   Trash2,
@@ -20,12 +22,17 @@ import {
   artifactUrl,
   createFolder,
   deleteFolder,
+  emptyTrash,
   getJob,
   getLibrary,
   getStyles,
+  getTrash,
   moveJobToFolder,
   moveJobsToFolder,
+  purgeTrashedJob,
+  restoreJob,
   setJobFavorite,
+  trashJob,
   updateFolder
 } from "../api/client";
 import { buildStyleLookup, resolveStyle } from "../styleMeta";
@@ -40,6 +47,9 @@ const SORTS = [
 ];
 
 const emptyFilters = { status: "", provider: "", style: "", mode: "", hasAttachments: false, hasWarnings: false };
+
+// Special pseudo-folder id for the Trash view.
+const TRASH_VIEW = "__trash__";
 
 function statusTone(status) {
   if (status === "done") return "border-emerald-400/30 bg-emerald-400/10 text-emerald-200";
@@ -72,6 +82,11 @@ export default function LibraryWorkspace({ refreshKey = 0, onOpenBuilder }) {
   const [detailsLoading, setDetailsLoading] = useState(false);
   const [detailsError, setDetailsError] = useState(null);
 
+  const [trashJobs, setTrashJobs] = useState([]);
+  // confirm modal: null | { kind: "trash"|"purge"|"emptyTrash", job?, count? }
+  const [confirm, setConfirm] = useState(null);
+  const [confirmBusy, setConfirmBusy] = useState(false);
+
   const reload = useCallback(() => setInternalRefresh((n) => n + 1), []);
 
   useEffect(() => {
@@ -95,6 +110,16 @@ export default function LibraryWorkspace({ refreshKey = 0, onOpenBuilder }) {
     getStyles()
       .then((styles) => !cancelled && setStyleLookup(buildStyleLookup(styles)))
       .catch(() => !cancelled && setStyleLookup({}));
+    return () => {
+      cancelled = true;
+    };
+  }, [refreshKey, internalRefresh]);
+
+  useEffect(() => {
+    let cancelled = false;
+    getTrash()
+      .then((result) => !cancelled && setTrashJobs(result.jobs ?? []))
+      .catch(() => !cancelled && setTrashJobs([]));
     return () => {
       cancelled = true;
     };
@@ -293,6 +318,41 @@ export default function LibraryWorkspace({ refreshKey = 0, onOpenBuilder }) {
     }
   }
 
+  const inTrashView = selectedFolder === TRASH_VIEW;
+
+  // Run the action staged in the confirm modal, then close it and reload.
+  async function runConfirm() {
+    if (!confirm) return;
+    setConfirmBusy(true);
+    setError(null);
+    try {
+      if (confirm.kind === "trash") {
+        await trashJob(confirm.job.id);
+      } else if (confirm.kind === "purge") {
+        await purgeTrashedJob(confirm.job.id);
+      } else if (confirm.kind === "emptyTrash") {
+        await emptyTrash();
+      }
+      setConfirm(null);
+      reload();
+    } catch (err) {
+      setError(err.message || "Action failed.");
+      setConfirm(null);
+    } finally {
+      setConfirmBusy(false);
+    }
+  }
+
+  async function handleRestore(jobId) {
+    setError(null);
+    try {
+      await restoreJob(jobId);
+      reload();
+    } catch (err) {
+      setError(err.message || "Could not restore guide.");
+    }
+  }
+
   return (
     <div className="flex min-h-0 flex-1 gap-4 p-1">
       <FolderRail
@@ -309,31 +369,50 @@ export default function LibraryWorkspace({ refreshKey = 0, onOpenBuilder }) {
         onRename={handleRenameFolder}
         onDelete={handleDeleteFolder}
         folderError={folderError}
+        trashCount={trashJobs.length}
+        trashView={TRASH_VIEW}
       />
 
       <div className="flex min-w-0 flex-1 flex-col">
         <div className="sg-page-head">
           <div>
-            <h1>{folderMap[selectedFolder]?.name || "Library"}</h1>
-            <p>{filteredJobs.length} of {data.jobs.length} guide{data.jobs.length === 1 ? "" : "s"}</p>
+            <h1>{inTrashView ? "Trash" : folderMap[selectedFolder]?.name || "Library"}</h1>
+            <p>
+              {inTrashView
+                ? `${trashJobs.length} guide${trashJobs.length === 1 ? "" : "s"} in trash`
+                : `${filteredJobs.length} of ${data.jobs.length} guide${data.jobs.length === 1 ? "" : "s"}`}
+            </p>
           </div>
-          <button type="button" className="sg-cta sg-press-btn" onClick={() => onOpenBuilder?.()}>
-            <Plus size={16} stroke="#1A1206" strokeWidth={2.6} />
-            New Guide
-          </button>
+          {inTrashView ? (
+            <button
+              type="button"
+              className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-red-400/40 bg-red-500/10 px-3 text-sm font-bold text-red-200 transition hover:bg-red-500/20 disabled:cursor-not-allowed disabled:opacity-40"
+              disabled={trashJobs.length === 0}
+              onClick={() => setConfirm({ kind: "emptyTrash", count: trashJobs.length })}
+            >
+              <Trash2 size={15} /> Empty Trash
+            </button>
+          ) : (
+            <button type="button" className="sg-cta sg-press-btn" onClick={() => onOpenBuilder?.()}>
+              <Plus size={16} stroke="#1A1206" strokeWidth={2.6} />
+              New Guide
+            </button>
+          )}
         </div>
 
-        <Toolbar
-          q={q}
-          setQ={setQ}
-          sort={sort}
-          setSort={setSort}
-          showFilters={showFilters}
-          setShowFilters={setShowFilters}
-          activeFilterCount={activeFilterCount}
-        />
+        {!inTrashView && (
+          <Toolbar
+            q={q}
+            setQ={setQ}
+            sort={sort}
+            setSort={setSort}
+            showFilters={showFilters}
+            setShowFilters={setShowFilters}
+            activeFilterCount={activeFilterCount}
+          />
+        )}
 
-        {showFilters && (
+        {!inTrashView && showFilters && (
           <FilterBar
             filters={filters}
             setFilters={setFilters}
@@ -352,7 +431,7 @@ export default function LibraryWorkspace({ refreshKey = 0, onOpenBuilder }) {
           </div>
         )}
 
-        {selectedIds.size > 0 && (
+        {!inTrashView && selectedIds.size > 0 && (
           <BulkBar
             count={selectedIds.size}
             folders={moveTargets.filter((folder) => folder.id !== "unfiled")}
@@ -362,7 +441,7 @@ export default function LibraryWorkspace({ refreshKey = 0, onOpenBuilder }) {
           />
         )}
 
-        {!loading && filteredJobs.length > 0 && (
+        {!inTrashView && !loading && filteredJobs.length > 0 && (
           <label className="mt-3 inline-flex w-fit cursor-pointer items-center gap-2 px-0.5 text-xs font-semibold text-slate-400 hover:text-slate-200">
             <input
               type="checkbox"
@@ -375,7 +454,26 @@ export default function LibraryWorkspace({ refreshKey = 0, onOpenBuilder }) {
         )}
 
         <div className="mt-3 min-h-0 flex-1 overflow-y-auto pr-1">
-          {loading ? (
+          {inTrashView ? (
+            trashJobs.length === 0 ? (
+              <div className="flex min-h-48 flex-col items-center justify-center gap-2 text-slate-400">
+                <Trash2 className="h-6 w-6 opacity-60" />
+                <span>Trash is empty.</span>
+              </div>
+            ) : (
+              <div className="grid gap-2.5">
+                {trashJobs.map((job) => (
+                  <TrashCard
+                    key={job.id}
+                    job={job}
+                    style={resolveStyle(job.prompt_name, styleLookup)}
+                    onRestore={() => handleRestore(job.id)}
+                    onDeleteForever={() => setConfirm({ kind: "purge", job })}
+                  />
+                ))}
+              </div>
+            )
+          ) : loading ? (
             <div className="flex min-h-48 items-center justify-center gap-3 text-slate-300">
               <Loader2 className="h-5 w-5 animate-spin text-ember-500" />
               <span>Loading library…</span>
@@ -396,6 +494,7 @@ export default function LibraryWorkspace({ refreshKey = 0, onOpenBuilder }) {
                   moveTargets={moveTargets}
                   onMove={handleMove}
                   onDetails={() => openDetails(job.id)}
+                  onTrash={() => setConfirm({ kind: "trash", job })}
                   selected={selectedIds.has(job.id)}
                   onToggleSelect={toggleSelect}
                   onToggleFavorite={handleToggleFavorite}
@@ -415,6 +514,93 @@ export default function LibraryWorkspace({ refreshKey = 0, onOpenBuilder }) {
         styleLookup={styleLookup}
         onRetry={reload}
       />
+
+      {confirm && (
+        <ConfirmModal
+          confirm={confirm}
+          busy={confirmBusy}
+          onCancel={() => !confirmBusy && setConfirm(null)}
+          onConfirm={runConfirm}
+        />
+      )}
+    </div>
+  );
+}
+
+function jobTitle(job) {
+  return job?.title || "Untitled study guide";
+}
+
+// Modal for both the soft "Move to trash" confirm and the strong destructive
+// permanent-delete confirms. Destructive variants use a red action button that
+// is NOT the default-focused control (Cancel holds initial focus).
+function ConfirmModal({ confirm, busy, onCancel, onConfirm }) {
+  const destructive = confirm.kind === "purge" || confirm.kind === "emptyTrash";
+  let heading;
+  let body;
+  let actionLabel;
+  if (confirm.kind === "trash") {
+    heading = "Move to trash?";
+    body = "You can restore it later from the Trash.";
+    actionLabel = "Move to Trash";
+  } else if (confirm.kind === "purge") {
+    heading = `Permanently delete '${jobTitle(confirm.job)}'?`;
+    body = "This cannot be undone.";
+    actionLabel = "Delete Forever";
+  } else {
+    heading = `Permanently delete all ${confirm.count} guide${confirm.count === 1 ? "" : "s"} in trash?`;
+    body = "This cannot be undone.";
+    actionLabel = "Delete Forever";
+  }
+  return (
+    <div className="fixed inset-0 z-[60] flex items-center justify-center p-4">
+      <button
+        type="button"
+        aria-label="Cancel"
+        className="absolute inset-0 cursor-default bg-black/60"
+        onClick={onCancel}
+      />
+      <div
+        role="dialog"
+        aria-modal="true"
+        className="relative w-full max-w-sm rounded-2xl border border-white/10 bg-[#0B0F19] p-5 shadow-2xl"
+      >
+        <div className="flex items-start gap-3">
+          {destructive ? (
+            <AlertTriangle className="mt-0.5 h-5 w-5 shrink-0 text-red-400" />
+          ) : (
+            <Trash2 className="mt-0.5 h-5 w-5 shrink-0 text-amber-300" />
+          )}
+          <div className="min-w-0">
+            <h2 className="text-sm font-bold text-white">{heading}</h2>
+            <p className="mt-1 text-sm text-slate-400">{body}</p>
+          </div>
+        </div>
+        <div className="mt-5 flex justify-end gap-2">
+          <button
+            type="button"
+            autoFocus
+            disabled={busy}
+            onClick={onCancel}
+            className="inline-flex h-9 items-center rounded-lg border border-white/15 bg-white/[0.04] px-3.5 text-sm font-bold text-slate-200 transition hover:bg-white/[0.08] disabled:opacity-50"
+          >
+            Cancel
+          </button>
+          <button
+            type="button"
+            disabled={busy}
+            onClick={onConfirm}
+            className={`inline-flex h-9 items-center gap-1.5 rounded-lg px-3.5 text-sm font-bold transition disabled:opacity-50 ${
+              destructive
+                ? "border border-red-400/50 bg-red-500/80 text-white hover:bg-red-500"
+                : "border border-amber-300/40 bg-amber-400/20 text-amber-100 hover:bg-amber-400/30"
+            }`}
+          >
+            {busy && <Loader2 className="h-4 w-4 animate-spin" />}
+            {actionLabel}
+          </button>
+        </div>
+      </div>
     </div>
   );
 }
@@ -432,8 +618,11 @@ function FolderRail({
   setRenaming,
   onRename,
   onDelete,
-  folderError
+  folderError,
+  trashCount = 0,
+  trashView
 }) {
+  const trashActive = selectedFolder === trashView;
   return (
     <aside className="flex w-56 shrink-0 flex-col rounded-2xl border border-white/10 bg-white/[0.035] p-3">
       <p className="px-1 pb-2 text-[11px] font-bold uppercase tracking-[0.16em] text-slate-500">Folders</p>
@@ -509,6 +698,20 @@ function FolderRail({
             </div>
           );
         })}
+      </div>
+
+      <div className="mt-2 border-t border-white/10 pt-2">
+        <button
+          type="button"
+          onClick={() => onSelect(trashView)}
+          className={`flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left text-sm transition ${
+            trashActive ? "bg-ember-500/[0.12] text-white" : "text-slate-300 hover:bg-white/[0.05]"
+          }`}
+        >
+          <Trash2 size={15} color={trashActive ? "#F97316" : "#9098A8"} />
+          <span className="min-w-0 flex-1 truncate">Trash</span>
+          <span className="text-[11px] tabular-nums text-slate-500">{trashCount}</span>
+        </button>
       </div>
 
       <div className="mt-2 border-t border-white/10 pt-2">
@@ -681,7 +884,7 @@ function ToggleChip({ active, onClick, children }) {
   );
 }
 
-function JobCard({ job, style, folder, moveTargets, onMove, onDetails, selected, onToggleSelect, onToggleFavorite }) {
+function JobCard({ job, style, folder, moveTargets, onMove, onDetails, onTrash, selected, onToggleSelect, onToggleFavorite }) {
   const availability = job.artifact_availability || {};
   const attachments = job.attachment_summary || {};
   const created = job.created_at || "";
@@ -766,6 +969,58 @@ function JobCard({ job, style, folder, moveTargets, onMove, onDetails, selected,
             className="inline-flex h-8 items-center rounded-lg border border-white/10 bg-white/[0.04] px-2.5 text-xs font-bold text-ember-300 transition hover:border-ember-500/60 hover:text-white"
           >
             Details
+          </button>
+          <button
+            type="button"
+            onClick={onTrash}
+            title="Move to trash"
+            aria-label={`Move ${job.title || "study guide"} to trash`}
+            className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-white/10 bg-white/[0.04] text-slate-400 transition hover:border-red-400/50 hover:text-red-300"
+          >
+            <Trash2 size={14} />
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function TrashCard({ job, style, onRestore, onDeleteForever }) {
+  const attachments = job.attachment_summary || {};
+  return (
+    <div className="flex gap-3 rounded-xl border border-white/10 bg-white/[0.025] p-3">
+      <div className="flex min-w-0 flex-1 flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+        <div className="min-w-0 flex-1">
+          <p className="truncate text-sm font-bold text-slate-200">{job.title || "Untitled study guide"}</p>
+          <p className="mt-0.5 truncate text-xs text-slate-500">
+            {[[job.provider, job.model].filter(Boolean).join(" / ") || "Study guide",
+              job.trashed_at ? `trashed ${job.trashed_at}` : null]
+              .filter(Boolean)
+              .join(" · ")}
+          </p>
+          <div className="mt-2 flex flex-wrap items-center gap-1.5">
+            {style && <StylePill style={style} />}
+            {(attachments.count || 0) > 0 && (
+              <span className="inline-flex items-center gap-1 rounded-full border border-emerald-400/25 bg-emerald-400/10 px-2 py-0.5 text-[11px] font-bold text-emerald-200">
+                <Paperclip size={11} /> {attachments.count}
+              </span>
+            )}
+          </div>
+        </div>
+        <div className="flex shrink-0 flex-wrap items-center gap-1.5">
+          <button
+            type="button"
+            onClick={onRestore}
+            className="inline-flex h-8 items-center gap-1 rounded-lg border border-white/10 bg-white/[0.04] px-2.5 text-xs font-bold text-slate-200 transition hover:border-ember-500/60 hover:text-white"
+          >
+            <RotateCcw size={13} /> Restore
+          </button>
+          <button
+            type="button"
+            onClick={onDeleteForever}
+            className="inline-flex h-8 items-center gap-1 rounded-lg border border-red-400/40 bg-red-500/10 px-2.5 text-xs font-bold text-red-200 transition hover:bg-red-500/20"
+          >
+            <Trash2 size={13} /> Delete forever
           </button>
         </div>
       </div>
