@@ -13,6 +13,7 @@ from fastapi import FastAPI, File, Form, HTTPException, Request, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, Response
 from pydantic import BaseModel, ValidationError
+from starlette.concurrency import run_in_threadpool
 
 from pipeline import library_store, presets as preset_store, style_store
 from pipeline.job_manager import (
@@ -1137,7 +1138,10 @@ async def create_llm_job(request: Request) -> dict[str, Any]:
             llm_request.model,
             qwen_thinking_enabled=llm_request.qwen_thinking,
         )
-        job = run_llm_job(
+        # run_llm_job is blocking (LLM call + subprocess rendering); offload it
+        # to a worker thread so it doesn't stall the asyncio event loop.
+        job = await run_in_threadpool(
+            run_llm_job,
             source_text,
             title=title,
             mode=(llm_request.mode or DEFAULT_MODE),
@@ -2318,7 +2322,7 @@ def _validate_provider_model(provider: str, model: str) -> None:
 
 
 def _job_error(exc: Exception, job: Job | None = None) -> HTTPException:
-    detail: dict[str, Any] = {"message": str(exc)}
+    detail: dict[str, Any] = {"message": _safe_log_line(str(exc))}
     if job is not None:
         detail["job"] = job_response(job)
     return HTTPException(status_code=500, detail=detail)
