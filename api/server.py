@@ -15,7 +15,7 @@ from fastapi.responses import FileResponse, Response
 from pydantic import BaseModel, ValidationError
 from starlette.concurrency import run_in_threadpool
 
-from pipeline import library_store, presets as preset_store, style_store
+from pipeline import generator_presets, library_store, presets as preset_store, style_store
 from pipeline.job_manager import (
     JOBS_DIR,
     Job,
@@ -138,6 +138,7 @@ class LLMJobRequest(BaseModel):
     title: str = "Generated Study Guide"
     mode: str = DEFAULT_MODE
     prompt_name: str = "basic_study_guide"
+    generator_preset: str | None = None
     provider: str
     model: str
     theme: str = "claude_clean"
@@ -261,6 +262,7 @@ def options() -> dict[str, Any]:
         "themes": THEMES,
         "input_modes": INPUT_MODES,
         "styles": STYLE_PRESETS,
+        "generator_presets": generator_presets.list_generator_presets(),
         "providers": [provider["display_name"] for provider in provider_details],
         "models": {
             provider["display_name"]: provider["available_models"]
@@ -1132,12 +1134,36 @@ async def create_llm_job(request: Request) -> dict[str, Any]:
     # style (the {source} slot is the one injection point every template shares).
     source_text = _apply_outline_directive(source_text, llm_request.outline)
 
+    # A generator preset (when set) supplies the system prompt + sampling params and
+    # takes precedence over the style; the style/prompt_name is then unused.
+    preset = None
+    preset_warning: str | None = None
+    if llm_request.generator_preset:
+        _validate_generator_preset(llm_request.generator_preset)
+        preset = generator_presets.get_generator_preset(llm_request.generator_preset)
+        if resolve_provider_id(llm_request.provider) != preset["provider"]:
+            preset_warning = (
+                f"{preset['name']} is tuned for {preset['model_hint']}; you're running "
+                f"it on a different provider. It will still work, but the model-specific "
+                f"tuning may not fully apply."
+            )
+
     try:
-        config = build_provider_config(
-            llm_request.provider,
-            llm_request.model,
-            qwen_thinking_enabled=llm_request.qwen_thinking,
-        )
+        if preset is not None:
+            config = build_provider_config(
+                llm_request.provider,
+                llm_request.model,
+                qwen_thinking_enabled=preset["thinking"],
+                temperature_override=preset["temperature"],
+                top_p=preset["top_p"],
+                max_tokens=preset["max_tokens"],
+            )
+        else:
+            config = build_provider_config(
+                llm_request.provider,
+                llm_request.model,
+                qwen_thinking_enabled=llm_request.qwen_thinking,
+            )
         # run_llm_job is blocking (LLM call + subprocess rendering); offload it
         # to a worker thread so it doesn't stall the asyncio event loop.
         job = await run_in_threadpool(
@@ -1146,6 +1172,7 @@ async def create_llm_job(request: Request) -> dict[str, Any]:
             title=title,
             mode=(llm_request.mode or DEFAULT_MODE),
             prompt_name=llm_request.prompt_name,
+            generator_preset=llm_request.generator_preset,
             theme=llm_request.theme,
             strict_math=llm_request.strict_math,
             config=config,
@@ -1162,7 +1189,10 @@ async def create_llm_job(request: Request) -> dict[str, Any]:
             attachment.path.unlink(missing_ok=True)
     _apply_folder_assignment(job.id, folder_target)
     _store_outline_meta(job, llm_request.outline)
-    return job_response(job)
+    response = job_response(job)
+    if preset_warning:
+        response["generator_preset_warning"] = preset_warning
+    return response
 
 
 # ── Trash (soft delete) + permanent delete ──────────────────────────────────
@@ -2029,6 +2059,16 @@ def _validate_prompt_name(prompt_name: str) -> None:
         raise HTTPException(status_code=400, detail="Unsupported prompt_name.")
 
 
+def _validate_generator_preset(preset_id: str) -> None:
+    """Reject unknown presets and presets whose body no longer resolves from the md."""
+    if not generator_presets.generator_preset_exists(preset_id):
+        raise HTTPException(status_code=400, detail="Unsupported generator_preset.")
+    try:
+        generator_presets.resolve_system_prompt(preset_id)
+    except generator_presets.GeneratorPresetError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
 def _resolve_folder_target(folder_id: str | None) -> str | None:
     """Validate an optional Library folder target before a job runs.
 
@@ -2231,6 +2271,7 @@ async def _parse_llm_request(request: Request) -> tuple[LLMJobRequest, list[Atta
             "title": _form_text(form, "title") or "Generated Study Guide",
             "mode": _form_text(form, "mode") or DEFAULT_MODE,
             "prompt_name": _form_text(form, "prompt_name") or _form_text(form, "style") or "basic_study_guide",
+            "generator_preset": _form_text(form, "generator_preset") or None,
             "provider": _form_text(form, "provider") or "",
             "model": _form_text(form, "model") or "",
             "theme": _form_text(form, "theme") or "claude_clean",

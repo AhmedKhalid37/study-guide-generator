@@ -30,6 +30,8 @@ class LLMConfig:
     api_key: str
     model: str
     temperature: float = 0.2
+    top_p: float | None = None
+    max_tokens: int | None = None
     provider: str = "openai_compatible"
     extra_body: dict | None = None
 
@@ -79,6 +81,12 @@ def generate_chat_completion(messages: list[dict], config: LLMConfig) -> str:
         "messages": messages,
         "temperature": config.temperature,
     }
+    # Only sent when a preset (or future caller) supplies them, so existing calls
+    # remain byte-identical to before these fields existed.
+    if config.top_p is not None:
+        params["top_p"] = config.top_p
+    if config.max_tokens is not None:
+        params["max_tokens"] = config.max_tokens
     if config.extra_body is not None:
         params["extra_body"] = config.extra_body
 

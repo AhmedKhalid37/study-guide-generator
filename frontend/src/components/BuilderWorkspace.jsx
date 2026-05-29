@@ -204,6 +204,8 @@ export default function BuilderWorkspace({
   const [folderId, setFolderId] = useState("unfiled");
   const [folders, setFolders] = useState([]);
   const [styleOptions, setStyleOptions] = useState(styleChips);
+  const [generatorPresets, setGeneratorPresets] = useState([]);
+  const [generatorPreset, setGeneratorPreset] = useState("");
   const [length, setLength] = useState("medium");
   const [includes, setIncludes] = useState(["Key concepts", "Mnemonics", "Examples", "Diagrams"]);
   const [outlineEnabled, setOutlineEnabled] = useState(false);
@@ -242,6 +244,7 @@ export default function BuilderWorkspace({
         if (cancelled) return;
         const details = normalizeProviderDetails(options);
         setProviderDetails(details);
+        setGeneratorPresets(options.generator_presets ?? []);
         const selected = chooseInitialProvider(details, provider);
         setProvider(selected.id);
         setModel(selectDefaultModel(selected, model));
@@ -500,6 +503,7 @@ export default function BuilderWorkspace({
         file,
         title,
         selectedStyle,
+        generatorPreset,
         provider,
         model,
         strictMath,
@@ -687,6 +691,10 @@ export default function BuilderWorkspace({
               selectedStyle={selectedStyle}
               onSelectStyle={onSelectStyle}
               styleOptions={styleOptions}
+              generatorPresets={generatorPresets}
+              generatorPreset={generatorPreset}
+              onSelectGeneratorPreset={setGeneratorPreset}
+              provider={provider}
               length={length}
               setLength={setLength}
               includes={includes}
@@ -1110,7 +1118,20 @@ function SourceTabs({ source, setSource, setError }) {
   );
 }
 
-function StyleSettings({ selectedStyle, onSelectStyle, styleOptions, length, setLength, includes, toggleInclude }) {
+function StyleSettings({
+  selectedStyle,
+  onSelectStyle,
+  styleOptions,
+  generatorPresets = [],
+  generatorPreset = "",
+  onSelectGeneratorPreset,
+  provider,
+  length,
+  setLength,
+  includes,
+  toggleInclude
+}) {
+  const presetActive = Boolean(generatorPreset);
   return (
     <div className="grid gap-5">
       <SectionHeader
@@ -1118,7 +1139,17 @@ function StyleSettings({ selectedStyle, onSelectStyle, styleOptions, length, set
         title="Style and depth"
         description="Tune the preset, target length, and included learning aids used by generation."
       />
-      <StyleControls selectedStyle={selectedStyle} onSelectStyle={onSelectStyle} styleOptions={styleOptions} />
+      <GeneratorPresetControls
+        generatorPresets={generatorPresets}
+        generatorPreset={generatorPreset}
+        onSelectGeneratorPreset={onSelectGeneratorPreset}
+        provider={provider}
+      />
+      {/* A generator preset replaces the system prompt + sampling params, so the
+          style below is ignored while one is active. */}
+      <div className={presetActive ? "pointer-events-none opacity-45" : ""}>
+        <StyleControls selectedStyle={selectedStyle} onSelectStyle={onSelectStyle} styleOptions={styleOptions} />
+      </div>
       <LengthControls length={length} setLength={setLength} />
       <IncludeControls includes={includes} toggleInclude={toggleInclude} />
     </div>
@@ -1198,6 +1229,71 @@ function PreviewWorkspacePanel({ result, artifacts, artifactUrls, previewFormat,
         <div className="rounded-xl border border-white/[0.06] bg-white/[0.025] p-4">
           <FieldLabel>Downloads</FieldLabel>
           <ArtifactDownloadGrid artifacts={artifacts} />
+        </div>
+      )}
+    </div>
+  );
+}
+
+function GeneratorPresetControls({ generatorPresets = [], generatorPreset = "", onSelectGeneratorPreset, provider }) {
+  if (!generatorPresets.length) return null;
+
+  const active = generatorPresets.find((preset) => preset.id === generatorPreset) || null;
+  const mismatch = active && active.provider !== provider;
+  const fmtParams = (params = {}) => {
+    const parts = [`temp ${params.temperature}`];
+    if (params.top_p != null) parts.push(`top_p ${params.top_p}`);
+    if (params.max_tokens != null) parts.push(`max ${params.max_tokens}`);
+    if (params.thinking) parts.push("thinking on");
+    return parts.join(" · ");
+  };
+
+  const optionClass = (selected) =>
+    `h-8 rounded-md border px-3 text-[12px] font-semibold transition ${
+      selected
+        ? "border-[rgba(249,115,22,0.45)] bg-[rgba(249,115,22,0.14)] text-[#F97316]"
+        : "border-white/[0.08] bg-white/[0.03] text-[#9098A8] hover:text-[#D4D4D8]"
+    }`;
+
+  return (
+    <div>
+      <FieldLabel>Generator preset</FieldLabel>
+      <p className="mt-1 text-[11.5px] leading-4 text-[#9098A8]">
+        A full model-tuned system prompt with its own sampling params. Overrides the style below.
+      </p>
+      <div className="mt-1.5 flex flex-wrap gap-1.5">
+        <button
+          type="button"
+          onClick={() => onSelectGeneratorPreset?.("")}
+          className={optionClass(!generatorPreset)}
+        >
+          None (use style)
+        </button>
+        {generatorPresets.map((preset) => (
+          <button
+            key={preset.id}
+            type="button"
+            disabled={!preset.available}
+            title={preset.available ? preset.description : "This preset's prompt could not be loaded."}
+            onClick={() => onSelectGeneratorPreset?.(preset.id)}
+            className={`${optionClass(generatorPreset === preset.id)} disabled:cursor-not-allowed disabled:opacity-40`}
+          >
+            {preset.name}
+          </button>
+        ))}
+      </div>
+      {active && (
+        <div className="mt-2 rounded-[10px] border border-white/[0.06] bg-[#070B14] p-3 text-[12px] leading-5 text-[#9098A8]">
+          <div className="text-[#D4D4D8]">{active.description}</div>
+          <div className="mt-1.5 text-[11.5px]">
+            Tuned for <span className="text-[#D4D4D8]">{active.model_hint}</span> · {fmtParams(active.params)}
+          </div>
+          {mismatch && (
+            <div className="mt-2 rounded-[8px] border border-[rgba(249,115,22,0.35)] bg-[rgba(249,115,22,0.08)] px-2.5 py-1.5 text-[11.5px] text-[#F8B57E]">
+              ⚠️ This preset is tuned for {active.model_hint}; you've selected a different provider. It still
+              runs, but the model-specific tuning may not fully apply.
+            </div>
+          )}
         </div>
       )}
     </div>
@@ -1871,6 +1967,7 @@ export function buildBuilderPayload({
   file,
   title,
   selectedStyle,
+  generatorPreset = "",
   provider,
   model,
   strictMath,
@@ -1900,6 +1997,7 @@ export function buildBuilderPayload({
         text,
         title,
         selectedStyle,
+        generatorPreset,
         provider,
         model,
         strictMath,
@@ -1929,6 +2027,7 @@ export function buildLlmPayload({
   title,
   mode = "study_guide",
   selectedStyle,
+  generatorPreset = "",
   provider,
   model,
   strictMath,
@@ -1945,6 +2044,9 @@ export function buildLlmPayload({
     title,
     mode,
     prompt_name: selectedStyle,
+    // When set, the backend uses this as the system prompt + sampling params and
+    // ignores prompt_name; omitted entirely otherwise to preserve the style path.
+    ...(generatorPreset ? { generator_preset: generatorPreset } : {}),
     provider,
     model,
     theme: "claude_clean",

@@ -36,6 +36,7 @@ def run_llm_job(
     title: str,
     mode: str = "exam",
     prompt_name: str = "basic_study_guide",
+    generator_preset: str | None = None,
     theme: str = "claude_clean",
     strict_math: bool = True,
     config: LLMConfig | None = None,
@@ -49,6 +50,7 @@ def run_llm_job(
             "title": title,
             "mode": mode,
             "prompt_name": prompt_name,
+            "generator_preset": generator_preset,
             "theme": theme,
             "strict_math": strict_math,
             "provider": resolved_config.provider,
@@ -85,6 +87,7 @@ def run_llm_job(
             title=title,
             mode=mode,
             prompt_name=prompt_name,
+            generator_preset=generator_preset,
             config=resolved_config,
         )
         job.save_text(job.raw_md, raw_markdown)
@@ -211,6 +214,11 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--title", required=True)
     parser.add_argument("--mode", default="exam")
     parser.add_argument("--prompt-name", default="basic_study_guide")
+    parser.add_argument(
+        "--generator-preset",
+        default=None,
+        help="Generator preset id (e.g. claude_exam); overrides --prompt-name when set.",
+    )
     parser.add_argument("--theme", default="claude_clean")
     parser.add_argument(
         "--no-strict-math",
@@ -227,6 +235,7 @@ def main(argv: list[str] | None = None) -> int:
             title=args.title,
             mode=args.mode,
             prompt_name=args.prompt_name,
+            generator_preset=args.generator_preset,
             theme=args.theme,
             strict_math=not args.no_strict_math,
             config=config,
