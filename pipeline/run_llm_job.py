@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import os
 import re
 import sys
 import shutil
@@ -14,8 +15,8 @@ from pipeline.llm_client import LLMConfig, LLMProviderError, MissingLLMConfigErr
 from pipeline.orchestrator import generate_study_guide
 from pipeline.run_markdown_job import MarkdownJobError, run_raw_markdown_pipeline
 
-MAX_ATTACHMENT_CHARS = 40_000
-MAX_TOTAL_ATTACHMENT_CHARS = 120_000
+MAX_ATTACHMENT_CHARS = int(os.getenv("MAX_ATTACHMENT_CHARS", "200000"))
+MAX_TOTAL_ATTACHMENT_CHARS = int(os.getenv("MAX_TOTAL_ATTACHMENT_CHARS", "600000"))
 
 
 class LLMJobError(RuntimeError):
@@ -70,7 +71,9 @@ def run_llm_job(
         }
         augmented_source = source_text
         if attachments:
-            augmented_source, attachment_report = _attach_sources(job, source_text, attachments)
+            augmented_source, attachment_report = _attach_sources(
+                job, source_text, attachments, generator_preset=generator_preset
+            )
 
         source_path = job.input_dir / "source.txt"
         job.save_text(source_path, augmented_source)
@@ -113,9 +116,22 @@ def _attach_sources(
     job: Job,
     source_text: str,
     attachments: list[AttachmentSource],
+    *,
+    generator_preset: str | None = None,
 ) -> tuple[str, dict[str, Any]]:
     attachment_dir = job.input_dir / "attachments"
     attachment_dir.mkdir(parents=True, exist_ok=True)
+
+    # When a generator preset is active its prompt promises to "cover the whole
+    # deck", so any truncation/skip silently breaks that promise. Make those
+    # warnings explicit so the user knows to raise the cap or split the deck.
+    preset_note = (
+        f" The '{generator_preset}' preset aims to cover the whole deck, so this "
+        "truncation compromises that goal — raise MAX_ATTACHMENT_CHARS / "
+        "MAX_TOTAL_ATTACHMENT_CHARS or split the deck."
+        if generator_preset
+        else ""
+    )
 
     sections: list[str] = []
     files: list[dict[str, Any]] = []
@@ -150,7 +166,7 @@ def _attach_sources(
                 entry["warnings"] = [*entry["warnings"], warning]
                 entry["status"] = "warning"
             elif remaining <= 0:
-                warning = f"{safe_name}: skipped because the attachment text limit was reached."
+                warning = f"{safe_name}: skipped because the attachment text limit was reached.{preset_note}"
                 warnings.append(warning)
                 entry["warnings"] = [*entry["warnings"], warning]
                 entry["status"] = "skipped"
@@ -159,7 +175,7 @@ def _attach_sources(
                 clipped_text = extracted_text[:limit]
                 truncated = len(extracted_text) > limit
                 if truncated:
-                    warning = f"{safe_name}: extracted text was truncated to {limit} characters."
+                    warning = f"{safe_name}: extracted text was truncated to {limit} characters.{preset_note}"
                     warnings.append(warning)
                     entry["warnings"] = [*entry["warnings"], warning]
                 sections.append(f"### {safe_name}\n{clipped_text}")

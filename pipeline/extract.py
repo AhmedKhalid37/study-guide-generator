@@ -115,8 +115,16 @@ def _extract_pdf(path: Path) -> ExtractionResult:
             f"the file may be corrupt or an unreadable scan ({type(exc).__name__})"
         ) from exc
     with document_ctx as document:
-        pages = [page.get_text("text").strip() for page in document]
-        text = "\n\n".join(page for page in pages if page)
+        # Prefix each page with a "## Page N" anchor (mirroring the pptx "Slide N"
+        # marker) so positional references survive extraction — study-guide prompts
+        # cite these. The index is the physical page number; blank pages are dropped
+        # without shifting the numbering of the pages that follow.
+        pages = []
+        for index, page in enumerate(document, start=1):
+            body = page.get_text("text").strip()
+            if body:
+                pages.append(f"## Page {index}\n{body}")
+        text = "\n\n".join(pages)
         if text.strip():
             return ExtractionResult(text, "pdf_text", warnings)
 
@@ -138,10 +146,10 @@ def _ocr_pdf(document) -> tuple[str, str | None]:
         return "", "OCR skipped because pytesseract or pillow is not installed."
 
     pages: list[str] = []
-    for page in document:
+    for index, page in enumerate(document, start=1):
         pixmap = page.get_pixmap(matrix=fitz.Matrix(2, 2), alpha=False)
         image = Image.frombytes("RGB", [pixmap.width, pixmap.height], pixmap.samples)
-        text = pytesseract.image_to_string(image).strip()
-        if text:
-            pages.append(text)
+        page_text = pytesseract.image_to_string(image).strip()
+        if page_text:
+            pages.append(f"## Page {index}\n{page_text}")
     return "\n\n".join(pages), None
