@@ -64,6 +64,7 @@ def run_llm_job(
 
     try:
         job.set_status("saving_input")
+        job.set_stage("preparing")
         attachment_report: dict[str, Any] = {
             "files": [],
             "warnings": [],
@@ -71,6 +72,7 @@ def run_llm_job(
         }
         augmented_source = source_text
         if attachments:
+            job.set_stage("extracting")
             augmented_source, attachment_report = _attach_sources(
                 job, source_text, attachments, generator_preset=generator_preset
             )
@@ -92,6 +94,7 @@ def run_llm_job(
             prompt_name=prompt_name,
             generator_preset=generator_preset,
             config=resolved_config,
+            on_stage=job.set_stage,
         )
         job.save_text(job.raw_md, raw_markdown)
         job.update(raw_md=str(job.raw_md))

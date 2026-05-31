@@ -165,6 +165,28 @@ class Job:
     def set_favorite(self, value: bool) -> None:
         self.update(favorite=bool(value))
 
+    def set_stage(self, stage_key: str) -> None:
+        """Record fine-grained progress within a running job.
+
+        Writes ``{stage, stage_label, progress, updated_at}`` into job.json. This
+        is INDEPENDENT of ``status`` (which stays queued/running/done/...): this
+        method never touches ``status``. It is meant to be called many times at
+        pipeline boundaries, so it is deliberately cheap. An unknown key is a
+        no-op — a mistyped stage can never crash a running job.
+        """
+        from pipeline.job_stages import get_stage
+
+        try:
+            stage = get_stage(stage_key)
+        except KeyError:
+            return
+        self.update(
+            stage=stage["key"],
+            stage_label=stage["label"],
+            progress=stage["percent"],
+            updated_at=datetime.now().isoformat(timespec="seconds"),
+        )
+
     def set_status(
         self,
         status: str,

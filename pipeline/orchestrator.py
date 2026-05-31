@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from typing import Callable
+
 from pipeline.llm_client import LLMConfig, generate_chat_completion
 from pipeline.prompt_loader import load_prompt_template, render_prompt_template
 
@@ -55,14 +57,24 @@ def generate_study_guide(
     prompt_name: str = "basic_study_guide",
     generator_preset: str | None = None,
     config: LLMConfig | None = None,
+    on_stage: Callable[[str], None] | None = None,
 ) -> str:
+    # ``on_stage`` (when provided) reports coarse progress at the boundaries that
+    # already exist here. It is optional so non-job callers stay unaffected. The
+    # LLM call itself is a single blocking completion, so "writing" simply spans
+    # its whole duration — we can't sub-progress it without streaming.
     resolved_config = config or LLMConfig.from_env()
     if generator_preset:
         # Late import keeps the module stdlib-light and avoids a circular import.
         from pipeline import generator_presets
 
+        if on_stage is not None:
+            on_stage("loading_preset")
         system_prompt = generator_presets.resolve_system_prompt(generator_preset)
         messages = build_messages_for_preset(source_text, system_prompt=system_prompt)
     else:
         messages = build_messages(source_text, title=title, mode=mode, prompt_name=prompt_name)
+    if on_stage is not None:
+        on_stage("connecting_model")
+        on_stage("writing")
     return generate_chat_completion(messages, resolved_config)

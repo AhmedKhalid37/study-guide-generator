@@ -1286,6 +1286,28 @@ def get_job(job_id: str) -> dict[str, Any]:
     }
 
 
+@app.get("/api/jobs/{job_id}/progress")
+def get_job_progress(job_id: str) -> dict[str, Any]:
+    """Coarse, pollable progress for a job's generation.
+
+    ``status`` is the terminal-state source of truth (failed /
+    completed_with_warnings / done); ``stage``/``progress`` is the finer-grained
+    position within a running job. When a job reaches a terminal status the UI
+    should stop polling — even if ``stage`` never reached "complete" (e.g. a job
+    that failed mid-render keeps its last stage but reports status "failed").
+    No filesystem paths are exposed.
+    """
+    job = _get_job(job_id)
+    manifest = job.read_manifest()
+    return {
+        "status": manifest.get("status"),
+        "stage": manifest.get("stage"),
+        "stage_label": manifest.get("stage_label"),
+        "progress": manifest.get("progress"),
+        "updated_at": manifest.get("updated_at"),
+    }
+
+
 @app.post("/api/jobs/{job_id}/favorite")
 def set_job_favorite(job_id: str, request: FavoriteRequest) -> dict[str, Any]:
     job = _get_job(job_id)

@@ -45,6 +45,7 @@ def run_markdown_job(
 
     try:
         job.set_status("saving_input")
+        job.set_stage("preparing")
         saved_input = accept_markdown_upload(job, source)
         shutil.copy2(saved_input, job.raw_md)
         job.update(input_path=str(saved_input), raw_md=str(job.raw_md))
@@ -78,6 +79,7 @@ def run_pasted_text_job(
 
     try:
         job.set_status("saving_input")
+        job.set_stage("preparing")
         pasted = accept_paste(job, text)
         job.save_text(job.raw_md, text)
         job.update(input_path=str(pasted), raw_md=str(job.raw_md))
@@ -93,12 +95,14 @@ def run_pasted_text_job(
 
 def run_raw_markdown_pipeline(job: Job, *, theme: str, strict_math: bool) -> Job:
     job.set_status("sanitizing")
+    job.set_stage("cleaning")
     raw = job.raw_md.read_text(encoding="utf-8", errors="replace")
     job.save_clean_md(sanitize(raw), "generated")
     job.update(clean_md=str(job.clean_md))
     print(f"clean.md: {job.clean_md}")
 
     job.set_status("validating")
+    job.set_stage("checking_math")
     validation_path = job.logs_dir / "validation.json"
     result = validate(job.clean_md, output_json=validation_path)
     job.update(
@@ -135,6 +139,7 @@ def run_raw_markdown_pipeline(job: Job, *, theme: str, strict_math: bool) -> Job
         )
 
     job.set_status("rendering")
+    job.set_stage("rendering")
     # When math validation failed we must render with throwOnError=false so the
     # bad expressions degrade to error spans rather than aborting the render.
     # Valid-math jobs keep their original strict_math (output is byte-identical
@@ -150,12 +155,15 @@ def run_raw_markdown_pipeline(job: Job, *, theme: str, strict_math: bool) -> Job
         print(message, file=sys.stderr)
         raise MarkdownJobError(message, job) from exc
 
+    # PDF + HTML are written; finalize the artifact records (docx stays lazy).
+    job.set_stage("exporting")
     job.save_text(job.render_log, f"Rendered PDF: {job.final_pdf}\nRendered HTML: {job.final_html}\n")
     job.update(final_html=str(job.final_html), final_pdf=str(job.final_pdf))
     # A usable guide was produced. Use a non-fatal terminal status when math was
     # degraded so the UI can show a "fix these expressions" notice without
     # presenting a failure state.
     job.set_status("done" if result.ok else "completed_with_warnings")
+    job.set_stage("complete")
 
     print(f"final.html: {job.final_html}")
     print(f"final.pdf: {job.final_pdf}")
