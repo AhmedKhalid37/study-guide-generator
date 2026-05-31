@@ -111,25 +111,37 @@ def run_raw_markdown_pipeline(job: Job, *, theme: str, strict_math: bool) -> Job
         },
     )
     if not result.ok:
+        # Graceful degradation: a single malformed LaTeX expression must NOT
+        # destroy the whole guide. Record the failed expressions, then render
+        # anyway with KaTeX throwOnError=false (below) so bad math becomes a
+        # visible error-marked span the user can fix in the Markdown editor.
+        # ``strict_math`` now means "flag and mark bad math", not "abort the job".
         message = _validation_error_message(result)
-        if strict_math:
-            job.set_status(
-                "failed",
-                message,
-                error_category="math",
-                log_path=str(validation_path),
-            )
-            print(f"Math validation failed. Details: {validation_path}", file=sys.stderr)
-            print(message, file=sys.stderr)
-            raise MarkdownJobError(message, job)
-        else:
-            # Warn but continue — KaTeX renders errors as styled spans (throwOnError=false).
-            job.update(math_warnings=message)
-            print(f"Math validation warnings (strict_math=False): {message}", file=sys.stderr)
+        job.update(
+            math_warnings=message,
+            math_failures=[
+                {
+                    "expr": error.expr,
+                    "display_mode": error.display_mode,
+                    "message": error.message,
+                }
+                for error in result.errors
+            ],
+        )
+        print(
+            f"Math validation found {len(result.errors)} issue(s); rendering with "
+            f"error-marked spans instead of failing. Details: {validation_path}",
+            file=sys.stderr,
+        )
 
     job.set_status("rendering")
+    # When math validation failed we must render with throwOnError=false so the
+    # bad expressions degrade to error spans rather than aborting the render.
+    # Valid-math jobs keep their original strict_math (output is byte-identical
+    # for valid expressions, so this is a no-op for the normal case).
+    render_strict = strict_math and result.ok
     try:
-        render_pdf(job.clean_md, job.final_pdf, theme=theme, strict_math=strict_math)
+        render_pdf(job.clean_md, job.final_pdf, theme=theme, strict_math=render_strict)
     except Exception as exc:
         message = f"PDF rendering failed: {exc}"
         job.save_text(job.render_log, message + "\n")
@@ -140,7 +152,10 @@ def run_raw_markdown_pipeline(job: Job, *, theme: str, strict_math: bool) -> Job
 
     job.save_text(job.render_log, f"Rendered PDF: {job.final_pdf}\nRendered HTML: {job.final_html}\n")
     job.update(final_html=str(job.final_html), final_pdf=str(job.final_pdf))
-    job.set_status("done")
+    # A usable guide was produced. Use a non-fatal terminal status when math was
+    # degraded so the UI can show a "fix these expressions" notice without
+    # presenting a failure state.
+    job.set_status("done" if result.ok else "completed_with_warnings")
 
     print(f"final.html: {job.final_html}")
     print(f"final.pdf: {job.final_pdf}")

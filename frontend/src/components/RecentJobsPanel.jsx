@@ -698,6 +698,14 @@ export function JobDetailsDrawer({ open, onClose, loading, error, details, style
                 />
               )}
 
+              {!isFailed && (manifest.math_failures?.length ?? 0) > 0 && (
+                <MathDegradedNotice
+                  failures={manifest.math_failures}
+                  canEdit={canEdit}
+                  onEdit={() => setDrawerTab("edit")}
+                />
+              )}
+
               {manifest.outline_enabled && (manifest.outline_titles?.length ?? 0) > 0 && (
                 <DetailsSection title={`Outline · ${manifest.outline_section_count || manifest.outline_titles.length} sections`}>
                   <ol className="grid gap-1.5">
@@ -790,6 +798,57 @@ function ErrorCategoryBadge({ category }) {
     <span className="inline-flex items-center rounded-full border border-red-400/30 bg-red-400/10 px-3 py-1 text-xs font-bold text-red-200">
       {label}
     </span>
+  );
+}
+
+// Non-blocking notice for jobs that finished with renderable bad math. The guide
+// IS usable — these expressions just rendered as error-marked spans — so we point
+// the user at the existing Edit Markdown tab to fix them, never a failure state.
+function MathDegradedNotice({ failures, canEdit, onEdit }) {
+  const count = failures?.length ?? 0;
+  if (count === 0) {
+    return null;
+  }
+  return (
+    <section className="rounded-2xl border border-amber-300/25 bg-amber-300/[0.06] p-4">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div className="flex items-center gap-2">
+          <AlertTriangle className="h-4 w-4 shrink-0 text-amber-300" />
+          <span className="text-sm font-bold text-amber-100">
+            {count} math expression{count === 1 ? "" : "s"} couldn&apos;t render
+          </span>
+        </div>
+        {canEdit && (
+          <button
+            type="button"
+            onClick={onEdit}
+            className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-amber-300/40 bg-amber-300/10 px-3 text-xs font-bold text-amber-100 transition hover:border-amber-300/70 hover:text-white"
+          >
+            <Edit3 className="h-3.5 w-3.5" />
+            Fix in Markdown editor
+          </button>
+        )}
+      </div>
+      <p className="mt-2 text-xs leading-5 text-amber-100/80">
+        The guide rendered, but these expressions show as error-marked spans. Edit
+        them in the Markdown editor and re-render to clean them up.
+      </p>
+      <ul className="mt-3 grid gap-2">
+        {failures.map((failure, index) => (
+          <li
+            key={index}
+            className="rounded-lg border border-amber-300/15 bg-[#070B14] p-3 text-xs leading-5"
+          >
+            <code className="block break-all font-mono text-amber-100">
+              {failure.display_mode ? "display" : "inline"}: {failure.expr}
+            </code>
+            {failure.message && (
+              <span className="mt-1 block text-amber-100/70">{failure.message}</span>
+            )}
+          </li>
+        ))}
+      </ul>
+    </section>
   );
 }
 

@@ -2033,6 +2033,8 @@ def job_response(job: Job) -> dict[str, Any]:
         "attachment_summary": _attachment_summary(manifest),
         "artifact_availability": availability,
         "artifact_urls": artifact_urls,
+        "math_failures": _safe_math_failures(manifest.get("math_failures", [])),
+        "math_warnings": manifest.get("math_warnings"),
         **_outline_summary(manifest),
     }
     if manifest.get("error"):
@@ -2137,6 +2139,7 @@ def _safe_manifest(manifest: dict[str, Any]) -> dict[str, Any]:
         safe.pop(key, None)
     safe["attachments"] = _safe_attachment_metadata(manifest.get("attachments", []))
     safe["extraction_warnings"] = _safe_warnings(manifest.get("extraction_warnings", []))
+    safe["math_failures"] = _safe_math_failures(manifest.get("math_failures", []))
     safe["total_extracted_chars"] = int(manifest.get("total_extracted_chars") or 0)
     safe["favorite"] = bool(manifest.get("favorite", False))
     safe.update(_outline_summary(manifest))
@@ -2170,6 +2173,29 @@ def _safe_warnings(warnings: Any) -> list[str]:
     if not isinstance(warnings, list):
         return []
     return [str(warning)[:500] for warning in warnings if warning]
+
+
+def _safe_math_failures(failures: Any) -> list[dict[str, Any]]:
+    """Sanitize the recorded list of math expressions that failed validation.
+
+    These let the UI show "N math expressions couldn't render — fix them in the
+    Markdown editor". Only the expression, mode, and KaTeX message are exposed
+    (no filesystem paths), each length-capped.
+    """
+    if not isinstance(failures, list):
+        return []
+    safe: list[dict[str, Any]] = []
+    for failure in failures:
+        if not isinstance(failure, dict):
+            continue
+        safe.append(
+            {
+                "expr": str(failure.get("expr") or "")[:500],
+                "display_mode": bool(failure.get("display_mode")),
+                "message": str(failure.get("message") or "")[:500],
+            }
+        )
+    return safe
 
 
 def _attachment_summary(manifest: dict[str, Any]) -> dict[str, Any]:

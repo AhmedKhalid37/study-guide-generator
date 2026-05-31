@@ -15,7 +15,11 @@ MARKDOWN_MATH_SYSTEM = (
     "\\begin{aligned} ... \\end{aligned} (lines separated by \\\\ and "
     "aligned on &=) instead of many separate inline fragments. Keep "
     "long formulas out of table cells; use a short label in the table "
-    "and place the full equation in a display block before or after it."
+    "and place the full equation in a display block before or after it. "
+    "Never put a literal '$' inside a math block. Render matrices, "
+    "coordinate sets, and tuples with \\begin{pmatrix} ... \\end{pmatrix} "
+    "or a plain Markdown table — never as comma-separated $-delimited "
+    "fragments like \"$0,1$, $0,2$\"."
 )
 
 
