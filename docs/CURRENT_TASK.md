@@ -7,8 +7,8 @@
 
 ## Where we are
 
-- **Branch:** `library-bulk-backend`
-- **Last commit:** `51fc7b9` — Add backend library bulk actions
+- **Branch:** `library-bulk-frontend`
+- **Last commit:** `5916861` — Add Library multi-select bulk actions UI
 - **Main branch (PR target):** `chrome-renderer-v1`
 
 ## DONE (in order)
@@ -40,16 +40,27 @@
    literal `bulk` segment is never read as a job id. Verified in Docker (uid
    10001/appuser) via `test_scripts/smoke_library_bulk.py` (16/16) +
    curl/`ls .trash` evidence. **Frontend multi-select UI is NOT in this slice.**
+10. **Slice B2 — Library multi-select bulk actions UI (FRONTEND)** — `5916861`.
+    Library multi-select with per-job checkboxes + **select-all-visible**, a
+    selection-aware bulk toolbar (Move to folder / Move to Unfiled / **Delete** /
+    Clear), **bulk delete** routed through the soft-trash with an **Undo toast**
+    (bulk restore of exactly the trashed ids), and **bulk move-to-folder**. All
+    three use the canonical `/api/jobs/bulk/*` family; the legacy
+    `/api/library/jobs/move` caller was migrated to `/api/jobs/bulk/move`
+    (`folder_id`, not `folder`). Partial-success aware (`partitionResults`):
+    succeeded ids cleared, `error` ids kept selected, ok/fail counts toasted;
+    whole-request 404 (unknown folder) keeps selection + list untouched.
+    Selection clears on folder/search/filter change. Verified in Docker via a
+    real headless-Chromium (Playwright) click-through + captured bulk network
+    calls; release smoke 28/28 (flaky outline check passed 3/3 in preflight).
 
 ## NEXT (in order)
 
-3. **Library bulk actions — FRONTEND (deferred follow-ups).** The backend (above)
-   is done; the UI is still to build:
-   - Library multi-select UI + "select all jobs"
-   - bulk action toolbar
-   - undo toast UI (restore-after-delete)
-   - bulk folder-picker UI
-   - bulk **archive** — only after an archive state is designed (not started)
+3. **Library bulk actions — remaining follow-ups (deferred, not this slice).**
+   - full **Trash management view** (B2 ships only the delete→Undo affordance)
+   - **folder bulk-delete / folder multi-select**
+   - bulk **archive** — only after an archive state is designed + `DECISIONS.md`
+     entry (not started)
    - bulk **tag** — only if/after a tag model exists (not started)
    - bulk **export** — separate follow-up, only if supported by existing
      artifact/export behavior (not started)
