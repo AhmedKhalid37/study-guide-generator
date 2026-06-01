@@ -1439,6 +1439,29 @@ def bulk_move_jobs(request: BulkMoveRequest) -> dict[str, Any]:
     return _bulk_summary(results)
 
 
+@app.post("/api/jobs/bulk/purge")
+def bulk_purge_jobs(request: BulkJobsRequest) -> dict[str, Any]:
+    """Bulk PERMANENT delete. Each id is routed through the exact same guarded
+    single-job ``purge_trashed_job`` (operates strictly inside ``jobs/.trash/``);
+    no new removal path is introduced. Ids that are not CURRENTLY in the trash are
+    reported ``error`` — there is no one-click permanent delete of an active job —
+    and the batch always continues. Like the single purge, this is irreversible."""
+    results: list[dict[str, str]] = []
+    for jid in _dedupe_ids(request.ids):
+        if not is_trashed(jid):  # guard-safe for traversal ids -> False
+            results.append({"id": jid, "status": "error", "detail": "not in trash"})
+            continue
+        try:
+            purge_trashed_job(jid)
+            library_store.move_job(jid, None)  # drop any stale folder assignment
+            results.append({"id": jid, "status": "ok"})
+        except FileNotFoundError:
+            results.append({"id": jid, "status": "error", "detail": "not found"})
+        except (JobManagerError, ValueError) as exc:
+            results.append({"id": jid, "status": "error", "detail": str(exc)})
+    return _bulk_summary(results)
+
+
 # ── Trash (soft delete) + permanent delete ──────────────────────────────────
 # NOTE: these /api/jobs/trash* routes are registered BEFORE the catch-all
 # /api/jobs/{job_id} so "trash" is never mistaken for a job id.

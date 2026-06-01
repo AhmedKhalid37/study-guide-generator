@@ -22,6 +22,7 @@ import {
   artifactUrl,
   bulkDeleteJobs,
   bulkMoveJobs,
+  bulkPurgeJobs,
   bulkRestoreJobs,
   createFolder,
   deleteFolder,
@@ -93,6 +94,13 @@ export default function LibraryWorkspace({ refreshKey = 0, onOpenBuilder, initia
   const [folderError, setFolderError] = useState(null);
 
   const [selectedIds, setSelectedIds] = useState(() => new Set());
+  // Folder multi-select (rail) — React state only, never persisted.
+  const [selectedFolderIds, setSelectedFolderIds] = useState(() => new Set());
+  // Trash multi-select — React state only.
+  const [selectedTrashIds, setSelectedTrashIds] = useState(() => new Set());
+  // Staged folder bulk-delete: null | { folderIds: string[], jobCount: number }.
+  const [folderDelete, setFolderDelete] = useState(null);
+  const [folderDeleteBusy, setFolderDeleteBusy] = useState(false);
 
   const [detailsOpen, setDetailsOpen] = useState(false);
   const [jobDetails, setJobDetails] = useState(null);
@@ -100,7 +108,7 @@ export default function LibraryWorkspace({ refreshKey = 0, onOpenBuilder, initia
   const [detailsError, setDetailsError] = useState(null);
 
   const [trashJobs, setTrashJobs] = useState([]);
-  // confirm modal: null | { kind: "trash"|"purge"|"emptyTrash"|"bulkTrash", job?, count?, ids? }
+  // confirm modal: null | { kind: "trash"|"purge"|"emptyTrash"|"bulkTrash"|"bulkPurge", job?, count?, ids? }
   const [confirm, setConfirm] = useState(null);
   const [confirmBusy, setConfirmBusy] = useState(false);
 
@@ -198,6 +206,28 @@ export default function LibraryWorkspace({ refreshKey = 0, onOpenBuilder, initia
   useEffect(() => {
     setSelectedIds((prev) => (prev.size ? new Set() : prev));
   }, [selectedFolder, q, filters]);
+
+  // Drop selected trash ids that no longer exist after a reload (restored/purged).
+  useEffect(() => {
+    setSelectedTrashIds((prev) => {
+      if (prev.size === 0) return prev;
+      const existing = new Set(trashJobs.map((job) => job.id));
+      const next = new Set();
+      prev.forEach((id) => existing.has(id) && next.add(id));
+      return next.size === prev.size ? prev : next;
+    });
+  }, [trashJobs]);
+
+  // Drop selected folder ids that no longer exist after a reload (deleted).
+  useEffect(() => {
+    setSelectedFolderIds((prev) => {
+      if (prev.size === 0) return prev;
+      const existing = new Set(data.folders.map((folder) => folder.id));
+      const next = new Set();
+      prev.forEach((id) => existing.has(id) && next.add(id));
+      return next.size === prev.size ? prev : next;
+    });
+  }, [data.folders]);
 
   // Auto-dismiss the toast. Undo toasts (those with an action) linger longer so
   // the undo is actually reachable.
@@ -450,6 +480,133 @@ export default function LibraryWorkspace({ refreshKey = 0, onOpenBuilder, initia
     }
   }
 
+  // ── Folder multi-select (rail) ────────────────────────────────────────────
+  const toggleFolderSelect = useCallback((folderId) => {
+    setSelectedFolderIds((prev) => {
+      const next = new Set(prev);
+      next.has(folderId) ? next.delete(folderId) : next.add(folderId);
+      return next;
+    });
+  }, []);
+
+  const clearFolderSelection = useCallback(() => setSelectedFolderIds(new Set()), []);
+
+  // Open the delete-folders modal, pre-counting how many ACTIVE guides live in
+  // the selected folders (so Option B can tell the user what it will trash).
+  const openFolderDelete = useCallback(() => {
+    const folderIds = [...selectedFolderIds];
+    if (folderIds.length === 0) return;
+    const idSet = new Set(folderIds);
+    const jobCount = data.jobs.filter((job) => idSet.has(job.folder_id)).length;
+    setFolderDelete({ folderIds, jobCount });
+  }, [selectedFolderIds, data.jobs]);
+
+  // Run the staged folder delete. mode === "withGuides" first soft-deletes the
+  // guides inside the selected folders via the existing /api/jobs/bulk/delete
+  // (trash, NOT hard-delete), then removes the folders. mode === "foldersOnly"
+  // just removes the folders (their guides fall back to Unfiled, backend default).
+  async function performFolderDelete(mode) {
+    if (!folderDelete) return;
+    const { folderIds } = folderDelete;
+    setFolderDeleteBusy(true);
+    setError(null);
+    let trashedCount = 0;
+    try {
+      if (mode === "withGuides") {
+        const idSet = new Set(folderIds);
+        const jobIds = data.jobs.filter((job) => idSet.has(job.folder_id)).map((job) => job.id);
+        if (jobIds.length) {
+          const resp = await bulkDeleteJobs(jobIds);
+          trashedCount = partitionResults(resp).ok.length;
+        }
+      }
+      const okFolders = [];
+      const failFolders = [];
+      for (const fid of folderIds) {
+        try {
+          await deleteFolder(fid);
+          okFolders.push(fid);
+        } catch {
+          failFolders.push(fid);
+        }
+      }
+      // Successful folders disappear from selection; failed ones stay selected.
+      setSelectedFolderIds(new Set(failFolders));
+      if (okFolders.includes(selectedFolder)) setSelectedFolder("all");
+      reload();
+      const parts = [`${okFolders.length} folder${okFolders.length === 1 ? "" : "s"} deleted`];
+      if (mode === "withGuides") parts.push(`${trashedCount} guide${trashedCount === 1 ? "" : "s"} moved to trash`);
+      if (failFolders.length) parts.push(`${failFolders.length} failed`);
+      setToast({
+        id: Date.now(),
+        tone: failFolders.length ? "error" : "success",
+        message: parts.join(" · ")
+      });
+    } catch (err) {
+      setToast({ id: Date.now(), tone: "error", message: err.message || "Could not delete folders." });
+    } finally {
+      setFolderDeleteBusy(false);
+      setFolderDelete(null);
+    }
+  }
+
+  // ── Trash multi-select ────────────────────────────────────────────────────
+  const toggleTrashSelect = useCallback((jobId) => {
+    setSelectedTrashIds((prev) => {
+      const next = new Set(prev);
+      next.has(jobId) ? next.delete(jobId) : next.add(jobId);
+      return next;
+    });
+  }, []);
+
+  const clearTrashSelection = useCallback(() => setSelectedTrashIds(new Set()), []);
+
+  const trashIds = useMemo(() => trashJobs.map((job) => job.id), [trashJobs]);
+  const allTrashSelected = trashIds.length > 0 && trashIds.every((id) => selectedTrashIds.has(id));
+  const toggleSelectAllTrash = useCallback(() => {
+    setSelectedTrashIds((prev) => {
+      const everySelected = trashIds.length > 0 && trashIds.every((id) => prev.has(id));
+      return everySelected ? new Set() : new Set(trashIds);
+    });
+  }, [trashIds]);
+
+  // Bulk restore selected trashed guides via /api/jobs/bulk/restore.
+  const handleBulkRestore = useCallback(async () => {
+    const ids = [...selectedTrashIds];
+    if (ids.length === 0) return;
+    setError(null);
+    try {
+      const response = await bulkRestoreJobs(ids);
+      const { ok, failed } = partitionResults(response);
+      setSelectedTrashIds(new Set(failed.map((result) => result.id)));
+      reload();
+      setToast({
+        id: Date.now(),
+        tone: failed.length ? "error" : "success",
+        message:
+          `Restored ${ok.length} guide${ok.length === 1 ? "" : "s"}` +
+          (failed.length ? ` · ${failed.length} failed` : "")
+      });
+    } catch (err) {
+      setToast({ id: Date.now(), tone: "error", message: err.message || "Could not restore guides." });
+    }
+  }, [selectedTrashIds, reload]);
+
+  // Permanently delete the selected trashed guides via /api/jobs/bulk/purge.
+  // Routed only after the strong confirm modal; succeeded ids leave the selection.
+  const performBulkPurge = useCallback(
+    async (ids) => {
+      const response = await bulkPurgeJobs(ids);
+      const { ok, failed } = partitionResults(response);
+      setSelectedTrashIds(new Set(failed.map((result) => result.id)));
+      reload();
+      const parts = [`${ok.length} permanently deleted`];
+      if (failed.length) parts.push(`${failed.length} failed`);
+      setToast({ id: Date.now(), tone: failed.length ? "error" : "success", message: parts.join(" · ") });
+    },
+    [reload]
+  );
+
   const inTrashView = selectedFolder === TRASH_VIEW;
 
   // Run the action staged in the confirm modal, then close it and reload.
@@ -470,6 +627,9 @@ export default function LibraryWorkspace({ refreshKey = 0, onOpenBuilder, initia
       } else if (confirm.kind === "bulkTrash") {
         // performBulkDelete does its own reload + selection update + toast.
         await performBulkDelete(confirm.ids);
+      } else if (confirm.kind === "bulkPurge") {
+        // performBulkPurge does its own reload + selection update + toast.
+        await performBulkPurge(confirm.ids);
       }
       setConfirm(null);
     } catch (err) {
@@ -508,6 +668,10 @@ export default function LibraryWorkspace({ refreshKey = 0, onOpenBuilder, initia
         folderError={folderError}
         trashCount={trashJobs.length}
         trashView={TRASH_VIEW}
+        selectedFolderIds={selectedFolderIds}
+        onToggleFolderSelect={toggleFolderSelect}
+        onClearFolderSelection={clearFolderSelection}
+        onDeleteFolders={openFolderDelete}
       />
 
       <div className="flex min-w-0 flex-1 flex-col">
@@ -591,6 +755,29 @@ export default function LibraryWorkspace({ refreshKey = 0, onOpenBuilder, initia
           </label>
         )}
 
+        {inTrashView && selectedTrashIds.size > 0 && (
+          <TrashBulkBar
+            count={selectedTrashIds.size}
+            onRestore={handleBulkRestore}
+            onPurge={() =>
+              setConfirm({ kind: "bulkPurge", count: selectedTrashIds.size, ids: [...selectedTrashIds] })
+            }
+            onClear={clearTrashSelection}
+          />
+        )}
+
+        {inTrashView && trashJobs.length > 0 && (
+          <label className="mt-3 inline-flex w-fit cursor-pointer items-center gap-2 px-0.5 text-xs font-semibold text-slate-400 hover:text-slate-200">
+            <input
+              type="checkbox"
+              className="h-3.5 w-3.5 accent-ember-500"
+              checked={allTrashSelected}
+              onChange={toggleSelectAllTrash}
+            />
+            Select all ({trashIds.length})
+          </label>
+        )}
+
         <div className="mt-3 min-h-0 flex-1 overflow-y-auto pr-1">
           {inTrashView ? (
             trashJobs.length === 0 ? (
@@ -605,6 +792,8 @@ export default function LibraryWorkspace({ refreshKey = 0, onOpenBuilder, initia
                     key={job.id}
                     job={job}
                     style={resolveStyle(job.prompt_name, styleLookup)}
+                    selected={selectedTrashIds.has(job.id)}
+                    onToggleSelect={toggleTrashSelect}
                     onRestore={() => handleRestore(job.id)}
                     onDeleteForever={() => setConfirm({ kind: "purge", job })}
                   />
@@ -662,6 +851,16 @@ export default function LibraryWorkspace({ refreshKey = 0, onOpenBuilder, initia
         />
       )}
 
+      {folderDelete && (
+        <DeleteFoldersModal
+          folderDelete={folderDelete}
+          busy={folderDeleteBusy}
+          onCancel={() => !folderDeleteBusy && setFolderDelete(null)}
+          onFoldersOnly={() => performFolderDelete("foldersOnly")}
+          onWithGuides={() => performFolderDelete("withGuides")}
+        />
+      )}
+
       <Toast toast={toast} onClose={() => setToast(null)} />
     </div>
   );
@@ -706,7 +905,8 @@ function jobTitle(job) {
 // permanent-delete confirms. Destructive variants use a red action button that
 // is NOT the default-focused control (Cancel holds initial focus).
 function ConfirmModal({ confirm, busy, onCancel, onConfirm }) {
-  const destructive = confirm.kind === "purge" || confirm.kind === "emptyTrash";
+  const destructive =
+    confirm.kind === "purge" || confirm.kind === "emptyTrash" || confirm.kind === "bulkPurge";
   let heading;
   let body;
   let actionLabel;
@@ -721,6 +921,10 @@ function ConfirmModal({ confirm, busy, onCancel, onConfirm }) {
   } else if (confirm.kind === "purge") {
     heading = `Permanently delete '${jobTitle(confirm.job)}'?`;
     body = "This cannot be undone.";
+    actionLabel = "Delete Forever";
+  } else if (confirm.kind === "bulkPurge") {
+    heading = `Permanently delete ${confirm.count} selected guide${confirm.count === 1 ? "" : "s"}?`;
+    body = "This permanently removes them from Trash and cannot be undone.";
     actionLabel = "Delete Forever";
   } else {
     heading = `Permanently delete all ${confirm.count} guide${confirm.count === 1 ? "" : "s"} in trash?`;
@@ -795,9 +999,14 @@ function FolderRail({
   onDelete,
   folderError,
   trashCount = 0,
-  trashView
+  trashView,
+  selectedFolderIds,
+  onToggleFolderSelect,
+  onClearFolderSelection,
+  onDeleteFolders
 }) {
   const trashActive = selectedFolder === trashView;
+  const folderSelectionCount = selectedFolderIds.size;
   return (
     <aside className="flex w-56 shrink-0 flex-col rounded-2xl border border-white/10 bg-white/[0.035] p-3">
       <p className="px-1 pb-2 text-[11px] font-bold uppercase tracking-[0.16em] text-slate-500">Folders</p>
@@ -805,10 +1014,21 @@ function FolderRail({
         {folders.map((folder) => {
           const active = selectedFolder === folder.id;
           const isRenaming = renaming?.id === folder.id;
+          const selectable = !folder.system;
+          const selected = selectable && selectedFolderIds.has(folder.id);
           return (
-            <div key={folder.id} className="group">
+            <div key={folder.id} className="group flex items-center gap-1">
+              {selectable && !isRenaming && (
+                <input
+                  type="checkbox"
+                  className="h-3.5 w-3.5 shrink-0 accent-ember-500"
+                  checked={selected}
+                  onChange={() => onToggleFolderSelect(folder.id)}
+                  aria-label={`Select folder ${folder.name}`}
+                />
+              )}
               {isRenaming ? (
-                <div className="grid gap-1.5 px-1 py-1">
+                <div className="grid min-w-0 flex-1 gap-1.5 px-1 py-1">
                   <div className="flex items-center gap-1">
                     <input
                       autoFocus
@@ -833,7 +1053,7 @@ function FolderRail({
                 <button
                   type="button"
                   onClick={() => onSelect(folder.id)}
-                  className={`flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left text-sm transition ${
+                  className={`flex min-w-0 flex-1 items-center gap-2 rounded-lg px-2 py-1.5 text-left text-sm transition ${
                     active ? "bg-ember-500/[0.12] text-white" : "text-slate-300 hover:bg-white/[0.05]"
                   }`}
                 >
@@ -874,6 +1094,30 @@ function FolderRail({
           );
         })}
       </div>
+
+      {folderSelectionCount > 0 && (
+        <div className="mt-2 rounded-lg border border-ember-500/40 bg-ember-500/[0.08] p-2">
+          <p className="px-0.5 text-xs font-bold text-white">
+            {folderSelectionCount} folder{folderSelectionCount === 1 ? "" : "s"} selected
+          </p>
+          <div className="mt-1.5 flex items-center gap-1.5">
+            <button
+              type="button"
+              onClick={onDeleteFolders}
+              className="inline-flex h-7 flex-1 items-center justify-center gap-1 rounded-lg border border-red-400/40 bg-red-500/10 px-2 text-xs font-bold text-red-200 transition hover:bg-red-500/20"
+            >
+              <Trash2 size={12} /> Delete
+            </button>
+            <button
+              type="button"
+              onClick={onClearFolderSelection}
+              className="inline-flex h-7 items-center justify-center gap-1 rounded-lg border border-white/10 bg-white/[0.04] px-2 text-xs font-bold text-slate-300 transition hover:text-white"
+            >
+              <X size={12} /> Clear
+            </button>
+          </div>
+        </div>
+      )}
 
       <div className="mt-2 border-t border-white/10 pt-2">
         <button
@@ -1160,10 +1404,23 @@ function JobCard({ job, style, folder, moveTargets, onMove, onDetails, onTrash, 
   );
 }
 
-function TrashCard({ job, style, onRestore, onDeleteForever }) {
+function TrashCard({ job, style, selected, onToggleSelect, onRestore, onDeleteForever }) {
   const attachments = job.attachment_summary || {};
   return (
-    <div className="flex gap-3 rounded-xl border border-white/10 bg-white/[0.025] p-3">
+    <div
+      className={`flex gap-3 rounded-xl border p-3 transition ${
+        selected ? "border-ember-500/60 bg-ember-500/[0.08]" : "border-white/10 bg-white/[0.025]"
+      }`}
+    >
+      <label className="flex shrink-0 items-start pt-0.5" onClick={(event) => event.stopPropagation()}>
+        <input
+          type="checkbox"
+          className="h-4 w-4 accent-ember-500"
+          checked={selected}
+          onChange={() => onToggleSelect(job.id)}
+          aria-label={`Select ${job.title || "study guide"}`}
+        />
+      </label>
       <div className="flex min-w-0 flex-1 flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
         <div className="min-w-0 flex-1">
           <p className="truncate text-sm font-bold text-slate-200">{job.title || "Untitled study guide"}</p>
@@ -1230,6 +1487,105 @@ function BulkBar({ count, folders, onMove, onUnfile, onDelete, onClear }) {
         >
           <X size={13} /> Clear
         </button>
+      </div>
+    </div>
+  );
+}
+
+function TrashBulkBar({ count, onRestore, onPurge, onClear }) {
+  return (
+    <div className="mt-3 flex flex-wrap items-center gap-2 rounded-lg border border-ember-500/40 bg-ember-500/[0.08] px-3 py-2">
+      <span className="text-sm font-bold text-white">{count} selected</span>
+      <div className="ml-auto flex flex-wrap items-center gap-2">
+        <button
+          type="button"
+          onClick={onRestore}
+          className="inline-flex h-8 items-center gap-1 rounded-lg border border-white/10 bg-white/[0.04] px-2.5 text-xs font-bold text-slate-200 transition hover:border-ember-500/60 hover:text-white"
+        >
+          <RotateCcw size={13} /> Restore selected
+        </button>
+        <button
+          type="button"
+          onClick={onPurge}
+          className="inline-flex h-8 items-center gap-1 rounded-lg border border-red-400/40 bg-red-500/10 px-2.5 text-xs font-bold text-red-200 transition hover:bg-red-500/20"
+        >
+          <Trash2 size={13} /> Delete forever
+        </button>
+        <button
+          type="button"
+          onClick={onClear}
+          className="inline-flex h-8 items-center gap-1 rounded-lg border border-white/10 bg-white/[0.04] px-2.5 text-xs font-bold text-slate-300 transition hover:text-white"
+        >
+          <X size={13} /> Clear
+        </button>
+      </div>
+    </div>
+  );
+}
+
+// Folder bulk-delete modal. Unlike the single-action ConfirmModal it offers TWO
+// destructive paths: (A) delete folders only — their guides fall back to Unfiled;
+// (B) delete folders AND move the guides inside them to Trash (soft-delete,
+// reversible from the Trash view). Cancel holds initial focus.
+function DeleteFoldersModal({ folderDelete, busy, onCancel, onFoldersOnly, onWithGuides }) {
+  const { folderIds, jobCount } = folderDelete;
+  const folderLabel = `${folderIds.length} folder${folderIds.length === 1 ? "" : "s"}`;
+  const guideLabel = `${jobCount} guide${jobCount === 1 ? "" : "s"}`;
+  return (
+    <div className="fixed inset-0 z-[60] flex items-center justify-center p-4">
+      <button type="button" aria-label="Cancel" className="absolute inset-0 cursor-default bg-black/60" onClick={onCancel} />
+      <div
+        role="dialog"
+        aria-modal="true"
+        className="relative w-full max-w-md rounded-2xl border border-white/10 bg-[#0B0F19] p-5 shadow-2xl"
+      >
+        <div className="flex items-start gap-3">
+          <FolderClosed className="mt-0.5 h-5 w-5 shrink-0 text-amber-300" />
+          <div className="min-w-0">
+            <h2 className="text-sm font-bold text-white">Delete {folderLabel}?</h2>
+            <p className="mt-1 text-sm text-slate-400">
+              {jobCount > 0
+                ? `${guideLabel} are filed in ${folderIds.length === 1 ? "this folder" : "these folders"}. Choose what happens to them.`
+                : "These folders have no guides filed in them."}
+            </p>
+          </div>
+        </div>
+        <div className="mt-5 grid gap-2">
+          <button
+            type="button"
+            disabled={busy}
+            onClick={onFoldersOnly}
+            className="flex flex-col items-start rounded-lg border border-white/15 bg-white/[0.04] px-3.5 py-2.5 text-left transition hover:bg-white/[0.08] disabled:opacity-50"
+          >
+            <span className="text-sm font-bold text-slate-100">Delete folders only</span>
+            <span className="text-xs text-slate-400">Guides are kept and become Unfiled.</span>
+          </button>
+          <button
+            type="button"
+            disabled={busy}
+            onClick={onWithGuides}
+            className="flex flex-col items-start rounded-lg border border-red-400/40 bg-red-500/10 px-3.5 py-2.5 text-left transition hover:bg-red-500/20 disabled:opacity-50"
+          >
+            <span className="flex items-center gap-1.5 text-sm font-bold text-red-100">
+              {busy && <Loader2 className="h-4 w-4 animate-spin" />}
+              Delete folders and move guides to Trash
+            </span>
+            <span className="text-xs text-red-200/80">
+              {guideLabel} are soft-deleted to Trash (restorable). Not permanent.
+            </span>
+          </button>
+        </div>
+        <div className="mt-3 flex justify-end">
+          <button
+            type="button"
+            autoFocus
+            disabled={busy}
+            onClick={onCancel}
+            className="inline-flex h-9 items-center rounded-lg border border-white/15 bg-white/[0.04] px-3.5 text-sm font-bold text-slate-200 transition hover:bg-white/[0.08] disabled:opacity-50"
+          >
+            Cancel
+          </button>
+        </div>
       </div>
     </div>
   );

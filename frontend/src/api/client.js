@@ -207,6 +207,16 @@ export function bulkMoveJobs(ids, folderId) {
   });
 }
 
+// Bulk PERMANENT delete. Each id must already be in the trash; loops the same
+// guarded single-job purge server-side. Irreversible — confirm strongly first.
+export function bulkPurgeJobs(ids) {
+  return requestJson("/api/jobs/bulk/purge", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ ids })
+  });
+}
+
 export function generateOutline({ sourceText = "", title = "", provider = null, model = null }) {
   return requestJson("/api/outline/generate", {
     method: "POST",
