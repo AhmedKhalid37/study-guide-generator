@@ -15,7 +15,7 @@ from fastapi.responses import FileResponse, Response
 from pydantic import BaseModel, ValidationError
 from starlette.concurrency import run_in_threadpool
 
-from pipeline import generator_presets, library_store, presets as preset_store, style_store
+from pipeline import generator_presets, library_store, presets as preset_store, shortcut_store, style_store
 from pipeline.job_manager import (
     JOBS_DIR,
     Job,
@@ -702,6 +702,124 @@ def move_library_job(job_id: str, request: MoveJobRequest) -> dict[str, Any]:
     except library_store.LibraryStoreError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     return {"ok": True, "job_id": job.id, "folder_id": folder}
+
+
+# ── Shortcuts (Home launcher registry) ───────────────────────────────────────
+
+def _guard_shortcut_id(shortcut_id: str) -> str:
+    """Reject path-traversal-ish ids before they reach the store (like jobs)."""
+    if "/" in shortcut_id or "\\" in shortcut_id or shortcut_id in {"", ".", ".."}:
+        raise HTTPException(status_code=404, detail="Shortcut not found.")
+    return shortcut_id
+
+
+def _shortcut_error(exc: Exception) -> HTTPException:
+    if isinstance(exc, shortcut_store.ShortcutNotFoundError):
+        return HTTPException(status_code=404, detail=str(exc))
+    if isinstance(exc, shortcut_store.ShortcutStoreError):
+        return HTTPException(status_code=400, detail=str(exc))
+    return HTTPException(status_code=400, detail="Invalid shortcut request.")
+
+
+@app.get("/api/shortcuts")
+def list_shortcuts_route() -> dict[str, Any]:
+    return {"shortcuts": shortcut_store.list_shortcuts()}
+
+
+@app.get("/api/shortcuts/export")
+def export_shortcuts_route() -> dict[str, Any]:
+    return shortcut_store.export_all()
+
+
+@app.post("/api/shortcuts")
+def create_shortcut_route(body: dict[str, Any]) -> dict[str, Any]:
+    try:
+        return shortcut_store.create_shortcut(body)
+    except shortcut_store.ShortcutStoreError as exc:
+        raise _shortcut_error(exc) from exc
+
+
+@app.post("/api/shortcuts/reorder")
+def reorder_shortcuts_route(body: dict[str, Any]) -> dict[str, Any]:
+    items = body.get("items") if isinstance(body, dict) else None
+    try:
+        return {"shortcuts": shortcut_store.reorder_shortcuts(items)}
+    except shortcut_store.ShortcutStoreError as exc:
+        raise _shortcut_error(exc) from exc
+
+
+@app.post("/api/shortcuts/defaults/reset")
+def reset_shortcuts_route() -> dict[str, Any]:
+    return {"shortcuts": shortcut_store.reset_defaults()}
+
+
+@app.post("/api/shortcuts/import/preview")
+async def preview_import_shortcuts_route(request: Request) -> dict[str, Any]:
+    data, overwrite = await _read_shortcut_import(request)
+    try:
+        return shortcut_store.preview_import(data, overwrite=overwrite)
+    except shortcut_store.ShortcutStoreError as exc:
+        raise _shortcut_error(exc) from exc
+
+
+@app.post("/api/shortcuts/import")
+async def import_shortcuts_route(request: Request) -> dict[str, Any]:
+    data, overwrite = await _read_shortcut_import(request)
+    try:
+        return shortcut_store.import_shortcuts(data, overwrite=overwrite)
+    except shortcut_store.ShortcutStoreError as exc:
+        raise _shortcut_error(exc) from exc
+
+
+async def _read_shortcut_import(request: Request) -> tuple[Any, bool]:
+    """Parse an import body that may be a single shortcut, a list, or an envelope.
+
+    An optional top-level ``overwrite`` flag on an envelope controls conflict
+    handling; absent it, conflicting ids get a fresh id (never overwrite).
+    """
+    try:
+        payload = await request.json()
+    except (json.JSONDecodeError, ValueError) as exc:
+        raise HTTPException(status_code=400, detail="Invalid JSON.") from exc
+    overwrite = bool(isinstance(payload, dict) and payload.get("overwrite"))
+    return payload, overwrite
+
+
+@app.get("/api/shortcuts/{shortcut_id}")
+def get_shortcut_route(shortcut_id: str) -> dict[str, Any]:
+    _guard_shortcut_id(shortcut_id)
+    try:
+        return shortcut_store.get_shortcut(shortcut_id)
+    except shortcut_store.ShortcutStoreError as exc:
+        raise _shortcut_error(exc) from exc
+
+
+@app.put("/api/shortcuts/{shortcut_id}")
+def update_shortcut_route(shortcut_id: str, body: dict[str, Any]) -> dict[str, Any]:
+    _guard_shortcut_id(shortcut_id)
+    try:
+        return shortcut_store.update_shortcut(shortcut_id, body)
+    except shortcut_store.ShortcutStoreError as exc:
+        raise _shortcut_error(exc) from exc
+
+
+@app.delete("/api/shortcuts/{shortcut_id}")
+def delete_shortcut_route(shortcut_id: str) -> dict[str, bool]:
+    _guard_shortcut_id(shortcut_id)
+    try:
+        shortcut_store.delete_shortcut(shortcut_id)
+    except shortcut_store.ShortcutStoreError as exc:
+        raise _shortcut_error(exc) from exc
+    return {"ok": True}
+
+
+@app.get("/api/shortcuts/{shortcut_id}/export")
+def export_shortcut_route(shortcut_id: str) -> dict[str, Any]:
+    _guard_shortcut_id(shortcut_id)
+    try:
+        return shortcut_store.export_shortcut(shortcut_id)
+    except shortcut_store.ShortcutStoreError as exc:
+        raise _shortcut_error(exc) from exc
 
 
 @app.get("/api/exports")

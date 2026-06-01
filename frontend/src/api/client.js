@@ -413,6 +413,76 @@ export function quizExportUrl(jobId, quizN, format) {
   return `${API_BASE_URL}/api/jobs/${encodeURIComponent(jobId)}/quizzes/${quizN}/export?format=${encodeURIComponent(format)}`;
 }
 
+// ── Shortcuts (Home launcher registry) ──────────────────────────────────────
+
+export function listShortcuts() {
+  return requestJson("/api/shortcuts");
+}
+
+export function getShortcut(shortcutId) {
+  return requestJson(`/api/shortcuts/${encodeURIComponent(shortcutId)}`);
+}
+
+export function createShortcut(shortcut) {
+  return requestJson("/api/shortcuts", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(shortcut),
+  });
+}
+
+export function updateShortcut(shortcutId, patch) {
+  return requestJson(`/api/shortcuts/${encodeURIComponent(shortcutId)}`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(patch),
+  });
+}
+
+export function deleteShortcut(shortcutId) {
+  return requestJson(`/api/shortcuts/${encodeURIComponent(shortcutId)}`, {
+    method: "DELETE",
+  });
+}
+
+export function reorderShortcuts(items) {
+  return requestJson("/api/shortcuts/reorder", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ items }),
+  });
+}
+
+export function resetShortcutDefaults() {
+  return requestJson("/api/shortcuts/defaults/reset", { method: "POST" });
+}
+
+export function previewImportShortcuts(data, overwrite = false) {
+  const body = Array.isArray(data) ? data : { ...data, overwrite };
+  return requestJson("/api/shortcuts/import/preview", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+}
+
+export function importShortcuts(data, overwrite = false) {
+  const body = Array.isArray(data) ? data : { ...data, overwrite };
+  return requestJson("/api/shortcuts/import", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+}
+
+export function exportShortcutUrl(shortcutId) {
+  return `${API_BASE_URL}/api/shortcuts/${encodeURIComponent(shortcutId)}/export`;
+}
+
+export function exportShortcutsUrl() {
+  return `${API_BASE_URL}/api/shortcuts/export`;
+}
+
 export function artifactUrl(jobId, artifactName) {
   return `${API_BASE_URL}/api/jobs/${encodeURIComponent(jobId)}/artifacts/${encodeURIComponent(
     artifactName
