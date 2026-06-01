@@ -33,7 +33,11 @@ from pipeline.markdown_sections import (
     parse_sections,
     splice_section,
 )
-from pipeline.orchestrator import generate_study_guide
+from pipeline.orchestrator import (
+    DIFFICULTY_VALUES,
+    OUTPUT_DEPTH_VALUES,
+    generate_study_guide,
+)
 from pipeline.provider_config import (
     build_provider_config,
     get_provider_registry,
@@ -150,6 +154,12 @@ class LLMJobRequest(BaseModel):
     # Unknown keys are ignored downstream by the orchestrator whitelist; an unset
     # or empty map adds no new prompt fragments (default behaviour unchanged).
     include_sections: dict[str, bool] = {}
+    # Optional global generation-directive axes (C2). These MODIFY overall
+    # behaviour (how deep / how it is pitched) rather than ADD sections. Each is an
+    # optional scalar enum validated at the handler; unset adds no prompt fragments.
+    # Voice/tone is intentionally NOT an axis here — it stays owned by Styles.
+    output_depth: str | None = None
+    difficulty: str | None = None
 
 
 class OutlineGenerateRequest(BaseModel):
@@ -1265,6 +1275,7 @@ async def create_llm_job(request: Request) -> dict[str, Any]:
     _validate_theme(llm_request.theme)
     _validate_prompt_name(llm_request.prompt_name)
     _validate_provider_model(llm_request.provider, llm_request.model)
+    _validate_generation_axes(llm_request.output_depth, llm_request.difficulty)
     folder_target = _resolve_folder_target(llm_request.folder_id)
     # Prepend a "Required Outline" directive into the source so it works with any
     # style (the {source} slot is the one injection point every template shares).
@@ -1310,6 +1321,8 @@ async def create_llm_job(request: Request) -> dict[str, Any]:
             prompt_name=llm_request.prompt_name,
             generator_preset=llm_request.generator_preset,
             include_sections=llm_request.include_sections,
+            output_depth=llm_request.output_depth,
+            difficulty=llm_request.difficulty,
             theme=llm_request.theme,
             strict_math=llm_request.strict_math,
             config=config,
@@ -1679,6 +1692,12 @@ def retry_failed_job(job_id: str) -> dict[str, Any]:
         qwen_thinking = bool(manifest.get("qwen_thinking", True))
         manifest_sections = manifest.get("include_sections")
         include_sections = manifest_sections if isinstance(manifest_sections, dict) else {}
+        # Reproduce the generation-directive axes the job was created with. Stored
+        # values were validated on the way in; the orchestrator ignores unknowns.
+        manifest_depth = manifest.get("output_depth")
+        output_depth = manifest_depth if isinstance(manifest_depth, str) else None
+        manifest_difficulty = manifest.get("difficulty")
+        difficulty = manifest_difficulty if isinstance(manifest_difficulty, str) else None
 
         try:
             config = build_provider_config(provider, model_name, qwen_thinking_enabled=qwen_thinking)
@@ -1696,6 +1715,8 @@ def retry_failed_job(job_id: str) -> dict[str, Any]:
                 mode=mode,
                 prompt_name=prompt_name,
                 include_sections=include_sections,
+                output_depth=output_depth,
+                difficulty=difficulty,
                 config=config,
             )
             job.save_text(job.raw_md, raw_markdown)
@@ -2356,6 +2377,22 @@ def _validate_theme(theme: str) -> None:
 def _validate_prompt_name(prompt_name: str) -> None:
     if not style_store.style_exists(prompt_name):
         raise HTTPException(status_code=400, detail="Unsupported prompt_name.")
+
+
+def _validate_generation_axes(output_depth: str | None, difficulty: str | None) -> None:
+    """Reject unknown axis enum values up front (repo convention: scalar inputs are
+    validated at the boundary, like provider/model/theme). Unset (None/"") is fine
+    and contributes no prompt fragment."""
+    if output_depth and output_depth not in OUTPUT_DEPTH_VALUES:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Unsupported output_depth. Expected one of: {', '.join(OUTPUT_DEPTH_VALUES)}.",
+        )
+    if difficulty and difficulty not in DIFFICULTY_VALUES:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Unsupported difficulty. Expected one of: {', '.join(DIFFICULTY_VALUES)}.",
+        )
 
 
 def _validate_generator_preset(preset_id: str) -> None:

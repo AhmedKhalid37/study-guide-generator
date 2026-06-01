@@ -94,6 +94,72 @@ INCLUDE_SECTION_ALIASES: dict[str, str] = {
     "diagrams": "diagrams_figures",
 }
 
+# ── Global generation-directive axes (C2) ────────────────────────────────────
+# These differ from ``include_sections`` (which ADDS specific sections like a
+# glossary or MCQs). An axis instead MODIFIES the overall generation behaviour —
+# how deep the coverage is (``output_depth``) and how the material is pitched
+# (``difficulty``). Each axis is an optional scalar enum; an unset/unknown value
+# contributes NO fragment, so the no-axes path stays byte-identical. ``voice`` was
+# deliberately NOT added — tone/voice is owned by the Styles system (e.g. the
+# baby_steps / exam_cram styles and the "blunt voice" prompt directives); a second
+# voice axis would create two competing tone systems. See docs/DECISIONS.md.
+OUTPUT_DEPTH_FRAGMENTS: dict[str, str] = {
+    "quick": (
+        "Prioritize concise, high-yield coverage. Keep explanations short and focus on "
+        "the most testable points."
+    ),
+    "balanced": (
+        "Balance coverage and clarity. Explain the important ideas without excessive detail."
+    ),
+    "exhaustive": (
+        "Provide broad, detailed coverage with careful explanations, examples, and edge "
+        "cases where relevant."
+    ),
+}
+
+DIFFICULTY_FRAGMENTS: dict[str, str] = {
+    "beginner": (
+        "Assume the learner is new to the topic. Define basic terms and avoid unexplained jargon."
+    ),
+    "normal": (
+        "Assume a typical course-level learner. Use standard terminology with clear explanations."
+    ),
+    "exam_level": (
+        "Prioritize exam-likely concepts, traps, definitions, comparisons, and practice-focused "
+        "explanations."
+    ),
+    "advanced": (
+        "Use deeper technical detail and assume the learner can handle advanced terminology."
+    ),
+}
+
+# Accepted enum values per axis, for input validation at the API boundary.
+OUTPUT_DEPTH_VALUES = tuple(OUTPUT_DEPTH_FRAGMENTS)
+DIFFICULTY_VALUES = tuple(DIFFICULTY_FRAGMENTS)
+
+
+def build_axis_directives_block(
+    output_depth: str | None = None,
+    difficulty: str | None = None,
+) -> str:
+    """Assemble the global directive block from the depth/difficulty axes.
+
+    Returns "" when neither axis is set to a known value, so callers can inject it
+    without changing the prompt for the default (no-axes) request. Unknown values
+    are ignored defensively (the API boundary rejects them up front; this keeps a
+    stale/bad manifest value from crashing a rerender). Depth is listed before
+    difficulty for deterministic ordering."""
+    lines: list[str] = []
+    depth_fragment = OUTPUT_DEPTH_FRAGMENTS.get(output_depth) if output_depth else None
+    difficulty_fragment = DIFFICULTY_FRAGMENTS.get(difficulty) if difficulty else None
+    if depth_fragment:
+        lines.append(f"- {depth_fragment}")
+    if difficulty_fragment:
+        lines.append(f"- {difficulty_fragment}")
+    if not lines:
+        return ""
+    return "\n".join(["Apply these overall generation directives:", *lines])
+
 
 def normalize_include_sections(
     include_sections: Mapping[str, object] | Iterable[str] | None,
@@ -147,6 +213,16 @@ def _system_with_sections(*parts: str) -> str:
     return "\n\n".join(part for part in parts if part)
 
 
+# System-prompt assembly order (kept identical in both paths below):
+#   [preset system prompt, preset path only]
+#   axis/global directive fragments (output_depth, difficulty)
+#   include_sections fragments
+#   MARKDOWN_MATH_SYSTEM  ← always the final appended block
+# Axes are global directives that shape HOW the guide is written, so they come
+# before the section-adding include_sections fragments; the math/table contract
+# stays last so the renderer rules always apply on top. Empty parts drop out, so
+# with no axes and no sections the assembled system message is byte-identical to
+# the original single-block behaviour.
 def build_messages(
     source_text: str,
     *,
@@ -154,10 +230,13 @@ def build_messages(
     mode: str = "exam",
     prompt_name: str = "basic_study_guide",
     include_sections: Mapping[str, object] | Iterable[str] | None = None,
+    output_depth: str | None = None,
+    difficulty: str | None = None,
 ) -> list[dict]:
     template = load_prompt_template(prompt_name)
     user = render_prompt_template(template, title=title, mode=mode, source=source_text)
     system = _system_with_sections(
+        build_axis_directives_block(output_depth, difficulty),
         build_include_sections_block(include_sections),
         MARKDOWN_MATH_SYSTEM,
     )
@@ -172,11 +251,16 @@ def build_messages_for_preset(
     *,
     system_prompt: str,
     include_sections: Mapping[str, object] | Iterable[str] | None = None,
+    output_depth: str | None = None,
+    difficulty: str | None = None,
 ) -> list[dict]:
     """Messages for a generator preset: the preset IS the system prompt (plus the
-    renderer's math/table rules), and the source goes verbatim as the user turn."""
+    renderer's math/table rules), and the source goes verbatim as the user turn.
+
+    The preset system prompt stays first so axes never displace or weaken it."""
     system = _system_with_sections(
         system_prompt,
+        build_axis_directives_block(output_depth, difficulty),
         build_include_sections_block(include_sections),
         MARKDOWN_MATH_SYSTEM,
     )
@@ -194,6 +278,8 @@ def generate_study_guide(
     prompt_name: str = "basic_study_guide",
     generator_preset: str | None = None,
     include_sections: Mapping[str, object] | Iterable[str] | None = None,
+    output_depth: str | None = None,
+    difficulty: str | None = None,
     config: LLMConfig | None = None,
     on_stage: Callable[[str], None] | None = None,
 ) -> str:
@@ -210,7 +296,11 @@ def generate_study_guide(
             on_stage("loading_preset")
         system_prompt = generator_presets.resolve_system_prompt(generator_preset)
         messages = build_messages_for_preset(
-            source_text, system_prompt=system_prompt, include_sections=include_sections
+            source_text,
+            system_prompt=system_prompt,
+            include_sections=include_sections,
+            output_depth=output_depth,
+            difficulty=difficulty,
         )
     else:
         messages = build_messages(
@@ -219,6 +309,8 @@ def generate_study_guide(
             mode=mode,
             prompt_name=prompt_name,
             include_sections=include_sections,
+            output_depth=output_depth,
+            difficulty=difficulty,
         )
     if on_stage is not None:
         on_stage("connecting_model")

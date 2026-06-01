@@ -39,6 +39,8 @@ def run_llm_job(
     prompt_name: str = "basic_study_guide",
     generator_preset: str | None = None,
     include_sections: dict[str, bool] | None = None,
+    output_depth: str | None = None,
+    difficulty: str | None = None,
     theme: str = "claude_clean",
     strict_math: bool = True,
     config: LLMConfig | None = None,
@@ -55,6 +57,10 @@ def run_llm_job(
             "generator_preset": generator_preset,
             # Persisted so rerender reproduces the same requested output sections.
             "include_sections": include_sections or {},
+            # Global generation-directive axes (C2), persisted so rerender
+            # reproduces the same depth/difficulty. Unset stays None.
+            "output_depth": output_depth,
+            "difficulty": difficulty,
             "theme": theme,
             "strict_math": strict_math,
             "provider": resolved_config.provider,
@@ -97,6 +103,8 @@ def run_llm_job(
             prompt_name=prompt_name,
             generator_preset=generator_preset,
             include_sections=include_sections,
+            output_depth=output_depth,
+            difficulty=difficulty,
             config=resolved_config,
             on_stage=job.set_stage,
         )
