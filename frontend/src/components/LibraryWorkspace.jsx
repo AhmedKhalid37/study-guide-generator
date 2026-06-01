@@ -20,6 +20,9 @@ import {
 } from "lucide-react";
 import {
   artifactUrl,
+  bulkDeleteJobs,
+  bulkMoveJobs,
+  bulkRestoreJobs,
   createFolder,
   deleteFolder,
   emptyTrash,
@@ -28,7 +31,6 @@ import {
   getStyles,
   getTrash,
   moveJobToFolder,
-  moveJobsToFolder,
   purgeTrashedJob,
   restoreJob,
   setJobFavorite,
@@ -57,6 +59,21 @@ function statusTone(status) {
   return "border-amber-300/30 bg-amber-300/10 text-amber-100";
 }
 
+// Split a bulk-action response ({ results: [{ id, status }], ... }) into the
+// three outcome buckets so the UI can update selection/toasts honestly instead
+// of assuming all-or-nothing.
+function partitionResults(response) {
+  const ok = [];
+  const skipped = [];
+  const failed = []; // keep full {id, detail} for failures
+  for (const result of response?.results || []) {
+    if (result.status === "ok") ok.push(result.id);
+    else if (result.status === "skipped") skipped.push(result.id);
+    else failed.push(result);
+  }
+  return { ok, skipped, failed };
+}
+
 export default function LibraryWorkspace({ refreshKey = 0, onOpenBuilder, initialView = null }) {
   const [data, setData] = useState({ folders: [], jobs: [] });
   const [styleLookup, setStyleLookup] = useState({});
@@ -83,9 +100,13 @@ export default function LibraryWorkspace({ refreshKey = 0, onOpenBuilder, initia
   const [detailsError, setDetailsError] = useState(null);
 
   const [trashJobs, setTrashJobs] = useState([]);
-  // confirm modal: null | { kind: "trash"|"purge"|"emptyTrash", job?, count? }
+  // confirm modal: null | { kind: "trash"|"purge"|"emptyTrash"|"bulkTrash", job?, count?, ids? }
   const [confirm, setConfirm] = useState(null);
   const [confirmBusy, setConfirmBusy] = useState(false);
+
+  // Lightweight transient toast: null | { id, message, tone, action? }. Used for
+  // bulk-action summaries (incl. partial-success) and the delete→Undo affordance.
+  const [toast, setToast] = useState(null);
 
   const reload = useCallback(() => setInternalRefresh((n) => n + 1), []);
 
@@ -170,6 +191,21 @@ export default function LibraryWorkspace({ refreshKey = 0, onOpenBuilder, initia
       return next.size === prev.size ? prev : next;
     });
   }, [data.jobs]);
+
+  // Switching folder / search / filters changes which jobs are visible. Clear
+  // the selection on a view change so bulk actions can never operate on jobs the
+  // user can no longer see (chosen as the safest, least-surprising behavior).
+  useEffect(() => {
+    setSelectedIds((prev) => (prev.size ? new Set() : prev));
+  }, [selectedFolder, q, filters]);
+
+  // Auto-dismiss the toast. Undo toasts (those with an action) linger longer so
+  // the undo is actually reachable.
+  useEffect(() => {
+    if (!toast) return undefined;
+    const timer = setTimeout(() => setToast(null), toast.action ? 8000 : 4000);
+    return () => clearTimeout(timer);
+  }, [toast]);
 
   const folderMap = useMemo(
     () => Object.fromEntries(data.folders.map((folder) => [folder.id, folder])),
@@ -302,19 +338,80 @@ export default function LibraryWorkspace({ refreshKey = 0, onOpenBuilder, initia
     });
   }, [visibleIds]);
 
+  // Bulk move via the canonical /api/jobs/bulk/move. A whole-request failure
+  // (e.g. unknown folder → 404) is thrown by bulkMoveJobs: we keep the selection
+  // and the list untouched. A 200 may still carry per-id failures, so we clear
+  // only the ids that succeeded and keep failed ones selected.
   const handleBatchMove = useCallback(
     async (folderId) => {
       const ids = [...selectedIds];
       if (ids.length === 0) return;
+      setError(null);
+      const destName =
+        folderId === "unfiled" || !folderId ? "Unfiled" : folderMap[folderId]?.name || "folder";
       try {
-        await moveJobsToFolder(ids, folderId);
-        clearSelection();
+        const response = await bulkMoveJobs(ids, folderId);
+        const { ok, failed } = partitionResults(response);
+        setSelectedIds(new Set(failed.map((result) => result.id)));
         reload();
+        setToast({
+          id: Date.now(),
+          tone: failed.length ? "error" : "success",
+          message:
+            `Moved ${ok.length} guide${ok.length === 1 ? "" : "s"} to ${destName}` +
+            (failed.length ? ` · ${failed.length} failed` : "")
+        });
       } catch (err) {
-        setError(err.message || "Could not move selected guides.");
+        // Whole-request failure: do not touch the local list or selection.
+        setToast({ id: Date.now(), tone: "error", message: err.message || "Could not move selected guides." });
       }
     },
-    [selectedIds, clearSelection, reload]
+    [selectedIds, folderMap, reload]
+  );
+
+  // Bulk soft-delete via /api/jobs/bulk/delete. Routes through the trash (B1);
+  // `ok` ids were trashed by THIS action and are the ones Undo restores;
+  // `skipped` were already in the trash; `error` ids stay selected. The reload
+  // drops trashed jobs from the active list automatically.
+  const performBulkDelete = useCallback(
+    async (ids) => {
+      const response = await bulkDeleteJobs(ids);
+      const { ok, skipped, failed } = partitionResults(response);
+      setSelectedIds(new Set(failed.map((result) => result.id)));
+      reload();
+      const parts = [`${ok.length} moved to trash`];
+      if (skipped.length) parts.push(`${skipped.length} already trashed`);
+      if (failed.length) parts.push(`${failed.length} failed`);
+      setToast({
+        id: Date.now(),
+        tone: failed.length ? "error" : "success",
+        message: parts.join(" · "),
+        action: ok.length ? { label: "Undo", run: () => handleBulkUndo(ok) } : null
+      });
+    },
+    [reload]
+  );
+
+  // Undo a bulk delete by restoring exactly the ids that were trashed.
+  const handleBulkUndo = useCallback(
+    async (ids) => {
+      setToast(null);
+      try {
+        const response = await bulkRestoreJobs(ids);
+        const { ok, failed } = partitionResults(response);
+        reload();
+        setToast({
+          id: Date.now(),
+          tone: failed.length ? "error" : "success",
+          message:
+            `Restored ${ok.length} guide${ok.length === 1 ? "" : "s"}` +
+            (failed.length ? ` · ${failed.length} failed` : "")
+        });
+      } catch (err) {
+        setToast({ id: Date.now(), tone: "error", message: err.message || "Could not restore guides." });
+      }
+    },
+    [reload]
   );
 
   async function handleCreateFolder() {
@@ -363,13 +460,18 @@ export default function LibraryWorkspace({ refreshKey = 0, onOpenBuilder, initia
     try {
       if (confirm.kind === "trash") {
         await trashJob(confirm.job.id);
+        reload();
       } else if (confirm.kind === "purge") {
         await purgeTrashedJob(confirm.job.id);
+        reload();
       } else if (confirm.kind === "emptyTrash") {
         await emptyTrash();
+        reload();
+      } else if (confirm.kind === "bulkTrash") {
+        // performBulkDelete does its own reload + selection update + toast.
+        await performBulkDelete(confirm.ids);
       }
       setConfirm(null);
-      reload();
     } catch (err) {
       setError(err.message || "Action failed.");
       setConfirm(null);
@@ -472,6 +574,7 @@ export default function LibraryWorkspace({ refreshKey = 0, onOpenBuilder, initia
             folders={moveTargets.filter((folder) => folder.id !== "unfiled")}
             onMove={handleBatchMove}
             onUnfile={() => handleBatchMove("unfiled")}
+            onDelete={() => setConfirm({ kind: "bulkTrash", count: selectedIds.size, ids: [...selectedIds] })}
             onClear={clearSelection}
           />
         )}
@@ -558,6 +661,39 @@ export default function LibraryWorkspace({ refreshKey = 0, onOpenBuilder, initia
           onConfirm={runConfirm}
         />
       )}
+
+      <Toast toast={toast} onClose={() => setToast(null)} />
+    </div>
+  );
+}
+
+// Transient bottom-center toast. Supports an optional action button (used for
+// the bulk-delete Undo). Tone drives the accent color; not a new dependency.
+function Toast({ toast, onClose }) {
+  if (!toast) return null;
+  const tone =
+    toast.tone === "error"
+      ? "border-red-400/40 bg-red-500/15 text-red-100"
+      : toast.tone === "success"
+      ? "border-emerald-400/40 bg-emerald-500/15 text-emerald-100"
+      : "border-white/15 bg-[#0B0F19] text-slate-100";
+  return (
+    <div className="fixed bottom-5 left-1/2 z-[70] -translate-x-1/2">
+      <div className={`flex items-center gap-3 rounded-xl border px-4 py-2.5 shadow-2xl ${tone}`}>
+        <span className="text-sm font-semibold">{toast.message}</span>
+        {toast.action && (
+          <button
+            type="button"
+            onClick={toast.action.run}
+            className="inline-flex items-center gap-1 rounded-lg border border-white/25 bg-white/10 px-2.5 py-1 text-xs font-bold text-white transition hover:bg-white/20"
+          >
+            <RotateCcw size={12} /> {toast.action.label}
+          </button>
+        )}
+        <button type="button" onClick={onClose} className="text-slate-400 transition hover:text-white" aria-label="Dismiss">
+          <X size={14} />
+        </button>
+      </div>
     </div>
   );
 }
@@ -577,6 +713,10 @@ function ConfirmModal({ confirm, busy, onCancel, onConfirm }) {
   if (confirm.kind === "trash") {
     heading = "Move to trash?";
     body = "You can restore it later from the Trash.";
+    actionLabel = "Move to Trash";
+  } else if (confirm.kind === "bulkTrash") {
+    heading = `Move ${confirm.count} guide${confirm.count === 1 ? "" : "s"} to trash?`;
+    body = "You can undo right after, or restore later from the Trash.";
     actionLabel = "Move to Trash";
   } else if (confirm.kind === "purge") {
     heading = `Permanently delete '${jobTitle(confirm.job)}'?`;
@@ -1063,7 +1203,7 @@ function TrashCard({ job, style, onRestore, onDeleteForever }) {
   );
 }
 
-function BulkBar({ count, folders, onMove, onUnfile, onClear }) {
+function BulkBar({ count, folders, onMove, onUnfile, onDelete, onClear }) {
   return (
     <div className="mt-3 flex flex-wrap items-center gap-2 rounded-lg border border-ember-500/40 bg-ember-500/[0.08] px-3 py-2">
       <span className="text-sm font-bold text-white">{count} selected</span>
@@ -1075,6 +1215,13 @@ function BulkBar({ count, folders, onMove, onUnfile, onClear }) {
           className="inline-flex h-8 items-center gap-1 rounded-lg border border-white/10 bg-white/[0.04] px-2.5 text-xs font-bold text-slate-200 transition hover:border-ember-500/60 hover:text-white"
         >
           <FolderClosed size={13} /> Move to Unfiled
+        </button>
+        <button
+          type="button"
+          onClick={onDelete}
+          className="inline-flex h-8 items-center gap-1 rounded-lg border border-red-400/40 bg-red-500/10 px-2.5 text-xs font-bold text-red-200 transition hover:bg-red-500/20"
+        >
+          <Trash2 size={13} /> Delete
         </button>
         <button
           type="button"

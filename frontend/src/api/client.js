@@ -175,11 +175,35 @@ export function moveJobToFolder(jobId, folderId) {
   });
 }
 
-export function moveJobsToFolder(jobIds, folderId) {
-  return requestJson("/api/library/jobs/move", {
+// ── Bulk job actions (canonical /api/jobs/bulk/* family) ─────────────────────
+// All three return the partial-success batch contract:
+//   { results: [{ id, status: "ok"|"skipped"|"error", detail? }], ok_count, fail_count }
+// A whole-request failure (e.g. bulk move to an unknown folder → 404) rejects
+// via requestJson with the server's `detail`.
+
+export function bulkDeleteJobs(ids) {
+  return requestJson("/api/jobs/bulk/delete", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ job_ids: jobIds, folder_id: folderId })
+    body: JSON.stringify({ ids })
+  });
+}
+
+export function bulkRestoreJobs(ids) {
+  return requestJson("/api/jobs/bulk/restore", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ ids })
+  });
+}
+
+// Canonical batch move (replaces the older POST /api/library/jobs/move). Sends
+// `folder_id` (NOT `folder`); pass "unfiled" to remove the folder assignment.
+export function bulkMoveJobs(ids, folderId) {
+  return requestJson("/api/jobs/bulk/move", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ ids, folder_id: folderId })
   });
 }
 
