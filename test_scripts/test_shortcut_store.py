@@ -178,6 +178,121 @@ def run():
     reset = shortcut_store.reset_defaults()
     check("reset restores defaults", len(reset) == 6, f"n={len(reset)}")
 
+    # 13. canonical include_sections + axes round-trip (create/read)
+    canon = shortcut_store.create_shortcut({
+        "name": "Canon", "type": "builder_setup",
+        "payload": {
+            "provider": "deepseek",
+            "include_sections": {"glossary": True, "mcqs_with_answers": True, "formula_sheet": True},
+            "output_depth": "quick",
+            "difficulty": "exam_level",
+        },
+    })
+    cp = canon["payload"]
+    check("create stores canonical include_sections",
+          cp["include_sections"] == {"glossary": True, "mcqs_with_answers": True, "formula_sheet": True},
+          f"{cp['include_sections']}")
+    check("create preserves output_depth/difficulty",
+          cp["output_depth"] == "quick" and cp["difficulty"] == "exam_level", f"{cp}")
+    read_back = shortcut_store.get_shortcut(canon["id"])["payload"]
+    check("read-back preserves axes + sections",
+          read_back["include_sections"] == cp["include_sections"]
+          and read_back["output_depth"] == "quick" and read_back["difficulty"] == "exam_level", "")
+
+    # 14. invalid axis values are REJECTED (not silently persisted)
+    try:
+        shortcut_store.create_shortcut({
+            "name": "Bad Depth", "type": "builder_setup",
+            "payload": {"provider": "deepseek", "output_depth": "ultra"},
+        })
+        check("invalid output_depth rejected", False)
+    except shortcut_store.ShortcutStoreError:
+        check("invalid output_depth rejected", True)
+    try:
+        shortcut_store.create_shortcut({
+            "name": "Bad Diff", "type": "builder_setup",
+            "payload": {"provider": "deepseek", "difficulty": "impossible"},
+        })
+        check("invalid difficulty rejected", False)
+    except shortcut_store.ShortcutStoreError:
+        check("invalid difficulty rejected", True)
+
+    # 15. unknown include_section keys dropped (whitelist convention)
+    drops = shortcut_store.create_shortcut({
+        "name": "Drop Unknown", "type": "builder_setup",
+        "payload": {"provider": "deepseek", "include_sections": {"glossary": True, "fake_section": True}},
+    })
+    check("unknown include_section dropped",
+          drops["payload"]["include_sections"] == {"glossary": True}, f"{drops['payload']['include_sections']}")
+
+    # 16. legacy modules translate-on-read WITHOUT rewriting shortcuts.json
+    legacy_record = {
+        "id": "sc_legacymodules",
+        "name": "Legacy Modules",
+        "type": "builder_setup",
+        "icon": "", "color": None, "pinned": False, "order": 50,
+        "created_at": "2020-01-01T00:00:00Z", "updated_at": "2020-01-01T00:00:00Z",
+        "payload": {
+            "input_type": "generate_llm", "provider": "deepseek", "model": None,
+            "generator_preset": None, "style": None, "mode": "study_guide",
+            "target_pages": None,
+            "modules": {"mcqs": True, "glossary": True, "formulas": True, "diagrams": True},
+            "strict_math": True, "export_formats": [],
+        },
+    }
+    reg = shortcut_store._read_registry()
+    reg["shortcuts"].append(legacy_record)
+    shortcut_store._write_registry(reg)
+    before_bytes = shortcut_store.SHORTCUTS_JSON.read_bytes()
+
+    listed = shortcut_store.get_shortcut("sc_legacymodules")["payload"]
+    expected_sections = {"glossary": True, "mcqs_with_answers": True, "formula_sheet": True, "diagrams_figures": True}
+    check("legacy modules translate to include_sections on read",
+          listed["include_sections"] == expected_sections, f"{listed.get('include_sections')}")
+    exported_legacy = shortcut_store.export_shortcut("sc_legacymodules")["payload"]
+    check("legacy modules translate on export",
+          exported_legacy["include_sections"] == expected_sections, f"{exported_legacy.get('include_sections')}")
+
+    after_bytes = shortcut_store.SHORTCUTS_JSON.read_bytes()
+    check("read/export did NOT rewrite shortcuts.json", before_bytes == after_bytes, "")
+
+    # 17. explicit include_sections wins; legacy modules only fill missing
+    mixed_record = {
+        "id": "sc_mixedmodules",
+        "name": "Mixed", "type": "builder_setup",
+        "icon": "", "color": None, "pinned": False, "order": 51,
+        "created_at": "2020-01-01T00:00:00Z", "updated_at": "2020-01-01T00:00:00Z",
+        "payload": {
+            "input_type": "generate_llm", "provider": "deepseek", "model": None,
+            "generator_preset": None, "style": None, "mode": "study_guide", "target_pages": None,
+            "modules": {"mcqs": True, "flashcards": True},
+            "include_sections": {"glossary": True},
+            "strict_math": True, "export_formats": [],
+        },
+    }
+    reg = shortcut_store._read_registry()
+    reg["shortcuts"].append(mixed_record)
+    shortcut_store._write_registry(reg)
+    mixed = shortcut_store.get_shortcut("sc_mixedmodules")["payload"]
+    check("explicit + legacy merge (modules fill, explicit kept)",
+          mixed["include_sections"] == {"glossary": True, "mcqs_with_answers": True, "flashcards": True},
+          f"{mixed.get('include_sections')}")
+
+    # 18. old shortcut with no sections/modules loads cleanly, nothing forced
+    old_record = {
+        "id": "sc_oldnothing",
+        "name": "Old", "type": "builder_setup",
+        "icon": "", "color": None, "pinned": False, "order": 52,
+        "created_at": "2020-01-01T00:00:00Z", "updated_at": "2020-01-01T00:00:00Z",
+        "payload": {"input_type": "generate_llm", "provider": "deepseek", "mode": "study_guide"},
+    }
+    reg = shortcut_store._read_registry()
+    reg["shortcuts"].append(old_record)
+    shortcut_store._write_registry(reg)
+    old = shortcut_store.get_shortcut("sc_oldnothing")["payload"]
+    check("old shortcut (no modules/sections) not forced to grow include_sections",
+          "include_sections" not in old, f"{sorted(old.keys())}")
+
     print("\n--- SUMMARY ---")
     passed = sum(1 for _, ok in results if ok)
     print(f"{passed}/{len(results)} checks passed")

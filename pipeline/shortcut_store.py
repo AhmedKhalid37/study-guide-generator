@@ -37,6 +37,12 @@ from pathlib import Path
 from typing import Any
 
 from pipeline import generator_presets, provider_config, style_store
+from pipeline.orchestrator import (
+    DIFFICULTY_VALUES,
+    INCLUDE_SECTION_FRAGMENTS,
+    OUTPUT_DEPTH_VALUES,
+    normalize_include_sections,
+)
 
 BASE_DIR = Path(__file__).resolve().parents[1]
 SHORTCUTS_DIR = BASE_DIR / "library"
@@ -168,6 +174,43 @@ def _clean_str_field(value: Any) -> str | None:
     return text[:MAX_STR_CHARS] if text else None
 
 
+def _clean_include_sections(value: Any) -> dict[str, bool]:
+    """Normalize an ``include_sections`` map to a canonical dict-of-bool.
+
+    Reuses the C1 normalization (``normalize_include_sections`` +
+    ``INCLUDE_SECTION_ALIASES`` in ``pipeline.orchestrator``) — no second alias
+    table lives here. Only canonical, enabled keys survive: unknown keys are
+    dropped (the repo's whitelist convention for untrusted toggle input), and
+    false/unset keys are not persisted (mirroring how ``normalize_include_sections``
+    returns only enabled keys). Keys come back in ``INCLUDE_SECTION_FRAGMENTS``
+    order so the stored shape is deterministic regardless of incoming dict order.
+    """
+    if not isinstance(value, dict):
+        return {}
+    return {key: True for key in normalize_include_sections(value)}
+
+
+def _clean_axis(value: Any, allowed: tuple[str, ...], field: str) -> str | None:
+    """Validate an optional scalar-enum axis (``output_depth`` / ``difficulty``).
+
+    Unset (``None``/empty) → ``None`` (omitted, matching the store's convention for
+    optional scalar fields like ``provider``). An invalid value is **rejected** by
+    raising ``ShortcutStoreError`` rather than silently coerced/persisted — on
+    create/update this surfaces as HTTP 400, and on import the offending shortcut is
+    skipped into the batch ``errors`` list (the existing rejection convention used by
+    ``name``/``type``)."""
+    if value is None:
+        return None
+    text = str(value).strip()
+    if not text:
+        return None
+    if text not in allowed:
+        raise ShortcutStoreError(
+            f"{field} must be one of {sorted(allowed)}; got {text!r}."
+        )
+    return text
+
+
 # ---------------------------------------------------------------------------
 # WHITELIST parsing — the security boundary
 # ---------------------------------------------------------------------------
@@ -223,7 +266,15 @@ def _normalize_payload(shortcut_type: str, raw: Any) -> dict[str, Any]:
         "style": _clean_str_field(raw.get("style")),
         "mode": mode,
         "target_pages": target_pages,
+        # Legacy UI-only toggles, kept for backward compat with old shortcuts and the
+        # current Builder. They are bridged to canonical ``include_sections`` on read
+        # (see ``_bridge_payload``); the real generation-affecting field below.
         "modules": modules,
+        # Canonical generation-affecting options (C1/C2). ``include_sections`` is the
+        # real prompt-assembly toggle map; the two axes shape the whole guide.
+        "include_sections": _clean_include_sections(raw.get("include_sections")),
+        "output_depth": _clean_axis(raw.get("output_depth"), OUTPUT_DEPTH_VALUES, "output_depth"),
+        "difficulty": _clean_axis(raw.get("difficulty"), DIFFICULTY_VALUES, "difficulty"),
         "strict_math": _clean_bool(raw.get("strict_math"), default=True),
         "export_formats": export_formats,
     }
@@ -323,9 +374,50 @@ def _evaluate_validity(record: dict[str, Any]) -> tuple[bool, str | None]:
     return False, "unknown shortcut type"
 
 
+# ---------------------------------------------------------------------------
+# Translate-on-read bridge: legacy ``modules`` -> canonical ``include_sections``
+# ---------------------------------------------------------------------------
+
+def _merge_include_sections(payload: dict[str, Any]) -> dict[str, bool]:
+    """Compute the effective ``include_sections`` for a builder payload.
+
+    Legacy ``modules`` are translated through the C1 normalization
+    (``normalize_include_sections`` + ``INCLUDE_SECTION_ALIASES``) and used to
+    **fill** sections; an explicit ``include_sections`` is normalized the same way
+    and layered on top so it **wins**. Both sides are reduced to canonical,
+    enabled-only keys, so legacy modules can only add missing sections — never
+    override an explicit choice. Result keys are in ``INCLUDE_SECTION_FRAGMENTS``
+    order for determinism."""
+    enabled: set[str] = set()
+    enabled.update(normalize_include_sections(payload.get("modules")))
+    enabled.update(normalize_include_sections(payload.get("include_sections")))
+    return {key: True for key in INCLUDE_SECTION_FRAGMENTS if key in enabled}
+
+
+def _bridge_payload(record: dict[str, Any]) -> dict[str, Any]:
+    """Return a fresh copy of a builder payload with ``include_sections`` derived.
+
+    This is read-only: it never mutates the stored record and never writes
+    ``shortcuts.json``. A legacy shortcut (only ``modules``) gains a derived
+    ``include_sections`` in its returned/exported representation while the on-disk
+    JSON stays untouched until the user explicitly creates/updates/imports it.
+    ``include_sections`` is only added when there is something to show or the stored
+    payload already carried the key, so an old shortcut with no sections is not
+    forced to grow one."""
+    if record.get("type") != TYPE_BUILDER:
+        return record.get("payload")
+    payload = dict(record.get("payload") or {})
+    merged = _merge_include_sections(payload)
+    if merged or isinstance(payload.get("include_sections"), dict):
+        payload["include_sections"] = merged
+    return payload
+
+
 def _public(record: dict[str, Any]) -> dict[str, Any]:
     valid, reason = _evaluate_validity(record)
     view = dict(record)
+    if record.get("type") == TYPE_BUILDER:
+        view["payload"] = _bridge_payload(record)
     view["valid"] = valid
     view["reason"] = reason
     return view
@@ -741,7 +833,13 @@ def _exportable(record: dict[str, Any]) -> dict[str, Any]:
         "id", "name", "description", "type", "icon", "color",
         "pinned", "order", "created_at", "updated_at", "payload",
     )
-    return {k: record.get(k) for k in keys}
+    out = {k: record.get(k) for k in keys}
+    # Export mirrors the normal sanitized read path: a legacy shortcut's derived
+    # ``include_sections`` rides along (translate-on-read) so an exported file is a
+    # forward-compatible bridge. Still read-only — the stored record is untouched.
+    if record.get("type") == TYPE_BUILDER:
+        out["payload"] = _bridge_payload(record)
+    return out
 
 
 def export_shortcut(shortcut_id: str) -> dict[str, Any]:
