@@ -7,8 +7,8 @@
 
 ## Where we are
 
-- **Branch:** `library-bulk-frontend`
-- **Last commit:** `5916861` — Add Library multi-select bulk actions UI
+- **Branch:** `library-finish`
+- **Last commit:** `f1201a0` — Finish Library folder and trash actions
 - **Main branch (PR target):** `chrome-renderer-v1`
 
 ## DONE (in order)
@@ -53,17 +53,37 @@
     Selection clears on folder/search/filter change. Verified in Docker via a
     real headless-Chromium (Playwright) click-through + captured bulk network
     calls; release smoke 28/28 (flaky outline check passed 3/3 in preflight).
+11. **Slice B3 — finish Library folder + trash actions (FRONTEND + 1 backend
+    route)** — `f1201a0`. **Folder multi-select** in the rail (per-folder
+    checkboxes on non-system folders) + a folder action bar (count / Delete /
+    Clear). **Bulk folder delete** offers BOTH behaviors via a dedicated
+    two-path modal: **(A) Delete folders only** → guides fall back to Unfiled
+    (loops the existing `DELETE /api/library/folders/{id}`), and **(B) Delete
+    folders + move guides to Trash** → guides soft-deleted via the existing
+    `/api/jobs/bulk/delete` (trash, NOT hard-delete) before the folders are
+    removed. Partial-success aware: failed folders stay selected, successful
+    ones disappear, ok/fail (+ trashed count) toasted. **Trash view** gained
+    **multi-select** (per-card checkboxes + select-all), **Restore selected**
+    (`/api/jobs/bulk/restore`), and **Permanently delete selected** behind a
+    strong "cannot be undone" confirm. New backend route **`POST
+    /api/jobs/bulk/purge`** loops the existing guarded `purge_trashed_job`
+    (operates strictly inside `jobs/.trash/`; no new `rmtree` path) and refuses
+    any id not currently trashed. Verified in Docker (smoke 28/28) + curl:
+    bulk/purge returns ok for a trashed id and `error: not in trash` for
+    bogus / `../escape` / active ids (active job untouched on disk); Option A
+    leaves the guide active+Unfiled; Option B lands the guide in Trash and gone
+    from active; bulk/restore returns a purged job to active.
 
 ## NEXT (in order)
 
 3. **Library bulk actions — remaining follow-ups (deferred, not this slice).**
-   - full **Trash management view** (B2 ships only the delete→Undo affordance)
-   - **folder bulk-delete / folder multi-select**
    - bulk **archive** — only after an archive state is designed + `DECISIONS.md`
-     entry (not started)
-   - bulk **tag** — only if/after a tag model exists (not started)
-   - bulk **export** — separate follow-up, only if supported by existing
-     artifact/export behavior (not started)
+     entry (not started; needs new metadata/state)
+   - bulk **tag** — only if/after a tag model exists (not started; needs design)
+   - bulk **export** — separate follow-up. NOTE: a working ZIP-bundle export
+     already exists (`POST /api/exports/bundle`, used by the Exports center), so
+     a small **B4** slice could expose a "Export selected" action in the Library
+     bulk bar that reuses it. Kept out of B3 to avoid mixing slices.
 4. **Output modules + preset naming/icons.** Output module options plus
    naming/iconography for presets.
 5. **Local Model Manager — DESIGN-FIRST.** Backend spawns/kills a host
