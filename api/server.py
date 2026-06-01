@@ -201,6 +201,20 @@ class BatchMoveRequest(BaseModel):
     folder_id: str | None = None
 
 
+class BulkJobsRequest(BaseModel):
+    """Body for /api/jobs/bulk/{delete,restore}: a list of job ids."""
+
+    ids: list[str] = []
+
+
+class BulkMoveRequest(BaseModel):
+    """Body for /api/jobs/bulk/move. Folder field matches the existing single/
+    batch move contract (``folder_id``), not ``folder``."""
+
+    ids: list[str] = []
+    folder_id: str | None = None
+
+
 class BundleRequest(BaseModel):
     job_ids: list[str]
     artifacts: list[str] = ["pdf"]
@@ -1311,6 +1325,118 @@ async def create_llm_job(request: Request) -> dict[str, Any]:
     if preset_warning:
         response["generator_preset_warning"] = preset_warning
     return response
+
+
+# ── Bulk job actions (Library multi-select backend) ──────────────────────────
+# These reuse the SAME single-item internals (trash_job / restore_job /
+# library_store.move_job) so there is exactly one trash path, one path guard,
+# and one folder-persistence model. Every endpoint returns partial-success
+# results and never aborts the whole batch because one id is bad.
+#
+# IMPORTANT ordering: these literal /api/jobs/bulk/* routes MUST be registered
+# BEFORE the parametric /api/jobs/{job_id}/restore (and friends) below, or
+# "/api/jobs/bulk/restore" would be captured with job_id="bulk". They are also,
+# of course, before the catch-all /api/jobs/{job_id}.
+
+
+def _dedupe_ids(ids: list[str]) -> list[str]:
+    """Strip/dedupe job ids, preserving first-seen order. Blank ids are dropped
+    (they carry no addressable target)."""
+    seen: set[str] = set()
+    out: list[str] = []
+    for raw in ids or []:
+        jid = str(raw or "").strip()
+        if not jid or jid in seen:
+            continue
+        seen.add(jid)
+        out.append(jid)
+    return out
+
+
+def _bulk_summary(results: list[dict[str, str]]) -> dict[str, Any]:
+    ok = sum(1 for r in results if r["status"] == "ok")
+    fail = sum(1 for r in results if r["status"] == "error")
+    return {"results": results, "ok_count": ok, "fail_count": fail}
+
+
+@app.post("/api/jobs/bulk/delete")
+def bulk_delete_jobs(request: BulkJobsRequest) -> dict[str, Any]:
+    """Bulk SOFT-delete. Each id is routed through the exact same guarded
+    single-job path (``trash_job`` -> ``jobs/.trash/<id>/``). Never hard-deletes,
+    never bypasses ``_guarded_trash_target``. Already-trashed ids are reported
+    ``skipped``; unknown/invalid ids are reported ``error``; the batch always
+    continues."""
+    results: list[dict[str, str]] = []
+    for jid in _dedupe_ids(request.ids):
+        try:
+            job = _get_job(jid)  # validates id (slash/dot reject) + active job
+        except HTTPException:
+            if is_trashed(jid):  # guard-safe: ValueError -> False
+                results.append({"id": jid, "status": "skipped", "detail": "already trashed"})
+            else:
+                results.append({"id": jid, "status": "error", "detail": "not found"})
+            continue
+        try:
+            trash_job(job.id)
+            results.append({"id": job.id, "status": "ok"})
+        except FileNotFoundError:
+            results.append({"id": job.id, "status": "error", "detail": "not found"})
+        except (JobManagerError, ValueError) as exc:
+            results.append({"id": job.id, "status": "error", "detail": str(exc)})
+    return _bulk_summary(results)
+
+
+@app.post("/api/jobs/bulk/restore")
+def bulk_restore_jobs(request: BulkJobsRequest) -> dict[str, Any]:
+    """Bulk restore. Each id is routed through the same single-job ``restore_job``
+    (``jobs/.trash/<id>/`` -> ``jobs/<id>/``). Ids that are already active (not in
+    trash) are reported ``skipped``; unknown/invalid ids are ``error``."""
+    results: list[dict[str, str]] = []
+    for jid in _dedupe_ids(request.ids):
+        if not is_trashed(jid):  # guard-safe for traversal ids
+            try:
+                _get_job(jid)  # is it an active job already?
+                results.append({"id": jid, "status": "skipped", "detail": "not trashed"})
+            except HTTPException:
+                results.append({"id": jid, "status": "error", "detail": "not found"})
+            continue
+        try:
+            restore_job(jid)
+            results.append({"id": jid, "status": "ok"})
+        except FileNotFoundError:
+            results.append({"id": jid, "status": "error", "detail": "not found"})
+        except (JobManagerError, ValueError) as exc:
+            results.append({"id": jid, "status": "error", "detail": str(exc)})
+    return _bulk_summary(results)
+
+
+@app.post("/api/jobs/bulk/move")
+def bulk_move_jobs(request: BulkMoveRequest) -> dict[str, Any]:
+    """Bulk move-to-folder. Reuses the existing single-job
+    ``library_store.move_job`` (no new folder model). The destination folder is
+    a batch-level param: an unknown folder 404s the whole request (matching the
+    single-item contract). Per-id results are partial-success."""
+    # Validate the destination folder once, up front (mirrors single-item 404).
+    try:
+        library_store.normalize_target(request.folder_id)
+    except library_store.FolderNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except library_store.LibraryStoreError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    results: list[dict[str, str]] = []
+    for jid in _dedupe_ids(request.ids):
+        try:
+            job = _get_job(jid)
+        except HTTPException:
+            results.append({"id": jid, "status": "error", "detail": "not found"})
+            continue
+        try:
+            library_store.move_job(job.id, request.folder_id)
+            results.append({"id": job.id, "status": "ok"})
+        except library_store.LibraryStoreError as exc:
+            results.append({"id": job.id, "status": "error", "detail": str(exc)})
+    return _bulk_summary(results)
 
 
 # ── Trash (soft delete) + permanent delete ──────────────────────────────────
