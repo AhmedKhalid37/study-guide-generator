@@ -613,7 +613,7 @@ export default function BuilderWorkspace({
       } catch {
         // Transient (job not yet on disk, momentary 404) — keep polling.
       }
-      if (state.active) pollTimerRef.current = setTimeout(tick, 1000);
+      if (state.active) pollTimerRef.current = setTimeout(tick, 300);
     };
 
     // First sweep slightly delayed so Job.create has written job.json.
