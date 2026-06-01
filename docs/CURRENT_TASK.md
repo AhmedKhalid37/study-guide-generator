@@ -7,9 +7,8 @@
 
 ## Where we are
 
-- **Branch:** `post-rc-polish`
-- **Last commit:** `afab4f2` — Slice 2B: Home shortcuts UI, customize modal,
-  import/export, save-as-shortcut (fix provider-derived model prefill order)
+- **Branch:** `library-bulk-backend`
+- **Last commit:** `51fc7b9` — Add backend library bulk actions
 - **Main branch (PR target):** `chrome-renderer-v1`
 
 ## DONE (in order)
@@ -31,12 +30,29 @@
    defaults, 11 endpoints (`72fa2cd`).
 8. **Slice 2B** — Home shortcuts UI, customize modal, import/export,
    save-as-shortcut (`afab4f2`).
+9. **Slice 3/B1 — Library bulk actions (BACKEND ONLY)** — `51fc7b9`. Three
+   partial-success endpoints under `/api/jobs/bulk/*` (`delete`/`restore`/
+   `move`) that **reuse the existing single-item internals**: bulk delete →
+   `trash_job` (soft-delete to `jobs/.trash/`, guarded by
+   `_guarded_trash_target` — never hard-deletes), bulk restore → `restore_job`,
+   bulk move → `library_store.move_job` (existing `folder_id` model). Routes
+   registered **before** the parametric `/api/jobs/{job_id}/restore` so the
+   literal `bulk` segment is never read as a job id. Verified in Docker (uid
+   10001/appuser) via `test_scripts/smoke_library_bulk.py` (16/16) +
+   curl/`ls .trash` evidence. **Frontend multi-select UI is NOT in this slice.**
 
 ## NEXT (in order)
 
-3. **Library bulk actions.** Bulk delete **MUST route through the existing
-   trash/restore flow, not a hard delete.** Reuse the soft-delete →
-   `jobs/.trash/` path and the purge path guard (see `DECISIONS.md`).
+3. **Library bulk actions — FRONTEND (deferred follow-ups).** The backend (above)
+   is done; the UI is still to build:
+   - Library multi-select UI + "select all jobs"
+   - bulk action toolbar
+   - undo toast UI (restore-after-delete)
+   - bulk folder-picker UI
+   - bulk **archive** — only after an archive state is designed (not started)
+   - bulk **tag** — only if/after a tag model exists (not started)
+   - bulk **export** — separate follow-up, only if supported by existing
+     artifact/export behavior (not started)
 4. **Output modules + preset naming/icons.** Output module options plus
    naming/iconography for presets.
 5. **Local Model Manager — DESIGN-FIRST.** Backend spawns/kills a host
