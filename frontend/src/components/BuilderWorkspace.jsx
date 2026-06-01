@@ -1,6 +1,8 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   AlertCircle,
+  AlertTriangle,
+  Bookmark,
   Check,
   ChevronRight,
   Clock,
@@ -10,10 +12,12 @@ import {
   FileText,
   Folder,
   FolderPlus,
+  Info,
   LayoutTemplate,
   Leaf,
   ListChecks,
   Loader2,
+  RefreshCw,
   RotateCcw,
   Save,
   Share2,
@@ -33,6 +37,8 @@ import {
   createUploadMarkdownJob,
   getFolders,
   getJob,
+  getJobProgress,
+  getJobs,
   getOptions,
   getPresets,
   getStyles,
@@ -147,6 +153,29 @@ const includeOptions = [
   "TL;DR"
 ];
 
+// Short, plain-language tooltip copy. Placeholder wording — final copy TBD.
+// Only keys for controls that already exist in the UI are referenced (the
+// expanded module toggles are a later slice and are intentionally absent).
+const TOOLTIPS = {
+  provider: "Which AI service generates the guide. Only configured providers can run.",
+  model: "The specific model used for generation. Larger models are slower but stronger.",
+  generatorPreset: "Controls the main system prompt and guide structure. Overrides the style below.",
+  style: "The built-in or custom prompt that shapes tone and layout of the guide.",
+  length: "Target output depth — roughly how many pages the guide should aim for.",
+  strictMath: "Validate every formula and fail loudly on broken math instead of guessing.",
+  attachments: "Extra source files. PDFs/scans are read with OCR/VLM when there is no text layer.",
+  mcqs: "Adds multiple-choice practice questions drawn from the material.",
+  glossary: "Adds a glossary of key terms and definitions at the end of the guide."
+};
+
+// Terminal generation statuses: once the progress endpoint reports one of these,
+// the UI stops polling. ``status`` (not ``stage``) is the source of truth.
+const TERMINAL_STATUSES = new Set(["done", "completed_with_warnings", "failed"]);
+
+function isTerminalStatus(status) {
+  return Boolean(status) && TERMINAL_STATUSES.has(status);
+}
+
 const fallbackProviderDetails = [
   {
     id: "deepseek",
@@ -221,9 +250,23 @@ export default function BuilderWorkspace({
   const [error, setError] = useState(null);
   const [previewFormat, setPreviewFormat] = useState("sample");
   const [detailsOpen, setDetailsOpen] = useState(false);
+  const [detailsInitialTab, setDetailsInitialTab] = useState("details");
   const [jobDetails, setJobDetails] = useState(null);
   const [detailsLoading, setDetailsLoading] = useState(false);
   const [detailsError, setDetailsError] = useState(null);
+  // Live generation progress from GET /api/jobs/{id}/progress (null when idle).
+  const [progress, setProgress] = useState(null);
+  // True once settings change after a guide has been generated.
+  const [dirty, setDirty] = useState(false);
+  // Transient confirmation for the (stubbed) "save as shortcut" action.
+  const [shortcutSaved, setShortcutSaved] = useState(false);
+  const pollStateRef = useRef(null);
+  const pollTimerRef = useRef(null);
+  const completeTimerRef = useRef(null);
+  const shortcutTimerRef = useRef(null);
+  // Signature of the settings that produced the current result; null until a
+  // guide is generated in this session. Used to detect a "dirty" preview.
+  const baselineRef = useRef(null);
 
   useEffect(() => {
     setSource(initialSource);
@@ -472,6 +515,56 @@ export default function BuilderWorkspace({
       ? [selectedProvider.default_model]
       : [];
 
+  // A stable fingerprint of every setting that affects generation output. When it
+  // drifts from the baseline captured at generation time, the preview is stale.
+  const settingsSignature = useMemo(
+    () =>
+      JSON.stringify({
+        selectedStyle,
+        generatorPreset,
+        provider,
+        model,
+        length,
+        includes,
+        strictMath,
+        qwenThinking,
+        outlineEnabled,
+        outlineSections
+      }),
+    [
+      selectedStyle,
+      generatorPreset,
+      provider,
+      model,
+      length,
+      includes,
+      strictMath,
+      qwenThinking,
+      outlineEnabled,
+      outlineSections
+    ]
+  );
+
+  useEffect(() => {
+    // Only flag dirtiness once a guide has actually been generated this session.
+    if (!result || baselineRef.current === null) {
+      setDirty(false);
+      return;
+    }
+    setDirty(settingsSignature !== baselineRef.current);
+  }, [settingsSignature, result]);
+
+  // Tidy up timers / stop polling if the component unmounts mid-generation.
+  useEffect(
+    () => () => {
+      if (pollStateRef.current) pollStateRef.current.active = false;
+      if (pollTimerRef.current) clearTimeout(pollTimerRef.current);
+      if (completeTimerRef.current) clearTimeout(completeTimerRef.current);
+      if (shortcutTimerRef.current) clearTimeout(shortcutTimerRef.current);
+    },
+    []
+  );
+
   useEffect(() => {
     if (!result) {
       setPreviewFormat("sample");
@@ -486,8 +579,49 @@ export default function BuilderWorkspace({
     }
   }, [result, artifactUrls]);
 
-  async function handleSubmit(event) {
+  function handleSubmit(event) {
     event.preventDefault();
+    runGeneration();
+  }
+
+  // Starts a background poller that discovers the in-flight job (the create-job
+  // POST is blocking, so we only learn its id by diffing the jobs list) and then
+  // polls its coarse progress until a terminal status. Returns a stop handle.
+  function startProgressPolling(knownIds) {
+    const state = { active: true, jobId: null };
+    pollStateRef.current = state;
+
+    const tick = async () => {
+      if (!state.active) return;
+      try {
+        if (!state.jobId) {
+          const { jobs = [] } = await getJobs();
+          const fresh = jobs.find((job) => {
+            const id = job.id || job.job_id;
+            return id && !knownIds.has(id);
+          });
+          if (fresh) state.jobId = fresh.id || fresh.job_id;
+        }
+        if (state.jobId) {
+          const snapshot = await getJobProgress(state.jobId);
+          if (state.active) setProgress(snapshot);
+          if (isTerminalStatus(snapshot.status)) {
+            // The blocking POST will resolve with the authoritative job shortly.
+            return;
+          }
+        }
+      } catch {
+        // Transient (job not yet on disk, momentary 404) — keep polling.
+      }
+      if (state.active) pollTimerRef.current = setTimeout(tick, 1000);
+    };
+
+    // First sweep slightly delayed so Job.create has written job.json.
+    pollTimerRef.current = setTimeout(tick, 600);
+    return state;
+  }
+
+  async function runGeneration() {
     const validation = validateInputs();
     if (validation) {
       setError({ message: validation });
@@ -496,6 +630,24 @@ export default function BuilderWorkspace({
 
     setLoading(true);
     setError(null);
+    if (completeTimerRef.current) clearTimeout(completeTimerRef.current);
+    setProgress({ status: "running", stage: "preparing", stage_label: "Starting…", progress: 5 });
+
+    // Snapshot existing ids so we can spot the newly-created (running) job.
+    let knownIds = new Set();
+    try {
+      const { jobs = [] } = await getJobs();
+      knownIds = new Set(jobs.map((job) => job.id || job.job_id).filter(Boolean));
+    } catch {
+      // Discovery is best-effort; progress simply stays at "Starting…".
+    }
+    const pollState = startProgressPolling(knownIds);
+    const stopPolling = () => {
+      pollState.active = false;
+      if (pollTimerRef.current) clearTimeout(pollTimerRef.current);
+    };
+
+    const signatureAtSubmit = settingsSignature;
     try {
       const { kind, payload } = buildBuilderPayload({
         source,
@@ -516,14 +668,62 @@ export default function BuilderWorkspace({
       });
       assertBuilderPayload(kind, payload, { text, title, length, includes });
       const job = await createJob(kind, payload);
+      stopPolling();
+      // Show a completed state briefly, then return the button to normal.
+      setProgress({
+        status: job.status || "done",
+        stage: "complete",
+        stage_label: "Complete",
+        progress: 100
+      });
       setResult(job);
       onJobCreated?.(job);
       clearDraft();
+      baselineRef.current = signatureAtSubmit;
+      setDirty(false);
+      completeTimerRef.current = setTimeout(() => setProgress(null), 1400);
     } catch (requestError) {
+      stopPolling();
+      setProgress({ status: "failed", stage_label: "Generation failed", progress: 100 });
       setError(normalizeError(requestError));
     } finally {
       setLoading(false);
     }
+  }
+
+  function buildShortcutSetup() {
+    // STUB: capture the current builder configuration. The real shortcut store
+    // lands in the Home slice; for now this object is only logged.
+    return {
+      source,
+      title,
+      provider,
+      model,
+      generatorPreset,
+      style: selectedStyle,
+      length,
+      includes,
+      strictMath,
+      qwenThinking,
+      folderId,
+      outline: outlineEnabled ? { enabled: true, sections: outlineSections } : null
+    };
+  }
+
+  function handleSaveShortcut() {
+    const setup = buildShortcutSetup();
+    // eslint-disable-next-line no-console
+    console.log("[shortcut-stub] capture current builder setup:", setup);
+    setShortcutSaved(true);
+    if (shortcutTimerRef.current) clearTimeout(shortcutTimerRef.current);
+    shortcutTimerRef.current = setTimeout(() => setShortcutSaved(false), 1600);
+  }
+
+  function handleKeepCurrentOutput() {
+    // Accept the changed settings as the new baseline so the notice dismisses
+    // and only future changes re-flag the preview as stale.
+    baselineRef.current = settingsSignature;
+    setDirty(false);
   }
 
   function validateInputs() {
@@ -579,11 +779,12 @@ export default function BuilderWorkspace({
     );
   }
 
-  async function openJobDetails() {
+  async function openJobDetails(tab = "details") {
     const jobId = result?.job_id || result?.id;
     if (!jobId) {
       return;
     }
+    setDetailsInitialTab(typeof tab === "string" ? tab : "details");
     setDetailsOpen(true);
     setDetailsLoading(true);
     setDetailsError(null);
@@ -631,6 +832,35 @@ export default function BuilderWorkspace({
           onSubmit={handleSubmit}
           className="sg-builder-pane"
         >
+          <BuilderActionBar
+            source={source}
+            selectedProvider={selectedProvider}
+            provider={provider}
+            model={model}
+            generatorPresets={generatorPresets}
+            generatorPreset={generatorPreset}
+            selectedStyleOption={selectedStyleOption}
+            includes={includes}
+            selectedLengthOption={selectedLengthOption}
+            outlineEnabled={outlineEnabled}
+            outlineCount={outlineSections.filter((section) => section.title.trim()).length}
+            artifacts={artifactEntries}
+            hasResult={Boolean(result)}
+            loading={loading}
+            progress={progress}
+            onSaveShortcut={handleSaveShortcut}
+            shortcutSaved={shortcutSaved}
+          />
+
+          {dirty && (
+            <DirtyNotice
+              busy={loading}
+              onRegenerateFull={runGeneration}
+              onRegenerateSections={() => openJobDetails("sections")}
+              onKeep={handleKeepCurrentOutput}
+            />
+          )}
+
           {activeBuilderTab === "builder" && (
             <BuilderComposer
               title={title}
@@ -732,7 +962,198 @@ export default function BuilderWorkspace({
         details={jobDetails}
         styleLookup={builderStyleLookup}
         onRetry={openJobDetails}
+        initialTab={detailsInitialTab}
       />
+    </div>
+  );
+}
+
+// Persistent across every Builder section: read-only chips summarizing the
+// current setup, the live-progress Generate button, the (stubbed) shortcut
+// capture, and export links once the job has artifacts.
+function BuilderActionBar({
+  source,
+  selectedProvider,
+  provider,
+  model,
+  generatorPresets = [],
+  generatorPreset,
+  selectedStyleOption,
+  includes = [],
+  selectedLengthOption,
+  outlineEnabled,
+  outlineCount,
+  artifacts = [],
+  hasResult,
+  loading,
+  progress,
+  onSaveShortcut,
+  shortcutSaved
+}) {
+  const sourceLabel = sourceTabs.find((tab) => tab.id === source)?.label || source;
+  const providerModel =
+    source === "llm"
+      ? `${selectedProvider?.display_name || provider} · ${model || "No model"}`
+      : "Markdown pipeline";
+  const presetName = generatorPreset
+    ? generatorPresets.find((preset) => preset.id === generatorPreset)?.name || generatorPreset
+    : null;
+  const styleName = selectedStyleOption?.name || selectedStyleOption?.label || "—";
+  const lengthText = selectedLengthOption
+    ? `${selectedLengthOption.label} · ${selectedLengthOption.meta}`
+    : "—";
+  const modulesText = includes.length
+    ? `${includes.length} module${includes.length === 1 ? "" : "s"}`
+    : "None";
+
+  return (
+    <div className="sg-action-bar">
+      <div className="sg-action-chips">
+        <ActionChip dot kx="Source" v={sourceLabel} />
+        <ActionChip dot kx="Model" v={providerModel} title={providerModel} />
+        {presetName ? (
+          <ActionChip icon={Wand2} kx="Preset" v={presetName} />
+        ) : (
+          <ActionChip icon={Sparkles} kx="Style" v={styleName} />
+        )}
+        {outlineEnabled && outlineCount > 0 && (
+          <ActionChip icon={ListChecks} kx="Outline" v={`${outlineCount}`} />
+        )}
+        <ActionChip icon={ListChecks} kx="Modules" v={modulesText} title={includes.join(", ")} />
+        <ActionChip icon={FileText} kx="Length" v={lengthText} />
+      </div>
+
+      {artifacts.length > 0 && (
+        <div className="sg-action-exports">
+          {artifacts.map(([name, url]) => {
+            const meta = artifactLabels[name];
+            const Icon = meta.icon;
+            return (
+              <a key={name} href={apiUrl(url)} className="sg-export-btn" title={`Download ${meta.label}`}>
+                <Icon className="h-3.5 w-3.5 text-[#F97316]" />
+                {meta.label}
+              </a>
+            );
+          })}
+        </div>
+      )}
+
+      <button
+        type="button"
+        onClick={onSaveShortcut}
+        title="Capture the current builder setup as a reusable shortcut (persistence arrives in a later slice)"
+        className="sg-ghost-button inline-flex items-center gap-1.5"
+      >
+        {shortcutSaved ? <Check className="h-4 w-4 text-emerald-300" /> : <Bookmark className="h-4 w-4" />}
+        {shortcutSaved ? "Captured" : "Save as shortcut"}
+      </button>
+
+      <GenerateProgressButton loading={loading} progress={progress} hasResult={hasResult} />
+    </div>
+  );
+}
+
+function ActionChip({ icon: Icon, kx, v, title, dot = false }) {
+  return (
+    <span className="sg-chip" title={title || `${kx}: ${v}`}>
+      {dot ? <i className="dot" /> : Icon ? <Icon className="h-3 w-3 text-[#F97316]" /> : null}
+      <span className="sg-chip-key">{kx}</span>
+      <span className="sg-chip-val">{v}</span>
+    </span>
+  );
+}
+
+// The Generate button doubles as a live progress bar. It fills left-to-right by
+// the backend `progress` percent (CSS-animated so big jumps glide), and its text
+// is the verbatim `stage_label` from /api/jobs/{id}/progress — never invented.
+function GenerateProgressButton({ loading, progress, hasResult }) {
+  const failed = progress?.status === "failed";
+  const complete = !loading && !failed && progress?.progress === 100;
+  const running = loading;
+  const pct = failed
+    ? 100
+    : running
+      ? Math.max(progress?.progress ?? 5, 5)
+      : complete
+        ? 100
+        : 0;
+  const label = failed
+    ? "Generation failed"
+    : complete
+      ? "Complete"
+      : running
+        ? progress?.stage_label || "Starting…"
+        : hasResult
+          ? "Regenerate Guide"
+          : "Generate Guide";
+  const icon = failed ? (
+    <AlertCircle className="h-4 w-4" />
+  ) : complete ? (
+    <Check className="h-4 w-4" />
+  ) : running ? (
+    <Loader2 className="h-4 w-4 animate-spin" />
+  ) : hasResult ? (
+    <RefreshCw className="h-[17px] w-[17px]" />
+  ) : (
+    <Sparkles className="h-[18px] w-[18px]" />
+  );
+
+  return (
+    <button
+      type="submit"
+      disabled={running}
+      aria-live="polite"
+      className={`sg-progress-btn${running ? " running" : ""}${failed ? " failed" : ""}${
+        complete ? " complete" : ""
+      }`}
+    >
+      <span className="sg-progress-fill" style={{ width: `${pct}%` }} />
+      <span className="sg-progress-label">
+        {icon}
+        <span className="truncate">{label}</span>
+        {running && progress?.progress != null && (
+          <span className="sg-progress-pct">{Math.round(progress.progress)}%</span>
+        )}
+      </span>
+    </button>
+  );
+}
+
+// Non-blocking notice shown after a guide exists and a setting has since changed.
+function DirtyNotice({ onRegenerateFull, onRegenerateSections, onKeep, busy }) {
+  return (
+    <div className="sg-dirty-notice">
+      <AlertTriangle className="h-4 w-4 shrink-0 text-[#F8B57E]" />
+      <span className="min-w-0 flex-1 text-[12.5px] font-medium text-[#F4F4F5]">
+        The preview is outdated because settings changed.
+      </span>
+      <div className="flex flex-wrap items-center gap-2">
+        <button
+          type="button"
+          disabled={busy}
+          onClick={onRegenerateFull}
+          className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-[rgba(249,115,22,0.5)] bg-[rgba(249,115,22,0.16)] px-3 text-[12px] font-semibold text-[#F97316] transition hover:bg-[rgba(249,115,22,0.24)] disabled:cursor-not-allowed disabled:opacity-50"
+        >
+          <RefreshCw className="h-3.5 w-3.5" />
+          Regenerate full guide
+        </button>
+        <button
+          type="button"
+          onClick={onRegenerateSections}
+          className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-white/[0.12] bg-white/[0.04] px-3 text-[12px] font-semibold text-[#D4D4D8] transition hover:text-white"
+        >
+          <ListChecks className="h-3.5 w-3.5" />
+          Regenerate changed sections only
+        </button>
+        <button
+          type="button"
+          onClick={onKeep}
+          className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-white/[0.1] bg-white/[0.04] px-3 text-[12px] font-semibold text-[#9098A8] transition hover:text-[#F4F4F5]"
+        >
+          <X className="h-3.5 w-3.5" />
+          Keep current output
+        </button>
+      </div>
     </div>
   );
 }
@@ -810,7 +1231,7 @@ function BuilderComposer({
       {source === "llm" && (
         <div className="sg-llm-panel">
           <div>
-            <FieldLabel>Provider</FieldLabel>
+            <FieldLabel tip={TOOLTIPS.provider}>Provider</FieldLabel>
             <div className="sg-option-grid">
               {providerDetails.map((detail) => (
                 <OptionCard
@@ -824,7 +1245,7 @@ function BuilderComposer({
             </div>
           </div>
           <label>
-            <FieldLabel>Model</FieldLabel>
+            <FieldLabel tip={TOOLTIPS.model}>Model</FieldLabel>
             <select
               value={model}
               disabled={!selectedProvider?.configured || selectedProviderModels.length === 0}
@@ -847,11 +1268,13 @@ function BuilderComposer({
             <Toggle label="Qwen thinking mode" checked={qwenThinking} onChange={setQwenThinking} />
           )}
           <AttachmentsPicker attachments={attachments} setAttachments={setAttachments} />
-          <Toggle label="Strict math" checked={strictMath} onChange={setStrictMath} />
+          <Toggle label="Strict math" checked={strictMath} onChange={setStrictMath} tip={TOOLTIPS.strictMath} />
         </div>
       )}
 
-      {source !== "llm" && <Toggle label="Strict math" checked={strictMath} onChange={setStrictMath} />}
+      {source !== "llm" && (
+        <Toggle label="Strict math" checked={strictMath} onChange={setStrictMath} tip={TOOLTIPS.strictMath} />
+      )}
       {error && <ErrorMessage error={error} />}
 
       <div className="sg-generate-bar">
@@ -883,14 +1306,6 @@ function BuilderComposer({
         >
           <Save className="h-4 w-4" />
           Save draft
-        </button>
-        <button
-          type="submit"
-          disabled={loading}
-          className="sg-cta sg-generate-button"
-        >
-          {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-[18px] w-[18px]" />}
-          {loading ? "Generating..." : "Generate Guide"}
         </button>
       </div>
     </>
@@ -1257,7 +1672,7 @@ function GeneratorPresetControls({ generatorPresets = [], generatorPreset = "", 
 
   return (
     <div>
-      <FieldLabel>Generator preset</FieldLabel>
+      <FieldLabel tip={TOOLTIPS.generatorPreset}>Generator preset</FieldLabel>
       <p className="mt-1 text-[11.5px] leading-4 text-[#9098A8]">
         A full model-tuned system prompt with its own sampling params. Overrides the style below.
       </p>
@@ -1319,7 +1734,7 @@ function StyleControls({ selectedStyle, onSelectStyle, styleOptions = styleChips
 
   return (
     <div>
-      <FieldLabel>Style</FieldLabel>
+      <FieldLabel tip={TOOLTIPS.style}>Style</FieldLabel>
       <StyleGroupLabel>Built-in</StyleGroupLabel>
       {renderGrid(builtinStyles)}
       {customStyles.length > 0 && (
@@ -1344,7 +1759,7 @@ function StyleGroupLabel({ children }) {
 function LengthControls({ length, setLength }) {
   return (
     <div>
-      <FieldLabel>Length</FieldLabel>
+      <FieldLabel tip={TOOLTIPS.length}>Length</FieldLabel>
       <div className="mt-1.5 grid grid-cols-3 gap-1.5">
         {lengthOptions.map((option) => (
           <button
@@ -1366,26 +1781,44 @@ function LengthControls({ length, setLength }) {
   );
 }
 
+// Tooltips for the learning aids that already exist as toggles. The expanded
+// module set (flashcards, formula sheet, etc.) is a later slice — no copy here.
+const includeTips = {
+  "MCQ practice": TOOLTIPS.mcqs,
+  Glossary: TOOLTIPS.glossary
+};
+
 function IncludeControls({ includes, toggleInclude }) {
   return (
     <div>
       <FieldLabel>Include</FieldLabel>
-      <div className="mt-1.5 flex flex-wrap gap-1.5">
-        {includeOptions.map((option) => (
-          <button
-            key={option}
-            type="button"
-            onClick={() => toggleInclude(option)}
-            className={`inline-flex h-7 items-center gap-1.5 rounded-full border px-3 text-xs font-medium ${
-              includes.includes(option)
-                ? "border-[rgba(249,115,22,0.35)] bg-[rgba(249,115,22,0.10)] text-[#FB923C]"
-                : "border-white/10 bg-white/[0.04] text-[#F4F4F5]"
-            }`}
-          >
-            {includes.includes(option) && <span className="text-[10px]">✓</span>}
-            {option}
-          </button>
-        ))}
+      <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
+        {includeOptions.map((option) => {
+          const tip = includeTips[option];
+          const chip = (
+            <button
+              type="button"
+              onClick={() => toggleInclude(option)}
+              className={`inline-flex h-7 items-center gap-1.5 rounded-full border px-3 text-xs font-medium ${
+                includes.includes(option)
+                  ? "border-[rgba(249,115,22,0.35)] bg-[rgba(249,115,22,0.10)] text-[#FB923C]"
+                  : "border-white/10 bg-white/[0.04] text-[#F4F4F5]"
+              }`}
+            >
+              {includes.includes(option) && <span className="text-[10px]">✓</span>}
+              {option}
+            </button>
+          );
+          if (!tip) {
+            return <React.Fragment key={option}>{chip}</React.Fragment>;
+          }
+          return (
+            <span key={option} className="inline-flex items-center gap-1">
+              {chip}
+              <InfoTip text={tip} label={option} />
+            </span>
+          );
+        })}
       </div>
     </div>
   );
@@ -1446,7 +1879,7 @@ function AttachmentsPicker({ attachments, setAttachments }) {
 
   return (
     <div className="rounded-xl border border-white/[0.06] bg-white/[0.025] p-3">
-      <FieldLabel>Attachments</FieldLabel>
+      <FieldLabel tip={TOOLTIPS.attachments}>Attachments</FieldLabel>
       <label className="mt-2 flex cursor-pointer items-center gap-3 rounded-[10px] border border-dashed border-white/[0.12] bg-[#070B14] p-3 transition hover:border-[rgba(249,115,22,0.35)]">
         <span className="grid h-9 w-9 place-items-center rounded-[9px] border border-[rgba(255,180,120,0.16)] bg-[#111A2B] text-[#F97316]">
           <Upload className="h-4 w-4" />
@@ -1847,15 +2280,16 @@ function SamplePreview() {
   );
 }
 
-function FieldLabel({ children }) {
+function FieldLabel({ children, tip, tipLabel }) {
   return (
-    <div className="mb-1.5 text-[11px] font-semibold uppercase tracking-[0.06em] text-[#9098A8]">
-      {children}
+    <div className="mb-1.5 flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-[0.06em] text-[#9098A8]">
+      <span>{children}</span>
+      {tip && <InfoTip text={tip} label={tipLabel || (typeof children === "string" ? children : "")} />}
     </div>
   );
 }
 
-function Toggle({ label, checked, onChange }) {
+function Toggle({ label, checked, onChange, tip }) {
   return (
     <label className="flex items-center gap-2 rounded-[10px] border border-white/[0.06] bg-white/[0.03] px-3 py-2 text-[12.5px] font-medium text-[#D4D4D8]">
       <input
@@ -1864,8 +2298,35 @@ function Toggle({ label, checked, onChange }) {
         onChange={(event) => onChange(event.target.checked)}
         className="h-4 w-4 accent-[#F97316]"
       />
-      {label}
+      <span className="inline-flex items-center gap-1.5">
+        {label}
+        {tip && <InfoTip text={tip} label={typeof label === "string" ? label : ""} />}
+      </span>
     </label>
+  );
+}
+
+// Small keyboard-accessible "?" info icon. The bubble is absolutely positioned so
+// it never affects layout, and shows on hover OR focus (group-focus-within). The
+// trigger swallows clicks so it never toggles a surrounding <label> control.
+function InfoTip({ text, label }) {
+  return (
+    <span className="sg-infotip group">
+      <button
+        type="button"
+        aria-label={label ? `Help: ${label}` : "More information"}
+        onClick={(event) => {
+          event.preventDefault();
+          event.stopPropagation();
+        }}
+        className="grid h-4 w-4 place-items-center rounded-full border border-white/15 text-[#9098A8] outline-none transition hover:border-[rgba(249,115,22,0.5)] hover:text-[#F4F4F5] focus-visible:border-[rgba(249,115,22,0.6)] focus-visible:text-[#F4F4F5] focus-visible:ring-1 focus-visible:ring-[rgba(249,115,22,0.5)]"
+      >
+        <Info className="h-2.5 w-2.5" />
+      </button>
+      <span role="tooltip" className="sg-infotip-bubble">
+        {text}
+      </span>
+    </span>
   );
 }
 

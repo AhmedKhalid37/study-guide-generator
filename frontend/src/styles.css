@@ -1453,6 +1453,220 @@ img {
   cursor: not-allowed;
 }
 
+/* --- Persistent builder action bar (Slice 1B) --- */
+.sg-action-bar {
+  position: sticky;
+  top: 0;
+  z-index: 6;
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
+  padding: 12px 14px;
+  border-radius: 12px;
+  border: 1px solid rgba(255,255,255,0.07);
+  background: rgba(13,18,30,0.82);
+  backdrop-filter: blur(8px);
+}
+
+.sg-action-chips {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  flex: 1 1 300px;
+  min-width: 0;
+}
+
+.sg-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 28px;
+  max-width: 240px;
+  padding: 0 10px;
+  border-radius: 8px;
+  border: 1px solid rgba(255,255,255,0.07);
+  background: rgba(255,255,255,0.03);
+  font-size: 11.5px;
+  font-weight: 600;
+}
+
+.sg-chip .dot {
+  width: 7px;
+  height: 7px;
+  flex-shrink: 0;
+  border-radius: 50%;
+  background: #F97316;
+  box-shadow: 0 0 8px rgba(249,115,22,0.8);
+}
+
+.sg-chip-key {
+  flex-shrink: 0;
+  color: #6B7185;
+  text-transform: uppercase;
+  font-size: 9.5px;
+  letter-spacing: 0.08em;
+}
+
+.sg-chip-val {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: #F4F4F5;
+}
+
+.sg-action-exports {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.sg-export-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 30px;
+  padding: 0 10px;
+  border-radius: 8px;
+  border: 1px solid rgba(255,255,255,0.08);
+  background: rgba(255,255,255,0.03);
+  font-size: 11.5px;
+  font-weight: 600;
+  color: #D4D4D8;
+  transition: border-color var(--dur-base) var(--ease-out), color var(--dur-base) var(--ease-out);
+}
+
+.sg-export-btn:hover {
+  border-color: rgba(249,115,22,0.45);
+  color: #fff;
+}
+
+/* Generate button that doubles as a left-to-right progress bar. */
+.sg-progress-btn {
+  position: relative;
+  overflow: hidden;
+  height: 40px;
+  min-width: 230px;
+  flex-shrink: 0;
+  border: 0;
+  border-radius: 10px;
+  cursor: pointer;
+  background: linear-gradient(180deg, #FB923C 0%, #F97316 55%, #EA580C 100%);
+  color: #1A1206;
+  font-weight: 700;
+  font-size: 14px;
+  box-shadow: inset 0 1px 0 rgba(255,255,255,0.35), 0 12px 28px -8px rgba(249,115,22,0.55);
+}
+
+.sg-progress-btn.running {
+  background: #15203A;
+  color: #F4F4F5;
+  box-shadow: inset 0 0 0 1px rgba(255,255,255,0.08);
+  cursor: default;
+}
+
+.sg-progress-btn.complete {
+  background: #123026;
+  color: #BBF7D0;
+  box-shadow: inset 0 0 0 1px rgba(34,197,94,0.35);
+}
+
+.sg-progress-btn.failed {
+  background: #2A1216;
+  color: #FCA5A5;
+  box-shadow: inset 0 0 0 1px rgba(239,68,68,0.4);
+}
+
+.sg-progress-fill {
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 0;
+  /* Smooth glide so a big backend jump (e.g. 5% -> 75%) reads as "fast". */
+  transition: width 0.7s cubic-bezier(0.22, 0.61, 0.36, 1);
+}
+
+.sg-progress-btn.running .sg-progress-fill {
+  background: linear-gradient(90deg, rgba(249,115,22,0.55), rgba(249,115,22,0.28));
+}
+
+.sg-progress-btn.complete .sg-progress-fill {
+  background: linear-gradient(90deg, rgba(34,197,94,0.45), rgba(34,197,94,0.22));
+}
+
+.sg-progress-btn.failed .sg-progress-fill {
+  background: linear-gradient(90deg, rgba(239,68,68,0.4), rgba(239,68,68,0.18));
+}
+
+.sg-progress-label {
+  position: relative;
+  z-index: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  width: 100%;
+  height: 100%;
+  padding: 0 16px;
+}
+
+.sg-progress-pct {
+  font-variant-numeric: tabular-nums;
+  opacity: 0.85;
+  font-size: 12px;
+}
+
+.sg-dirty-notice {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 12px;
+  padding: 10px 14px;
+  border-radius: 12px;
+  border: 1px solid rgba(248,181,126,0.35);
+  background: rgba(249,115,22,0.10);
+}
+
+/* Tooltip "?" affordance. The bubble is absolutely positioned so it never
+   affects layout, and is revealed on hover or keyboard focus. */
+.sg-infotip {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+}
+
+.sg-infotip-bubble {
+  position: absolute;
+  bottom: calc(100% + 6px);
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 50;
+  display: none;
+  width: max-content;
+  max-width: 220px;
+  padding: 7px 10px;
+  border-radius: 8px;
+  border: 1px solid rgba(255,255,255,0.10);
+  background: #0B1220;
+  color: #D4D4D8;
+  font-size: 11px;
+  font-weight: 500;
+  line-height: 1.4;
+  letter-spacing: 0;
+  text-transform: none;
+  box-shadow: 0 12px 30px -10px rgba(0,0,0,0.7);
+  pointer-events: none;
+}
+
+.sg-infotip:hover .sg-infotip-bubble,
+.sg-infotip:focus-within .sg-infotip-bubble {
+  display: block;
+}
+
 .sg-preview-pane {
   width: 420px;
   flex-shrink: 0;

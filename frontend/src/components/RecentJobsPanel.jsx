@@ -559,7 +559,7 @@ function ArtifactLinkGrid({ jobId, artifacts }) {
   );
 }
 
-export function JobDetailsDrawer({ open, onClose, loading, error, details, styleLookup, onRetry }) {
+export function JobDetailsDrawer({ open, onClose, loading, error, details, styleLookup, onRetry, initialTab = "details" }) {
   const manifest = details?.job;
   const artifacts = details?.artifacts ?? artifactLinks
     .filter((artifact) => details?.artifact_availability?.[artifact.key])
@@ -572,12 +572,14 @@ export function JobDetailsDrawer({ open, onClose, loading, error, details, style
   const isFailed = manifest?.status?.includes("failed");
   const canEdit = details?.artifact_availability?.clean_md && !isFailed;
 
-  const [drawerTab, setDrawerTab] = useState("details");
+  const [drawerTab, setDrawerTab] = useState(initialTab);
 
-  // Reset to details tab when a new job is opened
+  // Reset to the caller-requested tab when a new job is opened. Defaults to
+  // "details"; callers (e.g. the Builder dirty-state notice) can deep-link to
+  // "sections" to land directly on the section-regeneration picker.
   useEffect(() => {
-    if (open) setDrawerTab("details");
-  }, [manifest?.id, open]);
+    if (open) setDrawerTab(initialTab);
+  }, [manifest?.id, open, initialTab]);
 
   if (!open) {
     return null;

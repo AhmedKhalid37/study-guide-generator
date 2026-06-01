@@ -260,6 +260,12 @@ export function getJob(jobId) {
   return requestJson(`/api/jobs/${encodeURIComponent(jobId)}`);
 }
 
+// Coarse, pollable generation progress: { status, stage, stage_label, progress }.
+// status is the terminal-state source of truth; stop polling once it is terminal.
+export function getJobProgress(jobId) {
+  return requestJson(`/api/jobs/${encodeURIComponent(jobId)}/progress`);
+}
+
 export function createPasteJob({ text, theme = "claude_clean", strictMath = true, folderId = null }) {
   return requestJson("/api/jobs/paste", {
     method: "POST",
