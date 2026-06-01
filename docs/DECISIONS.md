@@ -143,3 +143,39 @@ first so axes never displace or weaken it.
 message is **byte-identical** to the previous behaviour — verified by direct equality:
 default path `build_messages(...) == MARKDOWN_MATH_SYSTEM`; preset path
 `== "{system}\n\n{MARKDOWN_MATH_SYSTEM}"`. Unknown/None axes add no fragment.
+
+## Shortcut payload whitelist now carries the real generation options; legacy modules translate on read
+The `builder_setup` shortcut payload whitelist (`pipeline/shortcut_store.py`) was
+extended with the actual generation-affecting fields from C1/C2: `include_sections`
+(a canonical dict-of-bool), `output_depth`, and `difficulty`. **Why:** the pre-existing
+shortcut `modules` keys were **shortcut/UI-only state that never reached prompt
+assembly** (the C1 finding), so a saved shortcut could promise sections it never
+produced. Putting the canonical fields on the whitelist lets a shortcut persist the
+options that actually drive generation, ahead of the Builder-wiring slice.
+**`include_sections` reuses C1 normalization.** Validation goes through
+`orchestrator.normalize_include_sections` + `INCLUDE_SECTION_ALIASES` — there is **no
+second alias table** in the store. Unknown section keys are dropped (the repo's
+whitelist convention for untrusted toggle input) and only canonical, enabled keys are
+stored, in `INCLUDE_SECTION_FRAGMENTS` order.
+**Axes are rejected, not coerced.** Invalid `output_depth`/`difficulty` raise
+`ShortcutStoreError` (→ HTTP 400 on create/update; on import the offending shortcut is
+skipped into the batch `errors` list — the same rejection convention `name`/`type`
+already use), rather than being silently coerced/persisted like `input_type`/
+`export_formats`. Unset axes are stored as `None`.
+**Legacy `modules` translate on read, not via migration.** `_bridge_payload` derives
+`include_sections` from legacy `modules` only in the **returned/exported**
+representation (`_public` + `_exportable`); explicit `include_sections` **wins** and
+legacy modules only **fill missing** sections (both sides reduced to canonical
+enabled-only keys, so a module can only add, never override). A field-less old
+shortcut is **not** forced to grow an `include_sections` key.
+**`shortcuts.json` is never rewritten on read.** Stored shortcuts stay byte-for-byte
+identical on disk until the user explicitly creates/updates/imports one (verified in
+Docker: identical sha256 before/after a GET + export of an injected legacy shortcut;
+disk still had no `include_sections`).
+**Why translate-on-read beats an in-place migration:** a migration would rewrite every
+user's `shortcuts.json` the first time the new code reads it — an unrequested,
+hard-to-reverse mutation of real user data, risky on a single-operator tool with no
+review step. Translate-on-read gives the same forward-compatible view (read, list,
+export, import-preview all show canonical sections) with **zero** disk mutation, and
+the canonical fields are written only when the user deliberately saves. Old shortcuts
+with no new fields and no modules keep working unchanged.

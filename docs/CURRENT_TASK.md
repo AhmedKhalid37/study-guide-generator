@@ -7,8 +7,8 @@
 
 ## Where we are
 
-- **Branch:** `style-axes`
-- **Last commit:** `24442bd` — Add generation depth and difficulty axes
+- **Branch:** `shortcut-options-bridge`
+- **Last commit:** `cc75292` — Bridge shortcut options to generation fields
 - **Main branch (PR target):** `chrome-renderer-v1`
 
 ## DONE (in order)
@@ -133,6 +133,39 @@
       returned 400. Release smoke **28/28** (flaky outline-ordering check passed).
     - **Builder UI exposure deferred (C3); shortcut persistence bridge deferred.**
 
+14. **Slice — shortcut options persistence bridge (BACKEND ONLY)** — `cc75292`
+    (branch `shortcut-options-bridge`). Extended the `builder_setup` shortcut
+    payload whitelist (`pipeline/shortcut_store.py:_normalize_payload`) with the
+    real C1/C2 generation fields: `include_sections` (canonical dict-of-bool),
+    `output_depth`, and `difficulty`. **Closes the "legacy shortcut modules are
+    inert" gap at the backend shortcut boundary** — shortcuts can now carry the
+    fields that actually reach prompt assembly.
+    - **Reuses C1 normalization** — `include_sections` is validated through
+      `orchestrator.normalize_include_sections` + `INCLUDE_SECTION_ALIASES`
+      (no second alias table); unknown keys dropped, only canonical enabled keys
+      stored.
+    - **Axes validated, not coerced** — invalid `output_depth`/`difficulty` are
+      **rejected** via `ShortcutStoreError` (→ HTTP 400 on create/update; import
+      pushes the offending shortcut into the batch `errors` list), never silently
+      persisted. Unset → `None`.
+    - **Legacy `modules` translate-on-read** — `_bridge_payload` derives
+      `include_sections` from legacy `modules` in the **returned/exported**
+      representation only (`_public` + `_exportable`); explicit `include_sections`
+      wins, legacy modules only fill missing sections. **`shortcuts.json` is never
+      rewritten on read** — old shortcuts stay old on disk until the user
+      explicitly creates/updates/imports.
+    - **Verified in Docker** (uid 10001/appuser, healthy): Test A create/read
+      canonical round-trip; Test B export→import-preview→import (fields survive,
+      id regenerated on conflict, no silent overwrite); Test C invalid axes → 400
+      / import `errors`, unknown section key dropped; Test D legacy modules-only
+      injected in-container translated to canonical sections on GET **and** export
+      with **identical sha256 before/after** (disk still has no `include_sections`);
+      Test E old field-less shortcut loads cleanly, nothing forced. Unit test
+      `test_scripts/test_shortcut_store.py` **39/39**; release smoke **28/28**
+      (flaky outline check passed).
+    - **Builder UI wiring (load fields into Builder state + send to
+      `/api/jobs/llm`) is the NEXT slice — NOT done here.**
+
 ## NEXT (in order)
 
 3. **Library bulk actions — remaining follow-ups (deferred, not this slice).**
@@ -154,13 +187,20 @@
 
 ## OPEN ITEMS
 
-- **Shortcut modules/options persistence bridge** — the old shortcut `modules`
-  keys (`shortcut_store.KNOWN_MODULE_KEYS` + `frontend/shortcutMeta.js`) are still
-  **inert**: they round-trip through the Builder and `library/shortcuts.json` but
-  do **not** reach generation. They must later be bridged to `include_sections`,
-  and saved shortcuts should carry both `include_sections` and the C2 axes
-  (`output_depth`/`difficulty`) into the generation request. Not done in C2 (the
-  slice forbade touching shortcut whitelist/persistence).
+- **Shortcut options → Builder wiring (NEXT slice).** The backend bridge is now
+  DONE (`cc75292`): the shortcut payload whitelist carries `include_sections` +
+  the C2 axes (`output_depth`/`difficulty`), and legacy `modules` translate to
+  canonical `include_sections` on read/export. **Still open:** the Builder UI must
+  load these fields from a selected shortcut into Builder state and pass them to
+  `/api/jobs/llm` (and expose controls). Until that wiring lands, a shortcut's
+  options are stored/validated/exposed but not yet auto-applied to a generation.
+- **Preset/shortcut cards, icons, compatibility warnings** — richer Home/Builder
+  surfacing of preset & shortcut metadata (cards/iconography, "references
+  unavailable …" compatibility warnings already computed by the store's `valid`/
+  `reason`) is not yet built into the UI.
+- **Shortcut inspector / repair loop** — a later UX for inspecting an invalid
+  shortcut and repairing its broken references (provider/preset/style) is not
+  started.
 - **Rerender drops `generator_preset`** — the retry/rerender path
   (`retry_failed_job` in `api/server.py`) rebuilds from the manifest and now
   reproduces `include_sections` + the C2 axes, but it still does **not** pass
