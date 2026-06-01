@@ -1751,3 +1751,68 @@ img {
     transition-duration: 0.001ms !important;
   }
 }
+
+/* --- Home shortcuts (Slice 2B) --- */
+.sg-shortcut-invalid {
+  opacity: 0.62;
+  filter: saturate(0.55);
+}
+.sg-shortcut-invalid:hover {
+  opacity: 0.8;
+}
+.sg-shortcut-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin-left: auto;
+  padding: 2px 7px;
+  border-radius: 999px;
+  font-size: 10px;
+  font-weight: 700;
+  color: #FCD34D;
+  background: rgba(245, 158, 11, 0.12);
+  border: 1px solid rgba(245, 158, 11, 0.3);
+}
+.sg-empty-shortcuts {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 12px;
+  margin-bottom: 36px;
+  padding: 28px;
+  border-radius: 16px;
+  border: 1px dashed rgba(255, 255, 255, 0.12);
+  background: rgba(255, 255, 255, 0.02);
+  color: #9098A8;
+  font-size: 14px;
+}
+.sg-modal-action {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 32px;
+  padding: 0 12px;
+  border-radius: 9px;
+  border: 1px solid rgba(255, 255, 255, 0.10);
+  background: rgba(255, 255, 255, 0.03);
+  color: #D4D4D8;
+  font-size: 12.5px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.sg-modal-action:hover {
+  background: rgba(255, 255, 255, 0.07);
+  color: #F4F4F5;
+}
+/* The base .sg-input has no intrinsic sizing; give the shortcut modal's fields
+   sensible padding/height without disturbing other .sg-input usages. */
+.sg-shortcuts-modal .sg-input {
+  height: 36px;
+  padding: 0 11px;
+  font-size: 13px;
+}
+.sg-shortcuts-modal textarea.sg-input {
+  padding: 8px 11px;
+  line-height: 1.5;
+  resize: vertical;
+}

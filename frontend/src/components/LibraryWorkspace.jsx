@@ -57,7 +57,7 @@ function statusTone(status) {
   return "border-amber-300/30 bg-amber-300/10 text-amber-100";
 }
 
-export default function LibraryWorkspace({ refreshKey = 0, onOpenBuilder }) {
+export default function LibraryWorkspace({ refreshKey = 0, onOpenBuilder, initialView = null }) {
   const [data, setData] = useState({ folders: [], jobs: [] });
   const [styleLookup, setStyleLookup] = useState({});
   const [loading, setLoading] = useState(true);
@@ -88,6 +88,41 @@ export default function LibraryWorkspace({ refreshKey = 0, onOpenBuilder }) {
   const [confirmBusy, setConfirmBusy] = useState(false);
 
   const reload = useCallback(() => setInternalRefresh((n) => n + 1), []);
+
+  // Apply a view requested by a Home shortcut (library_view / find_guide tool).
+  // Best-effort mapping onto the existing folder/search/filter/sort controls.
+  useEffect(() => {
+    const view = initialView?.view;
+    if (!view) return;
+    if (view.startsWith("folder:")) {
+      setSelectedFolder(view.slice(7) || "all");
+      setQ("");
+      setFilters(emptyFilters);
+    } else if (view.startsWith("search:")) {
+      setSelectedFolder("all");
+      setQ(view.slice(7));
+      setFilters(emptyFilters);
+    } else if (view.startsWith("tag:")) {
+      setSelectedFolder("all");
+      setQ(view.slice(4));
+      setFilters(emptyFilters);
+    } else if (view === "failed") {
+      setSelectedFolder("all");
+      setQ("");
+      const failed = data.jobs.map((j) => j.status).find((s) => String(s || "").includes("failed"));
+      setFilters({ ...emptyFilters, status: failed || "" });
+      setSort("newest");
+    } else {
+      // recent / all / pinned / favorites — favorites already float to the top.
+      setSelectedFolder("all");
+      setQ("");
+      setFilters(emptyFilters);
+      setSort("newest");
+    }
+    // Re-run only when a new view request arrives (nonce changes), not on every
+    // data refresh.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [initialView?.nonce]);
 
   useEffect(() => {
     let cancelled = false;

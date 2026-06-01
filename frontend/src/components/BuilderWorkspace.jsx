@@ -34,6 +34,7 @@ import {
   createFolder,
   createLlmJob,
   createPasteJob,
+  createShortcut,
   createUploadMarkdownJob,
   getFolders,
   getJob,
@@ -44,6 +45,12 @@ import {
   getStyles,
   previewApiUrl
 } from "../api/client";
+import {
+  builderStateToPayload,
+  INPUT_TO_SOURCE,
+  modulesToIncludes,
+  pagesToLength
+} from "../shortcutMeta";
 import { FOLDER_PRESET_COLORS } from "../folderMeta";
 import {
   BoltGlyph,
@@ -217,7 +224,9 @@ export default function BuilderWorkspace({
   selectedStyle = "exam_cram",
   onSelectStyle,
   latestJob,
-  onJobCreated
+  onJobCreated,
+  prefill = null,
+  onReportSetup
 }) {
   const [activeBuilderTab, setActiveBuilderTab] = useState("builder");
   const [source, setSource] = useState(initialSource);
@@ -227,6 +236,17 @@ export default function BuilderWorkspace({
   const [provider, setProvider] = useState("deepseek");
   const [model, setModel] = useState(fallbackProviderDetails[0].default_model);
   const [providerDetails, setProviderDetails] = useState(fallbackProviderDetails);
+  // True once the server's real provider list has loaded (or failed to). The
+  // shortcut-prefill model resolver waits for this so it validates the saved
+  // model against the real model list, not the fallback.
+  const [providersLoaded, setProvidersLoaded] = useState(false);
+  // Set when the model loaded from a shortcut wasn't valid for its provider, so
+  // we can surface the fallback instead of silently swapping models.
+  const [modelNotice, setModelNotice] = useState(null);
+  // Holds a shortcut's { provider, model } while we wait for that provider's
+  // model list to load; the resolver effect below applies it once ready.
+  const pendingPrefillRef = useRef(null);
+  const [pendingModelNonce, setPendingModelNonce] = useState(0);
   const [qwenThinking, setQwenThinking] = useState(true);
   const [strictMath, setStrictMath] = useState(true);
   const [attachments, setAttachments] = useState([]);
@@ -258,8 +278,10 @@ export default function BuilderWorkspace({
   const [progress, setProgress] = useState(null);
   // True once settings change after a guide has been generated.
   const [dirty, setDirty] = useState(false);
-  // Transient confirmation for the (stubbed) "save as shortcut" action.
+  // Transient confirmation + error for the "save as shortcut" action.
   const [shortcutSaved, setShortcutSaved] = useState(false);
+  const [shortcutSaveError, setShortcutSaveError] = useState(null);
+  const [shortcutSaving, setShortcutSaving] = useState(false);
   const pollStateRef = useRef(null);
   const pollTimerRef = useRef(null);
   const completeTimerRef = useRef(null);
@@ -288,6 +310,10 @@ export default function BuilderWorkspace({
         const details = normalizeProviderDetails(options);
         setProviderDetails(details);
         setGeneratorPresets(options.generator_presets ?? []);
+        setProvidersLoaded(true);
+        // A shortcut prefill owns the provider+model; don't override it with the
+        // default-provider pick. The resolver effect applies the saved model.
+        if (pendingPrefillRef.current) return;
         const selected = chooseInitialProvider(details, provider);
         setProvider(selected.id);
         setModel(selectDefaultModel(selected, model));
@@ -295,6 +321,7 @@ export default function BuilderWorkspace({
       .catch(() => {
         if (!cancelled) {
           setProviderDetails(fallbackProviderDetails);
+          setProvidersLoaded(true);
         }
       });
     return () => {
@@ -691,32 +718,130 @@ export default function BuilderWorkspace({
     }
   }
 
-  function buildShortcutSetup() {
-    // STUB: capture the current builder configuration. The real shortcut store
-    // lands in the Home slice; for now this object is only logged.
-    return {
-      source,
-      title,
-      provider,
-      model,
-      generatorPreset,
-      style: selectedStyle,
-      length,
-      includes,
-      strictMath,
-      qwenThinking,
-      folderId,
-      outline: outlineEnabled ? { enabled: true, sections: outlineSections } : null
-    };
-  }
+  // Capture the live Builder configuration as a backend builder_setup payload.
+  // This is the inverse of applyBuilderPrefill below — keep the two symmetric.
+  const buildShortcutSetup = useCallback(
+    () =>
+      builderStateToPayload({
+        source,
+        provider,
+        model,
+        generatorPreset,
+        style: selectedStyle,
+        length,
+        includes,
+        strictMath
+      }),
+    [source, provider, model, generatorPreset, selectedStyle, length, includes, strictMath]
+  );
 
-  function handleSaveShortcut() {
-    const setup = buildShortcutSetup();
-    // eslint-disable-next-line no-console
-    console.log("[shortcut-stub] capture current builder setup:", setup);
-    setShortcutSaved(true);
-    if (shortcutTimerRef.current) clearTimeout(shortcutTimerRef.current);
-    shortcutTimerRef.current = setTimeout(() => setShortcutSaved(false), 1600);
+  // Apply a builder_setup payload from a Home shortcut into the live form. Reuses
+  // the same state-setters the user drives by hand (no parallel prefill path).
+  const applyBuilderPrefill = useCallback(
+    (payload) => {
+      if (!payload || typeof payload !== "object") return;
+      const nextSource = INPUT_TO_SOURCE[payload.input_type];
+      if (nextSource) setSource(nextSource);
+      setModelNotice(null);
+      if (payload.provider) {
+        // Apply the provider now, but defer the model: it's derived from the
+        // provider, so the options loader / provider default would otherwise
+        // stomp an explicit saved model. The resolver effect applies the saved
+        // model once this provider's real model list is loaded.
+        setProvider(payload.provider);
+        pendingPrefillRef.current = { provider: payload.provider, model: payload.model || null };
+        setPendingModelNonce((nonce) => nonce + 1);
+      } else if (payload.model) {
+        setModel(payload.model);
+      }
+      if (payload.generator_preset !== undefined) setGeneratorPreset(payload.generator_preset || "");
+      if (payload.style) onSelectStyle?.(payload.style);
+      if (typeof payload.strict_math === "boolean") setStrictMath(payload.strict_math);
+      if (payload.target_pages) setLength(pagesToLength(payload.target_pages));
+      if (payload.modules && Object.keys(payload.modules).length) {
+        setIncludes(modulesToIncludes(payload.modules));
+      }
+      setActiveBuilderTab("builder");
+      setError(null);
+    },
+    [onSelectStyle]
+  );
+
+  // Fire prefill whenever a new shortcut nonce arrives from Home.
+  useEffect(() => {
+    if (prefill?.payload) applyBuilderPrefill(prefill.payload);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [prefill?.nonce]);
+
+  // Resolve a shortcut's saved model once its provider's real model list has
+  // loaded. Running after the provider's default selection has settled means the
+  // explicit saved model wins over the auto-default (the prefill bug was the
+  // reverse). If the saved model is no longer valid for the provider, fall back
+  // to its default and surface that rather than silently loading another model.
+  useEffect(() => {
+    const pending = pendingPrefillRef.current;
+    if (!pending || !providersLoaded) return;
+    if (provider !== pending.provider) return; // wait for the provider state to settle
+    const detail = providerDetails.find((item) => item.id === pending.provider);
+    if (!detail) return;
+    if (pending.model) {
+      const models = detail.available_models || [];
+      if (models.includes(pending.model)) {
+        setModel(pending.model);
+      } else {
+        const fallback = detail.default_model || models[0] || "";
+        setModel(fallback);
+        setModelNotice(
+          `"${pending.model}" isn't available for ${detail.display_name || pending.provider} — using ${
+            fallback || "the provider default"
+          } instead.`
+        );
+      }
+    } else {
+      setModel(selectDefaultModel(detail));
+    }
+    pendingPrefillRef.current = null;
+  }, [providersLoaded, providerDetails, provider, pendingModelNonce]);
+
+  // Report the current setup upward so the Home customize modal can "Capture
+  // from current Builder". Cheap: just a payload snapshot, no side effects.
+  useEffect(() => {
+    onReportSetup?.(buildShortcutSetup());
+  }, [onReportSetup, buildShortcutSetup]);
+
+  async function handleSaveShortcut() {
+    if (shortcutSaving) return;
+    const defaultName =
+      title && title !== DEFAULT_TITLE
+        ? title
+        : `${selectedStyleOption?.name || selectedStyleOption?.label || "Study"} setup`;
+    const name = window.prompt("Name this shortcut", defaultName);
+    if (name === null) return; // cancelled
+    const trimmed = name.trim();
+    if (!trimmed) return;
+    setShortcutSaving(true);
+    setShortcutSaveError(null);
+    try {
+      await createShortcut({
+        name: trimmed,
+        type: "builder_setup",
+        description: `${selectedProvider?.display_name || provider} · ${
+          selectedStyleOption?.name || selectedStyle
+        }`,
+        pinned: true,
+        icon: "⭐",
+        payload: buildShortcutSetup()
+      });
+      setShortcutSaved(true);
+      if (shortcutTimerRef.current) clearTimeout(shortcutTimerRef.current);
+      shortcutTimerRef.current = setTimeout(() => setShortcutSaved(false), 1600);
+    } catch (saveError) {
+      setShortcutSaveError(saveError?.message || "Could not save shortcut.");
+      if (shortcutTimerRef.current) clearTimeout(shortcutTimerRef.current);
+      shortcutTimerRef.current = setTimeout(() => setShortcutSaveError(null), 3200);
+    } finally {
+      setShortcutSaving(false);
+    }
   }
 
   function handleKeepCurrentOutput() {
@@ -766,6 +891,10 @@ export default function BuilderWorkspace({
   }
 
   function handleProviderSelect(nextProvider) {
+    // A manual provider change discards any pending shortcut prefill and the
+    // saved-model fallback notice, then auto-picks the provider's default model.
+    pendingPrefillRef.current = null;
+    setModelNotice(null);
     setProvider(nextProvider);
     const detail = providerDetails.find((item) => item.id === nextProvider);
     setModel(selectDefaultModel(detail));
@@ -850,6 +979,8 @@ export default function BuilderWorkspace({
             progress={progress}
             onSaveShortcut={handleSaveShortcut}
             shortcutSaved={shortcutSaved}
+            shortcutSaving={shortcutSaving}
+            shortcutSaveError={shortcutSaveError}
           />
 
           {dirty && (
@@ -879,6 +1010,7 @@ export default function BuilderWorkspace({
               handleProviderSelect={handleProviderSelect}
               model={model}
               setModel={setModel}
+              modelNotice={modelNotice}
               qwenThinking={qwenThinking}
               setQwenThinking={setQwenThinking}
               strictMath={strictMath}
@@ -988,7 +1120,9 @@ function BuilderActionBar({
   loading,
   progress,
   onSaveShortcut,
-  shortcutSaved
+  shortcutSaved,
+  shortcutSaving,
+  shortcutSaveError
 }) {
   const sourceLabel = sourceTabs.find((tab) => tab.id === source)?.label || source;
   const providerModel =
@@ -1041,11 +1175,29 @@ function BuilderActionBar({
       <button
         type="button"
         onClick={onSaveShortcut}
-        title="Capture the current builder setup as a reusable shortcut (persistence arrives in a later slice)"
-        className="sg-ghost-button inline-flex items-center gap-1.5"
+        disabled={shortcutSaving}
+        title={
+          shortcutSaveError ||
+          "Save the current builder setup as a pinned shortcut on Home"
+        }
+        className="sg-ghost-button inline-flex items-center gap-1.5 disabled:opacity-60"
       >
-        {shortcutSaved ? <Check className="h-4 w-4 text-emerald-300" /> : <Bookmark className="h-4 w-4" />}
-        {shortcutSaved ? "Captured" : "Save as shortcut"}
+        {shortcutSaving ? (
+          <Loader2 className="h-4 w-4 animate-spin" />
+        ) : shortcutSaveError ? (
+          <AlertCircle className="h-4 w-4 text-red-300" />
+        ) : shortcutSaved ? (
+          <Check className="h-4 w-4 text-emerald-300" />
+        ) : (
+          <Bookmark className="h-4 w-4" />
+        )}
+        {shortcutSaving
+          ? "Saving…"
+          : shortcutSaveError
+            ? "Save failed"
+            : shortcutSaved
+              ? "Saved to Home"
+              : "Save as shortcut"}
       </button>
 
       <GenerateProgressButton loading={loading} progress={progress} hasResult={hasResult} />
@@ -1175,6 +1327,7 @@ function BuilderComposer({
   handleProviderSelect,
   model,
   setModel,
+  modelNotice,
   qwenThinking,
   setQwenThinking,
   strictMath,
@@ -1259,6 +1412,9 @@ function BuilderComposer({
               ))}
             </select>
           </label>
+          {modelNotice && (
+            <p className="text-[12px] leading-5 text-[#FCD34D]">{modelNotice}</p>
+          )}
           {selectedProvider?.discovery_error && (
             <p className="text-[12px] leading-5 text-[#FCA5A5]">
               Local discovery: {selectedProvider.discovery_error}
