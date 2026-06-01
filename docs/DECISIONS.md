@@ -61,3 +61,48 @@ limit to each provider's real context window) is **deferred**; it adds
 provider-introspection complexity that isn't justified yet for a single-operator
 tool. Revisit if multi-provider context limits start causing real truncation
 pain.
+
+## Expanded output-section toggles live on the generation request, not in shortcuts
+`include_sections` (a dict-of-bool, e.g. `{"glossary": true}`) is a real field on
+`LLMJobRequest` and is threaded `LLMJobRequest → run_llm_job → generate_study_guide
+→ orchestrator prompt assembly`. The single source of truth is
+`INCLUDE_SECTION_FRAGMENTS` in `pipeline/orchestrator.py`, mapping each canonical
+toggle key → one short, section-oriented prompt fragment.
+**Why this location:** the pre-existing "module" keys (`mcqs`, `glossary`, … in
+`shortcut_store.KNOWN_MODULE_KEYS` + `frontend/shortcutMeta.js`) were
+**shortcut-only UI state** — they round-tripped through the Builder and
+`library/shortcuts.json` but **never reached prompt assembly**, so enabling them
+changed nothing in the generated guide. Putting the canonical toggles on the
+generation request makes them actually affect output, and keeps the request (not a
+persisted shortcut) as the thing that carries intent. Shortcuts may later persist
+this field, but the request is authoritative.
+**Default-off backward compatibility:** an unset/empty `include_sections` (or one
+with only unknown/false keys) adds **no** fragments; the assembled system message is
+**byte-identical** to the previous behaviour (verified: `build_messages` with no
+toggles `== MARKDOWN_MATH_SYSTEM`; preset path `== "{system}\n\n{MARKDOWN_MATH_SYSTEM}"`).
+**Merge, not duplicate:** legacy shortcut keys normalise onto canonical keys via
+`INCLUDE_SECTION_ALIASES` (`mcqs→mcqs_with_answers`, `formulas→formula_sheet`,
+`diagrams→diagrams_figures`); `glossary`/`flashcards`/`worked_examples` map to
+themselves; the ambiguous `summary`/`key_concepts`/`practice_problems` are kept as
+accepted canonical keys mapping to themselves rather than forced into a misleading
+alias. Unknown keys are ignored (the repo's whitelist convention for untrusted
+toggle input).
+**Ordering:** enabled fragments are injected into the system message **before**
+`MARKDOWN_MATH_SYSTEM`, which **remains the final appended block** in both the
+default and preset paths. Toggle order follows `INCLUDE_SECTION_FRAGMENTS`
+insertion order, so output is deterministic regardless of incoming dict order.
+Builder UI exposure (C3) and depth/difficulty/voice (C2) are deferred.
+
+## Bulk purge loops the guarded single-item purge (no new raw-delete path)
+`POST /api/jobs/bulk/purge` (added in the Library finish slice) makes **permanent**
+delete reachable from the UI's Trash view. **Why it is safe:** it does not introduce
+a new deletion primitive — it simply **loops the existing guarded
+`purge_trashed_job`**, which can act **only** on a job already inside `jobs/.trash/`
+behind a path assertion that hard-fails any id resolving outside the trash dir. Per
+the existing partial-success contract, bogus ids, traversal ids (`../escape`), and
+**active** (non-trashed) jobs are **rejected** (`error: not in trash`) without
+touching disk; active jobs are confirmed untouched. This preserves the
+"Trash-before-purge for deletes" invariant — destructive loss still requires the deliberate
+two-step (soft-delete to trash, then purge) — and creates **no** path that can
+hard-delete an active job or escape the jobs tree. Verified in Docker: bulk/purge
+returns ok for a trashed id and `error` for bogus/escape/active ids.

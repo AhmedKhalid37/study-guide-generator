@@ -7,8 +7,8 @@
 
 ## Where we are
 
-- **Branch:** `library-finish`
-- **Last commit:** `f1201a0` — Finish Library folder and trash actions
+- **Branch:** `style-output-toggles`
+- **Last commit:** `fe898c4` — Add expanded output-section toggles to prompt assembly
 - **Main branch (PR target):** `chrome-renderer-v1`
 
 ## DONE (in order)
@@ -73,6 +73,34 @@
     bogus / `../escape` / active ids (active job untouched on disk); Option A
     leaves the guide active+Unfiled; Option B lands the guide in Trash and gone
     from active; bulk/restore returns a purged job to active.
+
+12. **Slice C1 — expanded output-section toggles (BACKEND + prompt assembly)** —
+    `fe898c4` (branch `style-output-toggles`). Added a real `include_sections`
+    dict-of-bool field to `LLMJobRequest`, threaded
+    `LLMJobRequest → run_llm_job → generate_study_guide → orchestrator`. Investigation
+    first confirmed the pre-existing "module" keys (`mcqs`/`glossary`/… in
+    `shortcut_store.KNOWN_MODULE_KEYS` + `frontend/shortcutMeta.js`) were
+    **shortcut-only UI state** that **never reached prompt assembly**, so a new
+    backend mechanism was required (per the STEP-1 stop rule, confirmed with the
+    operator before building). Single source of truth is `INCLUDE_SECTION_FRAGMENTS`
+    in `pipeline/orchestrator.py` (21 canonical keys: the 18 target toggles + 3 kept
+    legacy keys); legacy keys normalise via `INCLUDE_SECTION_ALIASES`
+    (`mcqs→mcqs_with_answers`, `formulas→formula_sheet`, `diagrams→diagrams_figures`).
+    **New toggles default off** — an unset/empty/unknown-only map produces a
+    **byte-identical** system message (verified: default `== MARKDOWN_MATH_SYSTEM`;
+    preset path `== "{system}\n\n{MARKDOWN_MATH_SYSTEM}"`). Enabled fragments are
+    injected **before** `MARKDOWN_MATH_SYSTEM`, which **remains the final block** in
+    both default and preset paths; order is deterministic (insertion order). Unknown
+    keys ignored (whitelist convention). `include_sections` is persisted in the job
+    manifest so **rerender** reproduces the same sections. Verified in Docker (uid
+    10001/appuser): in-container orchestrator proof of fragment presence/ordering for
+    7 toggles, a real DeepSeek generation whose guide followed the requested sections
+    (Glossary / MCQs+Answer Key / Worked examples / Formula sheet; slide refs
+    correctly omitted as the source had none), manifest persistence confirmed; release
+    smoke **28/28** (flaky outline-ordering check passed). **Builder UI exposure
+    deferred to C3; depth/difficulty/voice deferred to C2; shortcut
+    whitelist/persistence extension deferred.** Also documented the prior bulk-purge
+    decision in `DECISIONS.md`.
 
 ## NEXT (in order)
 
