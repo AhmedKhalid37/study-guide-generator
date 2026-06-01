@@ -146,6 +146,10 @@ class LLMJobRequest(BaseModel):
     qwen_thinking: bool = True
     folder_id: str | None = None
     outline: OutlineData | None = None
+    # Optional output-section toggles (dict-of-bool, e.g. {"glossary": true}).
+    # Unknown keys are ignored downstream by the orchestrator whitelist; an unset
+    # or empty map adds no new prompt fragments (default behaviour unchanged).
+    include_sections: dict[str, bool] = {}
 
 
 class OutlineGenerateRequest(BaseModel):
@@ -1305,6 +1309,7 @@ async def create_llm_job(request: Request) -> dict[str, Any]:
             mode=(llm_request.mode or DEFAULT_MODE),
             prompt_name=llm_request.prompt_name,
             generator_preset=llm_request.generator_preset,
+            include_sections=llm_request.include_sections,
             theme=llm_request.theme,
             strict_math=llm_request.strict_math,
             config=config,
@@ -1672,6 +1677,8 @@ def retry_failed_job(job_id: str) -> dict[str, Any]:
         mode = str(manifest.get("mode") or DEFAULT_MODE)
         prompt_name = str(manifest.get("prompt_name") or "basic_study_guide")
         qwen_thinking = bool(manifest.get("qwen_thinking", True))
+        manifest_sections = manifest.get("include_sections")
+        include_sections = manifest_sections if isinstance(manifest_sections, dict) else {}
 
         try:
             config = build_provider_config(provider, model_name, qwen_thinking_enabled=qwen_thinking)
@@ -1688,6 +1695,7 @@ def retry_failed_job(job_id: str) -> dict[str, Any]:
                 title=title,
                 mode=mode,
                 prompt_name=prompt_name,
+                include_sections=include_sections,
                 config=config,
             )
             job.save_text(job.raw_md, raw_markdown)

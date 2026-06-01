@@ -38,6 +38,7 @@ def run_llm_job(
     mode: str = "exam",
     prompt_name: str = "basic_study_guide",
     generator_preset: str | None = None,
+    include_sections: dict[str, bool] | None = None,
     theme: str = "claude_clean",
     strict_math: bool = True,
     config: LLMConfig | None = None,
@@ -52,6 +53,8 @@ def run_llm_job(
             "mode": mode,
             "prompt_name": prompt_name,
             "generator_preset": generator_preset,
+            # Persisted so rerender reproduces the same requested output sections.
+            "include_sections": include_sections or {},
             "theme": theme,
             "strict_math": strict_math,
             "provider": resolved_config.provider,
@@ -93,6 +96,7 @@ def run_llm_job(
             mode=mode,
             prompt_name=prompt_name,
             generator_preset=generator_preset,
+            include_sections=include_sections,
             config=resolved_config,
             on_stage=job.set_stage,
         )
