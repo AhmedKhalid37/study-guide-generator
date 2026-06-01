@@ -106,3 +106,40 @@ touching disk; active jobs are confirmed untouched. This preserves the
 two-step (soft-delete to trash, then purge) — and creates **no** path that can
 hard-delete an active job or escape the jobs tree. Verified in Docker: bulk/purge
 returns ok for a trashed id and `error` for bogus/escape/active ids.
+
+## Generation axes: added depth + difficulty; voice deliberately NOT added (Styles own voice/tone)
+C2 adds two **global generation-directive axes** to `LLMJobRequest`: `output_depth`
+(`quick`/`balanced`/`exhaustive`) and `difficulty`
+(`beginner`/`normal`/`exam_level`/`advanced`). They are **optional scalar enums**,
+default unset, threaded `LLMJobRequest → run_llm_job → generate_study_guide →
+orchestrator` (mirroring C1 `include_sections`) and **persisted in the job manifest**
+so rerender reproduces them. The single source of truth is `OUTPUT_DEPTH_FRAGMENTS`
+/ `DIFFICULTY_FRAGMENTS` in `pipeline/orchestrator.py`.
+**Axes ≠ sections.** These are **global directives** that change *how* the guide is
+written (how deep, how it is pitched), distinct from `include_sections`, which
+*adds* specific sections (glossary, MCQs, …). They are not a new section adder and
+do not duplicate the include-sections mechanism.
+**`voice` was NOT added — Styles own voice/tone.** The STEP-1 investigation found the
+proposed `voice` enum (`simple`/`blunt`/`formal`/`baby_step`/`cram`) maps ~1:1 onto the
+existing Styles system: the `baby_steps` and `exam_cram` built-in styles, plus explicit
+prompt directives like "blunt second-person voice" and "plain-English first, then formal"
+in `prompts/`. Adding a `voice` axis would create **two competing tone systems** with
+confusing precedence against the style/preset system prompt. Per the slice's stop rule
+this was confirmed with the operator, who chose to **drop voice**. Tone/voice remains
+owned by Styles; pick a style (or write a custom one) to control voice.
+**`difficulty` does not duplicate `mode`.** `mode` is a vestigial free-text field
+(default `study_guide`, its UI control retired) injected verbatim as `Mode: {mode}` into
+the user template; it carries no difficulty semantics. `difficulty` is a distinct learner-
+pitch axis, so the two do not overlap.
+**Validation:** unknown axis values are **rejected at the API boundary** (`HTTP 400`,
+like provider/model/theme) — misspelled enums are not silently accepted. The orchestrator
+additionally ignores unknown values defensively so a stale manifest can't crash a rerender.
+**Assembly order** (both paths): `preset system prompt (preset path only)` → `axis/global
+directive fragments` → `include_sections fragments` → `MARKDOWN_MATH_SYSTEM` (always the
+**final** appended block). Axes come **before** include-section fragments because they shape
+the whole guide; depth precedes difficulty for determinism. The preset system prompt stays
+first so axes never displace or weaken it.
+**Backward compatibility:** with both axes unset (and no sections) the assembled system
+message is **byte-identical** to the previous behaviour — verified by direct equality:
+default path `build_messages(...) == MARKDOWN_MATH_SYSTEM`; preset path
+`== "{system}\n\n{MARKDOWN_MATH_SYSTEM}"`. Unknown/None axes add no fragment.

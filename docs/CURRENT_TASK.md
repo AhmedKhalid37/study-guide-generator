@@ -7,8 +7,8 @@
 
 ## Where we are
 
-- **Branch:** `style-output-toggles`
-- **Last commit:** `fe898c4` — Add expanded output-section toggles to prompt assembly
+- **Branch:** `style-axes`
+- **Last commit:** `24442bd` — Add generation depth and difficulty axes
 - **Main branch (PR target):** `chrome-renderer-v1`
 
 ## DONE (in order)
@@ -102,6 +102,37 @@
     whitelist/persistence extension deferred.** Also documented the prior bulk-purge
     decision in `DECISIONS.md`.
 
+13. **Slice C2 — generation depth + difficulty axes (BACKEND + prompt assembly)** —
+    `24442bd` (branch `style-axes`). Added two **optional scalar-enum** global
+    generation-directive axes to `LLMJobRequest`: `output_depth`
+    (`quick`/`balanced`/`exhaustive`) and `difficulty`
+    (`beginner`/`normal`/`exam_level`/`advanced`), threaded
+    `LLMJobRequest → run_llm_job → generate_study_guide → orchestrator` (mirroring C1)
+    and **persisted in the job manifest** so rerender/retry reproduces them. Source of
+    truth: `OUTPUT_DEPTH_FRAGMENTS` / `DIFFICULTY_FRAGMENTS` in
+    `pipeline/orchestrator.py`; assembled via `build_axis_directives_block`.
+    - **Axes default unset.** With both unset the system message is **byte-identical**
+      to before (verified: default `== MARKDOWN_MATH_SYSTEM`; preset path
+      `== "{system}\n\n{MARKDOWN_MATH_SYSTEM}"`). Unknown/None axes add no fragment.
+    - **Assembly order:** preset system prompt (preset path) → **axes** →
+      **include_sections** → `MARKDOWN_MATH_SYSTEM`. Axes inject **before**
+      include_sections; `MARKDOWN_MATH_SYSTEM` **remains the final block** in both paths.
+    - **`voice` was DROPPED** — STEP-1 found it duplicates the Styles system
+      (`baby_steps`/`exam_cram` styles + "blunt voice"/"formal" prompt directives);
+      confirmed with the operator. **Voice/tone remains owned by Styles.** `difficulty`
+      does **not** duplicate `mode` (mode is vestigial free-text with no difficulty
+      semantics).
+    - **Validation:** unknown axis values rejected at the API boundary (`HTTP 400`),
+      orchestrator ignores unknowns defensively.
+    - **Verified in Docker** (uid 10001/appuser, container healthy): in-container
+      orchestrator proof of byte-identical no-axes paths + ordering (depth<difficulty<
+      sections<MATH); a real DeepSeek generation with `output_depth=quick` +
+      `difficulty=exam_level` + `include_sections={glossary, mcqs_with_answers}` whose
+      guide showed a definitions table + MCQs/Answer Key (concise, exam-pitched);
+      manifest persisted both axes + sections; invalid `output_depth`/`difficulty`
+      returned 400. Release smoke **28/28** (flaky outline-ordering check passed).
+    - **Builder UI exposure deferred (C3); shortcut persistence bridge deferred.**
+
 ## NEXT (in order)
 
 3. **Library bulk actions — remaining follow-ups (deferred, not this slice).**
@@ -123,6 +154,19 @@
 
 ## OPEN ITEMS
 
+- **Shortcut modules/options persistence bridge** — the old shortcut `modules`
+  keys (`shortcut_store.KNOWN_MODULE_KEYS` + `frontend/shortcutMeta.js`) are still
+  **inert**: they round-trip through the Builder and `library/shortcuts.json` but
+  do **not** reach generation. They must later be bridged to `include_sections`,
+  and saved shortcuts should carry both `include_sections` and the C2 axes
+  (`output_depth`/`difficulty`) into the generation request. Not done in C2 (the
+  slice forbade touching shortcut whitelist/persistence).
+- **Rerender drops `generator_preset`** — the retry/rerender path
+  (`retry_failed_job` in `api/server.py`) rebuilds from the manifest and now
+  reproduces `include_sections` + the C2 axes, but it still does **not** pass
+  `generator_preset`, so a preset-generated job re-renders through the **default**
+  prompt path (losing the preset system prompt + sampling params). Fix in a
+  separate focused slice (do not bundle with C2).
 - **Provider-aware truncation caps** — deferred (Option B in `DECISIONS.md`).
   Current caps are env-configurable with static defaults.
 - **Real cancel button** — deferred backend slice. The Builder shows progress
