@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import csv
+import re
 import shutil
 from dataclasses import dataclass
 from pathlib import Path
@@ -119,19 +120,57 @@ def _extract_pdf(path: Path) -> ExtractionResult:
         # marker) so positional references survive extraction — study-guide prompts
         # cite these. The index is the physical page number; blank pages are dropped
         # without shifting the numbering of the pages that follow.
-        pages = []
+        #
+        # Page-level (not whole-document) text/OCR fallback: a mostly-scanned PDF
+        # whose title slide happens to carry a few words of embedded text must not
+        # be treated as "fully text-extracted". Each page decides independently —
+        # pages with meaningful embedded text use it; sparse/scanned pages get OCR'd
+        # on their own — so a 118-page scanned deck yields all its pages, not just
+        # page 1.
+        ocr_ready, ocr_unavailable_reason = _ocr_available()
+
+        pages: list[str] = []
+        used_text = False
+        used_ocr = False
+        wanted_ocr = False
         for index, page in enumerate(document, start=1):
             body = page.get_text("text").strip()
-            if body:
+            if _is_meaningful_page_text(body):
                 pages.append(f"## Page {index}\n{body}")
-        text = "\n\n".join(pages)
-        if text.strip():
-            return ExtractionResult(text, "pdf_text", warnings)
+                used_text = True
+                continue
 
-        ocr_text, ocr_warning = _ocr_pdf(document)
-        if ocr_warning:
-            warnings.append(ocr_warning)
-        return ExtractionResult(ocr_text, "pdf_ocr", warnings)
+            # Sparse/empty page → OCR it individually. A page uses embedded text
+            # XOR OCR (never both), so the same content is not duplicated.
+            wanted_ocr = True
+            page_ocr = _ocr_page(page) if ocr_ready else ""
+            if page_ocr:
+                pages.append(f"## Page {index}\n{page_ocr}")
+                used_ocr = True
+            elif body:
+                # OCR produced nothing (or is unavailable) but the page had a little
+                # embedded text — keep it rather than dropping the page entirely.
+                pages.append(f"## Page {index}\n{body}")
+                used_text = True
+            # else: genuinely blank page → dropped (numbering preserved by index).
+
+        if wanted_ocr and not ocr_ready and ocr_unavailable_reason:
+            warnings.append(ocr_unavailable_reason)
+
+        text = "\n\n".join(pages)
+        if used_ocr and used_text:
+            mode = "pdf_mixed"
+        elif used_ocr:
+            mode = "pdf_ocr"
+        elif used_text:
+            mode = "pdf_text"
+        else:
+            # No usable text at all: OCR was intended but produced nothing
+            # (unavailable, or genuinely empty scans). Report the OCR mode as the
+            # all-or-nothing path did, so downstream "no text extracted" handling
+            # is unchanged.
+            mode = "pdf_ocr" if wanted_ocr else "pdf_text"
+        return ExtractionResult(text, mode, warnings)
 
 
 def _preprocess_ocr_image(image: "Image.Image") -> "Image.Image":
@@ -155,23 +194,49 @@ def _preprocess_ocr_image(image: "Image.Image") -> "Image.Image":
     return image.point(lambda x: 0 if x < 128 else 255)
 
 
-def _ocr_pdf(document) -> tuple[str, str | None]:
+def _is_meaningful_page_text(text: str) -> bool:
+    """Whether a page's embedded text is rich enough to skip OCR for that page.
+
+    Conservative gate for the mixed scanned/text PDF path: a page counts as a real
+    text page when it has either a reasonable amount of characters (>= 40) or
+    several word-like tokens (>= 5). Sparse pages — blank scans, or image-only
+    slides carrying just a stray label — fall through to per-page OCR instead of
+    being accepted as "text extracted".
+    """
+    stripped = text.strip()
+    if len(stripped) >= 40:
+        return True
+    return len(re.findall(r"\w+", stripped)) >= 5
+
+
+def _ocr_available() -> tuple[bool, str | None]:
+    """Check OCR prerequisites once (tesseract binary + python libs).
+
+    Returns (ready, reason). When not ready, ``reason`` is a user-facing warning
+    explaining why OCR was skipped — surfaced once per document rather than once
+    per page.
+    """
     if shutil.which("tesseract") is None:
-        return "", "OCR skipped because the tesseract binary is not available."
-
+        return False, "OCR skipped because the tesseract binary is not available."
     try:
-        import fitz
-        import pytesseract
-        from PIL import Image
+        import pytesseract  # noqa: F401
+        from PIL import Image  # noqa: F401
     except ImportError:
-        return "", "OCR skipped because pytesseract or pillow is not installed."
+        return False, "OCR skipped because pytesseract or pillow is not installed."
+    return True, None
 
-    pages: list[str] = []
-    for index, page in enumerate(document, start=1):
-        pixmap = page.get_pixmap(matrix=fitz.Matrix(2, 2), alpha=False)
-        image = Image.frombytes("RGB", [pixmap.width, pixmap.height], pixmap.samples)
-        image = _preprocess_ocr_image(image)
-        page_text = pytesseract.image_to_string(image).strip()
-        if page_text:
-            pages.append(f"## Page {index}\n{page_text}")
-    return "\n\n".join(pages), None
+
+def _ocr_page(page) -> str:
+    """OCR a single fitz page, reusing the shared image preprocessing.
+
+    Callers must confirm OCR is available via ``_ocr_available`` first; this keeps
+    the per-page hot loop free of repeated binary/import probing.
+    """
+    import fitz
+    import pytesseract
+    from PIL import Image
+
+    pixmap = page.get_pixmap(matrix=fitz.Matrix(2, 2), alpha=False)
+    image = Image.frombytes("RGB", [pixmap.width, pixmap.height], pixmap.samples)
+    image = _preprocess_ocr_image(image)
+    return pytesseract.image_to_string(image).strip()
