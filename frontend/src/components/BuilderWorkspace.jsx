@@ -58,6 +58,7 @@ import {
   SECTION_GROUPS
 } from "../sectionMeta";
 import { FOLDER_PRESET_COLORS } from "../folderMeta";
+import { presetCompat, providerIconFor, providerLabelFor } from "../presetMeta";
 import {
   BoltGlyph,
   DocGlyph,
@@ -163,6 +164,7 @@ const TOOLTIPS = {
   provider: "Which AI service generates the guide. Only configured providers can run.",
   model: "The specific model used for generation. Larger models are slower but stronger.",
   generatorPreset: "Controls the main system prompt and guide structure. Overrides the style below.",
+  modelCompat: "Each preset is tuned for a specific model. This is only a suggestion — your selected model is always used and Generate stays enabled.",
   style: "The built-in or custom prompt that shapes tone and layout of the guide.",
   length: "Target output depth — roughly how many pages the guide should aim for.",
   strictMath: "Validate every formula and fail loudly on broken math instead of guessing.",
@@ -1101,7 +1103,7 @@ export default function BuilderWorkspace({
               generatorPresets={generatorPresets}
               generatorPreset={generatorPreset}
               onSelectGeneratorPreset={setGeneratorPreset}
-              provider={provider}
+              model={model}
               length={length}
               setLength={setLength}
               includeSections={includeSections}
@@ -1754,7 +1756,7 @@ function StyleSettings({
   generatorPresets = [],
   generatorPreset = "",
   onSelectGeneratorPreset,
-  provider,
+  model,
   length,
   setLength,
   includeSections,
@@ -1776,7 +1778,7 @@ function StyleSettings({
         generatorPresets={generatorPresets}
         generatorPreset={generatorPreset}
         onSelectGeneratorPreset={onSelectGeneratorPreset}
-        provider={provider}
+        model={model}
       />
       {/* A generator preset replaces the system prompt + sampling params, so the
           style below is ignored while one is active. */}
@@ -1874,25 +1876,104 @@ function PreviewWorkspacePanel({ result, artifacts, artifactUrls, previewFormat,
   );
 }
 
-function GeneratorPresetControls({ generatorPresets = [], generatorPreset = "", onSelectGeneratorPreset, provider }) {
+// Small provider logo chip. Uses a local SVG when one ships for the provider,
+// otherwise a styled text badge. Logos render on a light chip so near-black marks
+// (Qwen / Local) stay visible against the dark UI. A missing/broken icon never
+// blocks the card — `onError` swaps to nothing and the badge sibling stays.
+function ProviderBadge({ provider }) {
+  const icon = providerIconFor(provider);
+  const label = providerLabelFor(provider);
+  if (icon) {
+    return (
+      <span
+        className="inline-flex h-6 w-6 shrink-0 items-center justify-center overflow-hidden rounded-md bg-white p-[3px] ring-1 ring-white/20"
+        title={label}
+      >
+        <img
+          src={icon}
+          alt={`${label} logo`}
+          loading="lazy"
+          className="h-full w-full object-contain"
+          onError={(event) => {
+            event.currentTarget.style.display = "none";
+          }}
+        />
+      </span>
+    );
+  }
+  return (
+    <span className="inline-flex h-6 shrink-0 items-center rounded-md bg-white/[0.08] px-2 text-[10px] font-bold uppercase tracking-[0.06em] text-[#D4D4D8] ring-1 ring-white/10">
+      {label}
+    </span>
+  );
+}
+
+const fmtPresetParams = (params = {}) => {
+  const parts = [`temp ${params.temperature}`];
+  if (params.top_p != null) parts.push(`top_p ${params.top_p}`);
+  if (params.max_tokens != null) parts.push(`max ${params.max_tokens}`);
+  if (params.thinking) parts.push("thinking on");
+  return parts.join(" · ");
+};
+
+// One generator-preset card. Pure display of backend metadata; selecting it sets
+// the same `generatorPreset` id the old chip selector did.
+function GeneratorPresetCard({ preset, selected, onSelect }) {
+  const available = preset.available !== false;
+  return (
+    <button
+      type="button"
+      disabled={!available}
+      aria-pressed={selected}
+      onClick={() => onSelect?.(preset.id)}
+      title={available ? undefined : "This preset's prompt could not be loaded."}
+      className={`flex flex-col gap-2 rounded-xl border p-3 text-left transition disabled:cursor-not-allowed disabled:opacity-40 ${
+        selected
+          ? "border-[rgba(249,115,22,0.5)] bg-[rgba(249,115,22,0.08)] ring-1 ring-[rgba(249,115,22,0.35)]"
+          : "border-white/[0.08] bg-[#070B14] hover:border-white/20"
+      }`}
+    >
+      <div className="flex items-center gap-2">
+        <ProviderBadge provider={preset.provider} />
+        {preset.model && (
+          <span className="truncate rounded-md bg-white/[0.06] px-2 py-0.5 text-[11px] font-semibold text-[#D4D4D8]">
+            {preset.model}
+          </span>
+        )}
+        {!available && (
+          <span className="rounded-md bg-white/[0.06] px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.06em] text-[#9098A8]">
+            Unavailable
+          </span>
+        )}
+        <span className="flex-1" />
+        {selected && <Check className="h-4 w-4 shrink-0 text-[#F97316]" />}
+      </div>
+      <div>
+        <div className="text-[13px] font-semibold text-[#F4F4F5]">{preset.name}</div>
+        {preset.purpose && (
+          <div className="mt-0.5 text-[11.5px] font-medium text-[#F8B57E]">{preset.purpose}</div>
+        )}
+      </div>
+      {preset.description && (
+        <p className="text-[11.5px] leading-4 text-[#9098A8]">{preset.description}</p>
+      )}
+      {preset.recommended_use && (
+        <p className="text-[11px] leading-4 text-[#7C8294]">
+          <span className="font-semibold text-[#9098A8]">Best for: </span>
+          {preset.recommended_use}
+        </p>
+      )}
+    </button>
+  );
+}
+
+function GeneratorPresetControls({ generatorPresets = [], generatorPreset = "", onSelectGeneratorPreset, model }) {
   if (!generatorPresets.length) return null;
 
   const active = generatorPresets.find((preset) => preset.id === generatorPreset) || null;
-  const mismatch = active && active.provider !== provider;
-  const fmtParams = (params = {}) => {
-    const parts = [`temp ${params.temperature}`];
-    if (params.top_p != null) parts.push(`top_p ${params.top_p}`);
-    if (params.max_tokens != null) parts.push(`max ${params.max_tokens}`);
-    if (params.thinking) parts.push("thinking on");
-    return parts.join(" · ");
-  };
-
-  const optionClass = (selected) =>
-    `h-8 rounded-md border px-3 text-[12px] font-semibold transition ${
-      selected
-        ? "border-[rgba(249,115,22,0.45)] bg-[rgba(249,115,22,0.14)] text-[#F97316]"
-        : "border-white/[0.08] bg-white/[0.03] text-[#9098A8] hover:text-[#D4D4D8]"
-    }`;
+  // Advisory only: warn when the selected model doesn't match the preset's soft
+  // `model_hint`. Never blocks generation or auto-switches the model.
+  const compat = active ? presetCompat(active, model) : { warn: false };
 
   return (
     <div>
@@ -1900,37 +1981,48 @@ function GeneratorPresetControls({ generatorPresets = [], generatorPreset = "", 
       <p className="mt-1 text-[11.5px] leading-4 text-[#9098A8]">
         A full model-tuned system prompt with its own sampling params. Overrides the style below.
       </p>
-      <div className="mt-1.5 flex flex-wrap gap-1.5">
+      <div className="mt-2 grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
         <button
           type="button"
+          aria-pressed={!generatorPreset}
           onClick={() => onSelectGeneratorPreset?.("")}
-          className={optionClass(!generatorPreset)}
+          className={`flex flex-col justify-center gap-1 rounded-xl border p-3 text-left transition ${
+            !generatorPreset
+              ? "border-[rgba(249,115,22,0.5)] bg-[rgba(249,115,22,0.08)] ring-1 ring-[rgba(249,115,22,0.35)]"
+              : "border-white/[0.08] bg-[#070B14] hover:border-white/20"
+          }`}
         >
-          None (use style)
+          <div className="flex items-center gap-2">
+            <span className="text-[13px] font-semibold text-[#F4F4F5]">None</span>
+            {!generatorPreset && <Check className="h-4 w-4 text-[#F97316]" />}
+          </div>
+          <p className="text-[11.5px] leading-4 text-[#9098A8]">
+            Use the style below instead of a tuned generator preset.
+          </p>
         </button>
         {generatorPresets.map((preset) => (
-          <button
+          <GeneratorPresetCard
             key={preset.id}
-            type="button"
-            disabled={!preset.available}
-            title={preset.available ? preset.description : "This preset's prompt could not be loaded."}
-            onClick={() => onSelectGeneratorPreset?.(preset.id)}
-            className={`${optionClass(generatorPreset === preset.id)} disabled:cursor-not-allowed disabled:opacity-40`}
-          >
-            {preset.name}
-          </button>
+            preset={preset}
+            selected={generatorPreset === preset.id}
+            onSelect={onSelectGeneratorPreset}
+          />
         ))}
       </div>
       {active && (
         <div className="mt-2 rounded-[10px] border border-white/[0.06] bg-[#070B14] p-3 text-[12px] leading-5 text-[#9098A8]">
-          <div className="text-[#D4D4D8]">{active.description}</div>
-          <div className="mt-1.5 text-[11.5px]">
-            Tuned for <span className="text-[#D4D4D8]">{active.model_hint}</span> · {fmtParams(active.params)}
+          <div className="text-[11.5px]">
+            Tuned for <span className="text-[#D4D4D8]">{active.model_hint}</span> · {fmtPresetParams(active.params)}
           </div>
-          {mismatch && (
-            <div className="mt-2 rounded-[8px] border border-[rgba(249,115,22,0.35)] bg-[rgba(249,115,22,0.08)] px-2.5 py-1.5 text-[11.5px] text-[#F8B57E]">
-              ⚠️ This preset is tuned for {active.model_hint}; you've selected a different provider. It still
-              runs, but the model-specific tuning may not fully apply.
+          {compat.warn && (
+            <div className="mt-2 flex items-start gap-1.5 rounded-[8px] border border-[rgba(249,115,22,0.35)] bg-[rgba(249,115,22,0.08)] px-2.5 py-1.5 text-[11.5px] text-[#F8B57E]">
+              <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+              <span>
+                This preset is tuned for {compat.hint}. It may still work with{" "}
+                <span className="font-semibold">{model || "your selected model"}</span>, but {compat.hint} is
+                recommended. <span className="text-[#C9A27A]">Your model selection still applies.</span>
+                <InfoTip text={TOOLTIPS.modelCompat} label="Model compatibility" />
+              </span>
             </div>
           )}
         </div>

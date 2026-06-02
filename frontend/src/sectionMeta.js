@@ -9,46 +9,50 @@
 
 // Output-section toggles, grouped only for readability. The `key` is the
 // canonical backend key sent verbatim in `include_sections`; `label` is cosmetic.
+// Tooltip policy (C4b): help text is reserved for the LESS obvious sections.
+// Obvious controls (MCQs, Flashcards, Glossary) carry no tip — their label already
+// says what they do — so the hints draw attention to the sections that genuinely
+// need explanation (TL;DR, cram sheet, exam alerts, common mistakes, diagrams, …).
 export const SECTION_GROUPS = [
   {
     title: "Practice",
     keys: [
-      { key: "mcqs_with_answers", label: "MCQs (with answers)", tip: "Adds multiple-choice questions WITH a separated answer key." },
-      { key: "mcqs_without_answers", label: "MCQs (no answers)", tip: "Adds multiple-choice questions only — no answer key." },
-      { key: "flashcards", label: "Flashcards", tip: "Adds front/back question-and-answer flashcard pairs." },
-      { key: "solved_mock_exam", label: "Solved mock exam" },
-      { key: "self_test_checklist", label: "Self-test checklist" },
+      { key: "mcqs_with_answers", label: "MCQs (with answers)" },
+      { key: "mcqs_without_answers", label: "MCQs (no answers)" },
+      { key: "flashcards", label: "Flashcards" },
+      { key: "solved_mock_exam", label: "Solved mock exam", tip: "A full mock exam followed by complete worked solutions." },
+      { key: "self_test_checklist", label: "Self-test checklist", tip: "A 'can you do X?' checklist to gauge readiness before the exam." },
       { key: "practice_problems", label: "Practice problems" },
     ],
   },
   {
     title: "Reference",
     keys: [
-      { key: "glossary", label: "Glossary", tip: "Adds a glossary table of key terms with simple definitions." },
-      { key: "definitions_cheat_sheet", label: "Definitions cheat sheet" },
+      { key: "glossary", label: "Glossary" },
+      { key: "definitions_cheat_sheet", label: "Definitions cheat sheet", tip: "A compact lookup list of key terms and their definitions." },
       { key: "formula_sheet", label: "Formula sheet", tip: "Collects the key formulas with every symbol defined." },
-      { key: "summary_tables", label: "Summary tables" },
+      { key: "summary_tables", label: "Summary tables", tip: "Condenses comparable items into at-a-glance comparison tables." },
       { key: "key_concepts", label: "Key concepts" },
       { key: "learning_objectives", label: "Learning objectives" },
-      { key: "summary", label: "TL;DR summary" },
+      { key: "summary", label: "TL;DR summary", tip: "A short, high-yield recap of the whole guide up front." },
     ],
   },
   {
     title: "Exam help",
     keys: [
-      { key: "cram_sheet", label: "Cram sheet" },
-      { key: "common_mistakes", label: "Common mistakes" },
-      { key: "exam_alerts", label: "Exam alerts" },
+      { key: "cram_sheet", label: "Cram sheet", tip: "A dense one-page sheet of the highest-yield facts for last-minute review." },
+      { key: "common_mistakes", label: "Common mistakes", tip: "Calls out frequent errors and misconceptions so you can avoid them." },
+      { key: "exam_alerts", label: "Exam alerts", tip: "Flags likely exam traps and points that are commonly tested." },
       { key: "worked_examples", label: "Worked examples", tip: "Adds step-by-step worked examples where the source has formulas or procedures." },
     ],
   },
   {
     title: "Source-aware",
     keys: [
-      { key: "diagrams_figures", label: "Diagrams / figures" },
+      { key: "diagrams_figures", label: "Diagrams / figures", tip: "Recreates or describes key diagrams and figures where the source supports them." },
       { key: "citations_references", label: "Citations / source refs", tip: "Preserves citations and source references from the material." },
       { key: "slide_page_references", label: "Slide / page refs", tip: "Preserves useful slide/page references from the source." },
-      { key: "instructor_notes", label: "Instructor notes" },
+      { key: "instructor_notes", label: "Instructor notes", tip: "Surfaces instructor asides and emphasis flagged in the source." },
     ],
   },
 ];
