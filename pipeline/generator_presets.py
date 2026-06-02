@@ -43,11 +43,17 @@ _PRESET_DEFS: list[dict[str, Any]] = [
     {
         "id": "claude_exam",
         "name": "Claude-Exam",
+        "purpose": "Exam prep — maximum scaffolding",
         "description": (
             "Maximum scaffolding for a weaker local model: rigid skeleton, explicit "
             "assessment-type rules, in-prompt worked-example demo, hard "
             "anti-summarization."
         ),
+        "recommended_use": (
+            "Best with a weaker local model that needs a rigid skeleton, explicit "
+            "assessment rules, and hard anti-summarization."
+        ),
+        "model": "Gemma 4",
         "model_hint": "Gemma 4 (31B dense preferred)",
         "provider": "local",
         "block": "C1",
@@ -59,11 +65,17 @@ _PRESET_DEFS: list[dict[str, Any]] = [
     {
         "id": "claude_review",
         "name": "Claude-Review",
+        "purpose": "Balanced review — frontier reasoner",
         "description": (
             "Compact, principle-driven prompt for a frontier reasoner: states the "
             "philosophy + module menu, trusts the model with the math, hard "
             "anti-verbosity / anti-meta rules."
         ),
+        "recommended_use": (
+            "Best with a strong frontier reasoning model you can trust with the math "
+            "and module choices, when you want a tight, principle-driven guide."
+        ),
+        "model": "DeepSeek V4 Pro",
         "model_hint": "DeepSeek V4 Pro",
         "provider": "deepseek",
         "block": "C2",
@@ -75,10 +87,16 @@ _PRESET_DEFS: list[dict[str, Any]] = [
     {
         "id": "claude_cram",
         "name": "Claude-Cram",
+        "purpose": "Cram — completeness over caution",
         "description": (
             "Anti-abstention override for a high-recall-but-hedging model: "
             "completeness beats caution, omission is the failure mode, no hedging."
         ),
+        "recommended_use": (
+            "Best with a high-recall model that tends to hedge or omit, when total "
+            "coverage matters more than brevity."
+        ),
+        "model": "Qwen 3.7 Max",
         "model_hint": "Qwen 3.7 Max",
         "provider": "qwen",
         "block": "C3",
@@ -149,7 +167,15 @@ def _public(preset: dict[str, Any], md_text: str) -> dict[str, Any]:
     return {
         "id": preset["id"],
         "name": preset["name"],
+        # Display-only metadata for the preset cards (C4b). ``.get`` keeps a preset
+        # that omits an optional descriptive field serializing safely as ``None``
+        # rather than raising. None of these fields touch prompt/sampling resolution.
+        "purpose": preset.get("purpose"),
         "description": preset["description"],
+        "recommended_use": preset.get("recommended_use"),
+        # ``model`` is a clean display string for an icon/model chip; ``model_hint``
+        # is the longer soft advisory (never a hard pin — the user can run any model).
+        "model": preset.get("model"),
         "model_hint": preset["model_hint"],
         "provider": preset["provider"],
         "params": {
