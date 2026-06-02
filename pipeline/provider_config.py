@@ -23,6 +23,7 @@ DEEPSEEK_MODELS = [
 ]
 QWEN_MODELS = [
     "qwen3.7-max",
+    "qwen3.7-plus",
     "qwen3.6-plus",
     "qwen3-max",
     "qwen3.6-max-preview",
