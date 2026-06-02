@@ -6,7 +6,7 @@
 > `DECISIONS.md`. The canonical project brief is `../CLAUDE.md`.
 >
 > **Trunk:** `chrome-renderer-v1` is the integrated trunk. Branch new work from it
-> (currently `1d51b36` or later) — never from the old consumed feature branches
+> (currently `901d44b` or later) — never from the old consumed feature branches
 > (see `DECISIONS.md` → "Consumed feature branches must not be re-merged").
 
 ---
@@ -74,8 +74,13 @@ flashcards with CSV / Anki / Quizlet export.
 - **Shortcut store** is a whitelist-validated JSON file at
   `library/shortcuts.json`. Import/export only accepts whitelisted fields.
 - **Job stage reporting.** Coarse status (`queued/running/done/
-  completed_with_warnings/failed`) is augmented by finer `stage`/`progress`,
+  completed_with_warnings/failed/cancelled`) is augmented by finer `stage`/`progress`,
   surfaced via `GET /api/jobs/{id}/progress` and polled by the Builder.
+- **Cooperative cancel.** `POST /api/jobs/{id}/cancel` writes a sidecar marker
+  (`jobs/<id>/cancel.requested`) that the pipeline checks at safe stage boundaries;
+  the job ends in the terminal `cancelled` status. It is **checkpoint-based, not a
+  process kill**, so it takes effect at the next safe checkpoint and **preserves**
+  partial artifacts + the user's inputs/settings (see `DECISIONS.md`).
 
 ## 5. Working conventions
 

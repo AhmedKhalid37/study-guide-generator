@@ -8,16 +8,15 @@
 ## Where we are
 
 - **Branch:** `chrome-renderer-v1` (the live integrated trunk; PR target)
-- **Trunk tip:** `65b9b8f` — Add Library export selected action (B4). Since the
-  Group-C integration note below was written, three more commits landed on trunk:
+- **Trunk tip:** `901d44b` — Add cooperative job cancellation. Since the
+  Group-C integration note below was written, several more commits landed on trunk:
   `687c8ca` (docs reconcile), `2716995` (preserve generator preset on rerender),
-  `65b9b8f` (B4 "Export selected"). The older `1d51b36` references further down
-  are historical — trunk is now `65b9b8f`.
-- **In progress (not yet merged):** branch `server-side-cancel` — cooperative
-  server-side cancel for running generations (see DONE #22 below).
-- **`origin/chrome-renderer-v1`:** `65b9b8f` (local == origin; pushed)
+  `65b9b8f` (B4 "Export selected"), and `901d44b` (cooperative server-side cancel).
+  The older `1d51b36` / `65b9b8f` references further down are historical — trunk is
+  now `901d44b`.
+- **`origin/chrome-renderer-v1`:** `901d44b` (local == origin; pushed)
 - **Group C is COMPLETE and INTEGRATED** (C1 → C5, incl. C4a–d) onto `chrome-renderer-v1`.
-- **For new sessions:** branch from `chrome-renderer-v1` @ `1d51b36` (or later). Do **not**
+- **For new sessions:** branch from `chrome-renderer-v1` @ `901d44b` (or later). Do **not**
   re-merge any of the old stacked feature branches — they are consumed/archival (see
   `DECISIONS.md` → "Consumed feature branches must not be re-merged"). The short one-page
   start-here is `docs/NEXT_CHAT_HANDOFF.md`.
@@ -486,7 +485,7 @@ parked on the `hardening` branch — not merged, not deleted.
       appropriate, and whether the one-line `purpose` subtitles read well.
 
 21. **Slice B4 — "Export selected" in the Library bulk bar (FRONTEND ONLY)** —
-    branch `library-export-selected`. The Library multi-select bulk toolbar
+    `65b9b8f` (branch `library-export-selected`, now on trunk). The Library multi-select bulk toolbar
     (`BulkBar`) gained an **"Export selected"** action between *Move to Unfiled*
     and *Delete*. It reuses the existing `downloadExportBundle` client helper →
     `POST /api/exports/bundle` (the **same** endpoint/contract the Exports center
@@ -509,8 +508,8 @@ parked on the `hardening` branch — not merged, not deleted.
     ["pdf"]}`) returns a `200 application/zip` with `Content-Disposition:
     attachment`, both guides' `final.pdf`, and `manifest.json`.
 
-22. **Slice — cooperative server-side cancel (BACKEND + FRONTEND)** — branch
-    `server-side-cancel`. Adds a true server-side cancel for in-flight
+22. **Slice — cooperative server-side cancel (BACKEND + FRONTEND)** — `901d44b`
+    (branch `server-side-cancel`, now on trunk). Adds a true server-side cancel for in-flight
     generations, completing the progress/cancel/retry triad (progress + retry
     already existed). **Design-first**, cooperative-only — **no process killing,
     no PDF/Chromium-pipeline rewrite.**
@@ -560,13 +559,20 @@ parked on the `hardening` branch — not merged, not deleted.
 
 ## NEXT (in order)
 
-1. **Library bulk actions — remaining follow-ups (deferred, not this slice).**
-   - bulk **archive** — only after an archive state is designed + `DECISIONS.md`
-     entry (not started; needs new metadata/state)
-   - bulk **tag** — only if/after a tag model exists (not started; needs design)
-   - bulk **export** — **DONE (Slice B4, branch `library-export-selected`).**
-     The "Export selected" action in the Library bulk bar reuses the existing
-     `POST /api/exports/bundle` ZIP endpoint (no new primitive). See DONE #21.
+> The rerender-preset fix (`2716995`), B4 "Export selected" (`65b9b8f`), and the
+> cooperative server-side cancel (`901d44b`) are **DONE and on trunk** — they are
+> no longer "next." See DONE #20→#22 and OPEN ITEMS.
+
+1. **Recommended next — pick ONE, design/investigation only (do NOT start
+   implementation in a docs slice):**
+   - **Math / PDF fidelity investigation.** Diagnose how reliably math (KaTeX
+     spans, formula sheets) and page references survive the Chromium PDF render
+     across real multi-page sources. The PDF/Chromium pipeline is load-bearing —
+     investigate and write findings first; do not rewrite casually.
+   - **Large-PDF preflight design (DESIGN-FIRST).** Design the upload
+     preflight / page-range selection / OCR-cost UX for big scanned PDFs
+     (deliberately left out of the page-level OCR fallback). Design + sign-off
+     before any code.
 2. **Output modules + preset naming/icons.** Output module options plus
    naming/iconography for presets.
 3. **Local Model Manager — DESIGN-FIRST.** Backend spawns/kills a host
@@ -575,6 +581,10 @@ parked on the `hardening` branch — not merged, not deleted.
 4. **In-app provider settings — DESIGN-FIRST.** Frontend writes provider config
    to **server-side secrets**. Keys must stay server-side only; the frontend
    must never receive raw keys. Design the secret-write path before coding.
+5. **Library archive / tag model — DESIGN-FIRST.** Bulk **archive** needs a new
+   archive state designed + a `DECISIONS.md` entry first; bulk **tag** needs a
+   tag model designed first. Neither is started. Bulk **export** is already DONE
+   (B4). Do not begin either without an explicit slice + design sign-off.
 
 ## OPEN ITEMS
 
@@ -600,7 +610,8 @@ parked on the `hardening` branch — not merged, not deleted.
 - **Shortcut inspector / repair loop** — a later UX for inspecting an invalid
   shortcut and repairing its broken references (provider/preset/style) is not
   started.
-- **Rerender drops `generator_preset` — FIXED** (branch `fix-rerender-generator-preset`).
+- **Rerender drops `generator_preset` — FIXED** (`2716995`, branch
+  `fix-rerender-generator-preset`, now on trunk).
   `retry_failed_job` (`api/server.py`, `path_mode == "generate"`) now reads
   `generator_preset` from the manifest and rebuilds through it: the preset is resolved,
   its tuned sampling params are applied to the provider config (mirroring the
@@ -613,11 +624,18 @@ parked on the `hardening` branch — not merged, not deleted.
   whose manifest still records the preset after retry).
 - **Provider-aware truncation caps** — deferred (Option B in `DECISIONS.md`).
   Current caps are env-configurable with static defaults.
-- **Real cancel button — DONE** (branch `server-side-cancel`, DONE #22). Cooperative
-  server-side cancel via a `jobs/<id>/cancel.requested` marker checked at safe stage
-  boundaries; new `cancelled` terminal status; `POST /api/jobs/{id}/cancel`; Builder
-  Cancel button. No process killing, no pipeline rewrite. **Still deferred:**
-  retry-from-cancelled (kept gated to `failed`; re-generate from the Builder instead).
+- **Real cancel button — DONE** (`901d44b`, branch `server-side-cancel`, now on
+  trunk; DONE #22). Cooperative server-side cancel via a `jobs/<id>/cancel.requested`
+  marker checked at safe stage boundaries; new `cancelled` terminal status;
+  `POST /api/jobs/{id}/cancel`; Builder Cancel button. **Cooperative + checkpoint-based:**
+  it does **not** kill processes or threads — it sets a marker that the pipeline checks
+  at safe stage boundaries, so a cancel requested during an uninterruptible LLM call or
+  Chromium render only takes effect at the **next safe checkpoint** (it is "stop at the
+  next checkpoint," not an instant abort). **Partial artifacts and the user's uploads /
+  Builder inputs / settings are preserved** — nothing is deleted on cancel; the Builder
+  keeps its inputs so the user simply re-generates. No pipeline rewrite. **Still
+  deferred:** retry-from-cancelled (kept gated to `failed`; re-generate from the Builder
+  instead).
 - **Docker GHCR publish workflow / prebuilt image** — deferred. `863f5b7` carried a
   `.github/workflows/publish.yml` (push image to GHCR on `v*` tags) and an
   `image: ghcr.io/...` line in compose. Needs a deliberate distribution decision before

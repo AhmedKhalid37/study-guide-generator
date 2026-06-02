@@ -360,3 +360,30 @@ the two commits also carried obsolete or divergent changes (already-superseded e
 edits, a comment-stripped Dockerfile, GHCR coupling), so cherry-picking the genuinely-useful hunks
 onto the trunk was safer than merging branches that would otherwise reintroduce conflicts and
 unwanted distribution coupling. The commits stay parked on `hardening` (kept, not deleted).
+
+## Cooperative cancel uses a sidecar marker file + checkpoints, not a manifest field or process kill (901d44b)
+Server-side cancel (`POST /api/jobs/{id}/cancel`, `901d44b`) is **cooperative and
+checkpoint-based**, not preemptive. Two non-obvious choices:
+**Cancel state is a sidecar marker file (`jobs/<id>/cancel.requested`), NOT a `job.json`
+field.** The running job thread continuously read-modify-writes the manifest via
+`set_stage`/`update`, so a cancel flag written into `job.json` by the request handler
+could be **clobbered** by a concurrent manifest write from the worker (lost-update race).
+The marker is **write-once by the canceller and existence-checked by the pipeline**
+(`Job.request_cancel`/`raise_if_cancelled`/`clear_cancel_request` in
+`pipeline/job_manager.py`), so the two sides never contend on the same mutable file. This
+mirrors the existing trash-marker pattern. The endpoint itself does **not** set status —
+the worker thread owns the manifest and transitions to the new terminal status `cancelled`
+(distinct from `failed`, `error: null`) when it catches the `JobCancelled` signal.
+**Cancel is "stop at the next safe checkpoint," not an instant abort, and never kills a
+process.** `raise_if_cancelled` is checked **only at existing stage boundaries** (before
+extraction, before the LLM call, after the LLM returns / before render, at the top of the
+raw-markdown pipeline, and before `render_pdf`) — **never** mid-LLM-call, mid-Chromium-render,
+or mid-`save_clean_md`. **Why:** the LLM HTTP call and the Chromium PDF render are
+uninterruptible external waits; forcibly killing them risks corrupt partial output and a
+wedged renderer, and the PDF/Chromium pipeline is load-bearing and must not be rewritten for
+this. So a cancel requested during one of those waits takes effect only when that call
+returns. **Nothing is deleted on cancel** — partial artifacts, the source/input, and the
+user's Builder inputs/selections are preserved, so the user simply re-generates.
+**Retry-from-cancelled is intentionally NOT wired** (`retry_failed_job` stays gated to
+`failed`) — re-generate from the Builder instead; already-terminal jobs are a safe no-op
+(no marker written, artifacts untouched).
