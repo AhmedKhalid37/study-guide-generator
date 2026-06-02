@@ -328,3 +328,35 @@ embedded text; blanket OCR would also regress quality on normal PDFs. Large-PDF 
 page-range selection, OCR cost limits) is **deliberately out of scope** here. Regression:
 `test_scripts/test_mixed_pdf_ocr.py` (synthetic page-1-text + pages-2/3-image PDF). Verified on
 the real artifact: ~97 → 18,799 chars, 1 → 118 `## Page` headings, mode `pdf_mixed`.
+
+## Consumed feature branches must not be re-merged; new work branches from `chrome-renderer-v1`
+Group C shipped as a long stack of feature branches (`style-output-toggles`, `style-axes`,
+`shortcut-options-bridge`, `builder-options-ui`, `preset-metadata`, `preset-cards-ui`,
+`qwen37-plus-model`, `home-nav-cleanup`, `preset-card-polish`, the `library-*` branches, etc.).
+That entire stack was **squashed and integrated** onto `chrome-renderer-v1` (squash `6f888b2`,
+trunk now at `1d51b36`, pushed). **Those branches are now consumed/archival — do NOT merge or
+rebase any of them again.** Their content already lives in the trunk; re-merging would
+reintroduce superseded code, resurrect already-fixed conflicts, or duplicate history. **Rule:**
+all new work branches from `chrome-renderer-v1` at `1d51b36` or later — never from an old
+stacked branch. **Why:** the stack diverged from the Chrome-renderer base, so the old branches
+no longer share the trunk's lineage; treating the integrated trunk as the single source of truth
+keeps history linear and avoids re-litigating resolved divergence. The old branches are **kept,
+not deleted** (operator preference), purely as archival reference. See
+`docs/NEXT_CHAT_HANDOFF.md` for the short start-here.
+
+## Docker hardening: compose resource limits salvaged; GHCR publish + pinned deps deferred
+Two local-only commits (`61c134c`, `863f5b7`) were parked on the `hardening` branch and
+investigated rather than merged wholesale. The **useful, low-risk, local-aligned** pieces were
+salvaged surgically onto the trunk: `_preprocess_ocr_image` from `61c134c` (`5bde798`) and the
+**compose resource limits / `no-new-privileges` hardening** from `863f5b7` (`1d51b36`:
+`mem_limit: 2g`, `pids_limit: 256`, `cpus: 2.0`, `security_opt: no-new-privileges:true`,
+additive to `docker-compose.yml`). `863f5b7`'s non-root/gosu/`appuser` hardening was already in
+the trunk at `6f888b2`, so it was not re-applied. **Deferred (need a deliberate decision, not a
+salvage):** (a) the **GHCR publish workflow + prebuilt `image:` line** — a distribution decision
+that the local-only/single-operator posture does not yet justify; and (b) the **fully pinned
+`requirements.txt` lockfile** — reproducibility is desirable, but a freeze must be regenerated
+from the current tree, not lifted from the divergent `hardening` branch. **Why salvage-not-merge:**
+the two commits also carried obsolete or divergent changes (already-superseded event-loop/OCR
+edits, a comment-stripped Dockerfile, GHCR coupling), so cherry-picking the genuinely-useful hunks
+onto the trunk was safer than merging branches that would otherwise reintroduce conflicts and
+unwanted distribution coupling. The commits stay parked on `hardening` (kept, not deleted).

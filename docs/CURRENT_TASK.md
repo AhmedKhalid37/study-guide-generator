@@ -7,15 +7,21 @@
 
 ## Where we are
 
-- **Branch:** `preset-card-polish`
-- **Last commit:** `0015e50` — Polish generator preset cards (C4d)
-- **Main branch (PR target):** `chrome-renderer-v1`
-- **Group C is COMPLETE** (C1 → C5); C4d is a frontend polish follow-up to C4b.
+- **Branch:** `chrome-renderer-v1` (the live integrated trunk; PR target)
+- **Last commit:** `1d51b36` — Add compose resource limits and no-new-privileges hardening
+- **`origin/chrome-renderer-v1`:** `1d51b36` (local == origin; pushed)
+- **Group C is COMPLETE and INTEGRATED** (C1 → C5, incl. C4a–d) onto `chrome-renderer-v1`.
+- **For new sessions:** branch from `chrome-renderer-v1` @ `1d51b36` (or later). Do **not**
+  re-merge any of the old stacked feature branches — they are consumed/archival (see
+  `DECISIONS.md` → "Consumed feature branches must not be re-merged"). The short one-page
+  start-here is `docs/NEXT_CHAT_HANDOFF.md`.
 
-## INTEGRATION — throwaway branch `integ-group-c` (off `origin/chrome-renderer-v1` @ `38cc822`)
+## INTEGRATION — DONE: Group C is now on `chrome-renderer-v1` (pushed)
 
-Group C was integrated onto the real target on a throwaway branch (NOT `chrome-renderer-v1`,
-which is untouched pending explicit approval to move it):
+Group C was integrated onto the real target and `chrome-renderer-v1` was moved to the
+integrated tip and pushed. The work originally landed on the throwaway `integ-group-c`
+branch (off `origin/chrome-renderer-v1` @ `38cc822`); `chrome-renderer-v1` now points at
+`1d51b36`. Sequence on the trunk:
 
 - `6f888b2` — **Squash of the Group C stack** onto `38cc822`. Clean fast-forward, **zero
   conflicts** (the earlier "5 conflicts" were artifacts of two local-only commits on local
@@ -26,19 +32,31 @@ which is untouched pending explicit approval to move it):
   `$...$` (KaTeX stripped the spaces → `Biasshiftsthebaseline`); `slide_page_references` was too weak.
   Strengthened `mcqs_with_answers` (prose, never `$...$`) and `slide_page_references` (carry `## Page N`
   anchors through as compact `(p. N)` refs). Prompt-only; verified on a synthetic multi-page source.
-- `72dab90` — **Mixed scanned/text PDF OCR fallback fixed.** Real issue: `_extract_pdf` decided
-  text-vs-OCR for the WHOLE document, so one page of embedded text (a title slide) suppressed OCR for
-  the rest — the 118-page `04_Neural_Networks...Backpropagation` extracted only ~97 chars / `## Page 1`.
-  New behavior: **page-level** fallback — each page uses meaningful embedded text (≥40 chars OR ≥5
-  word-like tokens) else is OCR'd individually (reusing `_preprocess_ocr_image`); `## Page N` anchors
-  preserved; mode now `pdf_text` / `pdf_ocr` / `pdf_mixed`. Verified on the real artifact: **~97 → 18,799
-  chars, 1 → 118 `## Page` headings, mode `pdf_mixed`**. Regression test `test_scripts/test_mixed_pdf_ocr.py`
-  (synthetic page-1-text + pages-2/3-image PDF; skips cleanly without PyMuPDF/tesseract, full pass in Docker).
-  Release smoke 28/28 (the known outline-ordering check flaked once, passed on rerun).
-  - **NOT automated — needs manual click-through:** generate a guide from a real scanned PDF through the
-    Builder and confirm page references appear and MCQ answer spacing is correct in the rendered PDF.
-  - **Deferred:** large-PDF upload UX / preflight / page-range selection; moving `chrome-renderer-v1`;
-    deciding what to do with local-only `863f5b7`; reconciling local `chrome-renderer-v1` (diverged at `61c134c`).
+- `72dab90` + `773209a` — **Mixed scanned/text PDF OCR fallback fixed** (+ its docs). Real issue:
+  `_extract_pdf` decided text-vs-OCR for the WHOLE document, so one page of embedded text (a title
+  slide) suppressed OCR for the rest — the 118-page `04_Neural_Networks...Backpropagation` extracted
+  only ~97 chars / `## Page 1`. New behavior: **page-level** fallback — each page uses meaningful
+  embedded text (≥40 chars OR ≥5 word-like tokens) else is OCR'd individually (reusing
+  `_preprocess_ocr_image`); `## Page N` anchors preserved; mode now `pdf_text` / `pdf_ocr` /
+  `pdf_mixed`. Verified on the real artifact: **~97 → 18,799 chars, 1 → 118 `## Page` headings, mode
+  `pdf_mixed`**. Regression test `test_scripts/test_mixed_pdf_ocr.py` (synthetic page-1-text +
+  pages-2/3-image PDF; skips cleanly without PyMuPDF/tesseract, full pass in Docker). Release smoke
+  28/28 (the known outline-ordering check flaked once, passed on rerun).
+- `1d51b36` — **Compose resource limits + `no-new-privileges` hardening** salvaged from local-only
+  `863f5b7` (`mem_limit: 2g`, `pids_limit: 256`, `cpus: 2.0`, `security_opt: no-new-privileges:true`).
+  Additive to `docker-compose.yml` only; `docker compose config` validated. `863f5b7`'s non-root/gosu
+  hardening was already integrated at `6f888b2`; its **GHCR publish workflow / prebuilt image** and
+  **pinned dependency lockfile** remain **deferred** decisions (see `DECISIONS.md`).
+
+### Local-only commits `61c134c` and `863f5b7` — parked on `hardening`
+Both were investigated. Useful pieces were salvaged onto the trunk (OCR preprocessing from
+`61c134c` → `5bde798`; compose resource limits from `863f5b7` → `1d51b36`). The remaining
+pieces (GHCR publish/prebuilt image, pinned deps) are deferred. The commits themselves stay
+parked on the `hardening` branch — not merged, not deleted.
+
+- **NOT automated — needs manual click-through:** generate a guide from a real scanned PDF through the
+  Builder and confirm page references appear and MCQ answer spacing is correct in the rendered PDF.
+- **Deferred:** large-PDF upload UX / preflight / page-range selection.
 
 ## DONE (in order)
 
@@ -463,6 +481,17 @@ which is untouched pending explicit approval to move it):
 
 ## NEXT (in order)
 
+1. **RECOMMENDED NEXT SLICE — fix rerender dropping `generator_preset` (BACKEND).**
+   `retry_failed_job` (`api/server.py`) rebuilds a job from its manifest and now
+   reproduces `include_sections` + the C2 axes, but it does **not** pass
+   `generator_preset`, so a preset-built job re-renders through the **default** prompt
+   path (losing the preset system prompt + tuned sampling params). Well-scoped,
+   backend-only, isolated to `retry_failed_job`; verify with Docker smoke + a manifest
+   check (preset survives rerender). **Branch from `chrome-renderer-v1` @ `1d51b36`.**
+   Do not bundle with anything else.
+2. **B4 — "Export selected" in the Library bulk bar (small).** Expose an export action
+   in the multi-select bulk toolbar that reuses the existing `POST /api/exports/bundle`
+   ZIP endpoint. No new export primitive.
 3. **Library bulk actions — remaining follow-ups (deferred, not this slice).**
    - bulk **archive** — only after an archive state is designed + `DECISIONS.md`
      entry (not started; needs new metadata/state)
@@ -514,3 +543,15 @@ which is untouched pending explicit approval to move it):
   Current caps are env-configurable with static defaults.
 - **Real cancel button** — deferred backend slice. The Builder shows progress
   but there is no true server-side cancel yet.
+- **Docker GHCR publish workflow / prebuilt image** — deferred. `863f5b7` carried a
+  `.github/workflows/publish.yml` (push image to GHCR on `v*` tags) and an
+  `image: ghcr.io/...` line in compose. Needs a deliberate distribution decision before
+  adopting (the app is local-only/single-operator today). Parked on `hardening`.
+- **Pinned dependency lockfile** — deferred. `863f5b7` fully froze `requirements.txt`
+  (transitive pins + new packages). Reproducibility is good, but a freeze should be
+  regenerated from *this* tree, not lifted from the divergent `hardening` branch. Its
+  own deliberate slice if/when wanted.
+- **Branch retirement** — deferred housekeeping. The consumed feature/integration
+  branches (and the short-lived `salvage-compose-limits`, `integ-group-c`) are kept,
+  not deleted, per the operator's "do not delete branches" rule.
+- **Group D** — not started. Do not begin without an explicit slice request.

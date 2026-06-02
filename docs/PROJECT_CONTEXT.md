@@ -1,8 +1,13 @@
 # PROJECT_CONTEXT.md — Stable Overview
 
 > Stable, slow-changing context for any new session (Claude, ChatGPT, Codex).
-> For the live handoff see `CURRENT_TASK.md`; for the "why" behind choices see
+> **Start here:** `NEXT_CHAT_HANDOFF.md` (one-page current-state handoff). For the
+> live per-slice log see `CURRENT_TASK.md`; for the "why" behind choices see
 > `DECISIONS.md`. The canonical project brief is `../CLAUDE.md`.
+>
+> **Trunk:** `chrome-renderer-v1` is the integrated trunk. Branch new work from it
+> (currently `1d51b36` or later) — never from the old consumed feature branches
+> (see `DECISIONS.md` → "Consumed feature branches must not be re-merged").
 
 ---
 
