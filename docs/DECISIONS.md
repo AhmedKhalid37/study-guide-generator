@@ -246,3 +246,39 @@ the multipart path silently dropped `include_sections`, `output_depth`, and `dif
 "The multipart `/api/jobs/llm` parser dropped generation options (C3 fix)" above. C4a adds
 no `LLMJobRequest` field, so it does not exercise this rule, but it codifies it so future
 slices do.
+
+## Preset-card model-hint matching + provider-icon fallback are frontend display-only (C4b)
+The C4b preset cards and compatibility warning live entirely in the frontend
+(`frontend/src/presetMeta.js` + `GeneratorPresetControls`/`GeneratorPresetCard` in
+`BuilderWorkspace.jsx`) and consume the C4a backend metadata
+(`/api/options.generator_presets`) — **no preset copy is hardcoded** and **no backend,
+registry, prompt-assembly, or shortcut-store code changed**. Three non-obvious frontend
+choices were made:
+**Model-hint matching is conservative and prefers no warning.** The soft `model_hint` is
+PROSE ("DeepSeek V4 Pro", "Gemma 4 (31B dense preferred)") while the user's selected value
+is a model **id** ("deepseek-v4-pro", "gemma-4-…gguf"). `presetCompat` normalises both sides
+to alphanumeric-only tokens (lowercase, strip non-alphanumerics) and treats it as a match on
+equality OR substring-containment in either direction, testing the selected id against **both**
+the prose `model_hint` **and** the cleaner `model` chip string. The `model` string is the key
+rescue: "Gemma 4" → `gemma4` is contained in `gemma-4-…gguf`, where the longer prose hint
+(`gemma431bdensepreferred`) would not match and would false-positive the local model. The
+warning fires **only** when a `model_hint` is present, the selected model is known, and there
+is a confident non-match — an absent hint or unknown model yields **no** warning. **Why:** the
+prose-vs-id ambiguity makes false positives the real risk (a noisy warning on the correct
+model erodes trust), so we bias to silence when unsure, per the slice's "do not warn if
+unsure" rule.
+**`model_hint` stays a soft advisory — the warning never blocks.** Per the existing "Soft
+`model_hint`, not a hard pin" decision, the warning does not disable Generate (the button is
+`disabled={running}` only), does not auto-switch the model, and does not alter the generate
+payload — `buildLlmPayload` always sends the user's selected `model` and `generator_preset`
+independently. The old provider-mismatch note was **replaced** by this model-hint advisory
+(model-level is more precise than provider-level for the user's actual selection). Proven
+end-to-end: a `claude_review` (hint "DeepSeek V4 Pro") generation with the non-hint
+`deepseek-chat` model completed `done` with the manifest recording the user's `deepseek-chat`.
+**Provider icons are local SVGs on a light chip, with a text-badge fallback.** Only providers
+we ship a local SVG for (`deepseek`/`qwen`/`local`, normalised lowercase/trimmed) get an icon;
+anything else (or a broken/missing image via `onError`) falls back to a styled text badge, so
+icon loading never blocks card render. Logos render on a small **white chip** because the Qwen
+and Local marks are near-black and would be invisible on the dark UI. Vite emits the SVGs as
+separate hashed asset files (they exceed the 4 KB inline limit), not base64 inside the JS
+bundle. No icon packages or remote downloads were added.

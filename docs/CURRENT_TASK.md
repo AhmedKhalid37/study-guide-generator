@@ -7,8 +7,8 @@
 
 ## Where we are
 
-- **Branch:** `preset-metadata`
-- **Last commit:** `3820c0c` — Expose generator preset display metadata (C4a)
+- **Branch:** `preset-cards-ui`
+- **Last commit:** `b3d7785` — Add generator preset cards and compatibility warning (C4b)
 - **Main branch (PR target):** `chrome-renderer-v1`
 
 ## DONE (in order)
@@ -251,6 +251,68 @@
     - Also added the permanent `DECISIONS.md` rule: any future `/api/jobs/llm` request
       field must be wired into **both** the JSON and multipart paths and verified in both.
 
+17. **Slice C4b — generator preset cards + soft compatibility warning
+    (FRONTEND ONLY)** — `b3d7785` (branch `preset-cards-ui`). Renders the C4a
+    generator-preset metadata as preset **cards** in the Builder Style tab and adds
+    a soft, advisory model-compatibility warning. **Consumes backend data only** —
+    no preset copy is hardcoded; the cards read `name`/`purpose`/`description`/
+    `recommended_use`/`model`/`model_hint`/`provider`/`params`/`available` from
+    `/api/options.generator_presets` (the **generator** preset list from
+    `generator_presets.py`, NOT the purpose/outline `presets.py`).
+    - **New `frontend/src/presetMeta.js`** (display/compat helpers only): provider
+      id → local SVG icon map (`providerIconFor`), text-badge fallback
+      (`providerLabelFor`), and the soft `presetCompat(preset, selectedModel)`
+      matcher. Three local SVGs committed under
+      `frontend/src/assets/providers/{deepseek,qwen,local}.svg` (Vite resolves them
+      to emitted asset URLs — 54–82 KB, above the 4 KB inline limit, so they are
+      **separate files**, not JS-inlined). Logos render on a small **white chip**
+      because Qwen/Local marks are near-black and would vanish on the dark UI; a
+      missing/broken icon falls back to the text badge (`onError` + badge sibling),
+      never blocking card render.
+    - **Cards** (`GeneratorPresetCard` + rewritten `GeneratorPresetControls`):
+      provider icon/badge, `model` chip, preset name, purpose label, description,
+      recommended-use ("Best for: …"), selected ring + check. `available:false`
+      greys/disables the card per the existing convention. The "None (use style)"
+      option is kept. **Selection semantics unchanged** — a card still sets the same
+      `generatorPreset` id the old chip selector did; the generate payload is
+      untouched.
+    - **Soft compatibility warning** replaces the old provider-mismatch note with a
+      `model_hint`-vs-selected-model advisory: shown only when a preset is selected
+      **and** it has a `model_hint` **and** the selected model is a confident
+      non-match. Matching (`presetCompat`) normalises both sides to alphanumeric-only
+      tokens and accepts equality/containment against **both** the prose `model_hint`
+      **and** the cleaner `model` chip string (so "Gemma 4" rescues the local
+      `gemma-4-…gguf` id where the longer prose hint would false-positive). Prefers
+      **no** warning when unsure (no hint / unknown model → no warning). Warning copy:
+      "This preset is tuned for {model_hint}. It may still work with {selectedModel},
+      but {model_hint} is recommended." Plus an InfoTip restating it is advisory.
+    - **Advisory-only — never blocks.** The Generate button stays `disabled={running}`
+      only (never gated on compat); `buildLlmPayload` sends the user's `model` +
+      `generator_preset` independently of the warning. **Proven end-to-end:** a live
+      `claude_review` (hint "DeepSeek V4 Pro") generation with the **non-hint**
+      `deepseek-chat` model completed `done`; the job manifest recorded
+      `generator_preset: claude_review` + `model: deepseek-chat` (the user's choice).
+    - **Tooltip priority adjusted** (`sectionMeta.js`): removed tips from the obvious
+      controls (MCQs ×2, Flashcards, Glossary) and added/kept them on the less
+      obvious ones (TL;DR summary, cram sheet, exam alerts, common mistakes,
+      diagrams/figures, solved mock exam, self-test checklist, definitions cheat
+      sheet, summary tables, instructor notes) plus the existing
+      formula-sheet/worked-examples/citations/slide-refs tips and the new
+      model-compatibility tip. Uses the existing `InfoTip` system — no new tooltip
+      mechanism.
+    - **Verified in Docker** (uid 10001/appuser, healthy): frontend build OK (SVGs
+      emitted as separate assets); an esbuild harness drove the real `presetCompat`
+      through **10/10** match/mismatch/absent cases (incl. the local-gemma rescue and
+      the unsure→no-warning cases) + icon URL/badge fallback; served bundle contains
+      the card/warning strings and references all three SVGs (served `200
+      image/svg+xml`); `/api/options` unchanged; release smoke **28/28** (flaky
+      outline check passed). **C3 controls confirmed intact** in the served bundle
+      (axes Exhaustive/Exam-level, sections Cram sheet/Worked examples, Save draft,
+      action bar/shortcut/progress markers).
+    - **NOT automated — needs manual click-through:** card visual layout/spacing,
+      provider-icon visual quality, warning placement/legibility, tooltip hover
+      behaviour, overall UX feel.
+
 ## NEXT (in order)
 
 3. **Library bulk actions — remaining follow-ups (deferred, not this slice).**
@@ -278,14 +340,18 @@
   and multipart/attachment transports). The backend bridge (`cc75292`) feeds the
   load path; legacy `modules` still translate to canonical `include_sections` on
   read/export. No longer open.
-- **Preset/shortcut cards, icons, compatibility warnings (C4b)** — richer
-  Home/Builder surfacing of preset & shortcut metadata (cards/iconography,
-  "references unavailable …" compatibility warnings already computed by the store's
-  `valid`/`reason`) is not yet built into the UI. **The backend metadata the preset
-  cards need is now exposed (C4a, `3820c0c`):** each generator preset in
-  `/api/options.generator_presets` carries `name`/`purpose`/`description`/
-  `recommended_use`/`model`/`model_hint`/`provider`. C4b should consume that — do
-  **not** hardcode card data in the frontend.
+- **Generator preset cards + compatibility warning (C4b) — DONE (`b3d7785`).** The
+  Builder Style tab now renders generator presets as cards (provider SVG icon / text
+  badge, model chip, purpose, description, recommended use, selected state) consuming
+  the C4a `/api/options.generator_presets` metadata, plus a soft, advisory
+  `model_hint`-vs-selected-model compatibility warning that never blocks Generate.
+  See `presetMeta.js` + `DECISIONS.md`. **Still open:** richer **shortcut** cards on
+  Home and the shortcut **inspector/repair** loop (the store's `valid`/`reason`
+  "references unavailable …" surfacing) are not built yet.
+- **Home duplicate "Customize" button (C5 nav/Home cleanup)** — the Home page shows
+  two seemingly-equivalent Customize buttons (top "Customize Shortcuts" + a lower
+  "Customize"). Left untouched in C4b (frontend preset-card slice); fix in the C5
+  Home/nav cleanup.
 - **Shortcut inspector / repair loop** — a later UX for inspecting an invalid
   shortcut and repairing its broken references (provider/preset/style) is not
   started.
