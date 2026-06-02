@@ -356,6 +356,7 @@ export default function ExportsWorkspace({ refreshKey = 0, onOpenBuilder }) {
         error={detailsError}
         details={jobDetails}
         styleLookup={styleLookup}
+        onRetry={reload}
       />
     </div>
   );

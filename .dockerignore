@@ -27,7 +27,6 @@ library
 # Design + docs not needed at runtime
 design_reference
 examples
-legacy_scripts
 test_scripts
 *.md
 !prompts/*.md

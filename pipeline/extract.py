@@ -63,7 +63,12 @@ def _extract_docx(path: Path) -> str:
     except ImportError as exc:
         raise ExtractionError("python-docx is not installed.") from exc
 
-    document = Document(path)
+    try:
+        document = Document(path)
+    except Exception as exc:
+        raise ExtractionError(
+            f"the file may be corrupt or unreadable ({type(exc).__name__})"
+        ) from exc
     parts = [paragraph.text for paragraph in document.paragraphs if paragraph.text.strip()]
     for table in document.tables:
         for row in table.rows:
@@ -79,7 +84,12 @@ def _extract_pptx(path: Path) -> str:
     except ImportError as exc:
         raise ExtractionError("python-pptx is not installed.") from exc
 
-    presentation = Presentation(path)
+    try:
+        presentation = Presentation(path)
+    except Exception as exc:
+        raise ExtractionError(
+            f"the file may be corrupt or unreadable ({type(exc).__name__})"
+        ) from exc
     parts: list[str] = []
     for index, slide in enumerate(presentation.slides, start=1):
         slide_parts = []
@@ -98,9 +108,23 @@ def _extract_pdf(path: Path) -> ExtractionResult:
         raise ExtractionError("PyMuPDF is not installed.") from exc
 
     warnings: list[str] = []
-    with fitz.open(path) as document:
-        pages = [page.get_text("text").strip() for page in document]
-        text = "\n\n".join(page for page in pages if page)
+    try:
+        document_ctx = fitz.open(path)
+    except Exception as exc:
+        raise ExtractionError(
+            f"the file may be corrupt or an unreadable scan ({type(exc).__name__})"
+        ) from exc
+    with document_ctx as document:
+        # Prefix each page with a "## Page N" anchor (mirroring the pptx "Slide N"
+        # marker) so positional references survive extraction — study-guide prompts
+        # cite these. The index is the physical page number; blank pages are dropped
+        # without shifting the numbering of the pages that follow.
+        pages = []
+        for index, page in enumerate(document, start=1):
+            body = page.get_text("text").strip()
+            if body:
+                pages.append(f"## Page {index}\n{body}")
+        text = "\n\n".join(pages)
         if text.strip():
             return ExtractionResult(text, "pdf_text", warnings)
 
@@ -122,10 +146,10 @@ def _ocr_pdf(document) -> tuple[str, str | None]:
         return "", "OCR skipped because pytesseract or pillow is not installed."
 
     pages: list[str] = []
-    for page in document:
+    for index, page in enumerate(document, start=1):
         pixmap = page.get_pixmap(matrix=fitz.Matrix(2, 2), alpha=False)
         image = Image.frombytes("RGB", [pixmap.width, pixmap.height], pixmap.samples)
-        text = pytesseract.image_to_string(image).strip()
-        if text:
-            pages.append(text)
+        page_text = pytesseract.image_to_string(image).strip()
+        if page_text:
+            pages.append(f"## Page {index}\n{page_text}")
     return "\n\n".join(pages), None

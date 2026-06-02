@@ -16,12 +16,22 @@ class MissingLLMConfigError(RuntimeError):
     pass
 
 
+class LLMProviderError(RuntimeError):
+    """A classified LLM API failure with a user-facing message."""
+
+    def __init__(self, category: str, message: str) -> None:
+        super().__init__(message)
+        self.category = category
+
+
 @dataclass(frozen=True)
 class LLMConfig:
     base_url: str
     api_key: str
     model: str
     temperature: float = 0.2
+    top_p: float | None = None
+    max_tokens: int | None = None
     provider: str = "openai_compatible"
     extra_body: dict | None = None
 
@@ -71,10 +81,21 @@ def generate_chat_completion(messages: list[dict], config: LLMConfig) -> str:
         "messages": messages,
         "temperature": config.temperature,
     }
+    # Only sent when a preset (or future caller) supplies them, so existing calls
+    # remain byte-identical to before these fields existed.
+    if config.top_p is not None:
+        params["top_p"] = config.top_p
+    if config.max_tokens is not None:
+        params["max_tokens"] = config.max_tokens
     if config.extra_body is not None:
         params["extra_body"] = config.extra_body
 
-    response = client.chat.completions.create(**params)
+    try:
+        response = client.chat.completions.create(**params)
+    except Exception as exc:
+        from pipeline.errors import classify_exception
+        category, user_message = classify_exception(exc, base_url=config.base_url)
+        raise LLMProviderError(category, user_message) from exc
     content = response.choices[0].message.content
     if not content:
         raise RuntimeError("LLM returned an empty response.")

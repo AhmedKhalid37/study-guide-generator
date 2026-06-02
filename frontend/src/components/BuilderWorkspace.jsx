@@ -1,17 +1,24 @@
-import React, { useCallback, useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   AlertCircle,
+  AlertTriangle,
+  Bookmark,
   Check,
   ChevronRight,
+  Clock,
   Download,
   FileCode2,
   FileJson,
   FileText,
   Folder,
   FolderPlus,
+  Info,
+  LayoutTemplate,
   Leaf,
   ListChecks,
   Loader2,
+  RefreshCw,
+  RotateCcw,
   Save,
   Share2,
   Sparkles,
@@ -23,17 +30,35 @@ import {
 } from "lucide-react";
 import {
   apiUrl,
+  applyPreset,
   createFolder,
   createLlmJob,
   createPasteJob,
+  createShortcut,
   createUploadMarkdownJob,
   getFolders,
   getJob,
+  getJobProgress,
+  getJobs,
   getOptions,
+  getPresets,
   getStyles,
   previewApiUrl
 } from "../api/client";
+import {
+  builderStateToPayload,
+  INPUT_TO_SOURCE,
+  pagesToLength
+} from "../shortcutMeta";
+import {
+  DIFFICULTY_OPTIONS,
+  hasEnabledSections,
+  normalizeSectionState,
+  OUTPUT_DEPTH_OPTIONS,
+  SECTION_GROUPS
+} from "../sectionMeta";
 import { FOLDER_PRESET_COLORS } from "../folderMeta";
+import { presetCompat, presetModelLabel, providerIconFor, providerLabelFor } from "../presetMeta";
 import {
   BoltGlyph,
   DocGlyph,
@@ -105,15 +130,57 @@ const lengthOptions = [
   { id: "long", label: "Long", meta: "~30+ pages" }
 ];
 
-const includeOptions = [
-  "Key concepts",
-  "Mnemonics",
-  "Examples",
-  "Diagrams",
-  "MCQ practice",
-  "Glossary",
-  "TL;DR"
-];
+const DRAFT_KEY = "builder_draft_v1";
+const DEFAULT_TITLE = "Generated Study Guide";
+
+function draftHasContent(draft) {
+  if (!draft) return false;
+  const title = (draft.title || "").trim();
+  const text = (draft.text || "").trim();
+  const sections = draft.outline?.sections || [];
+  return Boolean(
+    text ||
+      (title && title !== DEFAULT_TITLE) ||
+      sections.some((section) => (section?.title || "").trim())
+  );
+}
+
+function formatDraftTime(iso) {
+  if (!iso) return "";
+  const then = new Date(iso);
+  if (Number.isNaN(then.getTime())) return "";
+  const diffMs = Date.now() - then.getTime();
+  const diffMin = Math.round(diffMs / 60000);
+  if (diffMin < 1) return "just now";
+  if (diffMin === 1) return "1 minute ago";
+  if (diffMin < 60) return `${diffMin} minutes ago`;
+  return then.toLocaleString();
+}
+
+// Short, plain-language tooltip copy. Placeholder wording — final copy TBD.
+// Per-section help lives alongside the canonical keys in sectionMeta.js; this
+// table only covers the non-section Builder controls + the generation axes.
+const TOOLTIPS = {
+  provider: "Which AI service generates the guide. Only configured providers can run.",
+  model: "The specific model used for generation. Larger models are slower but stronger.",
+  generatorPreset: "Controls the main system prompt and guide structure. Overrides the style below.",
+  modelCompat: "Each preset is tuned for a specific model. This is only a suggestion — your selected model is always used and Generate stays enabled.",
+  style: "The built-in or custom prompt that shapes tone and layout of the guide.",
+  length: "Target output depth — roughly how many pages the guide should aim for.",
+  strictMath: "Validate every formula and fail loudly on broken math instead of guessing.",
+  attachments: "Extra source files. PDFs/scans are read with OCR/VLM when there is no text layer.",
+  outputDepth: "How deep the whole guide goes — quick & high-yield, balanced, or exhaustive. Auto leaves it to the style.",
+  difficulty: "How the material is pitched — beginner, normal, exam-level, or advanced. Auto leaves it to the style.",
+  sections: "Optional extra sections to add where the source supports them. None are added unless you pick them."
+};
+
+// Terminal generation statuses: once the progress endpoint reports one of these,
+// the UI stops polling. ``status`` (not ``stage``) is the source of truth.
+const TERMINAL_STATUSES = new Set(["done", "completed_with_warnings", "failed"]);
+
+function isTerminalStatus(status) {
+  return Boolean(status) && TERMINAL_STATUSES.has(status);
+}
 
 const fallbackProviderDetails = [
   {
@@ -156,7 +223,9 @@ export default function BuilderWorkspace({
   selectedStyle = "exam_cram",
   onSelectStyle,
   latestJob,
-  onJobCreated
+  onJobCreated,
+  prefill = null,
+  onReportSetup
 }) {
   const [activeBuilderTab, setActiveBuilderTab] = useState("builder");
   const [source, setSource] = useState(initialSource);
@@ -166,24 +235,66 @@ export default function BuilderWorkspace({
   const [provider, setProvider] = useState("deepseek");
   const [model, setModel] = useState(fallbackProviderDetails[0].default_model);
   const [providerDetails, setProviderDetails] = useState(fallbackProviderDetails);
+  // True once the server's real provider list has loaded (or failed to). The
+  // shortcut-prefill model resolver waits for this so it validates the saved
+  // model against the real model list, not the fallback.
+  const [providersLoaded, setProvidersLoaded] = useState(false);
+  // Set when the model loaded from a shortcut wasn't valid for its provider, so
+  // we can surface the fallback instead of silently swapping models.
+  const [modelNotice, setModelNotice] = useState(null);
+  // Holds a shortcut's { provider, model } while we wait for that provider's
+  // model list to load; the resolver effect below applies it once ready.
+  const pendingPrefillRef = useRef(null);
+  const [pendingModelNonce, setPendingModelNonce] = useState(0);
   const [qwenThinking, setQwenThinking] = useState(true);
   const [strictMath, setStrictMath] = useState(true);
   const [attachments, setAttachments] = useState([]);
   const [folderId, setFolderId] = useState("unfiled");
   const [folders, setFolders] = useState([]);
   const [styleOptions, setStyleOptions] = useState(styleChips);
+  const [generatorPresets, setGeneratorPresets] = useState([]);
+  const [generatorPreset, setGeneratorPreset] = useState("");
   const [length, setLength] = useState("medium");
-  const [includes, setIncludes] = useState(["Key concepts", "Mnemonics", "Examples", "Diagrams"]);
+  // Canonical output-section toggles (dict-of-bool of enabled keys only). Default
+  // none — a fresh Builder sends no include_sections (keeps the default request
+  // byte-equivalent on this axis).
+  const [includeSections, setIncludeSections] = useState({});
+  // Global generation axes (C2). "" is the unset sentinel — omitted from the
+  // request and stored as null in a shortcut.
+  const [outputDepth, setOutputDepth] = useState("");
+  const [difficulty, setDifficulty] = useState("");
   const [outlineEnabled, setOutlineEnabled] = useState(false);
   const [outlineSections, setOutlineSections] = useState([]);
+  const [presets, setPresets] = useState([]);
+  const [selectedPreset, setSelectedPreset] = useState("");
+  const [presetBusy, setPresetBusy] = useState(false);
+  const [restoreDraft, setRestoreDraft] = useState(null);
+  const [draftSavedAt, setDraftSavedAt] = useState(null);
+  const saveTimerRef = useRef(null);
   const [result, setResult] = useState(latestJob);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   const [previewFormat, setPreviewFormat] = useState("sample");
   const [detailsOpen, setDetailsOpen] = useState(false);
+  const [detailsInitialTab, setDetailsInitialTab] = useState("details");
   const [jobDetails, setJobDetails] = useState(null);
   const [detailsLoading, setDetailsLoading] = useState(false);
   const [detailsError, setDetailsError] = useState(null);
+  // Live generation progress from GET /api/jobs/{id}/progress (null when idle).
+  const [progress, setProgress] = useState(null);
+  // True once settings change after a guide has been generated.
+  const [dirty, setDirty] = useState(false);
+  // Transient confirmation + error for the "save as shortcut" action.
+  const [shortcutSaved, setShortcutSaved] = useState(false);
+  const [shortcutSaveError, setShortcutSaveError] = useState(null);
+  const [shortcutSaving, setShortcutSaving] = useState(false);
+  const pollStateRef = useRef(null);
+  const pollTimerRef = useRef(null);
+  const completeTimerRef = useRef(null);
+  const shortcutTimerRef = useRef(null);
+  // Signature of the settings that produced the current result; null until a
+  // guide is generated in this session. Used to detect a "dirty" preview.
+  const baselineRef = useRef(null);
 
   useEffect(() => {
     setSource(initialSource);
@@ -204,6 +315,11 @@ export default function BuilderWorkspace({
         if (cancelled) return;
         const details = normalizeProviderDetails(options);
         setProviderDetails(details);
+        setGeneratorPresets(options.generator_presets ?? []);
+        setProvidersLoaded(true);
+        // A shortcut prefill owns the provider+model; don't override it with the
+        // default-provider pick. The resolver effect applies the saved model.
+        if (pendingPrefillRef.current) return;
         const selected = chooseInitialProvider(details, provider);
         setProvider(selected.id);
         setModel(selectDefaultModel(selected, model));
@@ -211,6 +327,7 @@ export default function BuilderWorkspace({
       .catch(() => {
         if (!cancelled) {
           setProviderDetails(fallbackProviderDetails);
+          setProvidersLoaded(true);
         }
       });
     return () => {
@@ -268,6 +385,160 @@ export default function BuilderWorkspace({
     [loadFolders]
   );
 
+  useEffect(() => {
+    let cancelled = false;
+    getPresets()
+      .then((result) => {
+        if (!cancelled) setPresets(result.presets ?? []);
+      })
+      .catch(() => {
+        if (!cancelled) setPresets([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  // Selecting a template pre-fills the outline + style; "Custom" clears the
+  // template selection without touching the user's current outline/style.
+  const handleApplyPreset = useCallback(
+    async (presetId) => {
+      if (!presetId || presetId === "custom") {
+        setSelectedPreset("");
+        return;
+      }
+      setPresetBusy(true);
+      try {
+        const applied = await applyPreset(presetId);
+        const sections = applied.outline?.sections ?? [];
+        setOutlineSections(sections);
+        setOutlineEnabled(Boolean(applied.outline?.enabled) && sections.length > 0);
+        if (applied.style) onSelectStyle?.(applied.style);
+        setSelectedPreset(presetId);
+      } catch (presetError) {
+        setError(normalizeError(presetError));
+      } finally {
+        setPresetBusy(false);
+      }
+    },
+    [onSelectStyle]
+  );
+
+  const buildDraft = useCallback(
+    () => ({
+      savedAt: new Date().toISOString(),
+      title,
+      text,
+      source,
+      outline: { enabled: outlineEnabled, sections: outlineSections },
+      style: selectedStyle,
+      folderId,
+      template: selectedPreset,
+      length,
+      // Canonical generation options (C3): persist the section toggles + axes so a
+      // restored draft reproduces the same generate request. Stored as-is; restore
+      // re-normalizes against the known key set.
+      includeSections,
+      outputDepth,
+      difficulty
+    }),
+    [
+      title,
+      text,
+      source,
+      outlineEnabled,
+      outlineSections,
+      selectedStyle,
+      folderId,
+      selectedPreset,
+      length,
+      includeSections,
+      outputDepth,
+      difficulty
+    ]
+  );
+
+  const clearDraft = useCallback(() => {
+    if (saveTimerRef.current) {
+      clearTimeout(saveTimerRef.current);
+      saveTimerRef.current = null;
+    }
+    try {
+      window.localStorage.removeItem(DRAFT_KEY);
+    } catch {
+      // localStorage unavailable (private mode / SSR) — nothing to clear.
+    }
+    setDraftSavedAt(null);
+    setRestoreDraft(null);
+  }, []);
+
+  // On mount, surface (but never auto-apply) any saved draft with real content.
+  useEffect(() => {
+    try {
+      const raw = window.localStorage.getItem(DRAFT_KEY);
+      if (!raw) return;
+      const parsed = JSON.parse(raw);
+      if (draftHasContent(parsed)) setRestoreDraft(parsed);
+    } catch {
+      // Corrupt/unavailable draft — ignore it.
+    }
+  }, []);
+
+  // Debounced autosave. Only writes when there is meaningful content so an empty
+  // form on first mount can never clobber a real saved draft before the user
+  // decides whether to restore it.
+  useEffect(() => {
+    const draft = buildDraft();
+    if (!draftHasContent(draft)) return undefined;
+    if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
+    saveTimerRef.current = setTimeout(() => {
+      try {
+        window.localStorage.setItem(DRAFT_KEY, JSON.stringify(draft));
+        setDraftSavedAt(draft.savedAt);
+      } catch {
+        // Ignore quota / unavailable storage.
+      }
+    }, 800);
+    return () => {
+      if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
+    };
+  }, [buildDraft]);
+
+  const handleSaveDraft = useCallback(() => {
+    const draft = buildDraft();
+    if (saveTimerRef.current) {
+      clearTimeout(saveTimerRef.current);
+      saveTimerRef.current = null;
+    }
+    try {
+      window.localStorage.setItem(DRAFT_KEY, JSON.stringify(draft));
+      setDraftSavedAt(draft.savedAt);
+    } catch {
+      // Ignore quota / unavailable storage.
+    }
+  }, [buildDraft]);
+
+  const handleRestoreDraft = useCallback(() => {
+    const draft = restoreDraft;
+    if (!draft) return;
+    setTitle(draft.title ?? DEFAULT_TITLE);
+    setText(draft.text ?? "");
+    if (draft.source) setSource(draft.source);
+    setOutlineEnabled(Boolean(draft.outline?.enabled));
+    setOutlineSections(Array.isArray(draft.outline?.sections) ? draft.outline.sections : []);
+    if (draft.style) onSelectStyle?.(draft.style);
+    if (draft.folderId) setFolderId(draft.folderId);
+    setSelectedPreset(draft.template || "");
+    if (draft.length) setLength(draft.length);
+    // Canonical generation options (C3). Re-normalize sections against the known
+    // key set (drops anything the Builder no longer exposes); axes fall back to
+    // the unset sentinel when absent/garbage so restore is deterministic.
+    setIncludeSections(normalizeSectionState(draft.includeSections));
+    setOutputDepth(typeof draft.outputDepth === "string" ? draft.outputDepth : "");
+    setDifficulty(typeof draft.difficulty === "string" ? draft.difficulty : "");
+    setRestoreDraft(null);
+  }, [restoreDraft, onSelectStyle]);
+
   const artifactEntries = useMemo(() => {
     if (!result?.artifact_urls) {
       return [];
@@ -300,6 +571,60 @@ export default function BuilderWorkspace({
       ? [selectedProvider.default_model]
       : [];
 
+  // A stable fingerprint of every setting that affects generation output. When it
+  // drifts from the baseline captured at generation time, the preview is stale.
+  const settingsSignature = useMemo(
+    () =>
+      JSON.stringify({
+        selectedStyle,
+        generatorPreset,
+        provider,
+        model,
+        length,
+        includeSections,
+        outputDepth,
+        difficulty,
+        strictMath,
+        qwenThinking,
+        outlineEnabled,
+        outlineSections
+      }),
+    [
+      selectedStyle,
+      generatorPreset,
+      provider,
+      model,
+      length,
+      includeSections,
+      outputDepth,
+      difficulty,
+      strictMath,
+      qwenThinking,
+      outlineEnabled,
+      outlineSections
+    ]
+  );
+
+  useEffect(() => {
+    // Only flag dirtiness once a guide has actually been generated this session.
+    if (!result || baselineRef.current === null) {
+      setDirty(false);
+      return;
+    }
+    setDirty(settingsSignature !== baselineRef.current);
+  }, [settingsSignature, result]);
+
+  // Tidy up timers / stop polling if the component unmounts mid-generation.
+  useEffect(
+    () => () => {
+      if (pollStateRef.current) pollStateRef.current.active = false;
+      if (pollTimerRef.current) clearTimeout(pollTimerRef.current);
+      if (completeTimerRef.current) clearTimeout(completeTimerRef.current);
+      if (shortcutTimerRef.current) clearTimeout(shortcutTimerRef.current);
+    },
+    []
+  );
+
   useEffect(() => {
     if (!result) {
       setPreviewFormat("sample");
@@ -314,8 +639,49 @@ export default function BuilderWorkspace({
     }
   }, [result, artifactUrls]);
 
-  async function handleSubmit(event) {
+  function handleSubmit(event) {
     event.preventDefault();
+    runGeneration();
+  }
+
+  // Starts a background poller that discovers the in-flight job (the create-job
+  // POST is blocking, so we only learn its id by diffing the jobs list) and then
+  // polls its coarse progress until a terminal status. Returns a stop handle.
+  function startProgressPolling(knownIds) {
+    const state = { active: true, jobId: null };
+    pollStateRef.current = state;
+
+    const tick = async () => {
+      if (!state.active) return;
+      try {
+        if (!state.jobId) {
+          const { jobs = [] } = await getJobs();
+          const fresh = jobs.find((job) => {
+            const id = job.id || job.job_id;
+            return id && !knownIds.has(id);
+          });
+          if (fresh) state.jobId = fresh.id || fresh.job_id;
+        }
+        if (state.jobId) {
+          const snapshot = await getJobProgress(state.jobId);
+          if (state.active) setProgress(snapshot);
+          if (isTerminalStatus(snapshot.status)) {
+            // The blocking POST will resolve with the authoritative job shortly.
+            return;
+          }
+        }
+      } catch {
+        // Transient (job not yet on disk, momentary 404) — keep polling.
+      }
+      if (state.active) pollTimerRef.current = setTimeout(tick, 300);
+    };
+
+    // First sweep slightly delayed so Job.create has written job.json.
+    pollTimerRef.current = setTimeout(tick, 600);
+    return state;
+  }
+
+  async function runGeneration() {
     const validation = validateInputs();
     if (validation) {
       setError({ message: validation });
@@ -324,6 +690,24 @@ export default function BuilderWorkspace({
 
     setLoading(true);
     setError(null);
+    if (completeTimerRef.current) clearTimeout(completeTimerRef.current);
+    setProgress({ status: "running", stage: "preparing", stage_label: "Starting…", progress: 5 });
+
+    // Snapshot existing ids so we can spot the newly-created (running) job.
+    let knownIds = new Set();
+    try {
+      const { jobs = [] } = await getJobs();
+      knownIds = new Set(jobs.map((job) => job.id || job.job_id).filter(Boolean));
+    } catch {
+      // Discovery is best-effort; progress simply stays at "Starting…".
+    }
+    const pollState = startProgressPolling(knownIds);
+    const stopPolling = () => {
+      pollState.active = false;
+      if (pollTimerRef.current) clearTimeout(pollTimerRef.current);
+    };
+
+    const signatureAtSubmit = settingsSignature;
     try {
       const { kind, payload } = buildBuilderPayload({
         source,
@@ -331,25 +715,181 @@ export default function BuilderWorkspace({
         file,
         title,
         selectedStyle,
+        generatorPreset,
         provider,
         model,
         strictMath,
         qwenThinking,
         attachments,
         length,
-        includes,
+        includeSections,
+        outputDepth,
+        difficulty,
         folderId,
         outline: outlineEnabled ? { enabled: true, sections: outlineSections } : null
       });
-      assertBuilderPayload(kind, payload, { text, title, length, includes });
+      assertBuilderPayload(kind, payload, { text, title, length });
       const job = await createJob(kind, payload);
+      stopPolling();
+      // Show a completed state briefly, then return the button to normal.
+      setProgress({
+        status: job.status || "done",
+        stage: "complete",
+        stage_label: "Complete",
+        progress: 100
+      });
       setResult(job);
       onJobCreated?.(job);
+      clearDraft();
+      baselineRef.current = signatureAtSubmit;
+      setDirty(false);
+      completeTimerRef.current = setTimeout(() => setProgress(null), 1400);
     } catch (requestError) {
+      stopPolling();
+      setProgress({ status: "failed", stage_label: "Generation failed", progress: 100 });
       setError(normalizeError(requestError));
     } finally {
       setLoading(false);
     }
+  }
+
+  // Capture the live Builder configuration as a backend builder_setup payload.
+  // This is the inverse of applyBuilderPrefill below — keep the two symmetric.
+  const buildShortcutSetup = useCallback(
+    () =>
+      builderStateToPayload({
+        source,
+        provider,
+        model,
+        generatorPreset,
+        style: selectedStyle,
+        length,
+        includeSections,
+        outputDepth,
+        difficulty,
+        strictMath
+      }),
+    [source, provider, model, generatorPreset, selectedStyle, length, includeSections, outputDepth, difficulty, strictMath]
+  );
+
+  // Apply a builder_setup payload from a Home shortcut into the live form. Reuses
+  // the same state-setters the user drives by hand (no parallel prefill path).
+  const applyBuilderPrefill = useCallback(
+    (payload) => {
+      if (!payload || typeof payload !== "object") return;
+      const nextSource = INPUT_TO_SOURCE[payload.input_type];
+      if (nextSource) setSource(nextSource);
+      setModelNotice(null);
+      if (payload.provider) {
+        // Apply the provider now, but defer the model: it's derived from the
+        // provider, so the options loader / provider default would otherwise
+        // stomp an explicit saved model. The resolver effect applies the saved
+        // model once this provider's real model list is loaded.
+        setProvider(payload.provider);
+        pendingPrefillRef.current = { provider: payload.provider, model: payload.model || null };
+        setPendingModelNonce((nonce) => nonce + 1);
+      } else if (payload.model) {
+        setModel(payload.model);
+      }
+      if (payload.generator_preset !== undefined) setGeneratorPreset(payload.generator_preset || "");
+      if (payload.style) onSelectStyle?.(payload.style);
+      if (typeof payload.strict_math === "boolean") setStrictMath(payload.strict_math);
+      if (payload.target_pages) setLength(pagesToLength(payload.target_pages));
+      // Canonical output sections + axes. The backend bridges legacy `modules`
+      // into `include_sections` on read, so we only read the canonical field and
+      // ignore any `modules`. Applied deterministically (cleared when absent) so a
+      // subsequent generate sends exactly what the shortcut saved.
+      setIncludeSections(normalizeSectionState(payload.include_sections));
+      setOutputDepth(typeof payload.output_depth === "string" ? payload.output_depth : "");
+      setDifficulty(typeof payload.difficulty === "string" ? payload.difficulty : "");
+      setActiveBuilderTab("builder");
+      setError(null);
+    },
+    [onSelectStyle]
+  );
+
+  // Fire prefill whenever a new shortcut nonce arrives from Home.
+  useEffect(() => {
+    if (prefill?.payload) applyBuilderPrefill(prefill.payload);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [prefill?.nonce]);
+
+  // Resolve a shortcut's saved model once its provider's real model list has
+  // loaded. Running after the provider's default selection has settled means the
+  // explicit saved model wins over the auto-default (the prefill bug was the
+  // reverse). If the saved model is no longer valid for the provider, fall back
+  // to its default and surface that rather than silently loading another model.
+  useEffect(() => {
+    const pending = pendingPrefillRef.current;
+    if (!pending || !providersLoaded) return;
+    if (provider !== pending.provider) return; // wait for the provider state to settle
+    const detail = providerDetails.find((item) => item.id === pending.provider);
+    if (!detail) return;
+    if (pending.model) {
+      const models = detail.available_models || [];
+      if (models.includes(pending.model)) {
+        setModel(pending.model);
+      } else {
+        const fallback = detail.default_model || models[0] || "";
+        setModel(fallback);
+        setModelNotice(
+          `"${pending.model}" isn't available for ${detail.display_name || pending.provider} — using ${
+            fallback || "the provider default"
+          } instead.`
+        );
+      }
+    } else {
+      setModel(selectDefaultModel(detail));
+    }
+    pendingPrefillRef.current = null;
+  }, [providersLoaded, providerDetails, provider, pendingModelNonce]);
+
+  // Report the current setup upward so the Home customize modal can "Capture
+  // from current Builder". Cheap: just a payload snapshot, no side effects.
+  useEffect(() => {
+    onReportSetup?.(buildShortcutSetup());
+  }, [onReportSetup, buildShortcutSetup]);
+
+  async function handleSaveShortcut() {
+    if (shortcutSaving) return;
+    const defaultName =
+      title && title !== DEFAULT_TITLE
+        ? title
+        : `${selectedStyleOption?.name || selectedStyleOption?.label || "Study"} setup`;
+    const name = window.prompt("Name this shortcut", defaultName);
+    if (name === null) return; // cancelled
+    const trimmed = name.trim();
+    if (!trimmed) return;
+    setShortcutSaving(true);
+    setShortcutSaveError(null);
+    try {
+      await createShortcut({
+        name: trimmed,
+        type: "builder_setup",
+        description: `${selectedProvider?.display_name || provider} · ${
+          selectedStyleOption?.name || selectedStyle
+        }`,
+        pinned: true,
+        icon: "⭐",
+        payload: buildShortcutSetup()
+      });
+      setShortcutSaved(true);
+      if (shortcutTimerRef.current) clearTimeout(shortcutTimerRef.current);
+      shortcutTimerRef.current = setTimeout(() => setShortcutSaved(false), 1600);
+    } catch (saveError) {
+      setShortcutSaveError(saveError?.message || "Could not save shortcut.");
+      if (shortcutTimerRef.current) clearTimeout(shortcutTimerRef.current);
+      shortcutTimerRef.current = setTimeout(() => setShortcutSaveError(null), 3200);
+    } finally {
+      setShortcutSaving(false);
+    }
+  }
+
+  function handleKeepCurrentOutput() {
+    // Accept the changed settings as the new baseline so the notice dismisses
+    // and only future changes re-flag the preview as stale.
+    baselineRef.current = settingsSignature;
+    setDirty(false);
   }
 
   function validateInputs() {
@@ -392,24 +932,33 @@ export default function BuilderWorkspace({
   }
 
   function handleProviderSelect(nextProvider) {
+    // A manual provider change discards any pending shortcut prefill and the
+    // saved-model fallback notice, then auto-picks the provider's default model.
+    pendingPrefillRef.current = null;
+    setModelNotice(null);
     setProvider(nextProvider);
     const detail = providerDetails.find((item) => item.id === nextProvider);
     setModel(selectDefaultModel(detail));
   }
 
-  function toggleInclude(option) {
-    setIncludes((current) =>
-      current.includes(option)
-        ? current.filter((item) => item !== option)
-        : [...current, option]
-    );
+  function toggleSection(key) {
+    setIncludeSections((current) => {
+      const next = { ...current };
+      if (next[key]) {
+        delete next[key];
+      } else {
+        next[key] = true;
+      }
+      return next;
+    });
   }
 
-  async function openJobDetails() {
+  async function openJobDetails(tab = "details") {
     const jobId = result?.job_id || result?.id;
     if (!jobId) {
       return;
     }
+    setDetailsInitialTab(typeof tab === "string" ? tab : "details");
     setDetailsOpen(true);
     setDetailsLoading(true);
     setDetailsError(null);
@@ -440,15 +989,56 @@ export default function BuilderWorkspace({
         <div className="flex-1" />
         <span className="sg-autosave">
           <i />
-          Unsaved draft
+          {draftSavedAt ? `Draft saved · ${formatDraftTime(draftSavedAt)}` : "Unsaved draft"}
         </span>
       </div>
+
+      {restoreDraft && (
+        <DraftRestoreBanner
+          draft={restoreDraft}
+          onRestore={handleRestoreDraft}
+          onDiscard={clearDraft}
+        />
+      )}
 
       <div className="sg-builder-body">
         <form
           onSubmit={handleSubmit}
           className="sg-builder-pane"
         >
+          <BuilderActionBar
+            source={source}
+            selectedProvider={selectedProvider}
+            provider={provider}
+            model={model}
+            generatorPresets={generatorPresets}
+            generatorPreset={generatorPreset}
+            selectedStyleOption={selectedStyleOption}
+            includeSections={includeSections}
+            outputDepth={outputDepth}
+            difficulty={difficulty}
+            selectedLengthOption={selectedLengthOption}
+            outlineEnabled={outlineEnabled}
+            outlineCount={outlineSections.filter((section) => section.title.trim()).length}
+            artifacts={artifactEntries}
+            hasResult={Boolean(result)}
+            loading={loading}
+            progress={progress}
+            onSaveShortcut={handleSaveShortcut}
+            shortcutSaved={shortcutSaved}
+            shortcutSaving={shortcutSaving}
+            shortcutSaveError={shortcutSaveError}
+          />
+
+          {dirty && (
+            <DirtyNotice
+              busy={loading}
+              onRegenerateFull={runGeneration}
+              onRegenerateSections={() => openJobDetails("sections")}
+              onKeep={handleKeepCurrentOutput}
+            />
+          )}
+
           {activeBuilderTab === "builder" && (
             <BuilderComposer
               title={title}
@@ -467,6 +1057,7 @@ export default function BuilderWorkspace({
               handleProviderSelect={handleProviderSelect}
               model={model}
               setModel={setModel}
+              modelNotice={modelNotice}
               qwenThinking={qwenThinking}
               setQwenThinking={setQwenThinking}
               strictMath={strictMath}
@@ -479,6 +1070,12 @@ export default function BuilderWorkspace({
               onCreateFolder={handleCreateFolder}
               outlineEnabled={outlineEnabled}
               outlineCount={outlineSections.filter((section) => section.title.trim()).length}
+              presets={presets}
+              selectedPreset={selectedPreset}
+              onApplyPreset={handleApplyPreset}
+              presetBusy={presetBusy}
+              onSaveDraft={handleSaveDraft}
+              draftSavedAt={draftSavedAt}
               error={error}
               loading={loading}
             />
@@ -503,10 +1100,18 @@ export default function BuilderWorkspace({
               selectedStyle={selectedStyle}
               onSelectStyle={onSelectStyle}
               styleOptions={styleOptions}
+              generatorPresets={generatorPresets}
+              generatorPreset={generatorPreset}
+              onSelectGeneratorPreset={setGeneratorPreset}
+              model={model}
               length={length}
               setLength={setLength}
-              includes={includes}
-              toggleInclude={toggleInclude}
+              includeSections={includeSections}
+              toggleSection={toggleSection}
+              outputDepth={outputDepth}
+              setOutputDepth={setOutputDepth}
+              difficulty={difficulty}
+              setDifficulty={setDifficulty}
             />
           )}
 
@@ -539,7 +1144,228 @@ export default function BuilderWorkspace({
         error={detailsError}
         details={jobDetails}
         styleLookup={builderStyleLookup}
+        onRetry={openJobDetails}
+        initialTab={detailsInitialTab}
       />
+    </div>
+  );
+}
+
+// Persistent across every Builder section: read-only chips summarizing the
+// current setup, the live-progress Generate button, the (stubbed) shortcut
+// capture, and export links once the job has artifacts.
+function BuilderActionBar({
+  source,
+  selectedProvider,
+  provider,
+  model,
+  generatorPresets = [],
+  generatorPreset,
+  selectedStyleOption,
+  includeSections = {},
+  outputDepth = "",
+  difficulty = "",
+  selectedLengthOption,
+  outlineEnabled,
+  outlineCount,
+  artifacts = [],
+  hasResult,
+  loading,
+  progress,
+  onSaveShortcut,
+  shortcutSaved,
+  shortcutSaving,
+  shortcutSaveError
+}) {
+  const sourceLabel = sourceTabs.find((tab) => tab.id === source)?.label || source;
+  const providerModel =
+    source === "llm"
+      ? `${selectedProvider?.display_name || provider} · ${model || "No model"}`
+      : "Markdown pipeline";
+  const presetName = generatorPreset
+    ? generatorPresets.find((preset) => preset.id === generatorPreset)?.name || generatorPreset
+    : null;
+  const styleName = selectedStyleOption?.name || selectedStyleOption?.label || "—";
+  const lengthText = selectedLengthOption
+    ? `${selectedLengthOption.label} · ${selectedLengthOption.meta}`
+    : "—";
+  const sectionKeys = Object.keys(includeSections).filter((key) => includeSections[key]);
+  const sectionsText = sectionKeys.length
+    ? `${sectionKeys.length} section${sectionKeys.length === 1 ? "" : "s"}`
+    : "None";
+  const depthLabel = OUTPUT_DEPTH_OPTIONS.find((option) => option.value === outputDepth)?.label;
+  const difficultyLabel = DIFFICULTY_OPTIONS.find((option) => option.value === difficulty)?.label;
+  const axisText = [outputDepth ? depthLabel : null, difficulty ? difficultyLabel : null]
+    .filter(Boolean)
+    .join(" · ");
+
+  return (
+    <div className="sg-action-bar">
+      <div className="sg-action-chips">
+        <ActionChip dot kx="Source" v={sourceLabel} />
+        <ActionChip dot kx="Model" v={providerModel} title={providerModel} />
+        {presetName ? (
+          <ActionChip icon={Wand2} kx="Preset" v={presetName} />
+        ) : (
+          <ActionChip icon={Sparkles} kx="Style" v={styleName} />
+        )}
+        {outlineEnabled && outlineCount > 0 && (
+          <ActionChip icon={ListChecks} kx="Outline" v={`${outlineCount}`} />
+        )}
+        <ActionChip icon={ListChecks} kx="Sections" v={sectionsText} title={sectionKeys.join(", ")} />
+        {axisText && <ActionChip icon={Sparkles} kx="Axes" v={axisText} title={axisText} />}
+        <ActionChip icon={FileText} kx="Length" v={lengthText} />
+      </div>
+
+      {artifacts.length > 0 && (
+        <div className="sg-action-exports">
+          {artifacts.map(([name, url]) => {
+            const meta = artifactLabels[name];
+            const Icon = meta.icon;
+            return (
+              <a key={name} href={apiUrl(url)} className="sg-export-btn" title={`Download ${meta.label}`}>
+                <Icon className="h-3.5 w-3.5 text-[#F97316]" />
+                {meta.label}
+              </a>
+            );
+          })}
+        </div>
+      )}
+
+      <button
+        type="button"
+        onClick={onSaveShortcut}
+        disabled={shortcutSaving}
+        title={
+          shortcutSaveError ||
+          "Save the current builder setup as a pinned shortcut on Home"
+        }
+        className="sg-ghost-button inline-flex items-center gap-1.5 disabled:opacity-60"
+      >
+        {shortcutSaving ? (
+          <Loader2 className="h-4 w-4 animate-spin" />
+        ) : shortcutSaveError ? (
+          <AlertCircle className="h-4 w-4 text-red-300" />
+        ) : shortcutSaved ? (
+          <Check className="h-4 w-4 text-emerald-300" />
+        ) : (
+          <Bookmark className="h-4 w-4" />
+        )}
+        {shortcutSaving
+          ? "Saving…"
+          : shortcutSaveError
+            ? "Save failed"
+            : shortcutSaved
+              ? "Saved to Home"
+              : "Save as shortcut"}
+      </button>
+
+      <GenerateProgressButton loading={loading} progress={progress} hasResult={hasResult} />
+    </div>
+  );
+}
+
+function ActionChip({ icon: Icon, kx, v, title, dot = false }) {
+  return (
+    <span className="sg-chip" title={title || `${kx}: ${v}`}>
+      {dot ? <i className="dot" /> : Icon ? <Icon className="h-3 w-3 text-[#F97316]" /> : null}
+      <span className="sg-chip-key">{kx}</span>
+      <span className="sg-chip-val">{v}</span>
+    </span>
+  );
+}
+
+// The Generate button doubles as a live progress bar. It fills left-to-right by
+// the backend `progress` percent (CSS-animated so big jumps glide), and its text
+// is the verbatim `stage_label` from /api/jobs/{id}/progress — never invented.
+function GenerateProgressButton({ loading, progress, hasResult }) {
+  const failed = progress?.status === "failed";
+  const complete = !loading && !failed && progress?.progress === 100;
+  const running = loading;
+  const pct = failed
+    ? 100
+    : running
+      ? Math.max(progress?.progress ?? 5, 5)
+      : complete
+        ? 100
+        : 0;
+  const label = failed
+    ? "Generation failed"
+    : complete
+      ? "Complete"
+      : running
+        ? progress?.stage_label || "Starting…"
+        : hasResult
+          ? "Regenerate Guide"
+          : "Generate Guide";
+  const icon = failed ? (
+    <AlertCircle className="h-4 w-4" />
+  ) : complete ? (
+    <Check className="h-4 w-4" />
+  ) : running ? (
+    <Loader2 className="h-4 w-4 animate-spin" />
+  ) : hasResult ? (
+    <RefreshCw className="h-[17px] w-[17px]" />
+  ) : (
+    <Sparkles className="h-[18px] w-[18px]" />
+  );
+
+  return (
+    <button
+      type="submit"
+      disabled={running}
+      aria-live="polite"
+      className={`sg-progress-btn${running ? " running" : ""}${failed ? " failed" : ""}${
+        complete ? " complete" : ""
+      }`}
+    >
+      <span className="sg-progress-fill" style={{ width: `${pct}%` }} />
+      <span className="sg-progress-label">
+        {icon}
+        <span className="truncate">{label}</span>
+        {running && progress?.progress != null && (
+          <span className="sg-progress-pct">{Math.round(progress.progress)}%</span>
+        )}
+      </span>
+    </button>
+  );
+}
+
+// Non-blocking notice shown after a guide exists and a setting has since changed.
+function DirtyNotice({ onRegenerateFull, onRegenerateSections, onKeep, busy }) {
+  return (
+    <div className="sg-dirty-notice">
+      <AlertTriangle className="h-4 w-4 shrink-0 text-[#F8B57E]" />
+      <span className="min-w-0 flex-1 text-[12.5px] font-medium text-[#F4F4F5]">
+        The preview is outdated because settings changed.
+      </span>
+      <div className="flex flex-wrap items-center gap-2">
+        <button
+          type="button"
+          disabled={busy}
+          onClick={onRegenerateFull}
+          className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-[rgba(249,115,22,0.5)] bg-[rgba(249,115,22,0.16)] px-3 text-[12px] font-semibold text-[#F97316] transition hover:bg-[rgba(249,115,22,0.24)] disabled:cursor-not-allowed disabled:opacity-50"
+        >
+          <RefreshCw className="h-3.5 w-3.5" />
+          Regenerate full guide
+        </button>
+        <button
+          type="button"
+          onClick={onRegenerateSections}
+          className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-white/[0.12] bg-white/[0.04] px-3 text-[12px] font-semibold text-[#D4D4D8] transition hover:text-white"
+        >
+          <ListChecks className="h-3.5 w-3.5" />
+          Regenerate changed sections only
+        </button>
+        <button
+          type="button"
+          onClick={onKeep}
+          className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-white/[0.1] bg-white/[0.04] px-3 text-[12px] font-semibold text-[#9098A8] transition hover:text-[#F4F4F5]"
+        >
+          <X className="h-3.5 w-3.5" />
+          Keep current output
+        </button>
+      </div>
     </div>
   );
 }
@@ -561,6 +1387,7 @@ function BuilderComposer({
   handleProviderSelect,
   model,
   setModel,
+  modelNotice,
   qwenThinking,
   setQwenThinking,
   strictMath,
@@ -573,6 +1400,11 @@ function BuilderComposer({
   onCreateFolder,
   outlineEnabled,
   outlineCount,
+  presets = [],
+  selectedPreset = "",
+  onApplyPreset,
+  presetBusy = false,
+  onSaveDraft,
   error,
   loading
 }) {
@@ -587,6 +1419,13 @@ function BuilderComposer({
           className="sg-input sg-input-lg"
         />
       </div>
+
+      <TemplatePicker
+        presets={presets}
+        selectedPreset={selectedPreset}
+        onApplyPreset={onApplyPreset}
+        busy={presetBusy}
+      />
 
       <div className="sg-field-block">
         <FieldLabel>Source</FieldLabel>
@@ -605,7 +1444,7 @@ function BuilderComposer({
       {source === "llm" && (
         <div className="sg-llm-panel">
           <div>
-            <FieldLabel>Provider</FieldLabel>
+            <FieldLabel tip={TOOLTIPS.provider}>Provider</FieldLabel>
             <div className="sg-option-grid">
               {providerDetails.map((detail) => (
                 <OptionCard
@@ -619,7 +1458,7 @@ function BuilderComposer({
             </div>
           </div>
           <label>
-            <FieldLabel>Model</FieldLabel>
+            <FieldLabel tip={TOOLTIPS.model}>Model</FieldLabel>
             <select
               value={model}
               disabled={!selectedProvider?.configured || selectedProviderModels.length === 0}
@@ -633,6 +1472,9 @@ function BuilderComposer({
               ))}
             </select>
           </label>
+          {modelNotice && (
+            <p className="text-[12px] leading-5 text-[#FCD34D]">{modelNotice}</p>
+          )}
           {selectedProvider?.discovery_error && (
             <p className="text-[12px] leading-5 text-[#FCA5A5]">
               Local discovery: {selectedProvider.discovery_error}
@@ -642,11 +1484,13 @@ function BuilderComposer({
             <Toggle label="Qwen thinking mode" checked={qwenThinking} onChange={setQwenThinking} />
           )}
           <AttachmentsPicker attachments={attachments} setAttachments={setAttachments} />
-          <Toggle label="Strict math" checked={strictMath} onChange={setStrictMath} />
+          <Toggle label="Strict math" checked={strictMath} onChange={setStrictMath} tip={TOOLTIPS.strictMath} />
         </div>
       )}
 
-      {source !== "llm" && <Toggle label="Strict math" checked={strictMath} onChange={setStrictMath} />}
+      {source !== "llm" && (
+        <Toggle label="Strict math" checked={strictMath} onChange={setStrictMath} tip={TOOLTIPS.strictMath} />
+      )}
       {error && <ErrorMessage error={error} />}
 
       <div className="sg-generate-bar">
@@ -673,18 +1517,11 @@ function BuilderComposer({
         />
         <button
           type="button"
+          onClick={onSaveDraft}
           className="sg-ghost-button"
         >
           <Save className="h-4 w-4" />
           Save draft
-        </button>
-        <button
-          type="submit"
-          disabled={loading}
-          className="sg-cta sg-generate-button"
-        >
-          {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-[18px] w-[18px]" />}
-          {loading ? "Generating..." : "Generate Guide"}
         </button>
       </div>
     </>
@@ -809,6 +1646,67 @@ function CreateFolderPopover({ onClose, onCreateFolder }) {
   );
 }
 
+function TemplatePicker({ presets = [], selectedPreset = "", onApplyPreset, busy = false }) {
+  const active = presets.find((preset) => preset.id === selectedPreset);
+  return (
+    <div className="sg-field-block">
+      <FieldLabel>Template</FieldLabel>
+      <div className="flex items-center gap-2">
+        <span className="grid h-9 w-9 shrink-0 place-items-center rounded-lg border border-white/[0.08] bg-white/[0.03] text-[#F97316]">
+          {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <LayoutTemplate className="h-4 w-4" />}
+        </span>
+        <select
+          value={selectedPreset || "custom"}
+          disabled={busy}
+          onChange={(event) => onApplyPreset?.(event.target.value)}
+          className="h-9 min-w-0 flex-1 rounded-lg border border-white/[0.08] bg-[#070B14] px-3 text-[13px] font-medium text-[#F4F4F5] outline-none disabled:opacity-60"
+        >
+          <option value="custom" className="bg-[#0B1220]">Custom (no template)</option>
+          {presets.map((preset) => (
+            <option key={preset.id} value={preset.id} className="bg-[#0B1220]">
+              {preset.name}
+            </option>
+          ))}
+        </select>
+      </div>
+      <p className="mt-1.5 text-[11.5px] leading-4 text-[#9098A8]">
+        {active
+          ? `${active.description} You can still edit the outline and style before generating.`
+          : "Pick a template to pre-fill the outline and style. Custom leaves them as-is."}
+      </p>
+    </div>
+  );
+}
+
+function DraftRestoreBanner({ draft, onRestore, onDiscard }) {
+  return (
+    <div className="mx-1 mb-1 flex flex-wrap items-center gap-3 rounded-xl border border-[rgba(249,115,22,0.35)] bg-[rgba(249,115,22,0.10)] px-4 py-2.5">
+      <Clock className="h-4 w-4 shrink-0 text-[#F97316]" />
+      <span className="min-w-0 flex-1 text-[12.5px] font-medium text-[#F4F4F5]">
+        Restore unsaved draft from {formatDraftTime(draft.savedAt)}?
+      </span>
+      <div className="flex items-center gap-2">
+        <button
+          type="button"
+          onClick={onRestore}
+          className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-[rgba(249,115,22,0.5)] bg-[rgba(249,115,22,0.16)] px-3 text-[12px] font-semibold text-[#F97316] transition hover:bg-[rgba(249,115,22,0.24)]"
+        >
+          <RotateCcw className="h-3.5 w-3.5" />
+          Restore
+        </button>
+        <button
+          type="button"
+          onClick={onDiscard}
+          className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-white/[0.1] bg-white/[0.04] px-3 text-[12px] font-semibold text-[#9098A8] transition hover:text-[#F4F4F5]"
+        >
+          <X className="h-3.5 w-3.5" />
+          Discard
+        </button>
+      </div>
+    </div>
+  );
+}
+
 function BuilderTabIcon({ id, active }) {
   const color = active ? "#F97316" : "#6B7185";
   if (id === "outline") return <ListGlyph size={14} color={color} />;
@@ -851,17 +1749,50 @@ function SourceTabs({ source, setSource, setError }) {
   );
 }
 
-function StyleSettings({ selectedStyle, onSelectStyle, styleOptions, length, setLength, includes, toggleInclude }) {
+function StyleSettings({
+  selectedStyle,
+  onSelectStyle,
+  styleOptions,
+  generatorPresets = [],
+  generatorPreset = "",
+  onSelectGeneratorPreset,
+  model,
+  length,
+  setLength,
+  includeSections,
+  toggleSection,
+  outputDepth,
+  setOutputDepth,
+  difficulty,
+  setDifficulty
+}) {
+  const presetActive = Boolean(generatorPreset);
   return (
     <div className="grid gap-5">
       <SectionHeader
         eyebrow="Guide design"
         title="Style and depth"
-        description="Tune the preset, target length, and included learning aids used by generation."
+        description="Tune the preset, target length, generation depth/difficulty, and output sections."
       />
-      <StyleControls selectedStyle={selectedStyle} onSelectStyle={onSelectStyle} styleOptions={styleOptions} />
+      <GeneratorPresetControls
+        generatorPresets={generatorPresets}
+        generatorPreset={generatorPreset}
+        onSelectGeneratorPreset={onSelectGeneratorPreset}
+        model={model}
+      />
+      {/* A generator preset replaces the system prompt + sampling params, so the
+          style below is ignored while one is active. */}
+      <div className={presetActive ? "pointer-events-none opacity-45" : ""}>
+        <StyleControls selectedStyle={selectedStyle} onSelectStyle={onSelectStyle} styleOptions={styleOptions} />
+      </div>
       <LengthControls length={length} setLength={setLength} />
-      <IncludeControls includes={includes} toggleInclude={toggleInclude} />
+      <AxisControls
+        outputDepth={outputDepth}
+        setOutputDepth={setOutputDepth}
+        difficulty={difficulty}
+        setDifficulty={setDifficulty}
+      />
+      <SectionControls includeSections={includeSections} toggleSection={toggleSection} />
     </div>
   );
 }
@@ -945,6 +1876,165 @@ function PreviewWorkspacePanel({ result, artifacts, artifactUrls, previewFormat,
   );
 }
 
+// Provider logo chip. Uses a local SVG when one ships for the provider, otherwise
+// a styled text badge. Logos render on a light chip so near-black marks (Qwen /
+// Local) stay visible against the dark UI. A missing/broken icon never blocks the
+// card — `onError` hides the img and the chip background stays. `size="lg"` is the
+// prominent card identity icon; the default stays compact for any inline use.
+function ProviderBadge({ provider, size = "sm" }) {
+  const icon = providerIconFor(provider);
+  const label = providerLabelFor(provider);
+  const lg = size === "lg";
+  if (icon) {
+    return (
+      <span
+        className={`inline-flex shrink-0 items-center justify-center overflow-hidden bg-white ring-1 ring-white/20 ${
+          lg ? "h-12 w-12 rounded-xl p-2" : "h-6 w-6 rounded-md p-[3px]"
+        }`}
+        title={label}
+      >
+        <img
+          src={icon}
+          alt={`${label} logo`}
+          loading="lazy"
+          className="h-full w-full object-contain"
+          onError={(event) => {
+            event.currentTarget.style.display = "none";
+          }}
+        />
+      </span>
+    );
+  }
+  return (
+    <span
+      className={`inline-flex shrink-0 items-center justify-center bg-white/[0.08] font-bold uppercase tracking-[0.06em] text-[#D4D4D8] ring-1 ring-white/10 ${
+        lg ? "h-12 min-w-12 rounded-xl px-2.5 text-[11px]" : "h-6 rounded-md px-2 text-[10px]"
+      }`}
+    >
+      {label}
+    </span>
+  );
+}
+
+const fmtPresetParams = (params = {}) => {
+  const parts = [`temp ${params.temperature}`];
+  if (params.top_p != null) parts.push(`top_p ${params.top_p}`);
+  if (params.max_tokens != null) parts.push(`max ${params.max_tokens}`);
+  if (params.thinking) parts.push("thinking on");
+  return parts.join(" · ");
+};
+
+// One generator-preset card (C4d: compact, scan-first). A large provider icon +
+// bold model name form the identity ("Gemma 4 → Claude-Exam"); the preset name
+// sits directly under it and `purpose` is the single one-line subtitle. The dense
+// description / "Best for" blocks were removed. Still pure display of backend
+// metadata; selecting it sets the same `generatorPreset` id as before.
+function GeneratorPresetCard({ preset, selected, onSelect }) {
+  const available = preset.available !== false;
+  const modelLabel = presetModelLabel(preset);
+  return (
+    <button
+      type="button"
+      disabled={!available}
+      aria-pressed={selected}
+      onClick={() => onSelect?.(preset.id)}
+      title={available ? undefined : "This preset's prompt could not be loaded."}
+      className={`flex flex-col gap-2.5 rounded-xl border p-3 text-left transition disabled:cursor-not-allowed disabled:opacity-40 ${
+        selected
+          ? "border-[rgba(249,115,22,0.5)] bg-[rgba(249,115,22,0.08)] ring-1 ring-[rgba(249,115,22,0.35)]"
+          : "border-white/[0.08] bg-[#070B14] hover:border-white/20"
+      }`}
+    >
+      <div className="flex items-center gap-3">
+        <ProviderBadge provider={preset.provider} size="lg" />
+        <div className="min-w-0 flex-1">
+          {modelLabel && (
+            <div className="truncate text-[13.5px] font-bold leading-tight text-[#F4F4F5]" title={modelLabel}>
+              {modelLabel}
+            </div>
+          )}
+          <div className="mt-0.5 truncate text-[12px] font-semibold leading-tight text-[#F8B57E]">
+            {preset.name}
+          </div>
+        </div>
+        {!available && (
+          <span className="shrink-0 rounded-md bg-white/[0.06] px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.06em] text-[#9098A8]">
+            Unavailable
+          </span>
+        )}
+        {selected && <Check className="h-4 w-4 shrink-0 text-[#F97316]" />}
+      </div>
+      {preset.purpose && (
+        <p className="text-[11.5px] leading-4 text-[#9098A8]">{preset.purpose}</p>
+      )}
+    </button>
+  );
+}
+
+function GeneratorPresetControls({ generatorPresets = [], generatorPreset = "", onSelectGeneratorPreset, model }) {
+  if (!generatorPresets.length) return null;
+
+  const active = generatorPresets.find((preset) => preset.id === generatorPreset) || null;
+  // Advisory only: warn when the selected model doesn't match the preset's soft
+  // `model_hint`. Never blocks generation or auto-switches the model.
+  const compat = active ? presetCompat(active, model) : { warn: false };
+
+  return (
+    <div>
+      <FieldLabel tip={TOOLTIPS.generatorPreset}>Generator preset</FieldLabel>
+      <p className="mt-1 text-[11.5px] leading-4 text-[#9098A8]">
+        A full model-tuned system prompt with its own sampling params. Overrides the style below.
+      </p>
+      <div className="mt-2 grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
+        <button
+          type="button"
+          aria-pressed={!generatorPreset}
+          onClick={() => onSelectGeneratorPreset?.("")}
+          className={`flex flex-col justify-center gap-1 rounded-xl border p-3 text-left transition ${
+            !generatorPreset
+              ? "border-[rgba(249,115,22,0.5)] bg-[rgba(249,115,22,0.08)] ring-1 ring-[rgba(249,115,22,0.35)]"
+              : "border-white/[0.08] bg-[#070B14] hover:border-white/20"
+          }`}
+        >
+          <div className="flex items-center gap-2">
+            <span className="text-[13px] font-semibold text-[#F4F4F5]">None</span>
+            {!generatorPreset && <Check className="h-4 w-4 text-[#F97316]" />}
+          </div>
+          <p className="text-[11.5px] leading-4 text-[#9098A8]">
+            Use the style below instead of a tuned generator preset.
+          </p>
+        </button>
+        {generatorPresets.map((preset) => (
+          <GeneratorPresetCard
+            key={preset.id}
+            preset={preset}
+            selected={generatorPreset === preset.id}
+            onSelect={onSelectGeneratorPreset}
+          />
+        ))}
+      </div>
+      {active && (
+        <div className="mt-2 rounded-[10px] border border-white/[0.06] bg-[#070B14] p-3 text-[12px] leading-5 text-[#9098A8]">
+          <div className="text-[11.5px]">
+            Tuned for <span className="text-[#D4D4D8]">{active.model_hint}</span> · {fmtPresetParams(active.params)}
+          </div>
+          {compat.warn && (
+            <div className="mt-2 flex items-start gap-1.5 rounded-[8px] border border-[rgba(249,115,22,0.35)] bg-[rgba(249,115,22,0.08)] px-2.5 py-1.5 text-[11.5px] text-[#F8B57E]">
+              <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+              <span>
+                This preset is tuned for {compat.hint}. It may still work with{" "}
+                <span className="font-semibold">{model || "your selected model"}</span>, but {compat.hint} is
+                recommended. <span className="text-[#C9A27A]">Your model selection still applies.</span>
+                <InfoTip text={TOOLTIPS.modelCompat} label="Model compatibility" />
+              </span>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function StyleControls({ selectedStyle, onSelectStyle, styleOptions = styleChips }) {
   const builtinStyles = styleOptions.filter((style) => !style.custom);
   const customStyles = styleOptions.filter((style) => style.custom);
@@ -964,7 +2054,7 @@ function StyleControls({ selectedStyle, onSelectStyle, styleOptions = styleChips
 
   return (
     <div>
-      <FieldLabel>Style</FieldLabel>
+      <FieldLabel tip={TOOLTIPS.style}>Style</FieldLabel>
       <StyleGroupLabel>Built-in</StyleGroupLabel>
       {renderGrid(builtinStyles)}
       {customStyles.length > 0 && (
@@ -989,7 +2079,7 @@ function StyleGroupLabel({ children }) {
 function LengthControls({ length, setLength }) {
   return (
     <div>
-      <FieldLabel>Length</FieldLabel>
+      <FieldLabel tip={TOOLTIPS.length}>Length</FieldLabel>
       <div className="mt-1.5 grid grid-cols-3 gap-1.5">
         {lengthOptions.map((option) => (
           <button
@@ -1011,25 +2101,95 @@ function LengthControls({ length, setLength }) {
   );
 }
 
-function IncludeControls({ includes, toggleInclude }) {
+// Global generation axes — depth + difficulty. These MODIFY the whole guide
+// (how deep / how it is pitched) rather than ADD sections. "Auto" is the unset
+// state and omits the field from the request. Voice/tone is intentionally absent
+// (owned by Styles). Rendered as two segmented rows matching LengthControls.
+function AxisControls({ outputDepth, setOutputDepth, difficulty, setDifficulty }) {
+  return (
+    <div className="grid gap-4 sm:grid-cols-2">
+      <SegmentedAxis
+        label="Output depth"
+        tip={TOOLTIPS.outputDepth}
+        value={outputDepth}
+        onChange={setOutputDepth}
+        options={OUTPUT_DEPTH_OPTIONS}
+      />
+      <SegmentedAxis
+        label="Difficulty"
+        tip={TOOLTIPS.difficulty}
+        value={difficulty}
+        onChange={setDifficulty}
+        options={DIFFICULTY_OPTIONS}
+      />
+    </div>
+  );
+}
+
+function SegmentedAxis({ label, tip, value, onChange, options }) {
   return (
     <div>
-      <FieldLabel>Include</FieldLabel>
+      <FieldLabel tip={tip}>{label}</FieldLabel>
       <div className="mt-1.5 flex flex-wrap gap-1.5">
-        {includeOptions.map((option) => (
+        {options.map((option) => (
           <button
-            key={option}
+            key={option.value || "auto"}
             type="button"
-            onClick={() => toggleInclude(option)}
-            className={`inline-flex h-7 items-center gap-1.5 rounded-full border px-3 text-xs font-medium ${
-              includes.includes(option)
-                ? "border-[rgba(249,115,22,0.35)] bg-[rgba(249,115,22,0.10)] text-[#FB923C]"
-                : "border-white/10 bg-white/[0.04] text-[#F4F4F5]"
+            onClick={() => onChange(option.value)}
+            className={`inline-flex h-8 items-center rounded-[9px] border px-3 text-[12px] font-semibold transition ${
+              value === option.value
+                ? "border-[rgba(249,115,22,0.45)] bg-[rgba(249,115,22,0.12)] text-[#F97316]"
+                : "border-white/[0.08] bg-transparent text-[#9098A8] hover:text-[#D4D4D8]"
             }`}
           >
-            {includes.includes(option) && <span className="text-[10px]">✓</span>}
-            {option}
+            {option.label}
           </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// Canonical output-section toggles, grouped only for readability. Each chip's
+// `key` is the backend `include_sections` key (sent verbatim); the label is
+// cosmetic. No sections are selected by default.
+function SectionControls({ includeSections, toggleSection }) {
+  return (
+    <div>
+      <FieldLabel tip={TOOLTIPS.sections}>Output sections</FieldLabel>
+      <div className="mt-1.5 grid gap-3">
+        {SECTION_GROUPS.map((group) => (
+          <div key={group.title}>
+            <StyleGroupLabel>{group.title}</StyleGroupLabel>
+            <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
+              {group.keys.map((entry) => {
+                const active = Boolean(includeSections[entry.key]);
+                const chip = (
+                  <button
+                    type="button"
+                    onClick={() => toggleSection(entry.key)}
+                    className={`inline-flex h-7 items-center gap-1.5 rounded-full border px-3 text-xs font-medium ${
+                      active
+                        ? "border-[rgba(249,115,22,0.35)] bg-[rgba(249,115,22,0.10)] text-[#FB923C]"
+                        : "border-white/10 bg-white/[0.04] text-[#F4F4F5]"
+                    }`}
+                  >
+                    {active && <span className="text-[10px]">✓</span>}
+                    {entry.label}
+                  </button>
+                );
+                if (!entry.tip) {
+                  return <React.Fragment key={entry.key}>{chip}</React.Fragment>;
+                }
+                return (
+                  <span key={entry.key} className="inline-flex items-center gap-1">
+                    {chip}
+                    <InfoTip text={entry.tip} label={entry.label} />
+                  </span>
+                );
+              })}
+            </div>
+          </div>
         ))}
       </div>
     </div>
@@ -1091,7 +2251,7 @@ function AttachmentsPicker({ attachments, setAttachments }) {
 
   return (
     <div className="rounded-xl border border-white/[0.06] bg-white/[0.025] p-3">
-      <FieldLabel>Attachments</FieldLabel>
+      <FieldLabel tip={TOOLTIPS.attachments}>Attachments</FieldLabel>
       <label className="mt-2 flex cursor-pointer items-center gap-3 rounded-[10px] border border-dashed border-white/[0.12] bg-[#070B14] p-3 transition hover:border-[rgba(249,115,22,0.35)]">
         <span className="grid h-9 w-9 place-items-center rounded-[9px] border border-[rgba(255,180,120,0.16)] bg-[#111A2B] text-[#F97316]">
           <Upload className="h-4 w-4" />
@@ -1492,15 +2652,16 @@ function SamplePreview() {
   );
 }
 
-function FieldLabel({ children }) {
+function FieldLabel({ children, tip, tipLabel }) {
   return (
-    <div className="mb-1.5 text-[11px] font-semibold uppercase tracking-[0.06em] text-[#9098A8]">
-      {children}
+    <div className="mb-1.5 flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-[0.06em] text-[#9098A8]">
+      <span>{children}</span>
+      {tip && <InfoTip text={tip} label={tipLabel || (typeof children === "string" ? children : "")} />}
     </div>
   );
 }
 
-function Toggle({ label, checked, onChange }) {
+function Toggle({ label, checked, onChange, tip }) {
   return (
     <label className="flex items-center gap-2 rounded-[10px] border border-white/[0.06] bg-white/[0.03] px-3 py-2 text-[12.5px] font-medium text-[#D4D4D8]">
       <input
@@ -1509,8 +2670,35 @@ function Toggle({ label, checked, onChange }) {
         onChange={(event) => onChange(event.target.checked)}
         className="h-4 w-4 accent-[#F97316]"
       />
-      {label}
+      <span className="inline-flex items-center gap-1.5">
+        {label}
+        {tip && <InfoTip text={tip} label={typeof label === "string" ? label : ""} />}
+      </span>
     </label>
+  );
+}
+
+// Small keyboard-accessible "?" info icon. The bubble is absolutely positioned so
+// it never affects layout, and shows on hover OR focus (group-focus-within). The
+// trigger swallows clicks so it never toggles a surrounding <label> control.
+function InfoTip({ text, label }) {
+  return (
+    <span className="sg-infotip group">
+      <button
+        type="button"
+        aria-label={label ? `Help: ${label}` : "More information"}
+        onClick={(event) => {
+          event.preventDefault();
+          event.stopPropagation();
+        }}
+        className="grid h-4 w-4 place-items-center rounded-full border border-white/15 text-[#9098A8] outline-none transition hover:border-[rgba(249,115,22,0.5)] hover:text-[#F4F4F5] focus-visible:border-[rgba(249,115,22,0.6)] focus-visible:text-[#F4F4F5] focus-visible:ring-1 focus-visible:ring-[rgba(249,115,22,0.5)]"
+      >
+        <Info className="h-2.5 w-2.5" />
+      </button>
+      <span role="tooltip" className="sg-infotip-bubble">
+        {text}
+      </span>
+    </span>
   );
 }
 
@@ -1612,13 +2800,16 @@ export function buildBuilderPayload({
   file,
   title,
   selectedStyle,
+  generatorPreset = "",
   provider,
   model,
   strictMath,
   qwenThinking,
   attachments,
   length,
-  includes,
+  includeSections = {},
+  outputDepth = "",
+  difficulty = "",
   folderId = "unfiled",
   outline = null
 }) {
@@ -1641,13 +2832,16 @@ export function buildBuilderPayload({
         text,
         title,
         selectedStyle,
+        generatorPreset,
         provider,
         model,
         strictMath,
         qwenThinking,
         attachments,
         length,
-        includes,
+        includeSections,
+        outputDepth,
+        difficulty,
         folderId,
         outline
       })
@@ -1670,22 +2864,32 @@ export function buildLlmPayload({
   title,
   mode = "study_guide",
   selectedStyle,
+  generatorPreset = "",
   provider,
   model,
   strictMath,
   qwenThinking,
   attachments = [],
   length,
-  includes,
+  includeSections = {},
+  outputDepth = "",
+  difficulty = "",
   folderId = "unfiled",
   outline = null
 }) {
   const hasOutline = outline?.enabled && (outline.sections || []).some((section) => section.title?.trim());
+  // Send the canonical fields only when they carry intent: omit include_sections
+  // entirely when nothing is enabled, and omit each axis when unset. This keeps a
+  // default/fresh generate request free of include_sections/output_depth/difficulty.
+  const enabledSections = normalizeSectionState(includeSections);
   return {
-    source_text: augmentSourceText(text, length, includes),
+    source_text: augmentSourceText(text, length),
     title,
     mode,
     prompt_name: selectedStyle,
+    // When set, the backend uses this as the system prompt + sampling params and
+    // ignores prompt_name; omitted entirely otherwise to preserve the style path.
+    ...(generatorPreset ? { generator_preset: generatorPreset } : {}),
     provider,
     model,
     theme: "claude_clean",
@@ -1693,6 +2897,9 @@ export function buildLlmPayload({
     qwen_thinking: qwenThinking,
     folder_id: folderId,
     ...(hasOutline ? { outline } : {}),
+    ...(hasEnabledSections(enabledSections) ? { include_sections: enabledSections } : {}),
+    ...(outputDepth ? { output_depth: outputDepth } : {}),
+    ...(difficulty ? { difficulty } : {}),
     attachments
   };
 }
@@ -1716,7 +2923,7 @@ function assertBuilderPayload(kind, payload, state) {
   }
 
   if (kind === "llm") {
-    const expectedSource = augmentSourceText(state.text, state.length, state.includes);
+    const expectedSource = augmentSourceText(state.text, state.length);
     if (payload.title !== state.title) {
       throw new Error("Builder payload mismatch: title does not match title field.");
     }
@@ -1726,7 +2933,9 @@ function assertBuilderPayload(kind, payload, state) {
   }
 }
 
-function augmentSourceText(text, length, includes) {
+function augmentSourceText(text, length) {
   const lengthLabel = lengthOptions.find((option) => option.id === length)?.meta || "~20 pages";
-  return `${text.trim()}\n\nAdditional builder instructions:\nRequested length: ${lengthLabel}.\nInclude: ${includes.join(", ")}.`;
+  // Output sections now flow through the canonical `include_sections` request
+  // field (and prompt assembly), so they are no longer appended as free text here.
+  return `${text.trim()}\n\nAdditional builder instructions:\nRequested length: ${lengthLabel}.`;
 }

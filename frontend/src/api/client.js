@@ -37,6 +37,52 @@ export function getJobs() {
   return requestJson("/api/jobs");
 }
 
+export function getPresets() {
+  return requestJson("/api/presets");
+}
+
+export function applyPreset(presetId) {
+  return requestJson(`/api/presets/${encodeURIComponent(presetId)}/apply`, {
+    method: "POST"
+  });
+}
+
+export function setJobFavorite(jobId, value) {
+  return requestJson(`/api/jobs/${encodeURIComponent(jobId)}/favorite`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ value })
+  });
+}
+
+export function trashJob(jobId) {
+  return requestJson(`/api/jobs/${encodeURIComponent(jobId)}/trash`, {
+    method: "POST"
+  });
+}
+
+export function restoreJob(jobId) {
+  return requestJson(`/api/jobs/${encodeURIComponent(jobId)}/restore`, {
+    method: "POST"
+  });
+}
+
+export function getTrash() {
+  return requestJson("/api/jobs/trash");
+}
+
+export function purgeTrashedJob(jobId) {
+  return requestJson(`/api/jobs/trash/${encodeURIComponent(jobId)}`, {
+    method: "DELETE"
+  });
+}
+
+export function emptyTrash() {
+  return requestJson("/api/jobs/trash", {
+    method: "DELETE"
+  });
+}
+
 export function getStyles() {
   return requestJson("/api/styles");
 }
@@ -129,11 +175,45 @@ export function moveJobToFolder(jobId, folderId) {
   });
 }
 
-export function moveJobsToFolder(jobIds, folderId) {
-  return requestJson("/api/library/jobs/move", {
+// ── Bulk job actions (canonical /api/jobs/bulk/* family) ─────────────────────
+// All three return the partial-success batch contract:
+//   { results: [{ id, status: "ok"|"skipped"|"error", detail? }], ok_count, fail_count }
+// A whole-request failure (e.g. bulk move to an unknown folder → 404) rejects
+// via requestJson with the server's `detail`.
+
+export function bulkDeleteJobs(ids) {
+  return requestJson("/api/jobs/bulk/delete", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ job_ids: jobIds, folder_id: folderId })
+    body: JSON.stringify({ ids })
+  });
+}
+
+export function bulkRestoreJobs(ids) {
+  return requestJson("/api/jobs/bulk/restore", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ ids })
+  });
+}
+
+// Canonical batch move (replaces the older POST /api/library/jobs/move). Sends
+// `folder_id` (NOT `folder`); pass "unfiled" to remove the folder assignment.
+export function bulkMoveJobs(ids, folderId) {
+  return requestJson("/api/jobs/bulk/move", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ ids, folder_id: folderId })
+  });
+}
+
+// Bulk PERMANENT delete. Each id must already be in the trash; loops the same
+// guarded single-job purge server-side. Irreversible — confirm strongly first.
+export function bulkPurgeJobs(ids) {
+  return requestJson("/api/jobs/bulk/purge", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ ids })
   });
 }
 
@@ -198,8 +278,26 @@ export function rerenderJob(jobId, { theme } = {}) {
   });
 }
 
+export function retryJob(jobId) {
+  return requestJson(`/api/jobs/${encodeURIComponent(jobId)}/retry`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({})
+  });
+}
+
+export function getJobError(jobId) {
+  return requestJson(`/api/jobs/${encodeURIComponent(jobId)}/error`);
+}
+
 export function getJob(jobId) {
   return requestJson(`/api/jobs/${encodeURIComponent(jobId)}`);
+}
+
+// Coarse, pollable generation progress: { status, stage, stage_label, progress }.
+// status is the terminal-state source of truth; stop polling once it is terminal.
+export function getJobProgress(jobId) {
+  return requestJson(`/api/jobs/${encodeURIComponent(jobId)}/progress`);
 }
 
 export function createPasteJob({ text, theme = "claude_clean", strictMath = true, folderId = null }) {
@@ -240,8 +338,8 @@ export function createLlmJob(payload) {
       if (key === "attachments" || value === null || value === undefined) {
         return;
       }
-      if (key === "outline" && typeof value === "object") {
-        formData.append("outline", JSON.stringify(value));
+      if ((key === "outline" || key === "include_sections") && typeof value === "object") {
+        formData.append(key, JSON.stringify(value));
         return;
       }
       formData.append(key, String(value));
@@ -262,6 +360,161 @@ export function createLlmJob(payload) {
     },
     body: JSON.stringify(payload)
   });
+}
+
+export function getJobVersions(jobId) {
+  return requestJson(`/api/jobs/${encodeURIComponent(jobId)}/versions`);
+}
+
+export async function getCleanMd(jobId) {
+  const response = await fetch(`${API_BASE_URL}/api/jobs/${encodeURIComponent(jobId)}/clean_md`);
+  if (!response.ok) {
+    throw new Error(`Failed to load markdown: ${response.status}`);
+  }
+  return response.text();
+}
+
+export function putCleanMd(jobId, text) {
+  return requestJson(`/api/jobs/${encodeURIComponent(jobId)}/clean_md`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ text })
+  });
+}
+
+export async function getVersionCleanMd(jobId, version) {
+  const response = await fetch(
+    `${API_BASE_URL}/api/jobs/${encodeURIComponent(jobId)}/versions/${version}/clean_md`
+  );
+  if (!response.ok) {
+    throw new Error(`Failed to load version ${version}: ${response.status}`);
+  }
+  return response.text();
+}
+
+export function revertJobVersion(jobId, version) {
+  return requestJson(
+    `/api/jobs/${encodeURIComponent(jobId)}/revert/${version}`,
+    { method: "POST" }
+  );
+}
+
+export function getJobSections(jobId) {
+  return requestJson(`/api/jobs/${encodeURIComponent(jobId)}/sections`);
+}
+
+export function getOutlineCompliance(jobId) {
+  return requestJson(`/api/jobs/${encodeURIComponent(jobId)}/outline_compliance`);
+}
+
+export function regenerateSection(jobId, sectionIndex, { action, instruction = "", provider = null, model = null, qwenThinking = true } = {}) {
+  return requestJson(
+    `/api/jobs/${encodeURIComponent(jobId)}/sections/${sectionIndex}/regenerate`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action, instruction, provider, model, qwen_thinking: qwenThinking })
+    }
+  );
+}
+
+export function generateQuiz(jobId, { questionTypes, count, difficulty, focus, sectionIndices = null, provider = null, model = null, qwenThinking = true } = {}) {
+  return requestJson(`/api/jobs/${encodeURIComponent(jobId)}/quiz`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      question_types: questionTypes,
+      count,
+      difficulty,
+      focus,
+      section_indices: sectionIndices,
+      provider,
+      model,
+      qwen_thinking: qwenThinking,
+    }),
+  });
+}
+
+export function listQuizzes(jobId) {
+  return requestJson(`/api/jobs/${encodeURIComponent(jobId)}/quizzes`);
+}
+
+export function getQuiz(jobId, quizN) {
+  return requestJson(`/api/jobs/${encodeURIComponent(jobId)}/quizzes/${quizN}`);
+}
+
+export function quizExportUrl(jobId, quizN, format) {
+  return `${API_BASE_URL}/api/jobs/${encodeURIComponent(jobId)}/quizzes/${quizN}/export?format=${encodeURIComponent(format)}`;
+}
+
+// ── Shortcuts (Home launcher registry) ──────────────────────────────────────
+
+export function listShortcuts() {
+  return requestJson("/api/shortcuts");
+}
+
+export function getShortcut(shortcutId) {
+  return requestJson(`/api/shortcuts/${encodeURIComponent(shortcutId)}`);
+}
+
+export function createShortcut(shortcut) {
+  return requestJson("/api/shortcuts", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(shortcut),
+  });
+}
+
+export function updateShortcut(shortcutId, patch) {
+  return requestJson(`/api/shortcuts/${encodeURIComponent(shortcutId)}`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(patch),
+  });
+}
+
+export function deleteShortcut(shortcutId) {
+  return requestJson(`/api/shortcuts/${encodeURIComponent(shortcutId)}`, {
+    method: "DELETE",
+  });
+}
+
+export function reorderShortcuts(items) {
+  return requestJson("/api/shortcuts/reorder", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ items }),
+  });
+}
+
+export function resetShortcutDefaults() {
+  return requestJson("/api/shortcuts/defaults/reset", { method: "POST" });
+}
+
+export function previewImportShortcuts(data, overwrite = false) {
+  const body = Array.isArray(data) ? data : { ...data, overwrite };
+  return requestJson("/api/shortcuts/import/preview", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+}
+
+export function importShortcuts(data, overwrite = false) {
+  const body = Array.isArray(data) ? data : { ...data, overwrite };
+  return requestJson("/api/shortcuts/import", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+}
+
+export function exportShortcutUrl(shortcutId) {
+  return `${API_BASE_URL}/api/shortcuts/${encodeURIComponent(shortcutId)}/export`;
+}
+
+export function exportShortcutsUrl() {
+  return `${API_BASE_URL}/api/shortcuts/export`;
 }
 
 export function artifactUrl(jobId, artifactName) {

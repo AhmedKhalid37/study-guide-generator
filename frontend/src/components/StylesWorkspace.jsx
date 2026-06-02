@@ -207,7 +207,7 @@ export default function StylesWorkspace({ selectedStyle, onSelectStyle, onOpenBu
       <div className="sg-page-head">
         <div>
           <h1>Styles</h1>
-          <p>Built-in prompt presets plus your own custom and AI-generated styles.</p>
+          <p>Compare built-in prompt presets side by side, plus your own custom and AI-generated styles.</p>
         </div>
         <button type="button" className="sg-cta sg-press-btn" onClick={openCreate}>
           <Plus size={16} stroke="#1A1206" strokeWidth={2.6} />

@@ -36,6 +36,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         tesseract-ocr tesseract-ocr-eng \
         fonts-liberation fonts-dejavu-core fonts-noto-core \
         ca-certificates \
+        gosu \
     && rm -rf /var/lib/apt/lists/*
 
 ENV PYTHONUNBUFFERED=1 \
@@ -59,14 +60,22 @@ COPY api/ ./api/
 COPY scripts/ ./scripts/
 COPY prompts/ ./prompts/
 COPY themes/ ./themes/
-COPY app.py ./
 
 # Built frontend from stage 1, served same-origin by FastAPI.
 COPY --from=frontend /ui/dist ./frontend/dist
+
+# Run as an unprivileged user. The entrypoint fixes bind-mount ownership as root,
+# then drops to this user via gosu before exec'ing the server.
+RUN useradd --create-home --uid 10001 appuser
+COPY docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
+RUN chmod +x /usr/local/bin/docker-entrypoint.sh \
+    && chown -R appuser:appuser /app
 
 EXPOSE 8000
 HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 \
     CMD python -c "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8000/api/health',timeout=3).status==200 else 1)"
 
+# Entrypoint runs as root only to chown the mounts, then exec's the CMD as appuser.
 # 0.0.0.0 so the port is reachable from outside the container (and over LAN).
+ENTRYPOINT ["/usr/local/bin/docker-entrypoint.sh"]
 CMD ["python", "-m", "uvicorn", "api.server:app", "--host", "0.0.0.0", "--port", "8000"]

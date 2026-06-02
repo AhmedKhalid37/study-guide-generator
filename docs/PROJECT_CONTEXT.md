@@ -1,0 +1,91 @@
+# PROJECT_CONTEXT.md — Stable Overview
+
+> Stable, slow-changing context for any new session (Claude, ChatGPT, Codex).
+> For the live handoff see `CURRENT_TASK.md`; for the "why" behind choices see
+> `DECISIONS.md`. The canonical project brief is `../CLAUDE.md`.
+
+---
+
+## 1. What the app is
+
+**Study Guide Generator** — turns course material (pasted text, uploaded
+Markdown, or attachments) into clean, exam-focused study guides and renders them
+to PDF, plus Markdown / HTML / DOCX artifacts. It also generates quizzes /
+flashcards with CSV / Anki / Quizlet export.
+
+- **Audience:** personal / small-group use. Single operator, not multi-tenant.
+- **Intended UX:** a Claude-style desktop shell. The user picks a *style*
+  (built-in, custom, or AI-generated) and/or a *generator preset*, optionally
+  drafts an outline, generates, then manages results in a Library (folders) and
+  an Exports center (per-job downloads + ZIP bundles). Recent Jobs and a Job
+  Details drawer expose metadata, warnings, and downloads. The Home page offers
+  customizable shortcuts.
+
+## 2. Stack
+
+- **Backend:** FastAPI — `api/server.py`. Defines all `/api/*` routes, then
+  mounts the built frontend as a catch-all at `/`. The mount is registered
+  **after** the API routes, so `/api/*` always wins over the SPA fallback.
+- **Frontend:** React (Vite + Tailwind), built to `frontend/dist`, which the
+  backend serves **same-origin**. One origin for UI + API.
+- **Rendering pipeline (`pipeline/`):** Markdown sanitizer → LLM orchestrator →
+  extraction/OCR → math validate/render → PDF/HTML/DOCX renderers.
+  - **PDF rendering uses headless Chromium driven via Node** (not a Python HTML
+    engine). This is load-bearing and tuned — do not rewrite casually.
+  - **OCR uses Tesseract** for image-only PDFs.
+  - Attachment extraction supports `.txt/.md/.csv/.tsv/.docx/.pptx/.pdf`.
+- **Deployment:** Dockerized, same-origin, port **8000** (uvicorn
+  `api.server:app` on `0.0.0.0:8000`). `frontend/dist` is built inside the
+  image, never copied from host.
+
+## 3. Providers
+
+- **DeepSeek** and **Qwen** — configured via `.env` (real keys, server-side
+  only, gitignored). These are the verified-working providers.
+- **Local llama.cpp** — supported via env/discovery; typically shows
+  `configured: false` until a local server is set up.
+- `/api/options` exposes only non-secret derived info (e.g. which providers are
+  `configured`). **Raw keys never reach the frontend.**
+
+## 4. Architecture facts a new session MUST know
+
+- **Non-root container.** The image creates `appuser` (uid **10001**); the
+  entrypoint drops privileges via **gosu** before exec'ing the server. Do not
+  assume root inside the container.
+- **clean.md chokepoint.** All writes to a job's `clean.md` go through
+  `JobManager.save_clean_md(...)` (`pipeline/job_manager.py`). It auto-snapshots
+  for version history. Never write `clean.md` directly — route through it.
+- **Permanent delete is fenced to trash.** Soft-delete moves
+  `jobs/<id>/` → `jobs/.trash/<id>/` (reversible). Permanent purge can act
+  **only** on a job already inside `jobs/.trash/`, guarded by a path assertion
+  that hard-fails any id resolving outside the trash dir. Active jobs can never
+  be hard-deleted directly.
+- **Math validation degrades, never fails.** Math validation failures mark the
+  offending spans and the job ends as **`completed_with_warnings`** — they do
+  **not** kill the job.
+- **Generator presets** inject a full system prompt and **append**
+  `MARKDOWN_MATH_SYSTEM` (`pipeline/orchestrator.py`). Presets are distinct from
+  styles (see `DECISIONS.md`).
+- **Shortcut store** is a whitelist-validated JSON file at
+  `library/shortcuts.json`. Import/export only accepts whitelisted fields.
+- **Job stage reporting.** Coarse status (`queued/running/done/
+  completed_with_warnings/failed`) is augmented by finer `stage`/`progress`,
+  surfaced via `GET /api/jobs/{id}/progress` and polled by the Builder.
+
+## 5. Working conventions
+
+- **One slice per branch.** Small feature slices, verify-and-commit between each.
+- **Surgical edits, not rewrites.** Preserve routes and pipeline behavior unless
+  the slice is explicitly about them. The PDF pipeline is load-bearing.
+- **Backend changes must be proven with a live run** — not just by reading
+  source. Build + compile + docker + smoke (`test_scripts/smoke_release.py`).
+- Keep same-origin Docker behavior, `/api/*` precedence, and the Claude-style UI
+  as the visual baseline.
+- Verification commands (from `../CLAUDE.md` §4):
+  ```fish
+  npm --prefix frontend run build
+  python -m compileall api pipeline
+  docker compose config && docker compose build && docker compose up
+  curl http://localhost:8000/api/health
+  curl http://localhost:8000/api/options
+  ```

@@ -11,8 +11,7 @@ Turn course material into clean, exam-focused **study guides** and export them a
   UI, so the whole app is one container on **port 8000** with no CORS setup.
 
 > Looking for the old Streamlit/pandoc/xelatex `v2` pipeline? It's gone. The
-> current app is the React + FastAPI + Docker one described here. A backup of the
-> old scripts lives in `legacy_scripts/`.
+> current app is the React + FastAPI + Docker one described here.
 
 ---
 

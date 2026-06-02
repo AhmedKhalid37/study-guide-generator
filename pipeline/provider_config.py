@@ -23,6 +23,7 @@ DEEPSEEK_MODELS = [
 ]
 QWEN_MODELS = [
     "qwen3.7-max",
+    "qwen3.7-plus",
     "qwen3.6-plus",
     "qwen3-max",
     "qwen3.6-max-preview",
@@ -105,9 +106,18 @@ def build_provider_config(
     custom_model: str | None = None,
     *,
     qwen_thinking_enabled: bool = True,
+    temperature_override: float | None = None,
+    top_p: float | None = None,
+    max_tokens: int | None = None,
 ) -> LLMConfig:
     load_env_file()
-    temperature = _llm_temperature_from_env()
+    # A generator preset can pin its own sampling params; otherwise fall back to the
+    # process-global env temperature and leave top_p/max_tokens unset (provider default).
+    temperature = (
+        temperature_override
+        if temperature_override is not None
+        else _llm_temperature_from_env()
+    )
     provider_id = resolve_provider_id(provider)
 
     if provider_id == "deepseek":
@@ -129,6 +139,8 @@ def build_provider_config(
             api_key=api_key,
             model=model,
             temperature=temperature,
+            top_p=top_p,
+            max_tokens=max_tokens,
             provider="deepseek",
         )
 
@@ -148,6 +160,8 @@ def build_provider_config(
             api_key=api_key,
             model=model,
             temperature=temperature,
+            top_p=top_p,
+            max_tokens=max_tokens,
             provider="qwen",
             extra_body={"enable_thinking": qwen_thinking_enabled},
         )
@@ -169,6 +183,8 @@ def build_provider_config(
             api_key=api_key,
             model=model,
             temperature=temperature,
+            top_p=top_p,
+            max_tokens=max_tokens,
             provider="local",
         )
 

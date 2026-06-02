@@ -45,6 +45,7 @@ def run_markdown_job(
 
     try:
         job.set_status("saving_input")
+        job.set_stage("preparing")
         saved_input = accept_markdown_upload(job, source)
         shutil.copy2(saved_input, job.raw_md)
         job.update(input_path=str(saved_input), raw_md=str(job.raw_md))
@@ -52,9 +53,10 @@ def run_markdown_job(
     except MarkdownJobError:
         raise
     except Exception as exc:
-        message = f"Markdown job failed: {exc}"
-        job.set_status("failed", message)
-        raise MarkdownJobError(message, job) from exc
+        from pipeline.errors import classify_exception
+        category, user_message = classify_exception(exc)
+        job.set_status("failed", user_message, error_category=category)
+        raise MarkdownJobError(user_message, job) from exc
 
 
 def run_pasted_text_job(
@@ -77,6 +79,7 @@ def run_pasted_text_job(
 
     try:
         job.set_status("saving_input")
+        job.set_stage("preparing")
         pasted = accept_paste(job, text)
         job.save_text(job.raw_md, text)
         job.update(input_path=str(pasted), raw_md=str(job.raw_md))
@@ -84,19 +87,22 @@ def run_pasted_text_job(
     except MarkdownJobError:
         raise
     except Exception as exc:
-        message = f"Pasted text job failed: {exc}"
-        job.set_status("failed", message)
-        raise MarkdownJobError(message, job) from exc
+        from pipeline.errors import classify_exception
+        category, user_message = classify_exception(exc)
+        job.set_status("failed", user_message, error_category=category)
+        raise MarkdownJobError(user_message, job) from exc
 
 
 def run_raw_markdown_pipeline(job: Job, *, theme: str, strict_math: bool) -> Job:
     job.set_status("sanitizing")
+    job.set_stage("cleaning")
     raw = job.raw_md.read_text(encoding="utf-8", errors="replace")
-    job.save_text(job.clean_md, sanitize(raw))
+    job.save_clean_md(sanitize(raw), "generated")
     job.update(clean_md=str(job.clean_md))
     print(f"clean.md: {job.clean_md}")
 
     job.set_status("validating")
+    job.set_stage("checking_math")
     validation_path = job.logs_dir / "validation.json"
     result = validate(job.clean_md, output_json=validation_path)
     job.update(
@@ -109,26 +115,55 @@ def run_raw_markdown_pipeline(job: Job, *, theme: str, strict_math: bool) -> Job
         },
     )
     if not result.ok:
+        # Graceful degradation: a single malformed LaTeX expression must NOT
+        # destroy the whole guide. Record the failed expressions, then render
+        # anyway with KaTeX throwOnError=false (below) so bad math becomes a
+        # visible error-marked span the user can fix in the Markdown editor.
+        # ``strict_math`` now means "flag and mark bad math", not "abort the job".
         message = _validation_error_message(result)
-        job.set_status("validation_failed", message)
-        print(f"Validation failed. Details saved to: {validation_path}", file=sys.stderr)
-        print(message, file=sys.stderr)
-        raise MarkdownJobError(message, job)
+        job.update(
+            math_warnings=message,
+            math_failures=[
+                {
+                    "expr": error.expr,
+                    "display_mode": error.display_mode,
+                    "message": error.message,
+                }
+                for error in result.errors
+            ],
+        )
+        print(
+            f"Math validation found {len(result.errors)} issue(s); rendering with "
+            f"error-marked spans instead of failing. Details: {validation_path}",
+            file=sys.stderr,
+        )
 
     job.set_status("rendering")
+    job.set_stage("rendering")
+    # When math validation failed we must render with throwOnError=false so the
+    # bad expressions degrade to error spans rather than aborting the render.
+    # Valid-math jobs keep their original strict_math (output is byte-identical
+    # for valid expressions, so this is a no-op for the normal case).
+    render_strict = strict_math and result.ok
     try:
-        render_pdf(job.clean_md, job.final_pdf, theme=theme, strict_math=strict_math)
+        render_pdf(job.clean_md, job.final_pdf, theme=theme, strict_math=render_strict)
     except Exception as exc:
-        message = f"Rendering failed: {exc}"
+        message = f"PDF rendering failed: {exc}"
         job.save_text(job.render_log, message + "\n")
-        job.set_status("render_failed", message)
-        print(f"Rendering failed. Details saved to: {job.render_log}", file=sys.stderr)
+        job.set_status("failed", message, error_category="pdf", log_path=str(job.render_log))
+        print(f"PDF rendering failed. Details: {job.render_log}", file=sys.stderr)
         print(message, file=sys.stderr)
         raise MarkdownJobError(message, job) from exc
 
+    # PDF + HTML are written; finalize the artifact records (docx stays lazy).
+    job.set_stage("exporting")
     job.save_text(job.render_log, f"Rendered PDF: {job.final_pdf}\nRendered HTML: {job.final_html}\n")
     job.update(final_html=str(job.final_html), final_pdf=str(job.final_pdf))
-    job.set_status("done")
+    # A usable guide was produced. Use a non-fatal terminal status when math was
+    # degraded so the UI can show a "fix these expressions" notice without
+    # presenting a failure state.
+    job.set_status("done" if result.ok else "completed_with_warnings")
+    job.set_stage("complete")
 
     print(f"final.html: {job.final_html}")
     print(f"final.pdf: {job.final_pdf}")
@@ -154,9 +189,9 @@ def rerender_job(job: Job, *, theme: str | None = None, strict_math: bool | None
     try:
         render_pdf(job.clean_md, job.final_pdf, theme=use_theme, strict_math=use_strict)
     except Exception as exc:
-        message = f"Re-render failed: {exc}"
+        message = f"PDF rendering failed: {exc}"
         job.save_text(job.render_log, message + "\n")
-        job.set_status("render_failed", message)
+        job.set_status("failed", message, error_category="pdf", log_path=str(job.render_log))
         raise MarkdownJobError(message, job) from exc
 
     job.save_text(job.render_log, f"Re-rendered PDF: {job.final_pdf}\nRe-rendered HTML: {job.final_html}\n")

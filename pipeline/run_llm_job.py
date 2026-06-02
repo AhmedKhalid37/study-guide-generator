@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import os
 import re
 import sys
 import shutil
@@ -10,12 +11,12 @@ from typing import Any
 
 from pipeline.job_manager import Job
 from pipeline.extract import ExtractionError, extract_file
-from pipeline.llm_client import LLMConfig, MissingLLMConfigError
+from pipeline.llm_client import LLMConfig, LLMProviderError, MissingLLMConfigError
 from pipeline.orchestrator import generate_study_guide
 from pipeline.run_markdown_job import MarkdownJobError, run_raw_markdown_pipeline
 
-MAX_ATTACHMENT_CHARS = 40_000
-MAX_TOTAL_ATTACHMENT_CHARS = 120_000
+MAX_ATTACHMENT_CHARS = int(os.getenv("MAX_ATTACHMENT_CHARS", "200000"))
+MAX_TOTAL_ATTACHMENT_CHARS = int(os.getenv("MAX_TOTAL_ATTACHMENT_CHARS", "600000"))
 
 
 class LLMJobError(RuntimeError):
@@ -36,6 +37,10 @@ def run_llm_job(
     title: str,
     mode: str = "exam",
     prompt_name: str = "basic_study_guide",
+    generator_preset: str | None = None,
+    include_sections: dict[str, bool] | None = None,
+    output_depth: str | None = None,
+    difficulty: str | None = None,
     theme: str = "claude_clean",
     strict_math: bool = True,
     config: LLMConfig | None = None,
@@ -49,6 +54,13 @@ def run_llm_job(
             "title": title,
             "mode": mode,
             "prompt_name": prompt_name,
+            "generator_preset": generator_preset,
+            # Persisted so rerender reproduces the same requested output sections.
+            "include_sections": include_sections or {},
+            # Global generation-directive axes (C2), persisted so rerender
+            # reproduces the same depth/difficulty. Unset stays None.
+            "output_depth": output_depth,
+            "difficulty": difficulty,
             "theme": theme,
             "strict_math": strict_math,
             "provider": resolved_config.provider,
@@ -61,6 +73,7 @@ def run_llm_job(
 
     try:
         job.set_status("saving_input")
+        job.set_stage("preparing")
         attachment_report: dict[str, Any] = {
             "files": [],
             "warnings": [],
@@ -68,7 +81,10 @@ def run_llm_job(
         }
         augmented_source = source_text
         if attachments:
-            augmented_source, attachment_report = _attach_sources(job, source_text, attachments)
+            job.set_stage("extracting")
+            augmented_source, attachment_report = _attach_sources(
+                job, source_text, attachments, generator_preset=generator_preset
+            )
 
         source_path = job.input_dir / "source.txt"
         job.save_text(source_path, augmented_source)
@@ -85,27 +101,52 @@ def run_llm_job(
             title=title,
             mode=mode,
             prompt_name=prompt_name,
+            generator_preset=generator_preset,
+            include_sections=include_sections,
+            output_depth=output_depth,
+            difficulty=difficulty,
             config=resolved_config,
+            on_stage=job.set_stage,
         )
         job.save_text(job.raw_md, raw_markdown)
         job.update(raw_md=str(job.raw_md))
 
         return run_raw_markdown_pipeline(job, theme=theme, strict_math=strict_math)
+    except LLMProviderError as exc:
+        job.set_status("failed", str(exc), error_category=exc.category, log_path=str(job.render_log))
+        raise LLMJobError(str(exc), job) from exc
     except MarkdownJobError as exc:
+        # category already set in run_raw_markdown_pipeline
         raise LLMJobError(str(exc), exc.job) from exc
     except Exception as exc:
-        message = f"LLM job failed: {exc}"
-        job.set_status("failed", message)
-        raise LLMJobError(message, job) from exc
+        from pipeline.errors import classify_exception
+        category, user_message = classify_exception(
+            exc, base_url=getattr(resolved_config, "base_url", None)
+        )
+        job.set_status("failed", user_message, error_category=category, log_path=str(job.render_log))
+        raise LLMJobError(user_message, job) from exc
 
 
 def _attach_sources(
     job: Job,
     source_text: str,
     attachments: list[AttachmentSource],
+    *,
+    generator_preset: str | None = None,
 ) -> tuple[str, dict[str, Any]]:
     attachment_dir = job.input_dir / "attachments"
     attachment_dir.mkdir(parents=True, exist_ok=True)
+
+    # When a generator preset is active its prompt promises to "cover the whole
+    # deck", so any truncation/skip silently breaks that promise. Make those
+    # warnings explicit so the user knows to raise the cap or split the deck.
+    preset_note = (
+        f" The '{generator_preset}' preset aims to cover the whole deck, so this "
+        "truncation compromises that goal — raise MAX_ATTACHMENT_CHARS / "
+        "MAX_TOTAL_ATTACHMENT_CHARS or split the deck."
+        if generator_preset
+        else ""
+    )
 
     sections: list[str] = []
     files: list[dict[str, Any]] = []
@@ -140,7 +181,7 @@ def _attach_sources(
                 entry["warnings"] = [*entry["warnings"], warning]
                 entry["status"] = "warning"
             elif remaining <= 0:
-                warning = f"{safe_name}: skipped because the attachment text limit was reached."
+                warning = f"{safe_name}: skipped because the attachment text limit was reached.{preset_note}"
                 warnings.append(warning)
                 entry["warnings"] = [*entry["warnings"], warning]
                 entry["status"] = "skipped"
@@ -149,7 +190,7 @@ def _attach_sources(
                 clipped_text = extracted_text[:limit]
                 truncated = len(extracted_text) > limit
                 if truncated:
-                    warning = f"{safe_name}: extracted text was truncated to {limit} characters."
+                    warning = f"{safe_name}: extracted text was truncated to {limit} characters.{preset_note}"
                     warnings.append(warning)
                     entry["warnings"] = [*entry["warnings"], warning]
                 sections.append(f"### {safe_name}\n{clipped_text}")
@@ -160,7 +201,7 @@ def _attach_sources(
 
             warnings.extend(result.warnings)
         except ExtractionError as exc:
-            warning = f"{safe_name}: {exc}"
+            warning = f"Couldn't read {safe_name}: the file may be corrupt or an unreadable scan. ({exc})"
             warnings.append(warning)
             entry["status"] = "failed"
             entry["warnings"] = [warning]
@@ -204,6 +245,11 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--title", required=True)
     parser.add_argument("--mode", default="exam")
     parser.add_argument("--prompt-name", default="basic_study_guide")
+    parser.add_argument(
+        "--generator-preset",
+        default=None,
+        help="Generator preset id (e.g. claude_exam); overrides --prompt-name when set.",
+    )
     parser.add_argument("--theme", default="claude_clean")
     parser.add_argument(
         "--no-strict-math",
@@ -220,6 +266,7 @@ def main(argv: list[str] | None = None) -> int:
             title=args.title,
             mode=args.mode,
             prompt_name=args.prompt_name,
+            generator_preset=args.generator_preset,
             theme=args.theme,
             strict_math=not args.no_strict_math,
             config=config,

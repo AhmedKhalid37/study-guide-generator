@@ -13,10 +13,31 @@ from fastapi import FastAPI, File, Form, HTTPException, Request, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, Response
 from pydantic import BaseModel, ValidationError
+from starlette.concurrency import run_in_threadpool
 
-from pipeline import library_store, style_store
-from pipeline.job_manager import JOBS_DIR, Job
-from pipeline.llm_client import MissingLLMConfigError, generate_chat_completion
+from pipeline import generator_presets, library_store, presets as preset_store, shortcut_store, style_store
+from pipeline.job_manager import (
+    JOBS_DIR,
+    Job,
+    JobManagerError,
+    empty_trash,
+    is_trashed,
+    list_trashed,
+    purge_trashed_job,
+    restore_job,
+    trash_job,
+)
+from pipeline.llm_client import LLMProviderError, MissingLLMConfigError, generate_chat_completion
+from pipeline.markdown_sections import (
+    check_outline_compliance,
+    parse_sections,
+    splice_section,
+)
+from pipeline.orchestrator import (
+    DIFFICULTY_VALUES,
+    OUTPUT_DEPTH_VALUES,
+    generate_study_guide,
+)
 from pipeline.provider_config import (
     build_provider_config,
     get_provider_registry,
@@ -121,6 +142,7 @@ class LLMJobRequest(BaseModel):
     title: str = "Generated Study Guide"
     mode: str = DEFAULT_MODE
     prompt_name: str = "basic_study_guide"
+    generator_preset: str | None = None
     provider: str
     model: str
     theme: str = "claude_clean"
@@ -128,6 +150,16 @@ class LLMJobRequest(BaseModel):
     qwen_thinking: bool = True
     folder_id: str | None = None
     outline: OutlineData | None = None
+    # Optional output-section toggles (dict-of-bool, e.g. {"glossary": true}).
+    # Unknown keys are ignored downstream by the orchestrator whitelist; an unset
+    # or empty map adds no new prompt fragments (default behaviour unchanged).
+    include_sections: dict[str, bool] = {}
+    # Optional global generation-directive axes (C2). These MODIFY overall
+    # behaviour (how deep / how it is pitched) rather than ADD sections. Each is an
+    # optional scalar enum validated at the handler; unset adds no prompt fragments.
+    # Voice/tone is intentionally NOT an axis here — it stays owned by Styles.
+    output_depth: str | None = None
+    difficulty: str | None = None
 
 
 class OutlineGenerateRequest(BaseModel):
@@ -174,8 +206,26 @@ class MoveJobRequest(BaseModel):
     folder_id: str | None = None
 
 
+class FavoriteRequest(BaseModel):
+    value: bool
+
+
 class BatchMoveRequest(BaseModel):
     job_ids: list[str]
+    folder_id: str | None = None
+
+
+class BulkJobsRequest(BaseModel):
+    """Body for /api/jobs/bulk/{delete,restore}: a list of job ids."""
+
+    ids: list[str] = []
+
+
+class BulkMoveRequest(BaseModel):
+    """Body for /api/jobs/bulk/move. Folder field matches the existing single/
+    batch move contract (``folder_id``), not ``folder``."""
+
+    ids: list[str] = []
     folder_id: str | None = None
 
 
@@ -186,6 +236,46 @@ class BundleRequest(BaseModel):
 
 class RerenderRequest(BaseModel):
     theme: str | None = None
+
+
+class EditCleanMdRequest(BaseModel):
+    text: str
+
+
+class SectionRegenerateRequest(BaseModel):
+    action: str
+    instruction: str = ""
+    provider: str | None = None
+    model: str | None = None
+    qwen_thinking: bool = True
+
+
+class QuizRequest(BaseModel):
+    question_types: list[str] = ["mcq", "flashcards"]
+    count: int = 25
+    difficulty: str = "medium"
+    focus: str = "all"
+    section_indices: list[int] | None = None
+    provider: str | None = None
+    model: str | None = None
+    qwen_thinking: bool = True
+
+
+VALID_QUESTION_TYPES = {"mcq", "true_false", "fill_blank", "short_answer", "flashcards"}
+VALID_QUIZ_COUNTS = {10, 25, 50, 100}
+VALID_DIFFICULTIES = {"easy", "medium", "exam"}
+VALID_FOCUS = {"definitions", "formulas", "examples", "all"}
+VALID_EXPORT_FORMATS = {"csv", "anki_tsv", "quizlet"}
+
+
+SECTION_REGEN_ACTIONS: dict[str, str] = {
+    "simplify": "Simplify this section using plainer language and fewer details, keeping all key facts.",
+    "expand": "Expand this section with more detail, examples, and thorough explanations.",
+    "add_mcqs": "Add 5–8 multiple-choice questions (with answers) at the end of this section.",
+    "summarize": "Replace the section body with a concise bullet-point summary, keeping the heading.",
+    "exam_notes": "Rewrite this section as tight bullet-point exam notes, keeping the heading.",
+    "expand_formulas": "Expand each formula with a worked example and a step-by-step derivation.",
+}
 
 
 @app.get("/api/health")
@@ -200,6 +290,7 @@ def options() -> dict[str, Any]:
         "themes": THEMES,
         "input_modes": INPUT_MODES,
         "styles": STYLE_PRESETS,
+        "generator_presets": generator_presets.list_generator_presets(),
         "providers": [provider["display_name"] for provider in provider_details],
         "models": {
             provider["display_name"]: provider["available_models"]
@@ -406,6 +497,19 @@ def _fallback_style_name(description: str) -> str:
     return (name or "Custom Style").title()[:60]
 
 
+@app.get("/api/presets")
+def list_presets() -> dict[str, Any]:
+    return {"presets": preset_store.list_presets()}
+
+
+@app.post("/api/presets/{preset_id}/apply")
+def apply_preset(preset_id: str) -> dict[str, Any]:
+    applied = preset_store.apply_preset(preset_id)
+    if applied is None:
+        raise HTTPException(status_code=404, detail="Unknown preset.")
+    return applied
+
+
 @app.post("/api/outline/generate")
 def generate_outline(request: OutlineGenerateRequest) -> dict[str, Any]:
     topic = (request.source_text or request.title or "").strip()
@@ -523,10 +627,13 @@ def list_jobs(limit: int = 20) -> dict[str, Any]:
                 }
             )
 
+    # Newest first, then float favorites to the top. The second sort is stable, so
+    # newest-first order is preserved within the favorite and non-favorite groups.
     jobs.sort(
         key=lambda item: str(item.get("created_at") or item.get("id") or ""),
         reverse=True,
     )
+    jobs.sort(key=lambda item: not bool(item.get("favorite")))
     return {"jobs": jobs[: max(limit, 0)]}
 
 
@@ -623,6 +730,124 @@ def move_library_job(job_id: str, request: MoveJobRequest) -> dict[str, Any]:
     except library_store.LibraryStoreError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     return {"ok": True, "job_id": job.id, "folder_id": folder}
+
+
+# ── Shortcuts (Home launcher registry) ───────────────────────────────────────
+
+def _guard_shortcut_id(shortcut_id: str) -> str:
+    """Reject path-traversal-ish ids before they reach the store (like jobs)."""
+    if "/" in shortcut_id or "\\" in shortcut_id or shortcut_id in {"", ".", ".."}:
+        raise HTTPException(status_code=404, detail="Shortcut not found.")
+    return shortcut_id
+
+
+def _shortcut_error(exc: Exception) -> HTTPException:
+    if isinstance(exc, shortcut_store.ShortcutNotFoundError):
+        return HTTPException(status_code=404, detail=str(exc))
+    if isinstance(exc, shortcut_store.ShortcutStoreError):
+        return HTTPException(status_code=400, detail=str(exc))
+    return HTTPException(status_code=400, detail="Invalid shortcut request.")
+
+
+@app.get("/api/shortcuts")
+def list_shortcuts_route() -> dict[str, Any]:
+    return {"shortcuts": shortcut_store.list_shortcuts()}
+
+
+@app.get("/api/shortcuts/export")
+def export_shortcuts_route() -> dict[str, Any]:
+    return shortcut_store.export_all()
+
+
+@app.post("/api/shortcuts")
+def create_shortcut_route(body: dict[str, Any]) -> dict[str, Any]:
+    try:
+        return shortcut_store.create_shortcut(body)
+    except shortcut_store.ShortcutStoreError as exc:
+        raise _shortcut_error(exc) from exc
+
+
+@app.post("/api/shortcuts/reorder")
+def reorder_shortcuts_route(body: dict[str, Any]) -> dict[str, Any]:
+    items = body.get("items") if isinstance(body, dict) else None
+    try:
+        return {"shortcuts": shortcut_store.reorder_shortcuts(items)}
+    except shortcut_store.ShortcutStoreError as exc:
+        raise _shortcut_error(exc) from exc
+
+
+@app.post("/api/shortcuts/defaults/reset")
+def reset_shortcuts_route() -> dict[str, Any]:
+    return {"shortcuts": shortcut_store.reset_defaults()}
+
+
+@app.post("/api/shortcuts/import/preview")
+async def preview_import_shortcuts_route(request: Request) -> dict[str, Any]:
+    data, overwrite = await _read_shortcut_import(request)
+    try:
+        return shortcut_store.preview_import(data, overwrite=overwrite)
+    except shortcut_store.ShortcutStoreError as exc:
+        raise _shortcut_error(exc) from exc
+
+
+@app.post("/api/shortcuts/import")
+async def import_shortcuts_route(request: Request) -> dict[str, Any]:
+    data, overwrite = await _read_shortcut_import(request)
+    try:
+        return shortcut_store.import_shortcuts(data, overwrite=overwrite)
+    except shortcut_store.ShortcutStoreError as exc:
+        raise _shortcut_error(exc) from exc
+
+
+async def _read_shortcut_import(request: Request) -> tuple[Any, bool]:
+    """Parse an import body that may be a single shortcut, a list, or an envelope.
+
+    An optional top-level ``overwrite`` flag on an envelope controls conflict
+    handling; absent it, conflicting ids get a fresh id (never overwrite).
+    """
+    try:
+        payload = await request.json()
+    except (json.JSONDecodeError, ValueError) as exc:
+        raise HTTPException(status_code=400, detail="Invalid JSON.") from exc
+    overwrite = bool(isinstance(payload, dict) and payload.get("overwrite"))
+    return payload, overwrite
+
+
+@app.get("/api/shortcuts/{shortcut_id}")
+def get_shortcut_route(shortcut_id: str) -> dict[str, Any]:
+    _guard_shortcut_id(shortcut_id)
+    try:
+        return shortcut_store.get_shortcut(shortcut_id)
+    except shortcut_store.ShortcutStoreError as exc:
+        raise _shortcut_error(exc) from exc
+
+
+@app.put("/api/shortcuts/{shortcut_id}")
+def update_shortcut_route(shortcut_id: str, body: dict[str, Any]) -> dict[str, Any]:
+    _guard_shortcut_id(shortcut_id)
+    try:
+        return shortcut_store.update_shortcut(shortcut_id, body)
+    except shortcut_store.ShortcutStoreError as exc:
+        raise _shortcut_error(exc) from exc
+
+
+@app.delete("/api/shortcuts/{shortcut_id}")
+def delete_shortcut_route(shortcut_id: str) -> dict[str, bool]:
+    _guard_shortcut_id(shortcut_id)
+    try:
+        shortcut_store.delete_shortcut(shortcut_id)
+    except shortcut_store.ShortcutStoreError as exc:
+        raise _shortcut_error(exc) from exc
+    return {"ok": True}
+
+
+@app.get("/api/shortcuts/{shortcut_id}/export")
+def export_shortcut_route(shortcut_id: str) -> dict[str, Any]:
+    _guard_shortcut_id(shortcut_id)
+    try:
+        return shortcut_store.export_shortcut(shortcut_id)
+    except shortcut_store.ShortcutStoreError as exc:
+        raise _shortcut_error(exc) from exc
 
 
 @app.get("/api/exports")
@@ -968,12 +1193,17 @@ def _sort_library_jobs(jobs: list[dict[str, Any]], sort: str) -> list[dict[str, 
         return str(job.get("created_at") or job.get("id") or "")
 
     if sort == "oldest":
-        return sorted(jobs, key=created_key)
-    if sort == "title":
-        return sorted(jobs, key=lambda job: str(job.get("title") or "").lower())
-    if sort == "status":
-        return sorted(jobs, key=lambda job: str(job.get("status") or ""))
-    return sorted(jobs, key=created_key, reverse=True)
+        ordered = sorted(jobs, key=created_key)
+    elif sort == "title":
+        ordered = sorted(jobs, key=lambda job: str(job.get("title") or "").lower())
+    elif sort == "status":
+        ordered = sorted(jobs, key=lambda job: str(job.get("status") or ""))
+    else:
+        ordered = sorted(jobs, key=created_key, reverse=True)
+    # Favorites float to the top regardless of the chosen sort; the stable sort
+    # keeps the chosen ordering within the favorite and non-favorite groups.
+    ordered.sort(key=lambda job: not bool(job.get("favorite")))
+    return ordered
 
 
 @app.post("/api/jobs/paste")
@@ -1045,22 +1275,54 @@ async def create_llm_job(request: Request) -> dict[str, Any]:
     _validate_theme(llm_request.theme)
     _validate_prompt_name(llm_request.prompt_name)
     _validate_provider_model(llm_request.provider, llm_request.model)
+    _validate_generation_axes(llm_request.output_depth, llm_request.difficulty)
     folder_target = _resolve_folder_target(llm_request.folder_id)
     # Prepend a "Required Outline" directive into the source so it works with any
     # style (the {source} slot is the one injection point every template shares).
     source_text = _apply_outline_directive(source_text, llm_request.outline)
 
+    # A generator preset (when set) supplies the system prompt + sampling params and
+    # takes precedence over the style; the style/prompt_name is then unused.
+    preset = None
+    preset_warning: str | None = None
+    if llm_request.generator_preset:
+        _validate_generator_preset(llm_request.generator_preset)
+        preset = generator_presets.get_generator_preset(llm_request.generator_preset)
+        if resolve_provider_id(llm_request.provider) != preset["provider"]:
+            preset_warning = (
+                f"{preset['name']} is tuned for {preset['model_hint']}; you're running "
+                f"it on a different provider. It will still work, but the model-specific "
+                f"tuning may not fully apply."
+            )
+
     try:
-        config = build_provider_config(
-            llm_request.provider,
-            llm_request.model,
-            qwen_thinking_enabled=llm_request.qwen_thinking,
-        )
-        job = run_llm_job(
+        if preset is not None:
+            config = build_provider_config(
+                llm_request.provider,
+                llm_request.model,
+                qwen_thinking_enabled=preset["thinking"],
+                temperature_override=preset["temperature"],
+                top_p=preset["top_p"],
+                max_tokens=preset["max_tokens"],
+            )
+        else:
+            config = build_provider_config(
+                llm_request.provider,
+                llm_request.model,
+                qwen_thinking_enabled=llm_request.qwen_thinking,
+            )
+        # run_llm_job is blocking (LLM call + subprocess rendering); offload it
+        # to a worker thread so it doesn't stall the asyncio event loop.
+        job = await run_in_threadpool(
+            run_llm_job,
             source_text,
             title=title,
             mode=(llm_request.mode or DEFAULT_MODE),
             prompt_name=llm_request.prompt_name,
+            generator_preset=llm_request.generator_preset,
+            include_sections=llm_request.include_sections,
+            output_depth=llm_request.output_depth,
+            difficulty=llm_request.difficulty,
             theme=llm_request.theme,
             strict_math=llm_request.strict_math,
             config=config,
@@ -1077,7 +1339,219 @@ async def create_llm_job(request: Request) -> dict[str, Any]:
             attachment.path.unlink(missing_ok=True)
     _apply_folder_assignment(job.id, folder_target)
     _store_outline_meta(job, llm_request.outline)
-    return job_response(job)
+    response = job_response(job)
+    if preset_warning:
+        response["generator_preset_warning"] = preset_warning
+    return response
+
+
+# ── Bulk job actions (Library multi-select backend) ──────────────────────────
+# These reuse the SAME single-item internals (trash_job / restore_job /
+# library_store.move_job) so there is exactly one trash path, one path guard,
+# and one folder-persistence model. Every endpoint returns partial-success
+# results and never aborts the whole batch because one id is bad.
+#
+# IMPORTANT ordering: these literal /api/jobs/bulk/* routes MUST be registered
+# BEFORE the parametric /api/jobs/{job_id}/restore (and friends) below, or
+# "/api/jobs/bulk/restore" would be captured with job_id="bulk". They are also,
+# of course, before the catch-all /api/jobs/{job_id}.
+
+
+def _dedupe_ids(ids: list[str]) -> list[str]:
+    """Strip/dedupe job ids, preserving first-seen order. Blank ids are dropped
+    (they carry no addressable target)."""
+    seen: set[str] = set()
+    out: list[str] = []
+    for raw in ids or []:
+        jid = str(raw or "").strip()
+        if not jid or jid in seen:
+            continue
+        seen.add(jid)
+        out.append(jid)
+    return out
+
+
+def _bulk_summary(results: list[dict[str, str]]) -> dict[str, Any]:
+    ok = sum(1 for r in results if r["status"] == "ok")
+    fail = sum(1 for r in results if r["status"] == "error")
+    return {"results": results, "ok_count": ok, "fail_count": fail}
+
+
+@app.post("/api/jobs/bulk/delete")
+def bulk_delete_jobs(request: BulkJobsRequest) -> dict[str, Any]:
+    """Bulk SOFT-delete. Each id is routed through the exact same guarded
+    single-job path (``trash_job`` -> ``jobs/.trash/<id>/``). Never hard-deletes,
+    never bypasses ``_guarded_trash_target``. Already-trashed ids are reported
+    ``skipped``; unknown/invalid ids are reported ``error``; the batch always
+    continues."""
+    results: list[dict[str, str]] = []
+    for jid in _dedupe_ids(request.ids):
+        try:
+            job = _get_job(jid)  # validates id (slash/dot reject) + active job
+        except HTTPException:
+            if is_trashed(jid):  # guard-safe: ValueError -> False
+                results.append({"id": jid, "status": "skipped", "detail": "already trashed"})
+            else:
+                results.append({"id": jid, "status": "error", "detail": "not found"})
+            continue
+        try:
+            trash_job(job.id)
+            results.append({"id": job.id, "status": "ok"})
+        except FileNotFoundError:
+            results.append({"id": job.id, "status": "error", "detail": "not found"})
+        except (JobManagerError, ValueError) as exc:
+            results.append({"id": job.id, "status": "error", "detail": str(exc)})
+    return _bulk_summary(results)
+
+
+@app.post("/api/jobs/bulk/restore")
+def bulk_restore_jobs(request: BulkJobsRequest) -> dict[str, Any]:
+    """Bulk restore. Each id is routed through the same single-job ``restore_job``
+    (``jobs/.trash/<id>/`` -> ``jobs/<id>/``). Ids that are already active (not in
+    trash) are reported ``skipped``; unknown/invalid ids are ``error``."""
+    results: list[dict[str, str]] = []
+    for jid in _dedupe_ids(request.ids):
+        if not is_trashed(jid):  # guard-safe for traversal ids
+            try:
+                _get_job(jid)  # is it an active job already?
+                results.append({"id": jid, "status": "skipped", "detail": "not trashed"})
+            except HTTPException:
+                results.append({"id": jid, "status": "error", "detail": "not found"})
+            continue
+        try:
+            restore_job(jid)
+            results.append({"id": jid, "status": "ok"})
+        except FileNotFoundError:
+            results.append({"id": jid, "status": "error", "detail": "not found"})
+        except (JobManagerError, ValueError) as exc:
+            results.append({"id": jid, "status": "error", "detail": str(exc)})
+    return _bulk_summary(results)
+
+
+@app.post("/api/jobs/bulk/move")
+def bulk_move_jobs(request: BulkMoveRequest) -> dict[str, Any]:
+    """Bulk move-to-folder. Reuses the existing single-job
+    ``library_store.move_job`` (no new folder model). The destination folder is
+    a batch-level param: an unknown folder 404s the whole request (matching the
+    single-item contract). Per-id results are partial-success."""
+    # Validate the destination folder once, up front (mirrors single-item 404).
+    try:
+        library_store.normalize_target(request.folder_id)
+    except library_store.FolderNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except library_store.LibraryStoreError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    results: list[dict[str, str]] = []
+    for jid in _dedupe_ids(request.ids):
+        try:
+            job = _get_job(jid)
+        except HTTPException:
+            results.append({"id": jid, "status": "error", "detail": "not found"})
+            continue
+        try:
+            library_store.move_job(job.id, request.folder_id)
+            results.append({"id": job.id, "status": "ok"})
+        except library_store.LibraryStoreError as exc:
+            results.append({"id": job.id, "status": "error", "detail": str(exc)})
+    return _bulk_summary(results)
+
+
+@app.post("/api/jobs/bulk/purge")
+def bulk_purge_jobs(request: BulkJobsRequest) -> dict[str, Any]:
+    """Bulk PERMANENT delete. Each id is routed through the exact same guarded
+    single-job ``purge_trashed_job`` (operates strictly inside ``jobs/.trash/``);
+    no new removal path is introduced. Ids that are not CURRENTLY in the trash are
+    reported ``error`` — there is no one-click permanent delete of an active job —
+    and the batch always continues. Like the single purge, this is irreversible."""
+    results: list[dict[str, str]] = []
+    for jid in _dedupe_ids(request.ids):
+        if not is_trashed(jid):  # guard-safe for traversal ids -> False
+            results.append({"id": jid, "status": "error", "detail": "not in trash"})
+            continue
+        try:
+            purge_trashed_job(jid)
+            library_store.move_job(jid, None)  # drop any stale folder assignment
+            results.append({"id": jid, "status": "ok"})
+        except FileNotFoundError:
+            results.append({"id": jid, "status": "error", "detail": "not found"})
+        except (JobManagerError, ValueError) as exc:
+            results.append({"id": jid, "status": "error", "detail": str(exc)})
+    return _bulk_summary(results)
+
+
+# ── Trash (soft delete) + permanent delete ──────────────────────────────────
+# NOTE: these /api/jobs/trash* routes are registered BEFORE the catch-all
+# /api/jobs/{job_id} so "trash" is never mistaken for a job id.
+
+
+@app.get("/api/jobs/trash")
+def list_trash() -> dict[str, Any]:
+    """List jobs currently in the trash (newest-trashed first)."""
+    items: list[dict[str, Any]] = []
+    for entry in list_trashed():
+        safe = _safe_manifest(entry.get("manifest") or {})
+        items.append(
+            {
+                **safe,
+                "id": entry["id"],
+                "trashed_at": entry.get("trashed_at"),
+                "attachment_summary": _attachment_summary(safe),
+            }
+        )
+    items.sort(key=lambda item: str(item.get("trashed_at") or ""), reverse=True)
+    return {"jobs": items}
+
+
+@app.post("/api/jobs/{job_id}/trash")
+def trash_job_route(job_id: str) -> dict[str, Any]:
+    """Soft-delete: move an ACTIVE job into the trash (restorable)."""
+    job = _get_job(job_id)  # validates id + confirms it's an active job
+    try:
+        marker = trash_job(job.id)
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=404, detail="Job not found.") from exc
+    except (JobManagerError, ValueError) as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return {"ok": True, "job_id": job.id, "trashed_at": marker.get("trashed_at")}
+
+
+@app.post("/api/jobs/{job_id}/restore")
+def restore_job_route(job_id: str) -> dict[str, Any]:
+    """Restore a trashed job back to the active library."""
+    _require_trashed_job(job_id)
+    try:
+        restore_job(job_id)
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=404, detail="Trashed job not found.") from exc
+    except (JobManagerError, ValueError) as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return {"ok": True, "job_id": job_id}
+
+
+@app.delete("/api/jobs/trash")
+def empty_trash_route() -> dict[str, Any]:
+    """PERMANENTLY delete every job currently in the trash."""
+    removed = empty_trash()
+    for jid in removed:
+        library_store.move_job(jid, None)  # drop any stale folder assignment
+    return {"ok": True, "purged": len(removed), "job_ids": removed}
+
+
+@app.delete("/api/jobs/trash/{job_id}")
+def purge_trashed_route(job_id: str) -> dict[str, Any]:
+    """PERMANENTLY delete ONE job that is already in the trash. 404 if the id is
+    not currently trashed — there is no one-click permanent delete of an active
+    job."""
+    _require_trashed_job(job_id)
+    try:
+        purge_trashed_job(job_id)
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=404, detail="Trashed job not found.") from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    library_store.move_job(job_id, None)  # drop any stale folder assignment
+    return {"ok": True, "job_id": job_id}
 
 
 @app.get("/api/jobs/{job_id}")
@@ -1095,6 +1569,35 @@ def get_job(job_id: str) -> dict[str, Any]:
         "validation_summary": _validation_summary(job),
         "render_log_summary": _render_log_summary(job),
     }
+
+
+@app.get("/api/jobs/{job_id}/progress")
+def get_job_progress(job_id: str) -> dict[str, Any]:
+    """Coarse, pollable progress for a job's generation.
+
+    ``status`` is the terminal-state source of truth (failed /
+    completed_with_warnings / done); ``stage``/``progress`` is the finer-grained
+    position within a running job. When a job reaches a terminal status the UI
+    should stop polling — even if ``stage`` never reached "complete" (e.g. a job
+    that failed mid-render keeps its last stage but reports status "failed").
+    No filesystem paths are exposed.
+    """
+    job = _get_job(job_id)
+    manifest = job.read_manifest()
+    return {
+        "status": manifest.get("status"),
+        "stage": manifest.get("stage"),
+        "stage_label": manifest.get("stage_label"),
+        "progress": manifest.get("progress"),
+        "updated_at": manifest.get("updated_at"),
+    }
+
+
+@app.post("/api/jobs/{job_id}/favorite")
+def set_job_favorite(job_id: str, request: FavoriteRequest) -> dict[str, Any]:
+    job = _get_job(job_id)
+    job.set_favorite(request.value)
+    return {"ok": True, "job_id": job.id, "favorite": request.value}
 
 
 @app.get("/api/jobs/{job_id}/artifacts/{artifact_name}")
@@ -1122,6 +1625,119 @@ def get_artifact(
     )
 
 
+@app.get("/api/jobs/{job_id}/error")
+def get_job_error(job_id: str) -> dict[str, Any]:
+    """Return the error category, user-facing message, and a tail of the relevant log."""
+    job = _get_job(job_id)
+    manifest = job.read_manifest()
+    status = manifest.get("status", "")
+    if "failed" not in status:
+        raise HTTPException(status_code=404, detail="This job has not failed.")
+    category = manifest.get("error_category") or "unknown"
+    message = manifest.get("error") or "An unknown error occurred."
+    log_tail: list[str] = []
+    if job.render_log.exists():
+        text = job.render_log.read_text(encoding="utf-8", errors="replace")
+        lines = [line for line in text.splitlines() if line.strip()]
+        log_tail = [_safe_log_line(line) for line in lines[-20:]]
+    return {
+        "job_id": job_id,
+        "status": status,
+        "error_category": category,
+        "message": message,
+        "log_tail": log_tail,
+        "log_available": job.render_log.exists(),
+        "validation_available": _validation_json_path(job).exists(),
+    }
+
+
+@app.post("/api/jobs/{job_id}/retry")
+def retry_failed_job(job_id: str) -> dict[str, Any]:
+    """Re-run a failed job using its already-saved input — no re-upload needed."""
+    job = _get_job(job_id)
+    manifest = job.read_manifest()
+    status = manifest.get("status", "")
+    if "failed" not in status:
+        raise HTTPException(status_code=400, detail="Only failed jobs can be retried.")
+
+    path_mode = manifest.get("path_mode", "")
+    theme = str(manifest.get("theme") or "claude_clean")
+    strict_math = bool(manifest.get("strict_math", True))
+
+    if path_mode == "have_markdown":
+        if not job.raw_md.exists():
+            raise HTTPException(status_code=400, detail="raw.md is missing; cannot retry this job.")
+        job.set_status("created", None)
+        try:
+            from pipeline.run_markdown_job import run_raw_markdown_pipeline
+            run_raw_markdown_pipeline(job, theme=theme, strict_math=strict_math)
+        except MarkdownJobError as exc:
+            raise _job_error(exc, job=getattr(exc, "job", None)) from exc
+        except Exception as exc:
+            raise _job_error(exc, job=job) from exc
+        return job_response(job)
+
+    if path_mode == "generate":
+        source_path = job.input_dir / "source.txt"
+        if not source_path.exists():
+            raise HTTPException(
+                status_code=400,
+                detail="input/source.txt is missing; cannot retry this job.",
+            )
+        provider = str(manifest.get("provider") or "")
+        model_name = str(manifest.get("model") or "Use environment default")
+        title = str(manifest.get("title") or "Generated Study Guide")
+        mode = str(manifest.get("mode") or DEFAULT_MODE)
+        prompt_name = str(manifest.get("prompt_name") or "basic_study_guide")
+        qwen_thinking = bool(manifest.get("qwen_thinking", True))
+        manifest_sections = manifest.get("include_sections")
+        include_sections = manifest_sections if isinstance(manifest_sections, dict) else {}
+        # Reproduce the generation-directive axes the job was created with. Stored
+        # values were validated on the way in; the orchestrator ignores unknowns.
+        manifest_depth = manifest.get("output_depth")
+        output_depth = manifest_depth if isinstance(manifest_depth, str) else None
+        manifest_difficulty = manifest.get("difficulty")
+        difficulty = manifest_difficulty if isinstance(manifest_difficulty, str) else None
+
+        try:
+            config = build_provider_config(provider, model_name, qwen_thinking_enabled=qwen_thinking)
+        except MissingLLMConfigError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+        source_text = source_path.read_text(encoding="utf-8", errors="replace")
+        job.set_status("created", None)
+
+        try:
+            job.set_status("generating")
+            raw_markdown = generate_study_guide(
+                source_text,
+                title=title,
+                mode=mode,
+                prompt_name=prompt_name,
+                include_sections=include_sections,
+                output_depth=output_depth,
+                difficulty=difficulty,
+                config=config,
+            )
+            job.save_text(job.raw_md, raw_markdown)
+            job.update(raw_md=str(job.raw_md))
+            from pipeline.run_markdown_job import run_raw_markdown_pipeline
+            run_raw_markdown_pipeline(job, theme=theme, strict_math=strict_math)
+        except LLMProviderError as exc:
+            job.set_status("failed", str(exc), error_category=exc.category)
+            raise HTTPException(status_code=502, detail={"message": str(exc), "job": job_response(job)}) from exc
+        except MarkdownJobError as exc:
+            raise _job_error(exc, job=getattr(exc, "job", None)) from exc
+        except Exception as exc:
+            raise _job_error(exc, job=job) from exc
+        return job_response(job)
+
+    raise HTTPException(
+        status_code=400,
+        detail=f"Cannot retry a job with path_mode '{path_mode}'.",
+    )
+
+
 @app.post("/api/jobs/{job_id}/rerender")
 def rerender_existing_job(job_id: str, request: RerenderRequest | None = None) -> dict[str, Any]:
     job = _get_job(job_id)
@@ -1145,11 +1761,584 @@ def rerender_existing_job(job_id: str, request: RerenderRequest | None = None) -
     return job_response(job)
 
 
+@app.get("/api/jobs/{job_id}/versions")
+def list_job_versions(job_id: str) -> dict[str, Any]:
+    job = _get_job(job_id)
+    manifest = job.read_manifest()
+    return {"versions": manifest.get("versions", [])}
+
+
+@app.get("/api/jobs/{job_id}/clean_md")
+def get_clean_md(job_id: str) -> Response:
+    job = _get_job(job_id)
+    if not job.clean_md.exists():
+        raise HTTPException(status_code=404, detail="clean.md not found.")
+    return Response(
+        content=job.clean_md.read_text(encoding="utf-8"),
+        media_type="text/markdown; charset=utf-8",
+    )
+
+
+@app.put("/api/jobs/{job_id}/clean_md")
+def put_clean_md(job_id: str, body: EditCleanMdRequest) -> dict[str, Any]:
+    job = _get_job(job_id)
+    if not job.clean_md.exists():
+        raise HTTPException(status_code=404, detail="No clean.md for this job.")
+    job.save_clean_md(body.text, "edited")
+    try:
+        rerender_job(job)
+    except MarkdownJobError as exc:
+        raise _job_error(exc, job=getattr(exc, "job", None)) from exc
+    except Exception as exc:
+        raise _job_error(exc, job=job) from exc
+    if job.final_docx.exists():
+        try:
+            _ensure_docx(job, regenerate=True)
+        except Exception:
+            pass
+    manifest = job.read_manifest()
+    return {
+        "artifact_availability": _artifact_availability(job),
+        "versions": manifest.get("versions", []),
+    }
+
+
+@app.get("/api/jobs/{job_id}/versions/{version}/clean_md")
+def get_version_clean_md(job_id: str, version: int) -> Response:
+    job = _get_job(job_id)
+    v_path = job.versions_dir / str(version) / "clean.md"
+    if not _is_job_path(job, v_path) or not v_path.exists():
+        raise HTTPException(status_code=404, detail=f"Version {version} not found.")
+    return Response(
+        content=v_path.read_text(encoding="utf-8"),
+        media_type="text/markdown; charset=utf-8",
+    )
+
+
+@app.post("/api/jobs/{job_id}/revert/{version}")
+def revert_job_version(job_id: str, version: int) -> dict[str, Any]:
+    job = _get_job(job_id)
+    v_path = job.versions_dir / str(version) / "clean.md"
+    if not _is_job_path(job, v_path) or not v_path.exists():
+        raise HTTPException(status_code=404, detail=f"Version {version} not found.")
+    old_text = v_path.read_text(encoding="utf-8")
+    job.save_clean_md(old_text, "reverted")
+    try:
+        rerender_job(job)
+    except MarkdownJobError as exc:
+        raise _job_error(exc, job=getattr(exc, "job", None)) from exc
+    except Exception as exc:
+        raise _job_error(exc, job=job) from exc
+    if job.final_docx.exists():
+        try:
+            _ensure_docx(job, regenerate=True)
+        except Exception:
+            pass
+    manifest = job.read_manifest()
+    return {
+        "artifact_availability": _artifact_availability(job),
+        "versions": manifest.get("versions", []),
+    }
+
+
+@app.get("/api/jobs/{job_id}/sections")
+def list_job_sections(job_id: str) -> dict[str, Any]:
+    """Return all heading sections parsed from clean.md (preamble excluded)."""
+    job = _get_job(job_id)
+    if not job.clean_md.exists():
+        raise HTTPException(status_code=404, detail="No clean.md for this job.")
+    text = job.clean_md.read_text(encoding="utf-8")
+    sections = parse_sections(text)
+    return {
+        "sections": [
+            {
+                "index": s.index,
+                "heading_text": s.heading_text,
+                "heading_level": s.heading_level,
+                "start_line": s.start_line,
+                "end_line": s.end_line,
+                "preview": s.raw_markdown[:200],
+            }
+            for s in sections
+            if s.heading_level > 0
+        ]
+    }
+
+
+@app.get("/api/jobs/{job_id}/outline_compliance")
+def get_outline_compliance(job_id: str) -> dict[str, Any]:
+    """Compare the job's required outline sections against headings in clean.md."""
+    job = _get_job(job_id)
+    manifest = job.read_manifest()
+
+    if not manifest.get("outline_enabled"):
+        return {"has_outline": False, "sections": []}
+
+    outline_titles: list[str] = manifest.get("outline_titles") or []
+    if not outline_titles:
+        return {"has_outline": False, "sections": []}
+
+    if not job.clean_md.exists():
+        raise HTTPException(status_code=404, detail="No clean.md for this job.")
+
+    text = job.clean_md.read_text(encoding="utf-8")
+    doc_sections = parse_sections(text)
+    results = check_outline_compliance(outline_titles, doc_sections)
+    return {"has_outline": True, "sections": results}
+
+
+@app.post("/api/jobs/{job_id}/sections/{section_index}/regenerate")
+def regenerate_job_section(
+    job_id: str,
+    section_index: int,
+    request: SectionRegenerateRequest,
+) -> dict[str, Any]:
+    """Regenerate a single section of clean.md with the LLM, then re-render.
+
+    Writes through save_clean_md (auto-snapshots for version history).
+    Splices by token-derived line position, not string matching.
+    """
+    job = _get_job(job_id)
+    manifest = job.read_manifest()
+
+    # Validate action
+    valid_actions = set(SECTION_REGEN_ACTIONS.keys()) | {"custom"}
+    if request.action not in valid_actions:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Invalid action. Must be one of: {', '.join(sorted(valid_actions))}",
+        )
+    if request.action == "custom" and not request.instruction.strip():
+        raise HTTPException(status_code=400, detail="instruction is required for action=custom.")
+
+    if not job.clean_md.exists():
+        raise HTTPException(status_code=404, detail="No clean.md for this job.")
+
+    text = job.clean_md.read_text(encoding="utf-8")
+    sections = parse_sections(text)
+
+    target = next((s for s in sections if s.index == section_index), None)
+    if target is None:
+        raise HTTPException(status_code=404, detail=f"Section {section_index} not found.")
+    if target.heading_level == 0:
+        raise HTTPException(status_code=400, detail="Cannot regenerate the preamble section.")
+
+    # Resolve provider / model — fall back to what the job was originally generated with.
+    provider_str = (request.provider or manifest.get("provider") or "").strip()
+    model_str = (request.model or manifest.get("model") or "").strip()
+    if not provider_str:
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                "provider is required (pass it in the request or generate "
+                "the guide with an LLM so the provider is stored in the job)."
+            ),
+        )
+
+    try:
+        config = build_provider_config(
+            provider_str,
+            model_str or "Use environment default",
+            qwen_thinking_enabled=request.qwen_thinking,
+        )
+    except MissingLLMConfigError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    # Build the LLM prompt (section only — not the whole guide).
+    title = manifest.get("title") or "Study Guide"
+    action_desc = (
+        request.instruction.strip()
+        if request.action == "custom" and request.instruction.strip()
+        else SECTION_REGEN_ACTIONS.get(request.action, request.instruction.strip())
+    )
+    messages = [
+        {
+            "role": "system",
+            "content": (
+                "You are an expert study guide editor. "
+                "You rewrite individual sections of a study guide. "
+                "Output ONLY the rewritten section as valid Markdown. "
+                "Use dollar-delimited LaTeX for math ($...$ inline, $$...$$ display). "
+                "Begin your response with the section heading line."
+            ),
+        },
+        {
+            "role": "user",
+            "content": "\n".join([
+                f"Guide title: {title}",
+                "",
+                f"Task: {action_desc}",
+                "",
+                "Section to rewrite:",
+                "",
+                target.raw_markdown.rstrip(),
+            ]),
+        },
+    ]
+
+    try:
+        new_section_md = generate_chat_completion(messages, config)
+    except LLMProviderError as exc:
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail=f"Section regeneration failed: {exc}") from exc
+
+    new_section_md = new_section_md.strip()
+    # Guard: if the LLM omitted the heading, prepend the original one.
+    if not new_section_md.startswith("#"):
+        heading_line = target.raw_markdown.split("\n", 1)[0]
+        new_section_md = heading_line + "\n" + new_section_md
+
+    # Splice by line position (not string match) and write through the chokepoint.
+    new_text = splice_section(text, target, new_section_md + "\n")
+    job.save_clean_md(new_text, "edited")
+
+    try:
+        rerender_job(job)
+    except MarkdownJobError as exc:
+        raise _job_error(exc, job=getattr(exc, "job", None)) from exc
+    except Exception as exc:
+        raise _job_error(exc, job=job) from exc
+
+    if job.final_docx.exists():
+        try:
+            _ensure_docx(job, regenerate=True)
+        except Exception:
+            pass
+
+    updated = job.read_manifest()
+    return {
+        "ok": True,
+        "section_index": section_index,
+        "artifact_availability": _artifact_availability(job),
+        "versions": updated.get("versions", []),
+    }
+
+
+@app.post("/api/jobs/{job_id}/quiz")
+def generate_quiz(job_id: str, request: QuizRequest) -> dict[str, Any]:
+    """Generate a quiz from a job's clean.md and persist it under jobs/<id>/quizzes/<n>.json."""
+    job = _get_job(job_id)
+    if not job.clean_md.exists():
+        raise HTTPException(status_code=404, detail="No clean.md for this job.")
+
+    # Validate inputs
+    bad_types = [t for t in request.question_types if t not in VALID_QUESTION_TYPES]
+    if bad_types:
+        raise HTTPException(status_code=400, detail=f"Invalid question_types: {bad_types}. Allowed: {sorted(VALID_QUESTION_TYPES)}")
+    if not request.question_types:
+        raise HTTPException(status_code=400, detail="question_types must not be empty.")
+    if request.count not in VALID_QUIZ_COUNTS:
+        raise HTTPException(status_code=400, detail=f"count must be one of {sorted(VALID_QUIZ_COUNTS)}.")
+    if request.difficulty not in VALID_DIFFICULTIES:
+        raise HTTPException(status_code=400, detail=f"difficulty must be one of {sorted(VALID_DIFFICULTIES)}.")
+    if request.focus not in VALID_FOCUS:
+        raise HTTPException(status_code=400, detail=f"focus must be one of {sorted(VALID_FOCUS)}.")
+
+    # Resolve provider/model: prefer request > job manifest > any configured provider
+    manifest = job.read_manifest()
+    provider_str = (request.provider or manifest.get("provider") or "").strip()
+    model_str = (request.model or manifest.get("model") or "").strip()
+    if not provider_str:
+        provider_id, fallback_model = _pick_generate_provider(None)
+        provider_str = provider_id
+        if not model_str:
+            model_str = fallback_model or "Use environment default"
+
+    try:
+        config = build_provider_config(
+            provider_str,
+            model_str or "Use environment default",
+            qwen_thinking_enabled=request.qwen_thinking,
+        )
+    except MissingLLMConfigError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    # Build content from selected sections
+    text = job.clean_md.read_text(encoding="utf-8")
+    sections = parse_sections(text)
+    title = manifest.get("title") or "Study Guide"
+
+    if request.section_indices is not None:
+        idx_set = set(request.section_indices)
+        selected = [s for s in sections if s.index in idx_set and s.heading_level > 0]
+        if not selected:
+            raise HTTPException(status_code=400, detail="No valid sections found for the given section_indices.")
+        content_parts = [s.raw_markdown for s in selected]
+    else:
+        content_parts = [s.raw_markdown for s in sections if s.heading_level > 0]
+        if not content_parts:
+            # Preamble-only guide — use full text
+            content_parts = [text]
+
+    content = "\n\n".join(content_parts)
+
+    # Truncate if very long (keep ~120 KB of guide text for the prompt)
+    MAX_CONTENT_CHARS = 120_000
+    if len(content) > MAX_CONTENT_CHARS:
+        content = content[:MAX_CONTENT_CHARS] + "\n\n[Guide truncated — additional content not shown]"
+
+    messages = _build_quiz_messages(
+        title=title,
+        content=content,
+        question_types=request.question_types,
+        count=request.count,
+        difficulty=request.difficulty,
+        focus=request.focus,
+    )
+
+    try:
+        raw = generate_chat_completion(messages, config)
+    except LLMProviderError as exc:
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail=f"Quiz generation failed: {exc}") from exc
+
+    items = _parse_quiz_response(raw)
+
+    # Persist
+    quiz_dir = job.quizzes_dir
+    quiz_dir.mkdir(parents=True, exist_ok=True)
+    existing = sorted(
+        int(p.stem) for p in quiz_dir.glob("*.json") if p.stem.isdigit()
+    )
+    n = (existing[-1] + 1) if existing else 1
+    quiz_data: dict[str, Any] = {
+        "n": n,
+        "created_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+        "config": {
+            "question_types": request.question_types,
+            "count": request.count,
+            "difficulty": request.difficulty,
+            "focus": request.focus,
+            "section_indices": request.section_indices,
+            "provider": config.provider,
+            "model": config.model,
+        },
+        "item_count": len(items),
+        "items": items,
+    }
+    (quiz_dir / f"{n}.json").write_text(
+        json.dumps(quiz_data, indent=2, ensure_ascii=False), encoding="utf-8"
+    )
+    return quiz_data
+
+
+@app.get("/api/jobs/{job_id}/quizzes")
+def list_quizzes(job_id: str) -> dict[str, Any]:
+    """List previously generated quizzes for a job."""
+    job = _get_job(job_id)
+    quizzes: list[dict[str, Any]] = []
+    if job.quizzes_dir.exists():
+        for path in sorted(job.quizzes_dir.glob("*.json"), key=lambda p: int(p.stem) if p.stem.isdigit() else 0):
+            data = _read_json(path)
+            if data is None:
+                continue
+            quizzes.append({
+                "n": data.get("n"),
+                "created_at": data.get("created_at"),
+                "item_count": data.get("item_count") or len(data.get("items") or []),
+                "config": data.get("config"),
+            })
+    return {"quizzes": quizzes}
+
+
+@app.get("/api/jobs/{job_id}/quizzes/{quiz_n}")
+def get_quiz(job_id: str, quiz_n: int) -> dict[str, Any]:
+    """Return a specific quiz (items included)."""
+    job = _get_job(job_id)
+    path = job.quizzes_dir / f"{quiz_n}.json"
+    if not _is_job_path(job, path) or not path.exists():
+        raise HTTPException(status_code=404, detail=f"Quiz {quiz_n} not found.")
+    data = _read_json(path)
+    if data is None:
+        raise HTTPException(status_code=404, detail=f"Quiz {quiz_n} could not be read.")
+    return data
+
+
+@app.get("/api/jobs/{job_id}/quizzes/{quiz_n}/export")
+def export_quiz(job_id: str, quiz_n: int, format: str = "csv") -> Response:
+    """Export a quiz as csv, anki_tsv, or quizlet format."""
+    if format not in VALID_EXPORT_FORMATS:
+        raise HTTPException(status_code=400, detail=f"format must be one of {sorted(VALID_EXPORT_FORMATS)}.")
+    job = _get_job(job_id)
+    path = job.quizzes_dir / f"{quiz_n}.json"
+    if not _is_job_path(job, path) or not path.exists():
+        raise HTTPException(status_code=404, detail=f"Quiz {quiz_n} not found.")
+    data = _read_json(path)
+    if data is None:
+        raise HTTPException(status_code=500, detail="Quiz file could not be read.")
+    items = data.get("items") or []
+
+    content, media_type, ext = _render_quiz_export(items, format)
+    filename = f"quiz-{job_id}-{quiz_n}.{ext}"
+    return Response(
+        content=content,
+        media_type=media_type,
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
+
+def _build_quiz_messages(
+    *,
+    title: str,
+    content: str,
+    question_types: list[str],
+    count: int,
+    difficulty: str,
+    focus: str,
+) -> list[dict]:
+    focus_desc = {
+        "definitions": "key terms, definitions, and vocabulary",
+        "formulas": "formulas, equations, and mathematical relationships",
+        "examples": "specific examples, case studies, and applications",
+        "all": "all concepts in the material",
+    }.get(focus, "all concepts in the material")
+
+    type_instructions: list[str] = []
+    for qt in question_types:
+        if qt == "mcq":
+            type_instructions.append('- "mcq": include "options" (array of exactly 4 strings, each prefixed A./B./C./D.); "answer" is the letter only (A, B, C, or D)')
+        elif qt == "true_false":
+            type_instructions.append('- "true_false": no "options" field; "answer" is "True" or "False"')
+        elif qt == "fill_blank":
+            type_instructions.append('- "fill_blank": question contains a blank (_____); "answer" is the missing word(s)')
+        elif qt == "short_answer":
+            type_instructions.append('- "short_answer": open-ended question; "answer" is a concise model answer (1–3 sentences)')
+        elif qt == "flashcards":
+            type_instructions.append('- "flashcards": "question" is the term/prompt; "answer" is the definition or explanation')
+
+    types_joined = ", ".join(f'"{t}"' for t in question_types)
+    system = (
+        "You are an expert quiz generator. You produce structured quiz questions from study material. "
+        "You output ONLY valid JSON — no prose, no markdown fences, no explanation before or after."
+    )
+    user_parts = [
+        f"Generate exactly {count} quiz questions for the study guide titled: {title}",
+        "",
+        f"Distribute questions across these types: {types_joined}",
+        f"Difficulty: {difficulty}",
+        f"Focus on: {focus_desc}",
+        "",
+        "RETURN A JSON ARRAY AND NOTHING ELSE. Each element must have:",
+        '  "type": one of the types listed above',
+        '  "question": question text',
+        '  "answer": see per-type rules below',
+        '  "topic": the section heading this question comes from (exact text)',
+        f'  "difficulty": "{difficulty}"',
+        "",
+        "Per-type rules:",
+        *type_instructions,
+        "",
+        "Do not include any text outside the JSON array. Do not wrap in markdown fences.",
+        "",
+        "=== STUDY GUIDE CONTENT ===",
+        "",
+        content,
+    ]
+    return [
+        {"role": "system", "content": system},
+        {"role": "user", "content": "\n".join(user_parts)},
+    ]
+
+
+def _parse_quiz_response(raw: str) -> list[dict[str, Any]]:
+    text = (raw or "").strip()
+    # Strip accidental markdown fences
+    fenced = re.search(r"```(?:json)?\s*(\[.*\])\s*```", text, re.DOTALL)
+    if fenced:
+        text = fenced.group(1)
+    # Find outermost array
+    start, end = text.find("["), text.rfind("]")
+    if start != -1 and end != -1 and end > start:
+        text = text[start : end + 1]
+
+    try:
+        parsed = json.loads(text)
+    except json.JSONDecodeError as exc:
+        raise HTTPException(
+            status_code=502,
+            detail=f"Quiz parse error: the model returned invalid JSON. ({exc})",
+        ) from exc
+
+    if not isinstance(parsed, list):
+        raise HTTPException(
+            status_code=502,
+            detail="Quiz parse error: expected a JSON array from the model.",
+        )
+
+    items: list[dict[str, Any]] = []
+    for item in parsed:
+        if not isinstance(item, dict):
+            continue
+        qtype = str(item.get("type") or "").strip()
+        if qtype not in VALID_QUESTION_TYPES:
+            continue
+        question = str(item.get("question") or "").strip()
+        answer = str(item.get("answer") or "").strip()
+        if not question or not answer:
+            continue
+        clean: dict[str, Any] = {
+            "type": qtype,
+            "question": question,
+            "answer": answer,
+            "topic": str(item.get("topic") or "").strip(),
+            "difficulty": str(item.get("difficulty") or "").strip(),
+        }
+        if qtype == "mcq" and isinstance(item.get("options"), list):
+            clean["options"] = [str(o) for o in item["options"]]
+        items.append(clean)
+    return items
+
+
+def _render_quiz_export(items: list[dict[str, Any]], format: str) -> tuple[bytes, str, str]:
+    """Return (content_bytes, media_type, file_extension)."""
+    def front(item: dict) -> str:
+        return item.get("question", "")
+
+    def back(item: dict) -> str:
+        ans = item.get("answer", "")
+        if item.get("type") == "mcq" and item.get("options"):
+            # Include the full option text for the answer letter
+            letter = ans.upper()
+            opts: list[str] = item["options"]
+            match = next((o for o in opts if o.upper().startswith(f"{letter}.")), ans)
+            return match
+        return ans
+
+    def topic(item: dict) -> str:
+        return item.get("topic", "")
+
+    def diff(item: dict) -> str:
+        return item.get("difficulty", "")
+
+    if format == "csv":
+        import csv
+        import io as _io
+        buf = _io.StringIO()
+        writer = csv.writer(buf, lineterminator="\n")
+        writer.writerow(["Front", "Back", "Topic", "Difficulty"])
+        for item in items:
+            writer.writerow([front(item), back(item), topic(item), diff(item)])
+        return buf.getvalue().encode("utf-8"), "text/csv; charset=utf-8", "csv"
+
+    if format == "anki_tsv":
+        rows = [f"{front(item)}\t{back(item)}\t{topic(item)}\t{diff(item)}" for item in items]
+        return "\n".join(rows).encode("utf-8"), "text/tab-separated-values; charset=utf-8", "tsv"
+
+    if format == "quizlet":
+        # Quizlet import: term<TAB>definition<NEWLINE>
+        rows = [f"{front(item)}\t{back(item)}" for item in items]
+        return "\n".join(rows).encode("utf-8"), "text/plain; charset=utf-8", "txt"
+
+    raise ValueError(f"Unknown format: {format}")
+
+
 def job_response(job: Job) -> dict[str, Any]:
     manifest = job.read_manifest()
     availability = _artifact_availability(job)
     artifact_urls = _artifact_urls(job, availability)
-    return {
+    response: dict[str, Any] = {
         "job_id": job.id,
         "status": manifest.get("status"),
         "title": manifest.get("title"),
@@ -1162,8 +2351,14 @@ def job_response(job: Job) -> dict[str, Any]:
         "attachment_summary": _attachment_summary(manifest),
         "artifact_availability": availability,
         "artifact_urls": artifact_urls,
+        "math_failures": _safe_math_failures(manifest.get("math_failures", [])),
+        "math_warnings": manifest.get("math_warnings"),
         **_outline_summary(manifest),
     }
+    if manifest.get("error"):
+        response["error"] = manifest["error"]
+        response["error_category"] = manifest.get("error_category") or "unknown"
+    return response
 
 
 def _artifact_urls(job: Job, availability: dict[str, bool]) -> dict[str, str]:
@@ -1182,6 +2377,32 @@ def _validate_theme(theme: str) -> None:
 def _validate_prompt_name(prompt_name: str) -> None:
     if not style_store.style_exists(prompt_name):
         raise HTTPException(status_code=400, detail="Unsupported prompt_name.")
+
+
+def _validate_generation_axes(output_depth: str | None, difficulty: str | None) -> None:
+    """Reject unknown axis enum values up front (repo convention: scalar inputs are
+    validated at the boundary, like provider/model/theme). Unset (None/"") is fine
+    and contributes no prompt fragment."""
+    if output_depth and output_depth not in OUTPUT_DEPTH_VALUES:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Unsupported output_depth. Expected one of: {', '.join(OUTPUT_DEPTH_VALUES)}.",
+        )
+    if difficulty and difficulty not in DIFFICULTY_VALUES:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Unsupported difficulty. Expected one of: {', '.join(DIFFICULTY_VALUES)}.",
+        )
+
+
+def _validate_generator_preset(preset_id: str) -> None:
+    """Reject unknown presets and presets whose body no longer resolves from the md."""
+    if not generator_presets.generator_preset_exists(preset_id):
+        raise HTTPException(status_code=400, detail="Unsupported generator_preset.")
+    try:
+        generator_presets.resolve_system_prompt(preset_id)
+    except generator_presets.GeneratorPresetError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
 def _resolve_folder_target(folder_id: str | None) -> str | None:
@@ -1247,11 +2468,14 @@ def _safe_manifest(manifest: dict[str, Any]) -> dict[str, Any]:
         "final_html",
         "final_pdf",
         "validation_json",
+        "error_log_path",  # filesystem path — never expose; use artifact endpoint instead
     ]:
         safe.pop(key, None)
     safe["attachments"] = _safe_attachment_metadata(manifest.get("attachments", []))
     safe["extraction_warnings"] = _safe_warnings(manifest.get("extraction_warnings", []))
+    safe["math_failures"] = _safe_math_failures(manifest.get("math_failures", []))
     safe["total_extracted_chars"] = int(manifest.get("total_extracted_chars") or 0)
+    safe["favorite"] = bool(manifest.get("favorite", False))
     safe.update(_outline_summary(manifest))
     return safe
 
@@ -1283,6 +2507,29 @@ def _safe_warnings(warnings: Any) -> list[str]:
     if not isinstance(warnings, list):
         return []
     return [str(warning)[:500] for warning in warnings if warning]
+
+
+def _safe_math_failures(failures: Any) -> list[dict[str, Any]]:
+    """Sanitize the recorded list of math expressions that failed validation.
+
+    These let the UI show "N math expressions couldn't render — fix them in the
+    Markdown editor". Only the expression, mode, and KaTeX message are exposed
+    (no filesystem paths), each length-capped.
+    """
+    if not isinstance(failures, list):
+        return []
+    safe: list[dict[str, Any]] = []
+    for failure in failures:
+        if not isinstance(failure, dict):
+            continue
+        safe.append(
+            {
+                "expr": str(failure.get("expr") or "")[:500],
+                "display_mode": bool(failure.get("display_mode")),
+                "message": str(failure.get("message") or "")[:500],
+            }
+        )
+    return safe
 
 
 def _attachment_summary(manifest: dict[str, Any]) -> dict[str, Any]:
@@ -1384,12 +2631,17 @@ async def _parse_llm_request(request: Request) -> tuple[LLMJobRequest, list[Atta
             "title": _form_text(form, "title") or "Generated Study Guide",
             "mode": _form_text(form, "mode") or DEFAULT_MODE,
             "prompt_name": _form_text(form, "prompt_name") or _form_text(form, "style") or "basic_study_guide",
+            "generator_preset": _form_text(form, "generator_preset") or None,
             "provider": _form_text(form, "provider") or "",
             "model": _form_text(form, "model") or "",
             "theme": _form_text(form, "theme") or "claude_clean",
             "strict_math": _form_bool(form, "strict_math", True),
             "qwen_thinking": _form_bool(form, "qwen_thinking", True),
             "folder_id": _form_text(form, "folder_id"),
+            # C2 generation axes ride along as plain form text (unset → None so the
+            # default request stays axis-free). Validated downstream like the JSON path.
+            "output_depth": _form_text(form, "output_depth") or None,
+            "difficulty": _form_text(form, "difficulty") or None,
         }
         outline_raw = _form_text(form, "outline")
         if outline_raw:
@@ -1397,6 +2649,17 @@ async def _parse_llm_request(request: Request) -> tuple[LLMJobRequest, list[Atta
                 data["outline"] = json.loads(outline_raw)
             except json.JSONDecodeError:
                 data["outline"] = None
+        # C1 output sections arrive as a JSON string in multipart (the attachments
+        # path); without this they were silently dropped when a guide had uploads.
+        # Mirror the outline handling: bad JSON / non-dict falls back to the default.
+        sections_raw = _form_text(form, "include_sections")
+        if sections_raw:
+            try:
+                parsed_sections = json.loads(sections_raw)
+            except json.JSONDecodeError:
+                parsed_sections = None
+            if isinstance(parsed_sections, dict):
+                data["include_sections"] = parsed_sections
         uploads = [
             value
             for key, value in form.multi_items()
@@ -1475,7 +2738,7 @@ def _validate_provider_model(provider: str, model: str) -> None:
 
 
 def _job_error(exc: Exception, job: Job | None = None) -> HTTPException:
-    detail: dict[str, Any] = {"message": str(exc)}
+    detail: dict[str, Any] = {"message": _safe_log_line(str(exc))}
     if job is not None:
         detail["job"] = job_response(job)
     return HTTPException(status_code=500, detail=detail)
@@ -1495,6 +2758,18 @@ def _get_job(job_id: str) -> Job:
     if not job_dir.is_relative_to(jobs_dir) or not job.manifest.exists():
         raise HTTPException(status_code=404, detail="Job not found.")
     return job
+
+
+def _require_trashed_job(job_id: str) -> str:
+    """Validate an id (same slash/dot rejection as :func:`_get_job`) and confirm
+    it is CURRENTLY in the trash. 404 otherwise — you cannot permanently delete
+    or restore something that hasn't been trashed first.
+    """
+    if "/" in job_id or "\\" in job_id or job_id in {"", ".", ".."}:
+        raise HTTPException(status_code=404, detail="Trashed job not found.")
+    if not is_trashed(job_id):
+        raise HTTPException(status_code=404, detail="Trashed job not found.")
+    return job_id
 
 
 def _artifact_availability(job: Job) -> dict[str, bool]:
@@ -1521,7 +2796,13 @@ def _ensure_docx(job: Job, *, regenerate: bool = False) -> Path | None:
         return job.final_docx
     from pipeline.docx_renderer import render_docx
 
-    render_docx(job.clean_md, job.final_docx)
+    manifest = job.read_manifest()
+    render_docx(
+        job.clean_md,
+        job.final_docx,
+        title=manifest.get("title"),
+        generated_date=manifest.get("created_at"),
+    )
     return job.final_docx
 
 
