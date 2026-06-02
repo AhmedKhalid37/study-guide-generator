@@ -267,8 +267,15 @@ body {
     display: none;
   }
 
+  /* A PDF page can't scroll, so the screen's overflow-x: auto on display math
+     would CLIP (silently lose) anything past the content box. KaTeX never
+     auto-wraps a display equation, so instead of hiding the overflow we let it
+     stay visible: a too-wide equation is left-anchored (its readable start is
+     always kept) and extends into the empty side margin rather than vanishing.
+     Only equations wider than the whole page still clip at the physical edge —
+     genuine multi-line wrapping is prompt-side (deferred). */
   .guide .katex-display {
-    overflow: hidden;
+    overflow: visible;
     font-size: 0.9em;
   }
 

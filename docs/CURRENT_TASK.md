@@ -590,12 +590,53 @@ parked on the `hardening` branch — not merged, not deleted.
       above (HTML render shows 22 `.katex-display` blocks, the rule present in base
       + print, no raw LaTeX leaked into `<code>`).
 
+24. **Math/PDF fidelity Slice 2 — long display math overflow/clipping (CSS-ONLY)** —
+    branch `math-display-overflow`. Changed the **print** rule for
+    `.guide .katex-display` from `overflow: hidden` to `overflow: visible` in
+    `themes/claude_clean.css` (the only functional change; `0.9em` print font-size
+    left untouched — font rationalization is Slice 3). **Strictly CSS-only** — no
+    `pdf_renderer.py`, Chromium flags, KaTeX bridge / HTML renderer, sanitizer,
+    prompts, `@page` geometry, or dependency change. Diff is one rule + an
+    explanatory comment.
+    - **Root cause (confirmed by real PDF renders):** a PDF page can't scroll, so
+      the screen's `overflow-x: auto` becoming `overflow: hidden` in print **silently
+      discarded** any display-equation content past the ~176 mm content box. KaTeX
+      never auto-wraps display math (`white-space: nowrap`), so long single-line
+      equations exceeded the box and lost their right tail. With `overflow: visible`
+      a too-wide equation is **left-anchored** (readable start always kept) and
+      extends into the empty side margin (`@page` has margins only — no
+      header/footer/page-number to collide with). Only equations wider than the
+      **whole A4 page** still clip, now at the physical edge, not the content box.
+    - **Before/after (real markdown→HTML→PDF Chromium path, end-marker probes):**
+      `overflow: hidden` clipped the right end-marker at **every** equation length
+      tested; `overflow: visible` **keeps** moderate lengths (recovered into the
+      margin) and only page-width-exceeding equations still clip. Real
+      `test_scripts/math_layout_fixture.md` renders cleanly — long single-line
+      equation no longer truncated within the content box; aligned block, arrows,
+      display-in-list, and the **sanitized** table case verified **identical**
+      before/after (no table/list regression).
+    - **Improvement, not a full fix (not overclaimed):** arbitrarily long single-line
+      equations cannot be made to fully fit CSS-only (KaTeX won't reflow; aggressive
+      font shrink doesn't fit them and re-introduces cramping). Genuine semantic
+      multi-line wrapping is **prompt-side (cause D / Slice 4)**; font-size
+      rationalization is **cause C / Slice 3**. Both remain deferred. See
+      `MATH_PDF_FIDELITY_INVESTIGATION.md` §11.
+    - **Verified:** `npm --prefix frontend run build` OK; `python -m compileall api
+      pipeline` OK; `docker compose config` OK; `docker compose build` OK; container
+      recreated on the new image and **healthy** (`/api/health` `{"ok":true}`, new
+      CSS confirmed baked in — print `.katex-display` now `overflow: visible`);
+      `/api/options` OK; release smoke **28/28**; plus the before/after PDF render
+      comparison above.
+
 ## NEXT (in order)
 
-> Slice 1 of the math/PDF fidelity work (`math-display-breaks`, DONE #23) added the
-> display-math page-break guard. The rerender-preset fix (`2716995`), B4 "Export
-> selected" (`65b9b8f`), and the cooperative server-side cancel (`901d44b`) are
-> **DONE and on trunk** — they are no longer "next." See DONE #20→#23 and OPEN ITEMS.
+> Slices 1–2 of the math/PDF fidelity work (`math-display-breaks` DONE #23,
+> `math-display-overflow` DONE #24) added the display-math page-break guard and the
+> long-equation overflow improvement. Remaining math/PDF slices: **Slice 3** math
+> font-size rationalization (cause C, CSS-only) and **Slice 4** prompt guidance for
+> multi-line `aligned` form (cause D, prompt-only). The rerender-preset fix
+> (`2716995`), B4 "Export selected" (`65b9b8f`), and the cooperative server-side
+> cancel (`901d44b`) are **DONE and on trunk**. See DONE #20→#24 and OPEN ITEMS.
 
 1. **Recommended next — pick ONE, design/investigation only (do NOT start
    implementation in a docs slice):**

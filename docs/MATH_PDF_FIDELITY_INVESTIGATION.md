@@ -236,3 +236,47 @@ other block elements and becomes load-bearing if a later slice removes the
 `overflow` clipping behavior. **Cause B (overflow/clipping), cause C
 (font-size), and cause D (prompt guidance) remain deferred** to Slices 2–4 as
 described in §7 — none are claimed fixed here.
+
+---
+
+## 11. Slice 2 (CSS-only) — long display math overflow/clipping (cause B)
+
+Slice 2 (`Improve long display math overflow`) changed the **print** rule for
+`.guide .katex-display` from `overflow: hidden` to `overflow: visible` (the only
+functional change; the `0.9em` print font-size is unchanged). CSS-only; no
+renderer/sanitizer/prompt/`@page`-geometry/dependency change.
+
+**Diagnosis (STEP 1, confirmed by real Chromium PDF renders):**
+1. *What causes the clipping?* The **print** `.katex-display { overflow: hidden }`
+   rule. On screen the block is `overflow-x: auto` (scrollable — nothing lost);
+   in print a PDF page can't scroll, so `overflow: hidden` **silently discards**
+   any part of the equation past the content box. The *reason* equations get that
+   wide is KaTeX's `white-space: nowrap` (display math never auto-wraps), not the
+   sanitizer or tables. Empirically, with `overflow: hidden` even a fairly modest
+   single-line equation lost its right tail (end-marker text absent from the PDF
+   text layer); the same equation with `overflow: visible` kept it.
+2. *Smallest CSS-only mitigation?* Stop hiding the horizontal overflow in print.
+   `@page` has only margins (18mm/17mm) and **no header/footer/page-number**, so
+   the side margins are empty — a too-wide equation renders **left-anchored** (its
+   readable start is always kept) and extends into that empty margin instead of
+   vanishing. Only equations wider than the **whole A4 page** still clip, now at
+   the physical page edge rather than the much narrower content box.
+3. *General fix or only an improvement?* **Only an improvement.** KaTeX does not
+   auto-wrap display math and CSS cannot reflow it, so arbitrarily long single-line
+   equations cannot be made to fully fit CSS-only. Aggressive font shrinking does
+   not help either (measured: even `0.5em` did not fit the longest probes, and it
+   reintroduces the *cramping* this work is meant to reduce). So this slice
+   **reduces** silent truncation; it does not guarantee every equation fits.
+4. *What stays deferred?* Genuine **semantic multi-line wrapping** of long
+   derivations is prompt-side (**cause D / Slice 4** — ask the model for
+   `\begin{aligned} … \\` form). **Font-size rationalization** across
+   tables/lists (**cause C / Slice 3**) is untouched here.
+
+**Before/after (real markdown→HTML→PDF Chromium path):** with end-marker probe
+equations of increasing length, `overflow: hidden` clipped the right marker at
+**every** length tested (even short-ish ones); `overflow: visible` **kept** the
+moderate lengths (recovered into the margin) and only the equations wider than the
+full page still clipped at the physical edge. The real `math_layout_fixture.md`
+renders cleanly (long single-line equation no longer truncated within the content
+box; aligned block, arrows, display-in-list, and the sanitized table case all
+unchanged — verified identical before/after). **No claim of perfect wrapping.**
