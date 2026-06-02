@@ -133,6 +133,13 @@ MAX_OUTLINE_SECTIONS = 50
 MAX_OUTLINE_TITLE_CHARS = 200
 MAX_OUTLINE_INSTRUCTION_CHARS = 600
 
+# Large-PDF page-selection plumbing (Slice 3, see docs/LARGE_PDF_PREFLIGHT_DESIGN.md
+# §5). These bound the optional per-file page-range map so it can never become an
+# unbounded input. NOTE: this slice only *plumbs and persists* the selection —
+# extraction still ignores it (no page filtering yet).
+MAX_PAGE_SELECTION_FILES = 20
+MAX_PAGE_RANGES_PER_FILE = 50
+
 
 class PasteJobRequest(BaseModel):
     text: str
@@ -174,6 +181,13 @@ class LLMJobRequest(BaseModel):
     # Voice/tone is intentionally NOT an axis here — it stays owned by Styles.
     output_depth: str | None = None
     difficulty: str | None = None
+    # Optional per-file PDF page selection (Slice 3). Shape: filename -> list of
+    # [start, end] ranges, 1-based inclusive (e.g. {"deck.pdf": [[1, 20], [35, 42]]}).
+    # Absent/empty == "all pages" == current behaviour. Validated + normalized by
+    # _normalize_page_selections at the handler (kept loose here so we control the
+    # error, mirroring how include_sections is handled on the multipart path).
+    # PERSISTED ONLY this slice — _extract_pdf still ignores it (no page filtering).
+    page_selections: dict[str, Any] = {}
 
 
 class OutlineGenerateRequest(BaseModel):
@@ -1330,6 +1344,9 @@ async def create_llm_job(request: Request) -> dict[str, Any]:
     _validate_prompt_name(llm_request.prompt_name)
     _validate_provider_model(llm_request.provider, llm_request.model)
     _validate_generation_axes(llm_request.output_depth, llm_request.difficulty)
+    # Normalize the optional PDF page selection up front (raises 400 on bad shapes).
+    # Persisted on the job for future rerender/retry; extraction ignores it (Slice 3).
+    page_selections = _normalize_page_selections(llm_request.page_selections)
     folder_target = _resolve_folder_target(llm_request.folder_id)
     # Prepend a "Required Outline" directive into the source so it works with any
     # style (the {source} slot is the one injection point every template shares).
@@ -1381,6 +1398,7 @@ async def create_llm_job(request: Request) -> dict[str, Any]:
             strict_math=llm_request.strict_math,
             config=config,
             attachments=attachments,
+            page_selections=page_selections,
         )
     except MissingLLMConfigError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
@@ -1781,6 +1799,12 @@ def retry_failed_job(job_id: str) -> dict[str, Any]:
         output_depth = manifest_depth if isinstance(manifest_depth, str) else None
         manifest_difficulty = manifest.get("difficulty")
         difficulty = manifest_difficulty if isinstance(manifest_difficulty, str) else None
+        # Preserve the PDF page selection across a retry (Slice 3). Re-normalize the
+        # stored value and write it back so the manifest stays canonical even if it
+        # predates this field. Extraction still ignores it — this only keeps the
+        # request reproducible for the future page-filtering slice.
+        page_selections = _normalize_page_selections(manifest.get("page_selections"))
+        job.update(page_selections=page_selections)
         # Reproduce the generator preset the job was created with, so a retry rebuilds
         # through the same preset system prompt + tuned sampling params (not the default
         # prompt path). If the stored preset id no longer exists (e.g. removed since the
@@ -2462,6 +2486,9 @@ def job_response(job: Job) -> dict[str, Any]:
         "artifact_urls": artifact_urls,
         "math_failures": _safe_math_failures(manifest.get("math_failures", [])),
         "math_warnings": manifest.get("math_warnings"),
+        # Echo the stored PDF page selection (Slice 3). Already normalized + bounded
+        # on write; default {} (= all pages). Lets the UI/tests confirm persistence.
+        "page_selections": _safe_page_selections(manifest.get("page_selections")),
         **_outline_summary(manifest),
     }
     if manifest.get("error"):
@@ -2769,6 +2796,18 @@ async def _parse_llm_request(request: Request) -> tuple[LLMJobRequest, list[Atta
                 parsed_sections = None
             if isinstance(parsed_sections, dict):
                 data["include_sections"] = parsed_sections
+        # PDF page selections (Slice 3) ride as a JSON string in multipart, exactly
+        # like include_sections above (this is the path the Builder uses once it has
+        # attachments). Bad JSON / non-dict falls back to {} (= all pages); the
+        # contents are validated later by _normalize_page_selections.
+        page_selections_raw = _form_text(form, "page_selections")
+        if page_selections_raw:
+            try:
+                parsed_selections = json.loads(page_selections_raw)
+            except json.JSONDecodeError:
+                parsed_selections = None
+            if isinstance(parsed_selections, dict):
+                data["page_selections"] = parsed_selections
         uploads = [
             value
             for key, value in form.multi_items()
@@ -3035,6 +3074,96 @@ def _build_pdf_preflight_report(
         "warnings": warnings,
         "allowed_actions": allowed_actions,
     }
+
+
+def _normalize_page_selections(raw: Any) -> dict[str, list[list[int]]]:
+    """Validate + normalize the optional per-file PDF page-selection map.
+
+    Shape: ``{filename: [[start, end], ...]}`` with 1-based inclusive ranges.
+    Absent / ``None`` / empty ⇒ ``{}`` (= "all pages" = current behaviour). Each
+    range must be a ``[start, end]`` pair of positive ints with ``start <= end``;
+    ranges per file are sorted and overlapping/adjacent ones merged so the stored
+    spec is canonical. Files / ranges are bounded (``MAX_PAGE_SELECTION_FILES`` /
+    ``MAX_PAGE_RANGES_PER_FILE``). Invalid shapes raise a 400.
+
+    Slice 3 NOTE: this is stored on the job and round-tripped through retry, but
+    extraction does NOT consume it yet — no page filtering happens.
+    """
+    if not raw:
+        return {}
+    if not isinstance(raw, dict):
+        raise HTTPException(
+            status_code=400, detail="page_selections must be an object keyed by filename."
+        )
+    normalized: dict[str, list[list[int]]] = {}
+    for filename, ranges in list(raw.items())[:MAX_PAGE_SELECTION_FILES]:
+        if not isinstance(filename, str) or not filename.strip():
+            raise HTTPException(
+                status_code=400, detail="page_selections keys must be non-empty filenames."
+            )
+        if not isinstance(ranges, (list, tuple)):
+            raise HTTPException(
+                status_code=400,
+                detail=f"page_selections['{filename}'] must be a list of [start, end] ranges.",
+            )
+        cleaned: list[list[int]] = []
+        for pair in list(ranges)[:MAX_PAGE_RANGES_PER_FILE]:
+            # bool is a subclass of int — reject it explicitly so True/False can't
+            # masquerade as a page number.
+            if (
+                not isinstance(pair, (list, tuple))
+                or len(pair) != 2
+                or isinstance(pair[0], bool)
+                or isinstance(pair[1], bool)
+                or not isinstance(pair[0], int)
+                or not isinstance(pair[1], int)
+            ):
+                raise HTTPException(
+                    status_code=400, detail="page ranges must be [start, end] integer pairs."
+                )
+            start, end = int(pair[0]), int(pair[1])
+            if start < 1 or end < start:
+                raise HTTPException(
+                    status_code=400,
+                    detail="page ranges must use positive 1-based pages with start <= end.",
+                )
+            cleaned.append([start, end])
+        if not cleaned:
+            # An explicit empty list means "no selection for this file" → omit it
+            # so the stored map only carries real selections.
+            continue
+        cleaned.sort()
+        merged: list[list[int]] = []
+        for start, end in cleaned:
+            if merged and start <= merged[-1][1] + 1:
+                merged[-1][1] = max(merged[-1][1], end)
+            else:
+                merged.append([start, end])
+        normalized[filename] = merged
+    return normalized
+
+
+def _safe_page_selections(raw: Any) -> dict[str, list[list[int]]]:
+    """Defensive read of a stored page-selection map for API responses. Never
+    raises (unlike :func:`_normalize_page_selections`); a malformed manifest value
+    degrades to ``{}``."""
+    if not isinstance(raw, dict):
+        return {}
+    safe: dict[str, list[list[int]]] = {}
+    for filename, ranges in raw.items():
+        if not isinstance(filename, str) or not isinstance(ranges, list):
+            continue
+        pairs: list[list[int]] = []
+        for pair in ranges:
+            if (
+                isinstance(pair, (list, tuple))
+                and len(pair) == 2
+                and all(isinstance(n, int) and not isinstance(n, bool) for n in pair)
+            ):
+                pairs.append([int(pair[0]), int(pair[1])])
+        if pairs:
+            safe[filename] = pairs
+    return safe
 
 
 def _validate_provider_model(provider: str, model: str) -> None:

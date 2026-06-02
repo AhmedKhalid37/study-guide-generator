@@ -45,6 +45,7 @@ def run_llm_job(
     strict_math: bool = True,
     config: LLMConfig | None = None,
     attachments: list[AttachmentSource] | None = None,
+    page_selections: dict[str, list[list[int]]] | None = None,
 ) -> Job:
     resolved_config = config or LLMConfig.from_env()
     job = Job.create(
@@ -61,6 +62,10 @@ def run_llm_job(
             # reproduces the same depth/difficulty. Unset stays None.
             "output_depth": output_depth,
             "difficulty": difficulty,
+            # Optional per-file PDF page selection (Slice 3). Persisted so a future
+            # retry/rerender preserves it. NOT consumed by extraction yet — pages
+            # are not filtered; this is request plumbing only.
+            "page_selections": page_selections or {},
             "theme": theme,
             "strict_math": strict_math,
             "provider": resolved_config.provider,

@@ -262,6 +262,12 @@ export default function BuilderWorkspace({
   // validateInputs. Shape per entry: { status: "checking"|"done"|"error",
   // report?, error? }.
   const [attachmentPreflights, setAttachmentPreflights] = useState({});
+  // Reserved internal state for the (deferred) PDF page-range UI: filename ->
+  // [[start, end], ...], 1-based inclusive. No control sets it yet, so it stays {}
+  // and buildLlmPayload omits page_selections entirely. Slice 3 only wires the
+  // request plumbing; the picker that populates this lands with the extraction slice.
+  // eslint-disable-next-line no-unused-vars
+  const [pageSelections, setPageSelections] = useState({});
   const [folderId, setFolderId] = useState("unfiled");
   const [folders, setFolders] = useState([]);
   const [styleOptions, setStyleOptions] = useState(styleChips);
@@ -751,7 +757,8 @@ export default function BuilderWorkspace({
         outputDepth,
         difficulty,
         folderId,
-        outline: outlineEnabled ? { enabled: true, sections: outlineSections } : null
+        outline: outlineEnabled ? { enabled: true, sections: outlineSections } : null,
+        pageSelections
       });
       assertBuilderPayload(kind, payload, { text, title, length });
       const job = await createJob(kind, payload);
@@ -3116,7 +3123,8 @@ export function buildBuilderPayload({
   outputDepth = "",
   difficulty = "",
   folderId = "unfiled",
-  outline = null
+  outline = null,
+  pageSelections = {}
 }) {
   if (source === "upload") {
     return {
@@ -3148,7 +3156,8 @@ export function buildBuilderPayload({
         outputDepth,
         difficulty,
         folderId,
-        outline
+        outline,
+        pageSelections
       })
     };
   }
@@ -3180,9 +3189,14 @@ export function buildLlmPayload({
   outputDepth = "",
   difficulty = "",
   folderId = "unfiled",
-  outline = null
+  outline = null,
+  pageSelections = {}
 }) {
   const hasOutline = outline?.enabled && (outline.sections || []).some((section) => section.title?.trim());
+  // PDF page selections (Slice 3): include only when the Builder actually carries a
+  // selection. No page-range UI exists yet, so this is {} for every normal request
+  // and the field is omitted entirely — keeping the default request byte-equivalent.
+  const hasPageSelections = pageSelections && Object.keys(pageSelections).length > 0;
   // Send the canonical fields only when they carry intent: omit include_sections
   // entirely when nothing is enabled, and omit each axis when unset. This keeps a
   // default/fresh generate request free of include_sections/output_depth/difficulty.
@@ -3205,6 +3219,7 @@ export function buildLlmPayload({
     ...(hasEnabledSections(enabledSections) ? { include_sections: enabledSections } : {}),
     ...(outputDepth ? { output_depth: outputDepth } : {}),
     ...(difficulty ? { difficulty } : {}),
+    ...(hasPageSelections ? { page_selections: pageSelections } : {}),
     attachments
   };
 }

@@ -349,7 +349,10 @@ export function createLlmJob(payload) {
       if (key === "attachments" || value === null || value === undefined) {
         return;
       }
-      if ((key === "outline" || key === "include_sections") && typeof value === "object") {
+      if (
+        (key === "outline" || key === "include_sections" || key === "page_selections") &&
+        typeof value === "object"
+      ) {
         formData.append(key, JSON.stringify(value));
         return;
       }

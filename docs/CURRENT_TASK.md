@@ -763,6 +763,42 @@ parked on the `hardening` branch — not merged, not deleted.
       automatic split/chunk + hybrid OCR dedup (Slice 4+). The "first N" / "page
       range" buttons are intentionally inert affordances until Slice 3.
 
+29. **Large-PDF Slice 3 — page-selection request plumbing** — branch
+    `large-pdf-page-selection-plumbing`, commit `Plumb PDF page selections through
+    jobs`. Makes PDF page selections **representable, validated, and persisted**
+    without changing extraction. **Plumbing only — `_extract_pdf` untouched, no
+    page filtering, no active page-range UI.**
+    - **Field/shape:** new optional `page_selections` on the LLM request —
+      `{filename: [[start, end], ...]}`, **1-based inclusive** (e.g.
+      `{"deck.pdf": [[1, 20], [35, 42]]}`). Absent/null/empty ⇒ `{}` ⇒ all pages ⇒
+      current behaviour. Chose the flat list-of-ranges form (task brief) over the
+      design §5.1 `{mode, first_n, ranges}` object — "first N" is just `[[1, N]]`.
+    - **Validation** (`_normalize_page_selections`, raises **400** on bad shapes):
+      positive-int `[start, end]` pairs with `start <= end` (`bool` rejected);
+      ranges sorted + overlapping/adjacent merged to a canonical spec; bounded by
+      `MAX_PAGE_SELECTION_FILES`=20 / `MAX_PAGE_RANGES_PER_FILE`=50. Does **not**
+      need the real page count (no clamp yet).
+    - **Both paths wired** (DECISIONS.md rule): JSON body via `LLMJobRequest`
+      (loose `dict[str, Any]`, normalized at handler) **and** multipart via a JSON
+      string in `_parse_llm_request`, mirroring `include_sections`/`outline`.
+    - **Persistence:** stored in `job.json` by `run_llm_job` (`page_selections`
+      key, default `{}`), echoed by `job_response` (`_safe_page_selections`), and
+      **preserved across retry** (re-normalized + re-stored); rerender never
+      touches it. **Not** forwarded to `_attach_sources`/extraction.
+    - **Frontend:** `buildLlmPayload` adds `page_selections` only when the Builder
+      carries a selection; reserved internal `pageSelections` state (default `{}`,
+      no control sets it) keeps default requests byte-equivalent; `client.js` sends
+      it as a JSON string on the multipart path. No page-range UI yet.
+    - **Verified:** `compileall api pipeline` OK; `npm … build` OK; `docker compose
+      config`/`build`/`up` OK; `/api/health` `{"ok":true}`; `/api/options`
+      unchanged. New `test_scripts/test_page_selections.py` **24/24** (offline:
+      LLM + renderer stubbed) — normalizer validation/merge, JSON + multipart
+      persistence, default-omits, invalid→400, retry-preserves. Release smoke
+      **28/28** (flaky outline-ordering check green on re-run).
+    - **Deferred (unchanged):** `pages=` filter into `_extract_pdf` + the picker
+      that populates `pageSelections` + enabling the Slice-2 actions (next slice);
+      automatic split/chunk + hybrid OCR dedup (Slice 4+).
+
 ## NEXT (in order)
 
 > Slices 1–3 of the math/PDF fidelity work (`math-display-breaks` DONE #23,

@@ -116,6 +116,65 @@ Slice 3 builds the real selection plumbing.
 
 ---
 
+## Slice 3 — IMPLEMENTED (page-selection request plumbing only)
+
+**Commit:** `Plumb PDF page selections through jobs` (branch
+`large-pdf-page-selection-plumbing`). Implements §5's request shape and §5.2's
+"rides on `POST /api/jobs/llm`" wiring so page selections are **representable,
+validated, and persisted**. **Plumbing only — extraction still ignores the
+selection (no `pages=` filter; `_extract_pdf` untouched), and there is still no
+active page-range UI.**
+
+What shipped:
+
+- **Request shape (shipped):** a single optional field `page_selections` on the
+  LLM generation request — `{ filename: [[start, end], ...] }`, **1-based
+  inclusive** ranges (e.g. `{"deck.pdf": [[1, 20], [35, 42]]}`). This is the
+  simpler list-of-ranges form from the task brief rather than §5.1's nested
+  `{mode, first_n, ranges}` object; "process first N" is just `[[1, N]]`, so the
+  flat shape subsumes it with less surface area. Absent / `null` / empty ⇒ `{}` ⇒
+  **all pages ⇒ today's behaviour** (the §5.1 backward-compat guarantee).
+- **Validation/normalization** (`_normalize_page_selections`, `api/server.py`):
+  each range must be a `[start, end]` pair of positive ints with `start <= end`
+  (`bool` rejected explicitly); ranges are sorted and overlapping/adjacent ones
+  merged so the stored spec is canonical; files and ranges per file are bounded
+  (`MAX_PAGE_SELECTION_FILES = 20`, `MAX_PAGE_RANGES_PER_FILE = 50`). Invalid
+  shapes raise a **400** (repo convention: scalar/structured inputs validated at
+  the boundary). It does **not** need the real PDF page count (no clamp-to-count
+  yet — that lands with the extraction slice).
+- **Both request paths wired** (DECISIONS.md rule): the JSON body path accepts
+  `page_selections` on `LLMJobRequest` (kept loose as `dict[str, Any]` so the
+  normalizer controls the error), and the **multipart/form-data** path parses it
+  from a JSON string in `_parse_llm_request`, exactly like `include_sections` /
+  `outline`.
+- **Persistence:** the normalized map is stored in `job.json` via
+  `run_llm_job` (`"page_selections"` manifest key, default `{}`), echoed back by
+  `job_response` (defensive `_safe_page_selections`), and **preserved across
+  retry** (`/api/jobs/{id}/retry` re-normalizes the stored value and writes it
+  back). Rerender (`/api/jobs/{id}/rerender`) only re-renders `clean.md` and never
+  touches the selection, so it is preserved there too.
+- **Frontend:** `buildLlmPayload` includes `page_selections` **only when the
+  Builder carries a selection**; a reserved internal `pageSelections` state
+  (default `{}`, no control sets it yet) keeps every normal request
+  byte-equivalent. `api/client.js` sends it as a JSON string on the multipart
+  path. No active page-range UI — the Slice-2 "first N" / "page range" buttons
+  stay disabled affordances.
+
+**Extraction still ignores it:** `page_selections` is persisted and round-tripped
+but is **not** passed into `_attach_sources` / `_extract_pdf`; no pages are
+filtered. The §6 `pages=` filter, the picker that populates `pageSelections`, and
+the now-enabled actions all remain **deferred to the extraction slice**.
+
+**Verification:** `python -m compileall api pipeline` OK; `npm --prefix frontend
+run build` OK; `docker compose config`/`build`/`up` OK (no secret output pasted);
+`/api/health` `{"ok":true}`, `/api/options` unchanged. New
+`test_scripts/test_page_selections.py` **24/24** (normalizer validation/merge +
+JSON & multipart persistence + default-omits + invalid→400 + retry-preserves, with
+the LLM call and Chromium renderer stubbed so it runs offline). Release smoke
+**28/28** (one flaky LLM outline-ordering check passed on re-run).
+
+---
+
 > **(Original design below — design-only for the deferred slices.)** This document
 > proposes a safe large-PDF *preflight* system. It does **not** change upload
 > limits, the extraction/OCR pipeline, the renderer, or any existing behavior. It
