@@ -7,8 +7,8 @@
 
 ## Where we are
 
-- **Branch:** `shortcut-options-bridge`
-- **Last commit:** `cc75292` — Bridge shortcut options to generation fields
+- **Branch:** `builder-options-ui`
+- **Last commit:** `7af9cbd` — Expose output sections and axes in Builder
 - **Main branch (PR target):** `chrome-renderer-v1`
 
 ## DONE (in order)
@@ -166,6 +166,55 @@
     - **Builder UI wiring (load fields into Builder state + send to
       `/api/jobs/llm`) is the NEXT slice — NOT done here.**
 
+15. **Slice C3 — expose output sections + axes in the Builder (FRONTEND + 1
+    backend form-parser fix)** — `7af9cbd` (branch `builder-options-ui`).
+    Surfaces the C1 `include_sections` + C2 `output_depth`/`difficulty` fields in
+    the Builder and round-trips them through save/load shortcuts and the local
+    draft.
+    - **New `frontend/src/sectionMeta.js`** holds the display metadata only:
+      21 section toggles in 4 cosmetic groups (Practice/Reference/Exam help/
+      Source-aware) + the axis option tables + `normalizeSectionState`/
+      `hasEnabledSections`. **The backend owns the key set** — every key mirrors
+      `INCLUDE_SECTION_FRAGMENTS`/`OUTPUT_DEPTH_FRAGMENTS`/`DIFFICULTY_FRAGMENTS`
+      in `pipeline/orchestrator.py` (verified 1:1, no invented keys). The frontend
+      never widens the vocabulary.
+    - **Builder UI:** replaced the old free-text `includes` chips with grouped
+      `SectionControls` toggles + a new `AxisControls` (two segmented rows, "Auto"
+      = unset). Action bar gained Sections + Axes summary chips. Legacy
+      `includesToModules`/`modulesToIncludes`/`includeOptions` removed.
+    - **Default stays clean:** `buildLlmPayload` omits `include_sections` when no
+      section is enabled and omits each axis when unset, so a fresh Builder
+      generate request carries none of these fields (and never a `voice` field —
+      voice stays owned by Styles). Sections no longer appended as free text in
+      `augmentSourceText`.
+    - **Save/load shortcut wiring:** `builderStateToPayload` now emits the
+      canonical `include_sections` + axes (not the inert legacy `modules`);
+      `applyBuilderPrefill` reads them back and re-normalizes sections via
+      `normalizeSectionState` (drops keys the Builder no longer exposes).
+    - **Local draft parity:** `buildDraft`/`handleRestoreDraft` now persist +
+      rehydrate the canonical fields (restore re-normalizes), replacing the old
+      `includes` they used to carry. Dirty-state `settingsSignature` already
+      covers all three, so changing a section/axis after a generation marks the
+      preview stale.
+    - **Backend form-parser fix:** the multipart branch of `_parse_llm_request`
+      (`api/server.py`) now reads `include_sections` (JSON string → dict) +
+      `output_depth`/`difficulty`. **Without this the options were silently
+      dropped whenever a generation had attachments** (the no-attachments JSON
+      path already worked). See `DECISIONS.md`.
+    - **Verified in Docker** (uid 10001/appuser, healthy): frontend build OK; an
+      esbuild-bundled harness drove the real `buildLlmPayload`/
+      `builderStateToPayload`/`normalizeSectionState` (default omits all 4 incl.
+      `voice`; selected sends canonical sections+axes; save→load→generate
+      round-trips; unknown keys dropped on load; empty shortcut → `{}`/null).
+      Live end-to-end: JSON-path job persisted sections+axes to `job.json`;
+      **multipart-path job WITH an attachment persisted `{flashcards,
+      formula_sheet}` + `exhaustive`/`advanced`** (proves the fix); default job →
+      `{}`/null/null; invalid `output_depth` → HTTP 400. Release smoke **28/28**.
+    - **NOT automated — needs manual click-through:** visual layout/spacing of the
+      new grouped toggles + segmented axes, and tooltip hover behaviour
+      (`InfoTip`/`FieldLabel tip`). DOM presence + wiring are proven; pixel
+      layout is not.
+
 ## NEXT (in order)
 
 3. **Library bulk actions — remaining follow-ups (deferred, not this slice).**
@@ -187,13 +236,12 @@
 
 ## OPEN ITEMS
 
-- **Shortcut options → Builder wiring (NEXT slice).** The backend bridge is now
-  DONE (`cc75292`): the shortcut payload whitelist carries `include_sections` +
-  the C2 axes (`output_depth`/`difficulty`), and legacy `modules` translate to
-  canonical `include_sections` on read/export. **Still open:** the Builder UI must
-  load these fields from a selected shortcut into Builder state and pass them to
-  `/api/jobs/llm` (and expose controls). Until that wiring lands, a shortcut's
-  options are stored/validated/exposed but not yet auto-applied to a generation.
+- **Shortcut options → Builder wiring — DONE (`7af9cbd`, Slice C3).** The Builder
+  now exposes `include_sections` + the C2 axes, loads them from a selected
+  shortcut into Builder state, and sends them to `/api/jobs/llm` (both the JSON
+  and multipart/attachment transports). The backend bridge (`cc75292`) feeds the
+  load path; legacy `modules` still translate to canonical `include_sections` on
+  read/export. No longer open.
 - **Preset/shortcut cards, icons, compatibility warnings** — richer Home/Builder
   surfacing of preset & shortcut metadata (cards/iconography, "references
   unavailable …" compatibility warnings already computed by the store's `valid`/

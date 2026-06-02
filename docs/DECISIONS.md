@@ -179,3 +179,31 @@ review step. Translate-on-read gives the same forward-compatible view (read, lis
 export, import-preview all show canonical sections) with **zero** disk mutation, and
 the canonical fields are written only when the user deliberately saves. Old shortcuts
 with no new fields and no modules keep working unchanged.
+
+## Builder section/axis metadata: the frontend never owns the key set (C3)
+The Builder's output-section and axis controls are driven by
+`frontend/src/sectionMeta.js`, but that file deliberately holds **only display
+metadata** — labels, the four cosmetic groups (Practice/Reference/Exam help/
+Source-aware), help text, and the axis option tables. **The canonical key set lives
+in the backend** (`INCLUDE_SECTION_FRAGMENTS` + the axis fragment maps in
+`pipeline/orchestrator.py`). **Why:** the orchestrator validates against that map and
+silently drops anything else, so a key the frontend invents would render a dead toggle
+that produces nothing. Keeping the frontend as a labels-only mirror means the UI can
+never promise a section the backend won't honour; the grouping is purely for
+readability and re-orders freely without affecting the request. The keys were verified
+1:1 against the orchestrator at build time. **Do not widen the section vocabulary in
+`sectionMeta.js` alone** — add the fragment in the orchestrator first.
+
+## The multipart `/api/jobs/llm` parser dropped generation options (C3 fix)
+`/api/jobs/llm` accepts two transports: a JSON body (no attachments) and
+multipart/form-data (with attachments). `LLMJobRequest` is a Pydantic model, so the
+**JSON path** picked up `include_sections`/`output_depth`/`difficulty` for free, but
+the **multipart path** (`_parse_llm_request`) hand-builds the model from named form
+fields and only parsed `outline` — so the new C3 options were **silently dropped
+whenever a generation had an attachment**. This was invisible to a build/compile check
+and to the no-attachment smoke path; it only shows up as "my sections didn't apply when
+I uploaded a file." Fixed by mirroring the existing `outline` handling: the axes are
+read as plain form text (unset → `None`) and `include_sections` is parsed from its JSON
+string (bad/non-dict JSON falls back to the default `{}`, never a 500). **Lesson:** any
+field added to `LLMJobRequest` must be wired into the multipart branch too — the two
+transports do not share parsing.
