@@ -3,6 +3,7 @@ from __future__ import annotations
 import csv
 import re
 import shutil
+from collections.abc import Iterable
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -57,7 +58,15 @@ class PdfPreflightResult:
     ocr_available: bool
 
 
-def extract_file(path: Path) -> ExtractionResult:
+def extract_file(path: Path, pages: Iterable[int] | None = None) -> ExtractionResult:
+    """Extract text from a supported attachment.
+
+    ``pages`` is an optional set of **1-based, original** page numbers to restrict
+    extraction to; it applies **only to PDFs** (it mirrors the per-PDF
+    ``page_selections`` request field). For every other file type it is ignored —
+    page selections are meaningless for non-paginated sources. ``pages=None`` (the
+    default) preserves the exact previous behaviour for all types.
+    """
     suffix = path.suffix.lower()
     if suffix not in SUPPORTED_EXTENSIONS:
         raise ExtractionError(f"Unsupported attachment type: {suffix or 'unknown'}")
@@ -71,7 +80,7 @@ def extract_file(path: Path) -> ExtractionResult:
     if suffix == ".pptx":
         return ExtractionResult(_extract_pptx(path), "pptx", [])
     if suffix == ".pdf":
-        return _extract_pdf(path)
+        return _extract_pdf(path, pages=pages)
 
     raise ExtractionError(f"Unsupported attachment type: {suffix or 'unknown'}")
 
@@ -129,7 +138,22 @@ def _extract_pptx(path: Path) -> str:
     return "\n\n".join(parts)
 
 
-def _extract_pdf(path: Path) -> ExtractionResult:
+def _extract_pdf(path: Path, pages: Iterable[int] | None = None) -> ExtractionResult:
+    """Extract a PDF page-by-page, optionally restricted to selected pages.
+
+    ``pages`` is an optional iterable of **1-based, original** page numbers. When
+    ``None`` (the default) the whole document is processed exactly as before — this
+    path is byte-for-byte unchanged. When provided, only those pages are read, but
+    each kept page keeps its **original** ``## Page N`` anchor (so selecting pages
+    20-21 yields ``## Page 20`` / ``## Page 21``, never renumbered to 1-2). The
+    per-page text-vs-OCR fallback and the ``pdf_text``/``pdf_ocr``/``pdf_mixed``
+    mode reporting are computed over the selected subset, unchanged otherwise.
+
+    Selected pages are validated against the real page count: out-of-range pages
+    are ignored with a warning, never raising. If a selection is given but no page
+    is in range, an empty result with a clear warning is returned (the caller then
+    reports "no text could be extracted", matching existing behaviour).
+    """
     try:
         import fitz
     except ImportError as exc:
@@ -143,6 +167,27 @@ def _extract_pdf(path: Path) -> ExtractionResult:
             f"the file may be corrupt or an unreadable scan ({type(exc).__name__})"
         ) from exc
     with document_ctx as document:
+        # Resolve the optional page selection against the real page count. Pages
+        # are 1-based and refer to ORIGINAL page numbers; out-of-range entries are
+        # dropped (not clamped) so a stray "page 999" can't pull in the last page,
+        # and so anchors stay truthful. None => no filter => process every page.
+        selected: set[int] | None = None
+        if pages is not None:
+            page_count = int(document.page_count)
+            requested = {int(p) for p in pages}
+            selected = {p for p in requested if 1 <= p <= page_count}
+            out_of_range = sorted(requested - selected)
+            if out_of_range:
+                warnings.append(
+                    f"Ignored selected page(s) outside this {page_count}-page PDF: "
+                    f"{', '.join(str(p) for p in out_of_range)}."
+                )
+            if not selected:
+                warnings.append(
+                    f"None of the selected pages fall within this {page_count}-page PDF; "
+                    "no pages were extracted."
+                )
+                return ExtractionResult("", "pdf_text", warnings)
         # Prefix each page with a "## Page N" anchor (mirroring the pptx "Slide N"
         # marker) so positional references survive extraction — study-guide prompts
         # cite these. The index is the physical page number; blank pages are dropped
@@ -156,14 +201,19 @@ def _extract_pdf(path: Path) -> ExtractionResult:
         # page 1.
         ocr_ready, ocr_unavailable_reason = _ocr_available()
 
-        pages: list[str] = []
+        blocks: list[str] = []
         used_text = False
         used_ocr = False
         wanted_ocr = False
         for index, page in enumerate(document, start=1):
+            # When a selection is active, skip unselected pages before any text or
+            # OCR work — so OCR only ever runs on selected pages — while `index`
+            # stays the original page number for the anchor below.
+            if selected is not None and index not in selected:
+                continue
             body = page.get_text("text").strip()
             if _is_meaningful_page_text(body):
-                pages.append(f"## Page {index}\n{body}")
+                blocks.append(f"## Page {index}\n{body}")
                 used_text = True
                 continue
 
@@ -172,19 +222,19 @@ def _extract_pdf(path: Path) -> ExtractionResult:
             wanted_ocr = True
             page_ocr = _ocr_page(page) if ocr_ready else ""
             if page_ocr:
-                pages.append(f"## Page {index}\n{page_ocr}")
+                blocks.append(f"## Page {index}\n{page_ocr}")
                 used_ocr = True
             elif body:
                 # OCR produced nothing (or is unavailable) but the page had a little
                 # embedded text — keep it rather than dropping the page entirely.
-                pages.append(f"## Page {index}\n{body}")
+                blocks.append(f"## Page {index}\n{body}")
                 used_text = True
             # else: genuinely blank page → dropped (numbering preserved by index).
 
         if wanted_ocr and not ocr_ready and ocr_unavailable_reason:
             warnings.append(ocr_unavailable_reason)
 
-        text = "\n\n".join(pages)
+        text = "\n\n".join(blocks)
         if used_ocr and used_text:
             mode = "pdf_mixed"
         elif used_ocr:

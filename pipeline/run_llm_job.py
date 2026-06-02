@@ -62,9 +62,10 @@ def run_llm_job(
             # reproduces the same depth/difficulty. Unset stays None.
             "output_depth": output_depth,
             "difficulty": difficulty,
-            # Optional per-file PDF page selection (Slice 3). Persisted so a future
-            # retry/rerender preserves it. NOT consumed by extraction yet — pages
-            # are not filtered; this is request plumbing only.
+            # Optional per-file PDF page selection. Persisted so a future
+            # retry/rerender preserves it, and (Slice 4) consumed by extraction:
+            # matching PDF attachments are restricted to the selected original
+            # pages. Empty / absent => all pages => unchanged behaviour.
             "page_selections": page_selections or {},
             "theme": theme,
             "strict_math": strict_math,
@@ -89,7 +90,11 @@ def run_llm_job(
         if attachments:
             job.set_stage("extracting")
             augmented_source, attachment_report = _attach_sources(
-                job, source_text, attachments, generator_preset=generator_preset
+                job,
+                source_text,
+                attachments,
+                generator_preset=generator_preset,
+                page_selections=page_selections,
             )
 
         source_path = job.input_dir / "source.txt"
@@ -152,6 +157,7 @@ def _attach_sources(
     attachments: list[AttachmentSource],
     *,
     generator_preset: str | None = None,
+    page_selections: dict[str, list[list[int]]] | None = None,
 ) -> tuple[str, dict[str, Any]]:
     attachment_dir = job.input_dir / "attachments"
     attachment_dir.mkdir(parents=True, exist_ok=True)
@@ -187,8 +193,19 @@ def _attach_sources(
             "truncated": False,
             "warnings": [],
         }
+        # Page selections are keyed by the ORIGINAL upload filename (the same value
+        # stored as `original_filename` in this attachment's metadata, set by the
+        # frontend / `_save_llm_attachments`). They apply to PDFs only; a selection
+        # for a non-PDF attachment is ignored. `extract_file` itself also ignores
+        # `pages` for non-PDFs, so this guard is just to skip needless work.
+        selected_pages: set[int] | None = None
+        if page_selections and saved_path.suffix.lower() == ".pdf":
+            ranges = page_selections.get(attachment.filename)
+            if ranges:
+                selected_pages = _expand_page_ranges(ranges)
+
         try:
-            result = extract_file(saved_path)
+            result = extract_file(saved_path, pages=selected_pages)
             extracted_text = result.text.strip()
             entry["mode"] = result.mode
             entry["warnings"] = result.warnings
@@ -240,6 +257,19 @@ def _attach_sources(
         "warnings": _dedupe(warnings),
         "total_extracted_chars": total_chars,
     }
+
+
+def _expand_page_ranges(ranges: list[list[int]]) -> set[int]:
+    """Expand normalized 1-based inclusive ``[[start, end], ...]`` ranges to a set
+    of page numbers. Ranges arrive already validated/merged by the API's
+    ``_normalize_page_selections`` (positive ints, ``start <= end``); this only
+    flattens them. Extraction validates the result against the real page count.
+    """
+    pages: set[int] = set()
+    for pair in ranges:
+        start, end = int(pair[0]), int(pair[1])
+        pages.update(range(start, end + 1))
+    return pages
 
 
 def _safe_filename(filename: str, *, fallback: str) -> str:

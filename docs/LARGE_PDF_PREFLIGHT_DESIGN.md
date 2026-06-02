@@ -1,12 +1,14 @@
 # LARGE_PDF_PREFLIGHT_DESIGN.md — Large-PDF upload preflight
 
-> **Status: Slices 1 & 2 IMPLEMENTED (backend endpoint + Builder warning UI).
-> Later slices still design-only.** The original document below proposed the full
-> preflight system; the **Slice 1** and **Slice 2** implementation notes
-> (immediately after this banner) record what actually shipped. Page-range flow
-> into extraction and split/chunk processing remain **deferred** exactly as
-> designed. The §-numbered design text is unchanged and remains the agreed shape
-> for the deferred slices.
+> **Status: Slices 1–4 IMPLEMENTED (backend endpoint + Builder warning UI +
+> page-selection plumbing + extraction now honors selected pages). Later slices
+> still design-only.** The original document below proposed the full preflight
+> system; the **Slice 1–4** implementation notes (immediately after this banner)
+> record what actually shipped. As of Slice 4 the persisted `page_selections`
+> **does change extraction** (PDF pages are filtered to the selection). Still
+> deferred exactly as designed: the active page-range **UI** (Slice 5), and
+> automatic split/chunk processing + hybrid OCR dedup. The §-numbered design text
+> is unchanged and remains the agreed shape for the deferred slices.
 
 ---
 
@@ -172,6 +174,72 @@ run build` OK; `docker compose config`/`build`/`up` OK (no secret output pasted)
 JSON & multipart persistence + default-omits + invalid→400 + retry-preserves, with
 the LLM call and Chromium renderer stubbed so it runs offline). Release smoke
 **28/28** (one flaky LLM outline-ordering check passed on re-run).
+
+---
+
+## Slice 4 — IMPLEMENTED (extraction honors selected pages)
+
+**Commit:** `Filter PDF extraction by selected pages` (branch
+`large-pdf-page-selection-extraction`). Implements §6's `pages=` filter so the
+persisted Slice-3 `page_selections` finally **changes what is extracted**.
+**Backend/extraction only — no page-range UI, no split/chunk, no hybrid OCR
+dedup, no limit change, and `_extract_pdf` is extended surgically, not rewritten.**
+
+What shipped:
+
+- **`extract_file(path, pages=None)` / `_extract_pdf(path, pages=None)`**
+  (`pipeline/extract.py`) — `pages` is an optional iterable of **1-based ORIGINAL**
+  page numbers. `None` (default) is the **byte-for-byte previous behaviour**;
+  selecting *every* page is verified identical to no selection. The filter is a
+  single `if selected is not None and index not in selected: continue` at the top
+  of the existing per-page loop, **before** any `get_text`/OCR work — so OCR only
+  ever runs on selected pages. `pages` applies to **PDFs only**; `extract_file`
+  ignores it for every other type (non-PDF extraction is untouched).
+- **Original anchors preserved (§6).** The loop still enumerates from 1 and emits
+  `## Page {index}` with the *original* page number, so selecting pages 20-21
+  yields `## Page 20` / `## Page 21`, **never** renumbered `## Page 1` / `## Page 2`.
+- **Validation against the real `document.page_count` (task item 4).** Requested
+  pages are intersected with `[1, page_count]`; out-of-range pages are **dropped
+  (not clamped)** with a warning naming them — a stray "page 999" can't pull in
+  the last page. If a selection is given but **no** page is in range, an empty
+  `ExtractionResult("", "pdf_text", [warning])` is returned (no crash); the caller
+  then reports "no text could be extracted" exactly as today.
+- **Mode reporting over the subset.** `pdf_text` / `pdf_ocr` / `pdf_mixed` are
+  computed from the *selected* pages, so a text-only subset of a mixed deck reports
+  `pdf_text`, an image-only subset reports `pdf_ocr`, etc.
+- **Threading (`pipeline/run_llm_job.py`).** `run_llm_job` passes the persisted
+  `page_selections` into `_attach_sources`, which — **for PDF attachments only** —
+  looks the selection up by the attachment's **original filename**
+  (`AttachmentSource.filename`, the same value stored as `original_filename` in the
+  attachment metadata, and the key the frontend/Slice-3 spec uses), flattens the
+  normalized `[[start, end], ...]` ranges to a page set (`_expand_page_ranges`),
+  and calls `extract_file(path, pages=...)`. A selection keyed by a filename that
+  matches no attachment is simply unused; a non-PDF attachment never receives one.
+- **Filename matching is exact, not fuzzy.** The lookup is a direct
+  `page_selections.get(attachment.filename)` — no normalization, no index-guessing.
+  Two attachments sharing one original filename both legitimately receive that
+  filename's selection (well-defined, not a guess).
+
+**UI / deferred (unchanged):** there is still **no active page-range UI** — the
+Slice-2 "Process first N pages" / "Choose page range" buttons stay disabled
+affordances until a future slice (call it Slice 5) builds the picker that
+populates `pageSelections`. **Automatic split/chunk processing and hybrid
+embedded-text + OCR dedup remain deferred** (§9) — the per-page text-XOR-OCR
+behaviour is unchanged.
+
+**Verification:** `python -m compileall api pipeline` OK; `npm --prefix frontend
+run build` OK; `docker compose config`/`build`/`up` OK (no secret output pasted);
+`/api/health` `{"ok":true}`, `/api/options` unchanged. New
+`test_scripts/test_pdf_page_selection_extract.py` **39/39 in Docker** (text pages
+2-3 → original anchors, no page 1; no-selection == select-all; out-of-range safe
+warning; OCR-gated scanned-subset OCR-only; mixed-subset mode correctness;
+`_attach_sources` filename-keyed threading). Existing
+`test_scripts/test_mixed_pdf_ocr.py` and `test_scripts/test_page_selections.py`
+both still pass (24/24). Release smoke **28/28** (the known flaky outline-ordering
+check passed on re-run). Live Docker generation with
+`page_selections={"sel.pdf": [[2, 3]]}` → the job's `input/source.txt` contains
+only `## Page 2` / `## Page 3` (not `## Page 1`) and the manifest persists the
+selection.
 
 ---
 
