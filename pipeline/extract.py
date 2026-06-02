@@ -134,6 +134,27 @@ def _extract_pdf(path: Path) -> ExtractionResult:
         return ExtractionResult(ocr_text, "pdf_ocr", warnings)
 
 
+def _preprocess_ocr_image(image: "Image.Image") -> "Image.Image":
+    """Grayscale + optional upscale + binary threshold for better Tesseract accuracy.
+
+    Only called from the OCR path — text-based PDFs never reach this function.
+    The 2x fitz matrix already rasterises at double resolution; this adds an
+    additional scale step only when the result is still narrow (<2000 px), then
+    applies autocontrast + a binary threshold to sharpen slide text.
+    """
+    from PIL import Image, ImageOps
+
+    image = image.convert("L")
+    if image.width < 2000:
+        scale = 2000 / image.width
+        image = image.resize(
+            (round(image.width * scale), round(image.height * scale)),
+            resample=Image.Resampling.LANCZOS,
+        )
+    image = ImageOps.autocontrast(image, cutoff=1)
+    return image.point(lambda x: 0 if x < 128 else 255)
+
+
 def _ocr_pdf(document) -> tuple[str, str | None]:
     if shutil.which("tesseract") is None:
         return "", "OCR skipped because the tesseract binary is not available."
@@ -149,6 +170,7 @@ def _ocr_pdf(document) -> tuple[str, str | None]:
     for index, page in enumerate(document, start=1):
         pixmap = page.get_pixmap(matrix=fitz.Matrix(2, 2), alpha=False)
         image = Image.frombytes("RGB", [pixmap.width, pixmap.height], pixmap.samples)
+        image = _preprocess_ocr_image(image)
         page_text = pytesseract.image_to_string(image).strip()
         if page_text:
             pages.append(f"## Page {index}\n{page_text}")
