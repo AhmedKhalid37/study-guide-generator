@@ -725,6 +725,44 @@ parked on the `hardening` branch — not merged, not deleted.
       into `_extract_pdf` (Slice 3), automatic split/chunk + hybrid OCR dedup
       (Slice 4+). See the design doc's Slice-1 implementation note.
 
+28. **Large-PDF preflight Slice 2 — Builder warning UI** — branch
+    `large-pdf-preflight-ui`, commit `Show PDF preflight warnings in Builder`.
+    Wires the Slice-1 endpoint into the Builder so a large/scanned/problem PDF is
+    surfaced **before** generation. **Frontend + API-client only — no backend,
+    extractor, OCR, job, or limit change.**
+    - **API client** (`frontend/src/api/client.js`): new `preflightPdf(file)` —
+      multipart `POST /api/preflight/pdf`. A non-PDF/oversize/network failure
+      rejects via `requestJson`; callers treat any failure as a **soft warning**
+      and never block generation.
+    - **`AttachmentsPicker`** (`BuilderWorkspace.jsx`): on adding a `.pdf`, calls
+      preflight per file and stores `{status, report?}` in a new parent state map
+      `attachmentPreflights`, keyed by a stable `attachmentKey` (name+size+
+      lastModified). Lives **beside the selected files only** — never persisted to
+      a job. Removing a file prunes its entry; "Continue anyway" marks it
+      acknowledged.
+    - **`PreflightCard`**: quiet for ordinary PDFs (verdict `ok`, no warnings);
+      `checking` → spinner; `error` → soft "Could not inspect this PDF; it will be
+      processed normally." For `warn` (amber) / `blocked` (red) it shows file size,
+      page count, scanned flag, OCR-page estimate, the backend `warnings[]`, and a
+      recommended action. Actions: **Continue anyway** (warn only) + **Remove
+      file**; **Process first N pages** / **Choose page range** render **disabled
+      with a "coming later" note** (Slice 3 builds the real flow).
+    - **Generate gate**: `validateInputs` blocks generation when any attached PDF's
+      verdict is `blocked` (corrupt/encrypted → must remove/replace). `warn`/`ok`
+      never block. A preflight failure never blocks. Builder state/selections are
+      preserved on warn/fail.
+    - **Verified in Docker** (healthy): `npm --prefix frontend run build` OK;
+      `python -m compileall api pipeline` OK; `docker compose config`/`build`/`up`
+      OK; `/api/health` `{"ok":true}`; `/api/options` unchanged. Backend contract
+      the UI consumes re-confirmed `test_scripts/test_pdf_preflight.py` **24/24**;
+      release smoke **28/28**. Live curl: non-PDF → `400`; text PDF →
+      `ok`/`text`/`[continue]`. No JS test runner exists in the repo (only an
+      asset-verify script); adding vitest/jsdom would be out-of-scope dependency
+      work, so the contract is covered by the existing backend test.
+    - **Deferred (unchanged):** page-range flow into `_extract_pdf` (Slice 3),
+      automatic split/chunk + hybrid OCR dedup (Slice 4+). The "first N" / "page
+      range" buttons are intentionally inert affordances until Slice 3.
+
 ## NEXT (in order)
 
 > Slices 1–3 of the math/PDF fidelity work (`math-display-breaks` DONE #23,

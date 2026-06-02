@@ -1,11 +1,12 @@
 # LARGE_PDF_PREFLIGHT_DESIGN.md — Large-PDF upload preflight
 
-> **Status: Slice 1 IMPLEMENTED (backend endpoint only). Later slices still
-> design-only.** The original document below proposed the full preflight system;
-> the **Slice 1 implementation note** (immediately after this banner) records what
-> actually shipped. UI, page-range flow into extraction, and split/chunk
-> processing remain **deferred** exactly as designed. The §-numbered design text is
-> unchanged and remains the agreed shape for the deferred slices.
+> **Status: Slices 1 & 2 IMPLEMENTED (backend endpoint + Builder warning UI).
+> Later slices still design-only.** The original document below proposed the full
+> preflight system; the **Slice 1** and **Slice 2** implementation notes
+> (immediately after this banner) record what actually shipped. Page-range flow
+> into extraction and split/chunk processing remain **deferred** exactly as
+> designed. The §-numbered design text is unchanged and remains the agreed shape
+> for the deferred slices.
 
 ---
 
@@ -58,6 +59,60 @@ What shipped, matching §3/§10:
 **Still deferred (unchanged from §9/§11):** the frontend banner/actions (Slice 2),
 page-range flow into `_extract_pdf` (Slice 3, `pages=` filter), and automatic
 split/chunk processing + hybrid OCR dedup (Slice 4+).
+
+---
+
+## Slice 2 — IMPLEMENTED (Builder warning UI only)
+
+**Commit:** `Show PDF preflight warnings in Builder` (branch
+`large-pdf-preflight-ui`). Implements §2's user flow and §7's per-kind behavior on
+the frontend, consuming the Slice-1 endpoint. **Frontend + API-client only** — no
+backend, extractor, OCR, job-creation, or limit change (the endpoint and its
+contract are untouched).
+
+What shipped:
+
+- **API client `preflightPdf(file)`** (`frontend/src/api/client.js`) — multipart
+  `POST /api/preflight/pdf`. A non-PDF / oversize / network failure rejects via the
+  shared `requestJson`; the caller treats **any** failure as a soft warning and
+  **never blocks generation** (matching §7's graceful-degrade rule and task item 9).
+- **Per-PDF preflight on add** (`AttachmentsPicker` in `BuilderWorkspace.jsx`) —
+  when a `.pdf` is attached, preflight runs for that one file (§3.1 "per added
+  PDF"). The result is stored in a new `attachmentPreflights` map in Builder state,
+  keyed by a stable `attachmentKey` (name + size + lastModified), **alongside the
+  selected file only — never persisted to a job** (task item 3; §9 keeps job-side
+  persistence deferred to Slice 3). Removing a file prunes its entry.
+- **`PreflightCard`** renders the verdict compactly:
+  - verdict `ok` with no warnings → **silent** (zero noise for the common case,
+    §2/§7).
+  - `checking` → inline spinner; `error` (preflight call failed) → soft amber
+    "Could not inspect this PDF; it will be processed normally."
+  - `warn` (amber) / `blocked` (red) → file size, page count, scanned flag, OCR
+    page estimate, the backend `warnings[]`, and a recommended action (task item 6).
+- **Actions** (task item 7): **Continue anyway** (warn/ok only — sets an
+  acknowledged flag that collapses the card) and **Remove file**. The
+  **Process first N pages** / **Choose page range** buttons are shown **disabled**
+  with a "coming later" note whenever the endpoint lists them in `allowed_actions`
+  — the real page-range flow is Slice 3. `split_automatically` is never surfaced
+  (the endpoint never emits it).
+- **Blocked gate** (task item 8): `validateInputs` refuses to generate while any
+  attached PDF's verdict is `blocked` (corrupt/encrypted), instructing the user to
+  remove/replace it. `warn`/`ok` never block; a preflight **failure** never blocks.
+  Builder state and selections are preserved on warn/fail (task items 10–11).
+
+**Verification:** `npm --prefix frontend run build` OK; `python -m compileall api
+pipeline` OK; `docker compose config`/`build`/`up` OK (no secret output pasted);
+`/api/health` `{"ok":true}`, `/api/options` unchanged; backend contract re-confirmed
+`test_scripts/test_pdf_preflight.py` **24/24**; release smoke **28/28**; live curl
+non-PDF → `400`, text PDF → `ok`/`text`/`[continue]`. The repo has no JS test
+runner (only an asset-verify script); adding vitest/jsdom is out-of-scope
+dependency work, so the UI's contract is covered by the existing backend test plus
+a manual browser pass.
+
+**Still deferred (unchanged from §9/§11):** page-range flow into `_extract_pdf`
+(Slice 3, `pages=` filter) and automatic split/chunk processing + hybrid OCR dedup
+(Slice 4+). The "first N" / "page range" buttons remain inert affordances until
+Slice 3 builds the real selection plumbing.
 
 ---
 

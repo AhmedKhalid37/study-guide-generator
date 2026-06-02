@@ -373,6 +373,21 @@ export function createLlmJob(payload) {
   });
 }
 
+// Read-only large-PDF preflight (see docs/LARGE_PDF_PREFLIGHT_DESIGN.md). Posts
+// a single PDF as multipart and returns the inspection report
+// ({ verdict: "ok"|"warn"|"blocked", warnings[], allowed_actions[], page_count,
+// file_size_mb, scanned_flag, ... }). Creates no job and persists nothing. A
+// non-PDF / oversize file rejects via requestJson with the server's `detail`;
+// callers treat any failure as a soft warning and do NOT block generation.
+export function preflightPdf(file) {
+  const formData = new FormData();
+  formData.append("file", file);
+  return requestJson("/api/preflight/pdf", {
+    method: "POST",
+    body: formData
+  });
+}
+
 export function getJobVersions(jobId) {
   return requestJson(`/api/jobs/${encodeURIComponent(jobId)}/versions`);
 }

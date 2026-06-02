@@ -44,6 +44,7 @@ import {
   getOptions,
   getPresets,
   getStyles,
+  preflightPdf,
   previewApiUrl
 } from "../api/client";
 import {
@@ -255,6 +256,12 @@ export default function BuilderWorkspace({
   const [qwenThinking, setQwenThinking] = useState(true);
   const [strictMath, setStrictMath] = useState(true);
   const [attachments, setAttachments] = useState([]);
+  // Per-PDF preflight inspection results, keyed by a stable file signature (see
+  // attachmentKey). Lives alongside the selected files only — never persisted to
+  // a job. Drives the warning UI in AttachmentsPicker and the "blocked" gate in
+  // validateInputs. Shape per entry: { status: "checking"|"done"|"error",
+  // report?, error? }.
+  const [attachmentPreflights, setAttachmentPreflights] = useState({});
   const [folderId, setFolderId] = useState("unfiled");
   const [folders, setFolders] = useState([]);
   const [styleOptions, setStyleOptions] = useState(styleChips);
@@ -969,6 +976,12 @@ export default function BuilderWorkspace({
       if (!model) {
         return "No model selected.";
       }
+      const blocked = attachments.find(
+        (item) => attachmentPreflights[attachmentKey(item)]?.report?.verdict === "blocked"
+      );
+      if (blocked) {
+        return `Remove "${blocked.name}" — it can't be read (corrupt or encrypted) and must be replaced before generating.`;
+      }
     }
     return "";
   }
@@ -1119,6 +1132,8 @@ export default function BuilderWorkspace({
               setStrictMath={setStrictMath}
               attachments={attachments}
               setAttachments={setAttachments}
+              attachmentPreflights={attachmentPreflights}
+              setAttachmentPreflights={setAttachmentPreflights}
               folders={folders}
               folderId={folderId}
               setFolderId={setFolderId}
@@ -1469,6 +1484,8 @@ function BuilderComposer({
   setStrictMath,
   attachments,
   setAttachments,
+  attachmentPreflights,
+  setAttachmentPreflights,
   folders,
   folderId,
   setFolderId,
@@ -1558,7 +1575,12 @@ function BuilderComposer({
           {selectedProvider?.supports_thinking && (
             <Toggle label="Qwen thinking mode" checked={qwenThinking} onChange={setQwenThinking} />
           )}
-          <AttachmentsPicker attachments={attachments} setAttachments={setAttachments} />
+          <AttachmentsPicker
+            attachments={attachments}
+            setAttachments={setAttachments}
+            attachmentPreflights={attachmentPreflights}
+            setAttachmentPreflights={setAttachmentPreflights}
+          />
           <Toggle label="Strict math" checked={strictMath} onChange={setStrictMath} tip={TOOLTIPS.strictMath} />
         </div>
       )}
@@ -2313,15 +2335,77 @@ function SourceEditor({ source, text, setText, file, setFile, setError }) {
   );
 }
 
-function AttachmentsPicker({ attachments, setAttachments }) {
+// Stable per-file signature for the preflight result map. Two adds of the same
+// underlying file collapse to the same key; close enough for the picker.
+function attachmentKey(file) {
+  return `${file.name}-${file.size}-${file.lastModified ?? 0}`;
+}
+
+function isPdfFile(file) {
+  return (file?.name || "").toLowerCase().endsWith(".pdf");
+}
+
+const SCANNED_FLAG_LABEL = {
+  text: "text PDF",
+  mixed: "mixed text + scanned",
+  image_heavy: "image-heavy / scanned"
+};
+
+function AttachmentsPicker({
+  attachments,
+  setAttachments,
+  attachmentPreflights = {},
+  setAttachmentPreflights
+}) {
+  // Read-only preflight (see docs/LARGE_PDF_PREFLIGHT_DESIGN.md, Slice 2). Runs
+  // per added PDF; the result is stored beside the selected file only and never
+  // sent to a job yet. A failure degrades to a soft warning — it never blocks
+  // generation (only a "blocked" verdict does, gated in validateInputs).
+  function runPreflight(file) {
+    const key = attachmentKey(file);
+    setAttachmentPreflights?.((current) => ({ ...current, [key]: { status: "checking" } }));
+    preflightPdf(file)
+      .then((report) => {
+        setAttachmentPreflights?.((current) => ({ ...current, [key]: { status: "done", report } }));
+      })
+      .catch(() => {
+        setAttachmentPreflights?.((current) => ({ ...current, [key]: { status: "error" } }));
+      });
+  }
+
   function addFiles(fileList) {
-    const nextFiles = Array.from(fileList || []);
-    if (nextFiles.length === 0) return;
-    setAttachments((current) => [...current, ...nextFiles].slice(0, 5));
+    const incoming = Array.from(fileList || []);
+    if (incoming.length === 0) return;
+    const room = Math.max(0, 5 - attachments.length);
+    const added = incoming.slice(0, room);
+    if (added.length === 0) return;
+    setAttachments((current) => [...current, ...added].slice(0, 5));
+    added.forEach((file) => {
+      if (isPdfFile(file)) runPreflight(file);
+    });
   }
 
   function removeFile(index) {
+    const target = attachments[index];
     setAttachments((current) => current.filter((_, fileIndex) => fileIndex !== index));
+    if (target && setAttachmentPreflights) {
+      const key = attachmentKey(target);
+      setAttachmentPreflights((current) => {
+        if (!(key in current)) return current;
+        const next = { ...current };
+        delete next[key];
+        return next;
+      });
+    }
+  }
+
+  function acknowledge(file) {
+    const key = attachmentKey(file);
+    setAttachmentPreflights?.((current) => {
+      const entry = current[key];
+      if (!entry) return current;
+      return { ...current, [key]: { ...entry, acknowledged: true } };
+    });
   }
 
   return (
@@ -2349,24 +2433,170 @@ function AttachmentsPicker({ attachments, setAttachments }) {
       {attachments.length > 0 && (
         <div className="mt-2 grid gap-1.5">
           {attachments.map((file, index) => (
-            <div
-              key={`${file.name}-${file.size}-${index}`}
-              className="flex items-center gap-2 rounded-[9px] border border-white/[0.06] bg-white/[0.03] px-2.5 py-2 text-[12px]"
-            >
-              <FileText className="h-3.5 w-3.5 text-[#F97316]" />
-              <span className="min-w-0 flex-1 truncate text-[#D4D4D8]">{file.name}</span>
-              <span className="text-[10.5px] text-[#9098A8]">{formatFileSize(file.size)}</span>
-              <button
-                type="button"
-                onClick={() => removeFile(index)}
-                className="rounded-md border border-white/[0.08] px-2 py-1 text-[10.5px] font-semibold text-[#9098A8] transition hover:text-[#F4F4F5]"
-              >
-                Remove
-              </button>
+            <div key={`${file.name}-${file.size}-${index}`}>
+              <div className="flex items-center gap-2 rounded-[9px] border border-white/[0.06] bg-white/[0.03] px-2.5 py-2 text-[12px]">
+                <FileText className="h-3.5 w-3.5 text-[#F97316]" />
+                <span className="min-w-0 flex-1 truncate text-[#D4D4D8]">{file.name}</span>
+                <span className="text-[10.5px] text-[#9098A8]">{formatFileSize(file.size)}</span>
+                <button
+                  type="button"
+                  onClick={() => removeFile(index)}
+                  className="rounded-md border border-white/[0.08] px-2 py-1 text-[10.5px] font-semibold text-[#9098A8] transition hover:text-[#F4F4F5]"
+                >
+                  Remove
+                </button>
+              </div>
+              {isPdfFile(file) && (
+                <PreflightCard
+                  entry={attachmentPreflights[attachmentKey(file)]}
+                  onRemove={() => removeFile(index)}
+                  onAcknowledge={() => acknowledge(file)}
+                />
+              )}
             </div>
           ))}
         </div>
       )}
+    </div>
+  );
+}
+
+// Compact warning surface for a single PDF's preflight result. Stays quiet for
+// ordinary (verdict "ok", no warnings) PDFs; shows an amber card for "warn" and
+// a red, non-dismissable card for "blocked". Page-range actions are rendered as
+// disabled "coming later" affordances (Slice 3 builds the real flow).
+function PreflightCard({ entry, onRemove, onAcknowledge }) {
+  if (!entry) return null;
+
+  if (entry.status === "checking") {
+    return (
+      <div className="mt-1.5 flex items-center gap-2 rounded-[9px] border border-white/[0.06] bg-white/[0.02] px-2.5 py-1.5 text-[11px] text-[#9098A8]">
+        <Loader2 className="h-3 w-3 animate-spin" />
+        Inspecting PDF…
+      </div>
+    );
+  }
+
+  if (entry.status === "error") {
+    return (
+      <div className="mt-1.5 flex items-start gap-2 rounded-[9px] border border-[rgba(252,211,77,0.25)] bg-[rgba(252,211,77,0.06)] px-2.5 py-1.5 text-[11px] text-[#FCD34D]">
+        <AlertTriangle className="mt-0.5 h-3 w-3 shrink-0" />
+        <span>Could not inspect this PDF; it will be processed normally.</span>
+      </div>
+    );
+  }
+
+  const report = entry.report || {};
+  const verdict = report.verdict || "ok";
+  const warnings = report.warnings || [];
+  const hasIssue = verdict === "warn" || verdict === "blocked" || warnings.length > 0;
+  if (!hasIssue) {
+    // Ordinary PDF — stay quiet per the design (zero noise for the common case).
+    return null;
+  }
+
+  const blocked = verdict === "blocked";
+
+  // A dismissed warning collapses to a quiet confirmation. "blocked" can never be
+  // dismissed — it must be removed/replaced (generation is gated separately).
+  if (entry.acknowledged && !blocked) {
+    return (
+      <div className="mt-1.5 flex items-center gap-2 rounded-[9px] border border-white/[0.06] bg-white/[0.02] px-2.5 py-1.5 text-[11px] text-[#9098A8]">
+        <Check className="h-3 w-3 text-[#34D399]" />
+        Continuing with this PDF despite the warning.
+      </div>
+    );
+  }
+
+  const allowed = report.allowed_actions || [];
+  const showFirstN = allowed.includes("process_first_n");
+  const showRange = allowed.includes("choose_page_range");
+
+  const facts = [];
+  if (report.file_size_mb) facts.push(`${report.file_size_mb} MB`);
+  if (report.page_count) facts.push(`${report.page_count} pages`);
+  if (report.scanned_flag && report.scanned_flag !== "unknown") {
+    facts.push(SCANNED_FLAG_LABEL[report.scanned_flag] || report.scanned_flag);
+  }
+  if (report.is_estimate && report.ocr_pages_estimate) {
+    facts.push(`~${report.ocr_pages_estimate} OCR pages (est.)`);
+  }
+
+  const recommended = blocked
+    ? "Remove it or upload an unlocked, repaired copy."
+    : showFirstN || showRange
+      ? `Recommended: process the first ${report.limits?.default_first_n ?? 20} pages or choose a page range. Page-range processing will be added in a later slice.`
+      : "";
+
+  const tone = blocked
+    ? "border-[rgba(248,113,113,0.3)] bg-[rgba(248,113,113,0.07)]"
+    : "border-[rgba(252,211,77,0.28)] bg-[rgba(252,211,77,0.06)]";
+  const Icon = blocked ? AlertCircle : AlertTriangle;
+  const iconColor = blocked ? "text-[#FCA5A5]" : "text-[#FCD34D]";
+
+  return (
+    <div className={`mt-1.5 rounded-[9px] border px-2.5 py-2 text-[11.5px] ${tone}`}>
+      <div className="flex items-start gap-2">
+        <Icon className={`mt-0.5 h-3.5 w-3.5 shrink-0 ${iconColor}`} />
+        <div className="min-w-0 flex-1">
+          <p className="font-semibold text-[#F4F4F5]">
+            {blocked ? "This PDF can't be processed" : "Heads up before you generate"}
+          </p>
+          {facts.length > 0 && (
+            <p className="mt-0.5 text-[10.5px] text-[#9098A8]">{facts.join(" · ")}</p>
+          )}
+          {warnings.length > 0 && (
+            <ul className="mt-1 space-y-0.5 text-[#D4D4D8]">
+              {warnings.map((message, idx) => (
+                <li key={idx} className="leading-[1.35]">• {message}</li>
+              ))}
+            </ul>
+          )}
+          {recommended && <p className="mt-1 text-[10.5px] text-[#9098A8]">{recommended}</p>}
+
+          <div className="mt-2 flex flex-wrap items-center gap-1.5">
+            {!blocked && (
+              <button
+                type="button"
+                onClick={onAcknowledge}
+                className="rounded-md border border-white/[0.1] bg-white/[0.04] px-2 py-1 text-[10.5px] font-semibold text-[#F4F4F5] transition hover:border-[rgba(249,115,22,0.35)]"
+              >
+                Continue anyway
+              </button>
+            )}
+            <button
+              type="button"
+              onClick={onRemove}
+              className="rounded-md border border-white/[0.1] px-2 py-1 text-[10.5px] font-semibold text-[#9098A8] transition hover:text-[#F4F4F5]"
+            >
+              Remove file
+            </button>
+            {showFirstN && (
+              <button
+                type="button"
+                disabled
+                title="Page-range processing arrives in a later slice."
+                className="cursor-not-allowed rounded-md border border-white/[0.06] px-2 py-1 text-[10.5px] font-semibold text-[#6B7280] opacity-60"
+              >
+                Process first N pages
+              </button>
+            )}
+            {showRange && (
+              <button
+                type="button"
+                disabled
+                title="Page-range processing arrives in a later slice."
+                className="cursor-not-allowed rounded-md border border-white/[0.06] px-2 py-1 text-[10.5px] font-semibold text-[#6B7280] opacity-60"
+              >
+                Choose page range
+              </button>
+            )}
+            {(showFirstN || showRange) && (
+              <span className="text-[10px] text-[#6B7280]">coming later</span>
+            )}
+          </div>
+        </div>
+      </div>
     </div>
   );
 }
