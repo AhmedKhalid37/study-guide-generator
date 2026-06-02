@@ -7,8 +7,8 @@
 
 ## Where we are
 
-- **Branch:** `builder-options-ui`
-- **Last commit:** `7af9cbd` — Expose output sections and axes in Builder
+- **Branch:** `preset-metadata`
+- **Last commit:** `3820c0c` — Expose generator preset display metadata (C4a)
 - **Main branch (PR target):** `chrome-renderer-v1`
 
 ## DONE (in order)
@@ -215,6 +215,42 @@
       (`InfoTip`/`FieldLabel tip`). DOM presence + wiring are proven; pixel
       layout is not.
 
+16. **Slice C4a — generator preset display metadata + `model_hint` exposure
+    (BACKEND ONLY)** — `3820c0c` (branch `preset-metadata`). Added three
+    **display-only** descriptive fields to the canonical generator-preset registry
+    (`_PRESET_DEFS` in `pipeline/generator_presets.py`) ahead of the preset-card UI:
+    `purpose` (short purpose label), `recommended_use` (one-line "best with …"
+    guidance), and `model` (clean model-name string for an icon/model chip, distinct
+    from the longer prose `model_hint`). All exposed through the **existing**
+    `_public()` → `list_generator_presets()` → `/api/options.generator_presets` path —
+    **no new endpoint, no schema migration**. `name`/`description`/`provider`/
+    `model_hint` already existed and were already exposed; this slice only **added the
+    three missing fields**.
+    - **`model_hint` exposed as a SOFT advisory only.** Unchanged semantics: the preset
+      path only **soft-warns** on a provider mismatch (`generator_preset_warning`) and
+      never blocks; the user can still pick any provider+model. C4a adds **no**
+      enforcement and **no** hard pin.
+    - **Display-only proof (source + grep):** `purpose`/`recommended_use`/`model` appear
+      **only** in the registry defs and `_public`, nowhere in `orchestrator.py`/
+      `run_llm_job.py`/the `/api/jobs/llm` handler. Generation still reads only `block`
+      (→ system prompt), the sampling params, and `provider`/`model_hint`/`name` (warning
+      text). `_public` reads the new fields via `.get()` so a preset omitting one
+      serializes it as `None` instead of raising. Existing preset ids unchanged.
+    - **Verified in Docker** (uid 10001/appuser, healthy): `python -m compileall`,
+      `docker compose config/build/up`; `/api/options` shows all three presets carrying
+      `purpose`/`description`/`recommended_use`/`model`/`model_hint`/`provider`; a
+      full-payload secret scan (`sk-`/`api_key`/`secret`/…) found **no** leak. A live
+      `claude_review` generation on DeepSeek completed `done` (no mismatch warning — it
+      ran on its tuned provider) and the job manifest recorded `generator_preset:
+      claude_review` unchanged, with **none** of the new display fields in the manifest.
+      Release smoke **27/28 then 28/28** — the only failure was the **known flaky
+      outline-ordering check**, which passed on rerun (pre-existing, depends on LLM
+      output order, unrelated to this backend metadata change).
+    - **Frontend preset cards / icons / compatibility warning deferred to C4b.** Do not
+      hardcode card data in the frontend — it must consume this backend metadata.
+    - Also added the permanent `DECISIONS.md` rule: any future `/api/jobs/llm` request
+      field must be wired into **both** the JSON and multipart paths and verified in both.
+
 ## NEXT (in order)
 
 3. **Library bulk actions — remaining follow-ups (deferred, not this slice).**
@@ -242,10 +278,14 @@
   and multipart/attachment transports). The backend bridge (`cc75292`) feeds the
   load path; legacy `modules` still translate to canonical `include_sections` on
   read/export. No longer open.
-- **Preset/shortcut cards, icons, compatibility warnings** — richer Home/Builder
-  surfacing of preset & shortcut metadata (cards/iconography, "references
-  unavailable …" compatibility warnings already computed by the store's `valid`/
-  `reason`) is not yet built into the UI.
+- **Preset/shortcut cards, icons, compatibility warnings (C4b)** — richer
+  Home/Builder surfacing of preset & shortcut metadata (cards/iconography,
+  "references unavailable …" compatibility warnings already computed by the store's
+  `valid`/`reason`) is not yet built into the UI. **The backend metadata the preset
+  cards need is now exposed (C4a, `3820c0c`):** each generator preset in
+  `/api/options.generator_presets` carries `name`/`purpose`/`description`/
+  `recommended_use`/`model`/`model_hint`/`provider`. C4b should consume that — do
+  **not** hardcode card data in the frontend.
 - **Shortcut inspector / repair loop** — a later UX for inspecting an invalid
   shortcut and repairing its broken references (provider/preset/style) is not
   started.

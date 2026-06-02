@@ -207,3 +207,42 @@ read as plain form text (unset → `None`) and `include_sections` is parsed from
 string (bad/non-dict JSON falls back to the default `{}`, never a 500). **Lesson:** any
 field added to `LLMJobRequest` must be wired into the multipart branch too — the two
 transports do not share parsing.
+
+## Generator preset display metadata is additive + display-only (C4a)
+The three generator presets (`claude_exam`/`claude_review`/`claude_cram`) live in
+`_PRESET_DEFS` in `pipeline/generator_presets.py` — that registry is the **canonical
+source** for both their generation params and their descriptive metadata. C4a added
+three **display-only** descriptive fields ahead of the preset-card UI (C4b): `purpose`
+(short purpose label), `recommended_use` (one-line "best with …" guidance), and `model`
+(a clean model-name string for an icon/model chip, distinct from the longer prose
+`model_hint`). They are exposed through the **existing** `_public()` → `list_generator_presets()`
+→ `/api/options.generator_presets` path — no new endpoint. **Why these are safe:** none
+of the new fields are read by any resolution path. Generation reads only `block` (→ system
+prompt via `resolve_system_prompt`), the sampling params (`temperature`/`top_p`/
+`max_tokens`/`thinking`), and `provider`/`model_hint`/`name` (for the soft mismatch
+warning text only). Verified by grep: `purpose`/`recommended_use`/`model` appear **only**
+in the registry defs and `_public`, nowhere in `orchestrator.py`/`run_llm_job.py`/the
+`/api/jobs/llm` handler. A live `claude_review` generation completed `done` and the job
+manifest recorded `generator_preset: claude_review` unchanged, with **no** display field
+leaking into the manifest. **`model_hint` stays a soft advisory — not a hard pin.** Per the
+existing "Soft `model_hint`, not a hard pin" decision, the preset path only **soft-warns**
+on a provider mismatch (`generator_preset_warning`) and never blocks; the user's actual
+provider+model selection still wins. C4a does not change that — it adds no enforcement.
+**Safe serialization:** `_public` reads the new fields via `.get()`, so a preset that omits
+an optional descriptive field serializes it as `None` rather than raising. Existing preset
+ids are unchanged. The **frontend preset cards / compatibility warning are deferred to C4b**;
+do not hardcode card data in the frontend — it must consume this backend metadata.
+
+## `/api/jobs/llm` has two request-construction paths — wire + verify BOTH (permanent rule)
+`/api/jobs/llm` accepts two transports and they **do not share request parsing**: a JSON
+body (no attachments, parsed for free by the `LLMJobRequest` Pydantic model) and a
+multipart/form-data body (with attachments, hand-built field-by-field in
+`_parse_llm_request`). **Permanent rule:** any future request field added to `LLMJobRequest`
+must be (a) wired into the multipart `_parse_llm_request` branch as well, and (b) verified
+in **both** paths by tests/smoke — a build/compile check and a no-attachment smoke run will
+**not** catch a field dropped only on the multipart side. This rule exists because C3 found
+the multipart path silently dropped `include_sections`, `output_depth`, and `difficulty`
+(they applied on the JSON path but vanished whenever a generation had an attachment); see
+"The multipart `/api/jobs/llm` parser dropped generation options (C3 fix)" above. C4a adds
+no `LLMJobRequest` field, so it does not exercise this rule, but it codifies it so future
+slices do.
