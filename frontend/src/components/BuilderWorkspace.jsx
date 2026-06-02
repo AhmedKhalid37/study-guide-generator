@@ -58,7 +58,7 @@ import {
   SECTION_GROUPS
 } from "../sectionMeta";
 import { FOLDER_PRESET_COLORS } from "../folderMeta";
-import { presetCompat, providerIconFor, providerLabelFor } from "../presetMeta";
+import { presetCompat, presetModelLabel, providerIconFor, providerLabelFor } from "../presetMeta";
 import {
   BoltGlyph,
   DocGlyph,
@@ -1876,17 +1876,21 @@ function PreviewWorkspacePanel({ result, artifacts, artifactUrls, previewFormat,
   );
 }
 
-// Small provider logo chip. Uses a local SVG when one ships for the provider,
-// otherwise a styled text badge. Logos render on a light chip so near-black marks
-// (Qwen / Local) stay visible against the dark UI. A missing/broken icon never
-// blocks the card — `onError` swaps to nothing and the badge sibling stays.
-function ProviderBadge({ provider }) {
+// Provider logo chip. Uses a local SVG when one ships for the provider, otherwise
+// a styled text badge. Logos render on a light chip so near-black marks (Qwen /
+// Local) stay visible against the dark UI. A missing/broken icon never blocks the
+// card — `onError` hides the img and the chip background stays. `size="lg"` is the
+// prominent card identity icon; the default stays compact for any inline use.
+function ProviderBadge({ provider, size = "sm" }) {
   const icon = providerIconFor(provider);
   const label = providerLabelFor(provider);
+  const lg = size === "lg";
   if (icon) {
     return (
       <span
-        className="inline-flex h-6 w-6 shrink-0 items-center justify-center overflow-hidden rounded-md bg-white p-[3px] ring-1 ring-white/20"
+        className={`inline-flex shrink-0 items-center justify-center overflow-hidden bg-white ring-1 ring-white/20 ${
+          lg ? "h-12 w-12 rounded-xl p-2" : "h-6 w-6 rounded-md p-[3px]"
+        }`}
         title={label}
       >
         <img
@@ -1902,7 +1906,11 @@ function ProviderBadge({ provider }) {
     );
   }
   return (
-    <span className="inline-flex h-6 shrink-0 items-center rounded-md bg-white/[0.08] px-2 text-[10px] font-bold uppercase tracking-[0.06em] text-[#D4D4D8] ring-1 ring-white/10">
+    <span
+      className={`inline-flex shrink-0 items-center justify-center bg-white/[0.08] font-bold uppercase tracking-[0.06em] text-[#D4D4D8] ring-1 ring-white/10 ${
+        lg ? "h-12 min-w-12 rounded-xl px-2.5 text-[11px]" : "h-6 rounded-md px-2 text-[10px]"
+      }`}
+    >
       {label}
     </span>
   );
@@ -1916,10 +1924,14 @@ const fmtPresetParams = (params = {}) => {
   return parts.join(" · ");
 };
 
-// One generator-preset card. Pure display of backend metadata; selecting it sets
-// the same `generatorPreset` id the old chip selector did.
+// One generator-preset card (C4d: compact, scan-first). A large provider icon +
+// bold model name form the identity ("Gemma 4 → Claude-Exam"); the preset name
+// sits directly under it and `purpose` is the single one-line subtitle. The dense
+// description / "Best for" blocks were removed. Still pure display of backend
+// metadata; selecting it sets the same `generatorPreset` id as before.
 function GeneratorPresetCard({ preset, selected, onSelect }) {
   const available = preset.available !== false;
+  const modelLabel = presetModelLabel(preset);
   return (
     <button
       type="button"
@@ -1927,41 +1939,33 @@ function GeneratorPresetCard({ preset, selected, onSelect }) {
       aria-pressed={selected}
       onClick={() => onSelect?.(preset.id)}
       title={available ? undefined : "This preset's prompt could not be loaded."}
-      className={`flex flex-col gap-2 rounded-xl border p-3 text-left transition disabled:cursor-not-allowed disabled:opacity-40 ${
+      className={`flex flex-col gap-2.5 rounded-xl border p-3 text-left transition disabled:cursor-not-allowed disabled:opacity-40 ${
         selected
           ? "border-[rgba(249,115,22,0.5)] bg-[rgba(249,115,22,0.08)] ring-1 ring-[rgba(249,115,22,0.35)]"
           : "border-white/[0.08] bg-[#070B14] hover:border-white/20"
       }`}
     >
-      <div className="flex items-center gap-2">
-        <ProviderBadge provider={preset.provider} />
-        {preset.model && (
-          <span className="truncate rounded-md bg-white/[0.06] px-2 py-0.5 text-[11px] font-semibold text-[#D4D4D8]">
-            {preset.model}
-          </span>
-        )}
+      <div className="flex items-center gap-3">
+        <ProviderBadge provider={preset.provider} size="lg" />
+        <div className="min-w-0 flex-1">
+          {modelLabel && (
+            <div className="truncate text-[13.5px] font-bold leading-tight text-[#F4F4F5]" title={modelLabel}>
+              {modelLabel}
+            </div>
+          )}
+          <div className="mt-0.5 truncate text-[12px] font-semibold leading-tight text-[#F8B57E]">
+            {preset.name}
+          </div>
+        </div>
         {!available && (
-          <span className="rounded-md bg-white/[0.06] px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.06em] text-[#9098A8]">
+          <span className="shrink-0 rounded-md bg-white/[0.06] px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.06em] text-[#9098A8]">
             Unavailable
           </span>
         )}
-        <span className="flex-1" />
         {selected && <Check className="h-4 w-4 shrink-0 text-[#F97316]" />}
       </div>
-      <div>
-        <div className="text-[13px] font-semibold text-[#F4F4F5]">{preset.name}</div>
-        {preset.purpose && (
-          <div className="mt-0.5 text-[11.5px] font-medium text-[#F8B57E]">{preset.purpose}</div>
-        )}
-      </div>
-      {preset.description && (
-        <p className="text-[11.5px] leading-4 text-[#9098A8]">{preset.description}</p>
-      )}
-      {preset.recommended_use && (
-        <p className="text-[11px] leading-4 text-[#7C8294]">
-          <span className="font-semibold text-[#9098A8]">Best for: </span>
-          {preset.recommended_use}
-        </p>
+      {preset.purpose && (
+        <p className="text-[11.5px] leading-4 text-[#9098A8]">{preset.purpose}</p>
       )}
     </button>
   );

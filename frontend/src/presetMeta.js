@@ -63,6 +63,31 @@ export function normalizeModelToken(value) {
     .replace(/[^a-z0-9]/g, "");
 }
 
+// Compatibility families (C4d): a preset tuned for one member is treated as
+// compatible with every member of the same family, so the advisory warning is
+// suppressed for any member. Deliberately conservative and explicit — currently
+// only the Qwen 3.7 Max/Plus pair. Do NOT broaden to unrelated Qwen models.
+// Tokens are `normalizeModelToken` forms.
+const COMPAT_FAMILIES = [["qwen37max", "qwen37plus"]];
+
+// True when both values normalise into the same explicit compatibility family.
+function sameCompatFamily(a, b) {
+  const ta = normalizeModelToken(a);
+  const tb = normalizeModelToken(b);
+  if (!ta || !tb) return false;
+  return COMPAT_FAMILIES.some((fam) => fam.includes(ta) && fam.includes(tb));
+}
+
+// Short, scan-friendly model label for a preset card. For the Qwen 3.7 family the
+// single preset covers both Max and Plus, so show them together ("Qwen 3.7 Max /
+// Plus"); otherwise fall back to the backend `model` chip string verbatim.
+export function presetModelLabel(preset) {
+  if (!preset) return "";
+  const token = normalizeModelToken(preset.model);
+  if (COMPAT_FAMILIES[0].includes(token)) return "Qwen 3.7 Max / Plus";
+  return preset.model || "";
+}
+
 // Soft compatibility check for a generator preset vs the user's selected model.
 //
 // Returns `{ warn, hint }`:
@@ -86,8 +111,9 @@ export function presetCompat(preset, selectedModel) {
   const sel = normalizeModelToken(selectedModel);
   if (!sel) return { warn: false }; // unknown selection → don't warn
   const candidates = [hint, preset.model].map(normalizeModelToken).filter(Boolean);
-  const matched = candidates.some(
-    (cand) => sel === cand || sel.includes(cand) || cand.includes(sel)
-  );
+  const matched =
+    candidates.some((cand) => sel === cand || sel.includes(cand) || cand.includes(sel)) ||
+    // Same explicit compatibility family (e.g. Qwen 3.7 Max ↔ Plus) → no warning.
+    candidates.some((cand) => sameCompatFamily(cand, selectedModel));
   return { warn: !matched, hint };
 }
