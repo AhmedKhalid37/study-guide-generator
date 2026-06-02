@@ -7,8 +7,8 @@
 
 ## Where we are
 
-- **Branch:** `preset-cards-ui`
-- **Last commit:** `b3d7785` — Add generator preset cards and compatibility warning (C4b)
+- **Branch:** `qwen37-plus-model`
+- **Last commit:** `390060c` — Add Qwen 3.7 Plus model option (C4c)
 - **Main branch (PR target):** `chrome-renderer-v1`
 
 ## DONE (in order)
@@ -312,6 +312,31 @@
     - **NOT automated — needs manual click-through:** card visual layout/spacing,
       provider-icon visual quality, warning placement/legibility, tooltip hover
       behaviour, overall UX feel.
+
+18. **Slice C4c — add Qwen `qwen3.7-plus` to the model registry (REGISTRY ONLY)** —
+    `390060c` (branch `qwen37-plus-model`). Added the model id `qwen3.7-plus` to
+    `QWEN_MODELS` in `pipeline/provider_config.py` — the **single source of truth**
+    for the Qwen model list surfaced through `/api/options` (`models.Qwen` +
+    `provider_details[qwen].available_models`) and enforced by
+    `validate_provider_model` (a model must be in `QWEN_MODELS` to be accepted).
+    - **Ordering:** inserted at index 1, immediately after `qwen3.7-max`, next to the
+      other 3.7-family model. **Default unchanged** — the Qwen default is
+      `os.getenv("QWEN_MODEL") or os.getenv("LLM_MODEL") or QWEN_MODELS[0]`, and
+      `qwen3.7-max` is still `QWEN_MODELS[0]`, so `default_model` stays `qwen3.7-max`.
+      `qwen3.7-max` was not replaced; all six existing Qwen ids remain.
+    - **Scope:** registry list only — no Builder UI, preset cards, prompt assembly,
+      shortcut store, provider-settings architecture, Local Model Manager, or
+      generation-pipeline behaviour changed (beyond now accepting this model id). The
+      Builder's static `fallbackProviderDetails` Qwen list (a pre-`/api/options`
+      placeholder) was intentionally left untouched — the real, authoritative list
+      comes from `/api/options` and now includes `qwen3.7-plus`.
+    - **Verified in Docker** (uid 10001/appuser, healthy): `compileall` OK; `compose
+      config/build/up` OK; `/api/options` shows `qwen3.7-plus` in `models.Qwen` and
+      `provider_details[qwen].available_models` (position 2), `default_model` still
+      `qwen3.7-max`, all existing Qwen models present; full-payload secret scan clean.
+      **Live generation verified:** a real `provider=qwen` + `model=qwen3.7-plus`
+      generation completed `done` (manifest recorded `model: qwen3.7-plus`, 2716-byte
+      `clean.md` with genuine study-guide content) — not just options exposure.
 
 ## NEXT (in order)
 
