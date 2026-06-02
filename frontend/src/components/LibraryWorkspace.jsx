@@ -26,6 +26,7 @@ import {
   bulkRestoreJobs,
   createFolder,
   deleteFolder,
+  downloadExportBundle,
   emptyTrash,
   getJob,
   getLibrary,
@@ -94,6 +95,8 @@ export default function LibraryWorkspace({ refreshKey = 0, onOpenBuilder, initia
   const [folderError, setFolderError] = useState(null);
 
   const [selectedIds, setSelectedIds] = useState(() => new Set());
+  // True while a bulk "Export selected" ZIP bundle is being built/downloaded.
+  const [exporting, setExporting] = useState(false);
   // Folder multi-select (rail) — React state only, never persisted.
   const [selectedFolderIds, setSelectedFolderIds] = useState(() => new Set());
   // Trash multi-select — React state only.
@@ -398,6 +401,31 @@ export default function LibraryWorkspace({ refreshKey = 0, onOpenBuilder, initia
     },
     [selectedIds, folderMap, reload]
   );
+
+  // Bulk export selected active guides as a ZIP via the existing
+  // POST /api/exports/bundle (the same endpoint the Exports center uses). We
+  // request the PDF artifact (the BundleRequest default); the backend silently
+  // skips any selected guide that lacks one and only 404s if NONE are available.
+  // The helper streams the ZIP straight into a browser download. Selection is
+  // preserved on both success and failure so the user can retry or refine.
+  const handleBulkExport = useCallback(async () => {
+    const ids = [...selectedIds];
+    if (ids.length === 0 || exporting) return;
+    setExporting(true);
+    setError(null);
+    try {
+      const { filename } = await downloadExportBundle(ids, ["pdf"]);
+      setToast({
+        id: Date.now(),
+        tone: "success",
+        message: `Exported ${ids.length} guide${ids.length === 1 ? "" : "s"} · ${filename}`
+      });
+    } catch (err) {
+      setToast({ id: Date.now(), tone: "error", message: err.message || "Could not export selected guides." });
+    } finally {
+      setExporting(false);
+    }
+  }, [selectedIds, exporting]);
 
   // Bulk soft-delete via /api/jobs/bulk/delete. Routes through the trash (B1);
   // `ok` ids were trashed by THIS action and are the ones Undo restores;
@@ -738,6 +766,8 @@ export default function LibraryWorkspace({ refreshKey = 0, onOpenBuilder, initia
             folders={moveTargets.filter((folder) => folder.id !== "unfiled")}
             onMove={handleBatchMove}
             onUnfile={() => handleBatchMove("unfiled")}
+            onExport={handleBulkExport}
+            exporting={exporting}
             onDelete={() => setConfirm({ kind: "bulkTrash", count: selectedIds.size, ids: [...selectedIds] })}
             onClear={clearSelection}
           />
@@ -1460,7 +1490,7 @@ function TrashCard({ job, style, selected, onToggleSelect, onRestore, onDeleteFo
   );
 }
 
-function BulkBar({ count, folders, onMove, onUnfile, onDelete, onClear }) {
+function BulkBar({ count, folders, onMove, onUnfile, onExport, exporting, onDelete, onClear }) {
   return (
     <div className="mt-3 flex flex-wrap items-center gap-2 rounded-lg border border-ember-500/40 bg-ember-500/[0.08] px-3 py-2">
       <span className="text-sm font-bold text-white">{count} selected</span>
@@ -1472,6 +1502,15 @@ function BulkBar({ count, folders, onMove, onUnfile, onDelete, onClear }) {
           className="inline-flex h-8 items-center gap-1 rounded-lg border border-white/10 bg-white/[0.04] px-2.5 text-xs font-bold text-slate-200 transition hover:border-ember-500/60 hover:text-white"
         >
           <FolderClosed size={13} /> Move to Unfiled
+        </button>
+        <button
+          type="button"
+          onClick={onExport}
+          disabled={exporting || count === 0}
+          className="inline-flex h-8 items-center gap-1 rounded-lg border border-white/10 bg-white/[0.04] px-2.5 text-xs font-bold text-slate-200 transition hover:border-ember-500/60 hover:text-white disabled:cursor-not-allowed disabled:opacity-50"
+        >
+          {exporting ? <Loader2 size={13} className="animate-spin" /> : <Download size={13} />}
+          {exporting ? "Exporting…" : "Export selected"}
         </button>
         <button
           type="button"

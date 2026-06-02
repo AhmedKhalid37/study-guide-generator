@@ -479,33 +479,45 @@ parked on the `hardening` branch — not merged, not deleted.
       right, whether the cards are visually balanced, whether the reduced text feels
       appropriate, and whether the one-line `purpose` subtitles read well.
 
+21. **Slice B4 — "Export selected" in the Library bulk bar (FRONTEND ONLY)** —
+    branch `library-export-selected`. The Library multi-select bulk toolbar
+    (`BulkBar`) gained an **"Export selected"** action between *Move to Unfiled*
+    and *Delete*. It reuses the existing `downloadExportBundle` client helper →
+    `POST /api/exports/bundle` (the **same** endpoint/contract the Exports center
+    uses); **no new export primitive and no backend change**. It sends the
+    currently selected **active** Library job ids with `artifacts: ["pdf"]` (the
+    `BundleRequest` default); the backend silently skips any selected guide
+    lacking a PDF and only 404s if NONE are available. The helper streams the ZIP
+    straight into a browser download (same pattern as Exports), so the result is
+    surfaced the existing way. New `exporting` state disables the button while a
+    bundle is building and when nothing is selected; the button shows a spinner +
+    "Exporting…". Success/failure are reported through the existing **toast**
+    convention (success names the downloaded filename); **selection is preserved
+    on both success and failure** (never cleared on a failed export). Existing
+    Move / Move-to-Unfiled / Delete (and Trash Restore/Purge) behavior is
+    untouched. Trash exports were **not** added (out of scope). Verified in
+    Docker: frontend build OK; `python -m compileall api pipeline` OK; `compose
+    config/build/up` OK; `/api/health` ok; `/api/options` unchanged; release smoke
+    **28/28**. Focused call-path check (no frontend test runner exists in-repo):
+    posting the exact button payload (`{job_ids: <2 active ids>, artifacts:
+    ["pdf"]}`) returns a `200 application/zip` with `Content-Disposition:
+    attachment`, both guides' `final.pdf`, and `manifest.json`.
+
 ## NEXT (in order)
 
-1. **RECOMMENDED NEXT SLICE — fix rerender dropping `generator_preset` (BACKEND).**
-   `retry_failed_job` (`api/server.py`) rebuilds a job from its manifest and now
-   reproduces `include_sections` + the C2 axes, but it does **not** pass
-   `generator_preset`, so a preset-built job re-renders through the **default** prompt
-   path (losing the preset system prompt + tuned sampling params). Well-scoped,
-   backend-only, isolated to `retry_failed_job`; verify with Docker smoke + a manifest
-   check (preset survives rerender). **Branch from `chrome-renderer-v1` @ `1d51b36`.**
-   Do not bundle with anything else.
-2. **B4 — "Export selected" in the Library bulk bar (small).** Expose an export action
-   in the multi-select bulk toolbar that reuses the existing `POST /api/exports/bundle`
-   ZIP endpoint. No new export primitive.
-3. **Library bulk actions — remaining follow-ups (deferred, not this slice).**
+1. **Library bulk actions — remaining follow-ups (deferred, not this slice).**
    - bulk **archive** — only after an archive state is designed + `DECISIONS.md`
      entry (not started; needs new metadata/state)
    - bulk **tag** — only if/after a tag model exists (not started; needs design)
-   - bulk **export** — separate follow-up. NOTE: a working ZIP-bundle export
-     already exists (`POST /api/exports/bundle`, used by the Exports center), so
-     a small **B4** slice could expose a "Export selected" action in the Library
-     bulk bar that reuses it. Kept out of B3 to avoid mixing slices.
-4. **Output modules + preset naming/icons.** Output module options plus
+   - bulk **export** — **DONE (Slice B4, branch `library-export-selected`).**
+     The "Export selected" action in the Library bulk bar reuses the existing
+     `POST /api/exports/bundle` ZIP endpoint (no new primitive). See DONE #21.
+2. **Output modules + preset naming/icons.** Output module options plus
    naming/iconography for presets.
-5. **Local Model Manager — DESIGN-FIRST.** Backend spawns/kills a host
+3. **Local Model Manager — DESIGN-FIRST.** Backend spawns/kills a host
    `llama-server`. This **crosses the container boundary** (non-root uid 10001
    container managing a host process) — design and get sign-off before coding.
-6. **In-app provider settings — DESIGN-FIRST.** Frontend writes provider config
+4. **In-app provider settings — DESIGN-FIRST.** Frontend writes provider config
    to **server-side secrets**. Keys must stay server-side only; the frontend
    must never receive raw keys. Design the secret-write path before coding.
 
