@@ -2638,6 +2638,10 @@ async def _parse_llm_request(request: Request) -> tuple[LLMJobRequest, list[Atta
             "strict_math": _form_bool(form, "strict_math", True),
             "qwen_thinking": _form_bool(form, "qwen_thinking", True),
             "folder_id": _form_text(form, "folder_id"),
+            # C2 generation axes ride along as plain form text (unset → None so the
+            # default request stays axis-free). Validated downstream like the JSON path.
+            "output_depth": _form_text(form, "output_depth") or None,
+            "difficulty": _form_text(form, "difficulty") or None,
         }
         outline_raw = _form_text(form, "outline")
         if outline_raw:
@@ -2645,6 +2649,17 @@ async def _parse_llm_request(request: Request) -> tuple[LLMJobRequest, list[Atta
                 data["outline"] = json.loads(outline_raw)
             except json.JSONDecodeError:
                 data["outline"] = None
+        # C1 output sections arrive as a JSON string in multipart (the attachments
+        # path); without this they were silently dropped when a guide had uploads.
+        # Mirror the outline handling: bad JSON / non-dict falls back to the default.
+        sections_raw = _form_text(form, "include_sections")
+        if sections_raw:
+            try:
+                parsed_sections = json.loads(sections_raw)
+            except json.JSONDecodeError:
+                parsed_sections = None
+            if isinstance(parsed_sections, dict):
+                data["include_sections"] = parsed_sections
         uploads = [
             value
             for key, value in form.multi_items()

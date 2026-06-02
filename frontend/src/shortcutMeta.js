@@ -86,40 +86,25 @@ export function pagesToLength(pages) {
   return "medium";
 }
 
-// The Builder's free-text "includes" chips partially map onto the backend module
-// keys. Only the pairs below round-trip; chips without a module (e.g. Mnemonics)
-// and modules without a chip (e.g. flashcards) are simply dropped.
-const INCLUDE_MODULE_PAIRS = [
-  ["Key concepts", "key_concepts"],
-  ["Examples", "worked_examples"],
-  ["Diagrams", "diagrams"],
-  ["MCQ practice", "mcqs"],
-  ["Glossary", "glossary"],
-  ["TL;DR", "summary"],
-];
-const INCLUDE_TO_MODULE = Object.fromEntries(INCLUDE_MODULE_PAIRS);
-const MODULE_TO_INCLUDE = Object.fromEntries(INCLUDE_MODULE_PAIRS.map(([i, m]) => [m, i]));
-
-export function includesToModules(includes = []) {
-  const modules = {};
-  includes.forEach((include) => {
-    const key = INCLUDE_TO_MODULE[include];
-    if (key) modules[key] = true;
-  });
-  return modules;
-}
-export function modulesToIncludes(modules = {}) {
-  const includes = [];
-  Object.entries(modules).forEach(([key, on]) => {
-    const include = MODULE_TO_INCLUDE[key];
-    if (on && include) includes.push(include);
-  });
-  return includes;
+// Reduce a Builder `include_sections` dict (canonical key → bool) to a clean dict
+// of only the enabled keys → true, dropping false/empty entries. The backend
+// shortcut store re-validates/normalizes against the canonical key set, so this
+// only needs to strip the obvious noise.
+function cleanSections(includeSections = {}) {
+  const next = {};
+  if (includeSections && typeof includeSections === "object") {
+    Object.entries(includeSections).forEach(([key, on]) => {
+      if (on) next[key] = true;
+    });
+  }
+  return next;
 }
 
 // Capture: turn live Builder state into a builder_setup payload (the inverse of
 // applyBuilderPrefill in BuilderWorkspace). Kept here so capture + prefill share
-// one definition of the mapping.
+// one definition of the mapping. The generation-affecting options use the
+// CANONICAL backend fields (`include_sections` + the C1/C2 axes) — not the old
+// shortcut-only `modules` state, which never reached prompt assembly.
 export function builderStateToPayload({
   source,
   provider,
@@ -127,7 +112,9 @@ export function builderStateToPayload({
   generatorPreset,
   style,
   length,
-  includes,
+  includeSections = {},
+  outputDepth = "",
+  difficulty = "",
   strictMath,
   exportFormats = ["pdf"],
   mode = "study_guide",
@@ -140,7 +127,9 @@ export function builderStateToPayload({
     style: style || null,
     mode: mode || "study_guide",
     target_pages: lengthToPages(length),
-    modules: includesToModules(includes),
+    include_sections: cleanSections(includeSections),
+    output_depth: outputDepth || null,
+    difficulty: difficulty || null,
     strict_math: strictMath !== false,
     export_formats: Array.isArray(exportFormats) && exportFormats.length ? exportFormats : ["pdf"],
   };

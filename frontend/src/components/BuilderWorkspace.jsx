@@ -48,9 +48,15 @@ import {
 import {
   builderStateToPayload,
   INPUT_TO_SOURCE,
-  modulesToIncludes,
   pagesToLength
 } from "../shortcutMeta";
+import {
+  DIFFICULTY_OPTIONS,
+  hasEnabledSections,
+  normalizeSectionState,
+  OUTPUT_DEPTH_OPTIONS,
+  SECTION_GROUPS
+} from "../sectionMeta";
 import { FOLDER_PRESET_COLORS } from "../folderMeta";
 import {
   BoltGlyph,
@@ -150,19 +156,9 @@ function formatDraftTime(iso) {
   return then.toLocaleString();
 }
 
-const includeOptions = [
-  "Key concepts",
-  "Mnemonics",
-  "Examples",
-  "Diagrams",
-  "MCQ practice",
-  "Glossary",
-  "TL;DR"
-];
-
 // Short, plain-language tooltip copy. Placeholder wording — final copy TBD.
-// Only keys for controls that already exist in the UI are referenced (the
-// expanded module toggles are a later slice and are intentionally absent).
+// Per-section help lives alongside the canonical keys in sectionMeta.js; this
+// table only covers the non-section Builder controls + the generation axes.
 const TOOLTIPS = {
   provider: "Which AI service generates the guide. Only configured providers can run.",
   model: "The specific model used for generation. Larger models are slower but stronger.",
@@ -171,8 +167,9 @@ const TOOLTIPS = {
   length: "Target output depth — roughly how many pages the guide should aim for.",
   strictMath: "Validate every formula and fail loudly on broken math instead of guessing.",
   attachments: "Extra source files. PDFs/scans are read with OCR/VLM when there is no text layer.",
-  mcqs: "Adds multiple-choice practice questions drawn from the material.",
-  glossary: "Adds a glossary of key terms and definitions at the end of the guide."
+  outputDepth: "How deep the whole guide goes — quick & high-yield, balanced, or exhaustive. Auto leaves it to the style.",
+  difficulty: "How the material is pitched — beginner, normal, exam-level, or advanced. Auto leaves it to the style.",
+  sections: "Optional extra sections to add where the source supports them. None are added unless you pick them."
 };
 
 // Terminal generation statuses: once the progress endpoint reports one of these,
@@ -256,7 +253,14 @@ export default function BuilderWorkspace({
   const [generatorPresets, setGeneratorPresets] = useState([]);
   const [generatorPreset, setGeneratorPreset] = useState("");
   const [length, setLength] = useState("medium");
-  const [includes, setIncludes] = useState(["Key concepts", "Mnemonics", "Examples", "Diagrams"]);
+  // Canonical output-section toggles (dict-of-bool of enabled keys only). Default
+  // none — a fresh Builder sends no include_sections (keeps the default request
+  // byte-equivalent on this axis).
+  const [includeSections, setIncludeSections] = useState({});
+  // Global generation axes (C2). "" is the unset sentinel — omitted from the
+  // request and stored as null in a shortcut.
+  const [outputDepth, setOutputDepth] = useState("");
+  const [difficulty, setDifficulty] = useState("");
   const [outlineEnabled, setOutlineEnabled] = useState(false);
   const [outlineSections, setOutlineSections] = useState([]);
   const [presets, setPresets] = useState([]);
@@ -429,9 +433,27 @@ export default function BuilderWorkspace({
       folderId,
       template: selectedPreset,
       length,
-      includes
+      // Canonical generation options (C3): persist the section toggles + axes so a
+      // restored draft reproduces the same generate request. Stored as-is; restore
+      // re-normalizes against the known key set.
+      includeSections,
+      outputDepth,
+      difficulty
     }),
-    [title, text, source, outlineEnabled, outlineSections, selectedStyle, folderId, selectedPreset, length, includes]
+    [
+      title,
+      text,
+      source,
+      outlineEnabled,
+      outlineSections,
+      selectedStyle,
+      folderId,
+      selectedPreset,
+      length,
+      includeSections,
+      outputDepth,
+      difficulty
+    ]
   );
 
   const clearDraft = useCallback(() => {
@@ -506,7 +528,12 @@ export default function BuilderWorkspace({
     if (draft.folderId) setFolderId(draft.folderId);
     setSelectedPreset(draft.template || "");
     if (draft.length) setLength(draft.length);
-    if (Array.isArray(draft.includes)) setIncludes(draft.includes);
+    // Canonical generation options (C3). Re-normalize sections against the known
+    // key set (drops anything the Builder no longer exposes); axes fall back to
+    // the unset sentinel when absent/garbage so restore is deterministic.
+    setIncludeSections(normalizeSectionState(draft.includeSections));
+    setOutputDepth(typeof draft.outputDepth === "string" ? draft.outputDepth : "");
+    setDifficulty(typeof draft.difficulty === "string" ? draft.difficulty : "");
     setRestoreDraft(null);
   }, [restoreDraft, onSelectStyle]);
 
@@ -552,7 +579,9 @@ export default function BuilderWorkspace({
         provider,
         model,
         length,
-        includes,
+        includeSections,
+        outputDepth,
+        difficulty,
         strictMath,
         qwenThinking,
         outlineEnabled,
@@ -564,7 +593,9 @@ export default function BuilderWorkspace({
       provider,
       model,
       length,
-      includes,
+      includeSections,
+      outputDepth,
+      difficulty,
       strictMath,
       qwenThinking,
       outlineEnabled,
@@ -689,11 +720,13 @@ export default function BuilderWorkspace({
         qwenThinking,
         attachments,
         length,
-        includes,
+        includeSections,
+        outputDepth,
+        difficulty,
         folderId,
         outline: outlineEnabled ? { enabled: true, sections: outlineSections } : null
       });
-      assertBuilderPayload(kind, payload, { text, title, length, includes });
+      assertBuilderPayload(kind, payload, { text, title, length });
       const job = await createJob(kind, payload);
       stopPolling();
       // Show a completed state briefly, then return the button to normal.
@@ -729,10 +762,12 @@ export default function BuilderWorkspace({
         generatorPreset,
         style: selectedStyle,
         length,
-        includes,
+        includeSections,
+        outputDepth,
+        difficulty,
         strictMath
       }),
-    [source, provider, model, generatorPreset, selectedStyle, length, includes, strictMath]
+    [source, provider, model, generatorPreset, selectedStyle, length, includeSections, outputDepth, difficulty, strictMath]
   );
 
   // Apply a builder_setup payload from a Home shortcut into the live form. Reuses
@@ -758,9 +793,13 @@ export default function BuilderWorkspace({
       if (payload.style) onSelectStyle?.(payload.style);
       if (typeof payload.strict_math === "boolean") setStrictMath(payload.strict_math);
       if (payload.target_pages) setLength(pagesToLength(payload.target_pages));
-      if (payload.modules && Object.keys(payload.modules).length) {
-        setIncludes(modulesToIncludes(payload.modules));
-      }
+      // Canonical output sections + axes. The backend bridges legacy `modules`
+      // into `include_sections` on read, so we only read the canonical field and
+      // ignore any `modules`. Applied deterministically (cleared when absent) so a
+      // subsequent generate sends exactly what the shortcut saved.
+      setIncludeSections(normalizeSectionState(payload.include_sections));
+      setOutputDepth(typeof payload.output_depth === "string" ? payload.output_depth : "");
+      setDifficulty(typeof payload.difficulty === "string" ? payload.difficulty : "");
       setActiveBuilderTab("builder");
       setError(null);
     },
@@ -900,12 +939,16 @@ export default function BuilderWorkspace({
     setModel(selectDefaultModel(detail));
   }
 
-  function toggleInclude(option) {
-    setIncludes((current) =>
-      current.includes(option)
-        ? current.filter((item) => item !== option)
-        : [...current, option]
-    );
+  function toggleSection(key) {
+    setIncludeSections((current) => {
+      const next = { ...current };
+      if (next[key]) {
+        delete next[key];
+      } else {
+        next[key] = true;
+      }
+      return next;
+    });
   }
 
   async function openJobDetails(tab = "details") {
@@ -969,7 +1012,9 @@ export default function BuilderWorkspace({
             generatorPresets={generatorPresets}
             generatorPreset={generatorPreset}
             selectedStyleOption={selectedStyleOption}
-            includes={includes}
+            includeSections={includeSections}
+            outputDepth={outputDepth}
+            difficulty={difficulty}
             selectedLengthOption={selectedLengthOption}
             outlineEnabled={outlineEnabled}
             outlineCount={outlineSections.filter((section) => section.title.trim()).length}
@@ -1059,8 +1104,12 @@ export default function BuilderWorkspace({
               provider={provider}
               length={length}
               setLength={setLength}
-              includes={includes}
-              toggleInclude={toggleInclude}
+              includeSections={includeSections}
+              toggleSection={toggleSection}
+              outputDepth={outputDepth}
+              setOutputDepth={setOutputDepth}
+              difficulty={difficulty}
+              setDifficulty={setDifficulty}
             />
           )}
 
@@ -1111,7 +1160,9 @@ function BuilderActionBar({
   generatorPresets = [],
   generatorPreset,
   selectedStyleOption,
-  includes = [],
+  includeSections = {},
+  outputDepth = "",
+  difficulty = "",
   selectedLengthOption,
   outlineEnabled,
   outlineCount,
@@ -1136,9 +1187,15 @@ function BuilderActionBar({
   const lengthText = selectedLengthOption
     ? `${selectedLengthOption.label} · ${selectedLengthOption.meta}`
     : "—";
-  const modulesText = includes.length
-    ? `${includes.length} module${includes.length === 1 ? "" : "s"}`
+  const sectionKeys = Object.keys(includeSections).filter((key) => includeSections[key]);
+  const sectionsText = sectionKeys.length
+    ? `${sectionKeys.length} section${sectionKeys.length === 1 ? "" : "s"}`
     : "None";
+  const depthLabel = OUTPUT_DEPTH_OPTIONS.find((option) => option.value === outputDepth)?.label;
+  const difficultyLabel = DIFFICULTY_OPTIONS.find((option) => option.value === difficulty)?.label;
+  const axisText = [outputDepth ? depthLabel : null, difficulty ? difficultyLabel : null]
+    .filter(Boolean)
+    .join(" · ");
 
   return (
     <div className="sg-action-bar">
@@ -1153,7 +1210,8 @@ function BuilderActionBar({
         {outlineEnabled && outlineCount > 0 && (
           <ActionChip icon={ListChecks} kx="Outline" v={`${outlineCount}`} />
         )}
-        <ActionChip icon={ListChecks} kx="Modules" v={modulesText} title={includes.join(", ")} />
+        <ActionChip icon={ListChecks} kx="Sections" v={sectionsText} title={sectionKeys.join(", ")} />
+        {axisText && <ActionChip icon={Sparkles} kx="Axes" v={axisText} title={axisText} />}
         <ActionChip icon={FileText} kx="Length" v={lengthText} />
       </div>
 
@@ -1699,8 +1757,12 @@ function StyleSettings({
   provider,
   length,
   setLength,
-  includes,
-  toggleInclude
+  includeSections,
+  toggleSection,
+  outputDepth,
+  setOutputDepth,
+  difficulty,
+  setDifficulty
 }) {
   const presetActive = Boolean(generatorPreset);
   return (
@@ -1708,7 +1770,7 @@ function StyleSettings({
       <SectionHeader
         eyebrow="Guide design"
         title="Style and depth"
-        description="Tune the preset, target length, and included learning aids used by generation."
+        description="Tune the preset, target length, generation depth/difficulty, and output sections."
       />
       <GeneratorPresetControls
         generatorPresets={generatorPresets}
@@ -1722,7 +1784,13 @@ function StyleSettings({
         <StyleControls selectedStyle={selectedStyle} onSelectStyle={onSelectStyle} styleOptions={styleOptions} />
       </div>
       <LengthControls length={length} setLength={setLength} />
-      <IncludeControls includes={includes} toggleInclude={toggleInclude} />
+      <AxisControls
+        outputDepth={outputDepth}
+        setOutputDepth={setOutputDepth}
+        difficulty={difficulty}
+        setDifficulty={setDifficulty}
+      />
+      <SectionControls includeSections={includeSections} toggleSection={toggleSection} />
     </div>
   );
 }
@@ -1937,44 +2005,96 @@ function LengthControls({ length, setLength }) {
   );
 }
 
-// Tooltips for the learning aids that already exist as toggles. The expanded
-// module set (flashcards, formula sheet, etc.) is a later slice — no copy here.
-const includeTips = {
-  "MCQ practice": TOOLTIPS.mcqs,
-  Glossary: TOOLTIPS.glossary
-};
+// Global generation axes — depth + difficulty. These MODIFY the whole guide
+// (how deep / how it is pitched) rather than ADD sections. "Auto" is the unset
+// state and omits the field from the request. Voice/tone is intentionally absent
+// (owned by Styles). Rendered as two segmented rows matching LengthControls.
+function AxisControls({ outputDepth, setOutputDepth, difficulty, setDifficulty }) {
+  return (
+    <div className="grid gap-4 sm:grid-cols-2">
+      <SegmentedAxis
+        label="Output depth"
+        tip={TOOLTIPS.outputDepth}
+        value={outputDepth}
+        onChange={setOutputDepth}
+        options={OUTPUT_DEPTH_OPTIONS}
+      />
+      <SegmentedAxis
+        label="Difficulty"
+        tip={TOOLTIPS.difficulty}
+        value={difficulty}
+        onChange={setDifficulty}
+        options={DIFFICULTY_OPTIONS}
+      />
+    </div>
+  );
+}
 
-function IncludeControls({ includes, toggleInclude }) {
+function SegmentedAxis({ label, tip, value, onChange, options }) {
   return (
     <div>
-      <FieldLabel>Include</FieldLabel>
-      <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
-        {includeOptions.map((option) => {
-          const tip = includeTips[option];
-          const chip = (
-            <button
-              type="button"
-              onClick={() => toggleInclude(option)}
-              className={`inline-flex h-7 items-center gap-1.5 rounded-full border px-3 text-xs font-medium ${
-                includes.includes(option)
-                  ? "border-[rgba(249,115,22,0.35)] bg-[rgba(249,115,22,0.10)] text-[#FB923C]"
-                  : "border-white/10 bg-white/[0.04] text-[#F4F4F5]"
-              }`}
-            >
-              {includes.includes(option) && <span className="text-[10px]">✓</span>}
-              {option}
-            </button>
-          );
-          if (!tip) {
-            return <React.Fragment key={option}>{chip}</React.Fragment>;
-          }
-          return (
-            <span key={option} className="inline-flex items-center gap-1">
-              {chip}
-              <InfoTip text={tip} label={option} />
-            </span>
-          );
-        })}
+      <FieldLabel tip={tip}>{label}</FieldLabel>
+      <div className="mt-1.5 flex flex-wrap gap-1.5">
+        {options.map((option) => (
+          <button
+            key={option.value || "auto"}
+            type="button"
+            onClick={() => onChange(option.value)}
+            className={`inline-flex h-8 items-center rounded-[9px] border px-3 text-[12px] font-semibold transition ${
+              value === option.value
+                ? "border-[rgba(249,115,22,0.45)] bg-[rgba(249,115,22,0.12)] text-[#F97316]"
+                : "border-white/[0.08] bg-transparent text-[#9098A8] hover:text-[#D4D4D8]"
+            }`}
+          >
+            {option.label}
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// Canonical output-section toggles, grouped only for readability. Each chip's
+// `key` is the backend `include_sections` key (sent verbatim); the label is
+// cosmetic. No sections are selected by default.
+function SectionControls({ includeSections, toggleSection }) {
+  return (
+    <div>
+      <FieldLabel tip={TOOLTIPS.sections}>Output sections</FieldLabel>
+      <div className="mt-1.5 grid gap-3">
+        {SECTION_GROUPS.map((group) => (
+          <div key={group.title}>
+            <StyleGroupLabel>{group.title}</StyleGroupLabel>
+            <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
+              {group.keys.map((entry) => {
+                const active = Boolean(includeSections[entry.key]);
+                const chip = (
+                  <button
+                    type="button"
+                    onClick={() => toggleSection(entry.key)}
+                    className={`inline-flex h-7 items-center gap-1.5 rounded-full border px-3 text-xs font-medium ${
+                      active
+                        ? "border-[rgba(249,115,22,0.35)] bg-[rgba(249,115,22,0.10)] text-[#FB923C]"
+                        : "border-white/10 bg-white/[0.04] text-[#F4F4F5]"
+                    }`}
+                  >
+                    {active && <span className="text-[10px]">✓</span>}
+                    {entry.label}
+                  </button>
+                );
+                if (!entry.tip) {
+                  return <React.Fragment key={entry.key}>{chip}</React.Fragment>;
+                }
+                return (
+                  <span key={entry.key} className="inline-flex items-center gap-1">
+                    {chip}
+                    <InfoTip text={entry.tip} label={entry.label} />
+                  </span>
+                );
+              })}
+            </div>
+          </div>
+        ))}
       </div>
     </div>
   );
@@ -2591,7 +2711,9 @@ export function buildBuilderPayload({
   qwenThinking,
   attachments,
   length,
-  includes,
+  includeSections = {},
+  outputDepth = "",
+  difficulty = "",
   folderId = "unfiled",
   outline = null
 }) {
@@ -2621,7 +2743,9 @@ export function buildBuilderPayload({
         qwenThinking,
         attachments,
         length,
-        includes,
+        includeSections,
+        outputDepth,
+        difficulty,
         folderId,
         outline
       })
@@ -2651,13 +2775,19 @@ export function buildLlmPayload({
   qwenThinking,
   attachments = [],
   length,
-  includes,
+  includeSections = {},
+  outputDepth = "",
+  difficulty = "",
   folderId = "unfiled",
   outline = null
 }) {
   const hasOutline = outline?.enabled && (outline.sections || []).some((section) => section.title?.trim());
+  // Send the canonical fields only when they carry intent: omit include_sections
+  // entirely when nothing is enabled, and omit each axis when unset. This keeps a
+  // default/fresh generate request free of include_sections/output_depth/difficulty.
+  const enabledSections = normalizeSectionState(includeSections);
   return {
-    source_text: augmentSourceText(text, length, includes),
+    source_text: augmentSourceText(text, length),
     title,
     mode,
     prompt_name: selectedStyle,
@@ -2671,6 +2801,9 @@ export function buildLlmPayload({
     qwen_thinking: qwenThinking,
     folder_id: folderId,
     ...(hasOutline ? { outline } : {}),
+    ...(hasEnabledSections(enabledSections) ? { include_sections: enabledSections } : {}),
+    ...(outputDepth ? { output_depth: outputDepth } : {}),
+    ...(difficulty ? { difficulty } : {}),
     attachments
   };
 }
@@ -2694,7 +2827,7 @@ function assertBuilderPayload(kind, payload, state) {
   }
 
   if (kind === "llm") {
-    const expectedSource = augmentSourceText(state.text, state.length, state.includes);
+    const expectedSource = augmentSourceText(state.text, state.length);
     if (payload.title !== state.title) {
       throw new Error("Builder payload mismatch: title does not match title field.");
     }
@@ -2704,7 +2837,9 @@ function assertBuilderPayload(kind, payload, state) {
   }
 }
 
-function augmentSourceText(text, length, includes) {
+function augmentSourceText(text, length) {
   const lengthLabel = lengthOptions.find((option) => option.id === length)?.meta || "~20 pages";
-  return `${text.trim()}\n\nAdditional builder instructions:\nRequested length: ${lengthLabel}.\nInclude: ${includes.join(", ")}.`;
+  // Output sections now flow through the canonical `include_sections` request
+  // field (and prompt assembly), so they are no longer appended as free text here.
+  return `${text.trim()}\n\nAdditional builder instructions:\nRequested length: ${lengthLabel}.`;
 }
