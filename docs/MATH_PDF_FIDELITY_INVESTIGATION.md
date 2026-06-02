@@ -280,3 +280,34 @@ full page still clipped at the physical edge. The real `math_layout_fixture.md`
 renders cleanly (long single-line equation no longer truncated within the content
 box; aligned block, arrows, display-in-list, and the sanitized table case all
 unchanged — verified identical before/after). **No claim of perfect wrapping.**
+
+---
+
+## 12. Slice 3 (prompt-only) — long-formula guidance (cause D)
+
+Slice 3 (`Guide long formulas into aligned math`) is **prompt-side only**. It
+extends `MARKDOWN_MATH_SYSTEM` in `pipeline/orchestrator.py` (the math/table
+contract appended **last** in both the default and the generator-preset system
+messages) with a concise rule:
+
+- avoid very long single-line display equations (they overflow PDF page width);
+- when an equation or derivation is long, break it across multiple lines inside
+  `\begin{aligned} ... \end{aligned}`, one step per line, each line kept
+  reasonably short;
+- write prose explanations as ordinary text outside math delimiters — never
+  wrap an explanatory sentence in `$...$` or `$$...$$`.
+
+**This addresses the prompt-side *input* (cause D), not renderer wrapping.** It
+tries to make the model *emit* shorter, multi-line display math so fewer
+equations are wide enough to hit the clipping behavior described in §11. It does
+**not** change the renderer, KaTeX bridge, sanitizer, CSS, or `@page` geometry,
+and it cannot reflow an over-wide equation the model still emits — that residual
+remains the deferred CSS/renderer limit from §11. The existing aligned/MCQ/table
+rules are unchanged (the new text generalizes the "prose is not math" rule that
+already lives in the `mcqs_with_answers` section fragment; it does not duplicate
+or contradict it). Ordering is preserved: a preset's own system prompt stays
+first, `MARKDOWN_MATH_SYSTEM` stays the final appended block. Verified by
+`test_scripts/test_long_formula_guidance.py` (default + preset + formula-heavy
+paths all carry the guidance with the math block still last) plus the standard
+build/compile/docker/smoke suite. **Font-size rationalization (cause C / Slice 3
+in §7's numbering) remains untouched.**

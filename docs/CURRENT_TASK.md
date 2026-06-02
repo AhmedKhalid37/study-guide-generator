@@ -628,13 +628,44 @@ parked on the `hardening` branch — not merged, not deleted.
       `/api/options` OK; release smoke **28/28**; plus the before/after PDF render
       comparison above.
 
+25. **Math/PDF fidelity Slice 3 — long-formula prompt guidance (PROMPT-ONLY)** —
+    branch `math-formula-guidance`, commit `Guide long formulas into aligned math`.
+    This is the **cause D / "Slice 4"** prompt-side work in
+    `MATH_PDF_FIDELITY_INVESTIGATION.md` §7 (the doc numbers prompt guidance as
+    Slice 4; this task tracked it as Slice 3 — same work). Extended
+    `MARKDOWN_MATH_SYSTEM` in `pipeline/orchestrator.py` (the math/table contract
+    appended **last** in both the default and generator-preset system messages)
+    with a concise rule: avoid very long single-line display equations (they
+    overflow PDF page width); break long equations/derivations across multiple
+    lines inside `\begin{aligned} ... \end{aligned}`, one step per line, each line
+    reasonably short; write prose explanations outside math delimiters — never
+    wrap an explanatory sentence in `$...$`/`$$...$$`.
+    - **Prompt-only.** No `pdf_renderer.py`, Chromium flags, KaTeX bridge / HTML
+      renderer, sanitizer, CSS, `@page` geometry, or dependency change. The new
+      text generalizes the existing "prose is not math" rule already in the
+      `mcqs_with_answers` section fragment — it does not duplicate or contradict
+      it, and does not weaken the existing aligned/table/matrix rules.
+    - **Ordering preserved:** a preset's own system prompt stays first;
+      `MARKDOWN_MATH_SYSTEM` stays the **final** appended block in both paths.
+    - **Improvement, not a fix (not overclaimed):** this shapes model *output* so
+      fewer equations are wide enough to hit the §11 clipping limit; it cannot
+      reflow an over-wide equation the model still emits. That residual stays the
+      deferred CSS/renderer limit. Font-size rationalization (**cause C**) remains
+      untouched/deferred.
+    - **Verified:** `python -m compileall api pipeline` OK; new
+      `test_scripts/test_long_formula_guidance.py` **10/10** (default + preset +
+      formula-heavy paths all carry the guidance, math block still last);
+      `test_math_regressions.py` OK; `npm --prefix frontend run build` OK;
+      `docker compose config`/`build` OK; container **healthy**
+      (`/api/health` `{"ok":true}`, `/api/options` OK); release smoke **28/28**.
+
 ## NEXT (in order)
 
-> Slices 1–2 of the math/PDF fidelity work (`math-display-breaks` DONE #23,
-> `math-display-overflow` DONE #24) added the display-math page-break guard and the
-> long-equation overflow improvement. Remaining math/PDF slices: **Slice 3** math
-> font-size rationalization (cause C, CSS-only) and **Slice 4** prompt guidance for
-> multi-line `aligned` form (cause D, prompt-only). The rerender-preset fix
+> Slices 1–3 of the math/PDF fidelity work (`math-display-breaks` DONE #23,
+> `math-display-overflow` DONE #24, `math-formula-guidance` DONE #25) added the
+> display-math page-break guard, the long-equation overflow improvement, and the
+> prompt-side long-formula guidance (cause D). The one remaining math/PDF slice is
+> **font-size rationalization** (cause C, CSS-only). The rerender-preset fix
 > (`2716995`), B4 "Export selected" (`65b9b8f`), and the cooperative server-side
 > cancel (`901d44b`) are **DONE and on trunk**. See DONE #20→#24 and OPEN ITEMS.
 
