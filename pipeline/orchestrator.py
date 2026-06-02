@@ -35,7 +35,11 @@ MARKDOWN_MATH_SYSTEM = (
 INCLUDE_SECTION_FRAGMENTS: dict[str, str] = {
     "glossary": "Add a glossary table of important terms with simple definitions.",
     "mcqs_with_answers": (
-        "Include a set of multiple-choice questions WITH a clearly separated answer key."
+        "Include a set of multiple-choice questions WITH a clearly separated answer key. "
+        "In the answer key, write each explanation as normal English prose with ordinary "
+        "spaces between words; do NOT wrap an explanation sentence in $...$ math delimiters "
+        "(that turns the prose into math and removes the spaces). Use $...$ only around "
+        "genuine mathematical symbols or formulas inside an otherwise plain-prose sentence."
     ),
     "mcqs_without_answers": (
         "Include a set of multiple-choice questions WITHOUT answers (questions only, no key)."
@@ -76,7 +80,13 @@ INCLUDE_SECTION_FRAGMENTS: dict[str, str] = {
     "instructor_notes": (
         "Preserve instructor/professor notes and points of emphasis from the source where present."
     ),
-    "slide_page_references": "Preserve useful slide/page references from the source where available.",
+    "slide_page_references": (
+        "The source text marks each original slide/page with a '## Page N' (or 'Slide N') "
+        "anchor. Carry these through: when a fact, formula, or definition comes from a "
+        "specific page, add a compact inline reference such as '(p. N)' or '(Slide N)' right "
+        "after it, and prefer grouping related content under the page it came from. Do not "
+        "invent page numbers — only cite anchors that appear in the source."
+    ),
     # Legacy shortcut module keys kept as accepted canonical sections (backward
     # compat with library/shortcuts.json state and any old payloads). They have a
     # clear meaning, so they map to themselves rather than to a misleading alias.
