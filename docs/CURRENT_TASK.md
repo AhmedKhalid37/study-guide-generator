@@ -7,9 +7,10 @@
 
 ## Where we are
 
-- **Branch:** `qwen37-plus-model`
-- **Last commit:** `390060c` — Add Qwen 3.7 Plus model option (C4c)
+- **Branch:** `home-nav-cleanup`
+- **Last commit:** `7f78542` — Clean up Home shortcuts navigation (C5)
 - **Main branch (PR target):** `chrome-renderer-v1`
+- **Group C is COMPLETE** (C1 → C5).
 
 ## DONE (in order)
 
@@ -338,6 +339,58 @@
       generation completed `done` (manifest recorded `model: qwen3.7-plus`, 2716-byte
       `clean.md` with genuine study-guide content) — not just options exposure.
 
+19. **Slice C5 — Home/nav cleanup + non-destructive stack merge preview
+    (FRONTEND ONLY + preview)** — `7f78542` (branch `home-nav-cleanup`).
+    Closes Group C by cleaning the Home page. **Cleanup, not a redesign.**
+    - **Duplicate lower "Customize" button removed.** The Home "Pinned shortcuts"
+      section head carried a second `Customize` button (`HomeShortcuts.jsx`)
+      identical in behaviour to the page-head entry. Removed it; the section head
+      now shows just its `<h2>`.
+    - **Single primary entry kept:** the page-head **"Customize Shortcuts"**
+      button. It calls `setCustomizeOpen(true)` → opens `CustomizeShortcutsModal`
+      (the shortcut customization modal). **It does NOT route to Styles** — proven
+      in the served bundle (exactly one "Customize Shortcuts" string; the modal is
+      the shortcut editor, no Styles navigation on that handler).
+    - **Smart Tools:** **already absent from Home** — no Smart Tools UI exists
+      anywhere in the frontend (only orphaned `.sg-smart-*` CSS + an unrelated
+      `Smartphone` icon import in the unused, never-rendered `TopBar.jsx`). Nothing
+      to remove; it was not the sole entry point to anything. Orphaned CSS left
+      untouched (cleanup-only, no behaviour change).
+    - **Compare Styles:** **already lives in Styles, no move needed.** It is not a
+      hardcoded Home button — it exists only as a `compare_styles` *shortcut tool
+      type* (`shortcutMeta.js`) that routes to Styles via `TOOL_ROUTES`
+      (`DesktopDashboard.jsx`). The Styles workspace **is** the compare surface
+      ("Compare built-in prompt presets side by side…", `StylesWorkspace.jsx`,
+      verified present in the served bundle).
+    - **Home focus preserved:** pinned shortcuts + Recent Guides (`RecentJobsPanel`).
+      No "continue last setup / continue last guide" feature exists on Home — there
+      was nothing of that kind to preserve.
+    - **Scope held:** diff is a single 3-line deletion in `HomeShortcuts.jsx`. No
+      backend, Builder, Library, prompt assembly, shortcut store, provider model
+      registry, Local Model Manager, provider settings, cancel, or rerender-preset
+      code touched.
+    - **Verified in Docker** (healthy): frontend build OK; `compose config/build/up`
+      OK; `/api/health` ok; `/api/options` still lists **`qwen3.7-plus`** (C4c
+      intact) + all three generator presets. Served bundle confirms **C3/C4b not
+      regressed** — axes (Exhaustive/Exam-level), section toggles (Cram sheet/Worked
+      examples), Save draft, preset cards ("Best for"), and the soft compat warning
+      ("tuned for") all present. Release smoke **28/28** (flaky outline-ordering
+      check passed).
+    - **NOT automated — needs manual click-through:** Home layout/spacing after the
+      button removal, the single Customize button opening the modal, Compare Styles
+      functioning from the Styles tab, and overall visual polish.
+    - **Stack merge preview (non-destructive, `git merge-tree --write-tree`
+      chrome-renderer-v1 HEAD):** the stacked chain is **NOT cleanly mergeable** into
+      `chrome-renderer-v1` yet — **5 pre-existing conflicts**: `Dockerfile`,
+      `api/server.py`, `pipeline/extract.py`, `pipeline/llm_client.py`,
+      `requirements.txt`. These are **stack-vs-target divergence, not introduced by
+      C5** (C5 only touches `HomeShortcuts.jsx`, which is not in the conflict set).
+      No merge was performed, no branch history rewritten, `chrome-renderer-v1`
+      untouched. **Recommendation:** the conflicts need a deliberate review/resolve
+      pass before merging the stack into `chrome-renderer-v1` — likely the Chrome
+      renderer branch and the feature stack both edited the backend/runtime files.
+      Group-C feature work itself is sound; this is an integration step, not a C5 bug.
+
 ## NEXT (in order)
 
 3. **Library bulk actions — remaining follow-ups (deferred, not this slice).**
@@ -373,10 +426,11 @@
   See `presetMeta.js` + `DECISIONS.md`. **Still open:** richer **shortcut** cards on
   Home and the shortcut **inspector/repair** loop (the store's `valid`/`reason`
   "references unavailable …" surfacing) are not built yet.
-- **Home duplicate "Customize" button (C5 nav/Home cleanup)** — the Home page shows
-  two seemingly-equivalent Customize buttons (top "Customize Shortcuts" + a lower
-  "Customize"). Left untouched in C4b (frontend preset-card slice); fix in the C5
-  Home/nav cleanup.
+- **Home duplicate "Customize" button — DONE (`7f78542`, Slice C5).** The lower
+  duplicate "Customize" button in the Pinned-shortcuts section head was removed;
+  the single page-head "Customize Shortcuts" entry is kept and opens the shortcut
+  customization modal (not Styles). Smart Tools confirmed already absent from Home;
+  Compare Styles confirmed already living in Styles. No longer open.
 - **Shortcut inspector / repair loop** — a later UX for inspecting an invalid
   shortcut and repairing its broken references (provider/preset/style) is not
   started.
