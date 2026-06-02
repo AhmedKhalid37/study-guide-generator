@@ -282,3 +282,26 @@ icon loading never blocks card render. Logos render on a small **white chip** be
 and Local marks are near-black and would be invisible on the dark UI. Vite emits the SVGs as
 separate hashed asset files (they exceed the 4 KB inline limit), not base64 inside the JS
 bundle. No icon packages or remote downloads were added.
+
+## Explicit Qwen 3.7 Max/Plus compatibility family — frontend display-only (C4d)
+The C4d preset-card polish added a small **compatibility-family** layer to the
+frontend `presetCompat` matcher (`frontend/src/presetMeta.js`): two models in the
+**same explicit family** are treated as compatible, so a preset tuned for one
+suppresses the advisory mismatch warning for the other. **Currently the only family
+is `["qwen37max","qwen37plus"]`** (normalised `normalizeModelToken` forms). **Why:**
+C4c added `qwen3.7-plus` to the registry, but the Claude-Cram preset's `model_hint`/
+`model` is "Qwen 3.7 Max", so token matching alone (`qwen37max` vs `qwen37plus`) gave
+no equality/containment and the card false-warned on the perfectly compatible Plus
+model — exactly the kind of noisy false positive the C4b "prefer no warning" rule
+exists to avoid. The fix is **deliberately conservative**: an explicit allow-list pair,
+**not** a broad "any Qwen 3.x" rule (e.g. `qwen3.6-plus` still warns against the 3.7
+preset), so the family can't silently mask a genuinely different model. It is **frontend
+display-only** — no backend metadata, registry, prompt-assembly, shortcut-store, or
+generate-payload change; the warning stays **advisory and non-blocking** (Generate is
+`disabled={running}` only; the user's selected model + preset are still sent verbatim).
+A companion display helper `presetModelLabel` renders the Qwen 3.7 preset's model as
+**"Qwen 3.7 Max / Plus"** (one preset covers both) while every other preset shows its
+backend `model` string verbatim. Verified by an esbuild harness driving the real
+`presetCompat`/`presetModelLabel` (9/9: Max→no-warn, Plus→no-warn, `qwen3.6-plus`→warn,
+cross-provider→warn, DeepSeek/Gemma matches→no-warn). **To extend later:** add another
+explicit token pair/group to `COMPAT_FAMILIES` — keep families tight and intentional.

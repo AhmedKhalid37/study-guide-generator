@@ -7,10 +7,10 @@
 
 ## Where we are
 
-- **Branch:** `home-nav-cleanup`
-- **Last commit:** `7f78542` — Clean up Home shortcuts navigation (C5)
+- **Branch:** `preset-card-polish`
+- **Last commit:** `0015e50` — Polish generator preset cards (C4d)
 - **Main branch (PR target):** `chrome-renderer-v1`
-- **Group C is COMPLETE** (C1 → C5).
+- **Group C is COMPLETE** (C1 → C5); C4d is a frontend polish follow-up to C4b.
 
 ## DONE (in order)
 
@@ -390,6 +390,48 @@
       pass before merging the stack into `chrome-renderer-v1` — likely the Chrome
       renderer branch and the feature stack both edited the backend/runtime files.
       Group-C feature work itself is sound; this is an integration step, not a C5 bug.
+
+20. **Slice C4d — generator preset card simplification + compatibility polish
+    (FRONTEND ONLY)** — `0015e50` (branch `preset-card-polish`). A UI polish/
+    correction pass on the C4b preset cards — not a redesign. Still consumes the
+    C4a `/api/options.generator_presets` metadata (no hardcoded copy); **no backend,
+    registry, prompt-assembly, or shortcut-store change**.
+    - **Cards simplified:** removed the dense `description` paragraph and the entire
+      **"Best for:" (`recommended_use`) block**. Each card now shows: a large
+      provider icon + **bold model-name headline**, the **preset name** directly
+      under it, and `purpose` as the single one-line subtitle. Shorter, scan-first.
+    - **Identity made prominent:** `ProviderBadge` gained a `size="lg"` variant
+      (icon chip `h-12 w-12`, was `h-6 w-6`) paired with the bold model name, so the
+      "Gemma 4 → Claude-Exam / DeepSeek V4 Pro → Claude-Review / Qwen 3.7 Max/Plus →
+      Claude-Cram" pairing is glanceable. Text-badge fallback kept + enlarged to
+      match; missing/broken icon still never blocks the card (`onError`).
+    - **`presetModelLabel(preset)`** (new, `presetMeta.js`): returns the backend
+      `model` verbatim, except the Qwen 3.7 preset renders **"Qwen 3.7 Max / Plus"**
+      (one preset covers both models).
+    - **Qwen 3.7 Max/Plus compatibility:** added an explicit, conservative
+      compatibility family `["qwen37max","qwen37plus"]` (normalised tokens) in
+      `presetCompat`. When the preset's `model`/`model_hint` and the selected model
+      are both in the family, the advisory warning is **suppressed**. **Not broadened**
+      to other Qwen models (e.g. `qwen3.6-plus` still warns against the 3.7 preset).
+      See `DECISIONS.md`.
+    - **Advisory stays advisory:** the warning is display-only; Generate is still
+      `disabled={running}` only, no auto-switch, the generate payload still sends the
+      user's selected model + preset independently. Selection / save-as-shortcut /
+      load-shortcut / C3 sections / C2 depth-difficulty / action bar / model badge /
+      progress button / dirty-state all unchanged (card render is the only edit).
+    - **Verified in Docker** (healthy): frontend build OK; `compose config/build/up`
+      OK; `/api/health` ok; `/api/options` unchanged. An esbuild harness drove the
+      **real** `presetCompat`/`presetModelLabel` through **9/9** cases — Qwen Max →
+      no warn, Qwen Plus → no warn (the fix), `qwen3.6-plus` → warn (conservative),
+      Qwen+DeepSeek → warn, DeepSeek/Gemma matches → no warn, empty selection → no
+      warn; labels: qwen→"Qwen 3.7 Max / Plus", deepseek→"DeepSeek V4 Pro",
+      gemma→"Gemma 4". Served bundle: **"Best for" gone (0 occurrences)**, "Qwen 3.7
+      Max / Plus" present, compat "tuned for" warning present, C3/C4b markers
+      (Exhaustive/Exam-level/Cram sheet/Worked examples/Save draft/Generator preset)
+      intact. Release smoke **28/28** (flaky outline check passed).
+    - **NOT automated — needs operator judgment:** whether the new icon size feels
+      right, whether the cards are visually balanced, whether the reduced text feels
+      appropriate, and whether the one-line `purpose` subtitles read well.
 
 ## NEXT (in order)
 
