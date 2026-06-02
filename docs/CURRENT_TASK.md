@@ -533,12 +533,17 @@ parked on the `hardening` branch — not merged, not deleted.
 - **Shortcut inspector / repair loop** — a later UX for inspecting an invalid
   shortcut and repairing its broken references (provider/preset/style) is not
   started.
-- **Rerender drops `generator_preset`** — the retry/rerender path
-  (`retry_failed_job` in `api/server.py`) rebuilds from the manifest and now
-  reproduces `include_sections` + the C2 axes, but it still does **not** pass
-  `generator_preset`, so a preset-generated job re-renders through the **default**
-  prompt path (losing the preset system prompt + sampling params). Fix in a
-  separate focused slice (do not bundle with C2).
+- **Rerender drops `generator_preset` — FIXED** (branch `fix-rerender-generator-preset`).
+  `retry_failed_job` (`api/server.py`, `path_mode == "generate"`) now reads
+  `generator_preset` from the manifest and rebuilds through it: the preset is resolved,
+  its tuned sampling params are applied to the provider config (mirroring the
+  `/api/jobs/llm` preset path), and the id is passed to `generate_study_guide`. An
+  absent/null preset keeps the default path; a since-removed preset id degrades
+  gracefully to the default path instead of failing the retry. The user's saved
+  provider/model still wins (`model_hint` stays advisory). Backend-only; no new request
+  field. Regression test `test_scripts/test_retry_generator_preset.py` (7/7 in Docker:
+  threading + sampling overrides, default path, stale-id degrade, and a real on-disk job
+  whose manifest still records the preset after retry).
 - **Provider-aware truncation caps** — deferred (Option B in `DECISIONS.md`).
   Current caps are env-configurable with static defaults.
 - **Real cancel button** — deferred backend slice. The Builder shows progress

@@ -1698,9 +1698,34 @@ def retry_failed_job(job_id: str) -> dict[str, Any]:
         output_depth = manifest_depth if isinstance(manifest_depth, str) else None
         manifest_difficulty = manifest.get("difficulty")
         difficulty = manifest_difficulty if isinstance(manifest_difficulty, str) else None
+        # Reproduce the generator preset the job was created with, so a retry rebuilds
+        # through the same preset system prompt + tuned sampling params (not the default
+        # prompt path). If the stored preset id no longer exists (e.g. removed since the
+        # job ran), degrade gracefully to the default path rather than failing the retry.
+        manifest_preset = manifest.get("generator_preset")
+        generator_preset = manifest_preset if isinstance(manifest_preset, str) and manifest_preset else None
+        preset = None
+        if generator_preset is not None:
+            if generator_presets.generator_preset_exists(generator_preset):
+                preset = generator_presets.get_generator_preset(generator_preset)
+            else:
+                generator_preset = None
 
         try:
-            config = build_provider_config(provider, model_name, qwen_thinking_enabled=qwen_thinking)
+            if preset is not None:
+                # Mirror the /api/jobs/llm preset path: the preset pins its own sampling
+                # params (the user's saved provider/model still wins — model_hint stays
+                # advisory, never a hard pin).
+                config = build_provider_config(
+                    provider,
+                    model_name,
+                    qwen_thinking_enabled=preset["thinking"],
+                    temperature_override=preset["temperature"],
+                    top_p=preset["top_p"],
+                    max_tokens=preset["max_tokens"],
+                )
+            else:
+                config = build_provider_config(provider, model_name, qwen_thinking_enabled=qwen_thinking)
         except MissingLLMConfigError as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
 
@@ -1714,6 +1739,7 @@ def retry_failed_job(job_id: str) -> dict[str, Any]:
                 title=title,
                 mode=mode,
                 prompt_name=prompt_name,
+                generator_preset=generator_preset,
                 include_sections=include_sections,
                 output_depth=output_depth,
                 difficulty=difficulty,
