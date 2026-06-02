@@ -23,11 +23,38 @@ class ExtractionError(RuntimeError):
     pass
 
 
+class PdfEncryptedError(ExtractionError):
+    """A PDF needs a password before its pages can be read.
+
+    Raised only by :func:`preflight_pdf`; the existing extraction path is
+    unchanged. Lets the API distinguish an *encrypted* PDF (clear "unlock it"
+    message) from a generically *corrupt* one.
+    """
+
+
 @dataclass(frozen=True)
 class ExtractionResult:
     text: str
     mode: str
     warnings: list[str]
+
+
+@dataclass(frozen=True)
+class PdfPreflightResult:
+    """Cheap, read-only inspection of a PDF (no OCR, no full extraction).
+
+    Produced by :func:`preflight_pdf` from a bounded page sample so the API can
+    warn about large/scanned PDFs *before* a job is created. Counts derived from
+    ``text_ratio`` are estimates extrapolated from the sample, not exact.
+    """
+
+    page_count: int
+    sampled_pages: int
+    meaningful_pages: int
+    text_ratio: float
+    image_ratio: float
+    scanned_flag: str  # "text" | "mixed" | "image_heavy" | "unknown"
+    ocr_available: bool
 
 
 def extract_file(path: Path) -> ExtractionResult:
@@ -240,3 +267,96 @@ def _ocr_page(page) -> str:
     image = Image.frombytes("RGB", [pixmap.width, pixmap.height], pixmap.samples)
     image = _preprocess_ocr_image(image)
     return pytesseract.image_to_string(image).strip()
+
+
+def _preflight_sample_indices(page_count: int, sample_pages: int) -> list[int]:
+    """Bounded, evenly spaced 0-based page indices to probe for the estimate.
+
+    Returns every page when the document is small enough; otherwise spreads
+    ``sample_pages`` probes across the whole document (always including the first
+    page) so the text-vs-scanned ratio is representative without reading every
+    page. Cheap by construction — at most ``sample_pages`` ``get_text`` calls.
+    """
+    if page_count <= 0 or sample_pages <= 0:
+        return []
+    if page_count <= sample_pages:
+        return list(range(page_count))
+    step = page_count / sample_pages
+    return sorted({min(page_count - 1, int(i * step)) for i in range(sample_pages)})
+
+
+def _scanned_flag(image_ratio: float, *, image_heavy_ratio: float, text_ratio: float) -> str:
+    if image_ratio <= text_ratio:
+        return "text"
+    if image_ratio >= image_heavy_ratio:
+        return "image_heavy"
+    return "mixed"
+
+
+def preflight_pdf(
+    path: Path,
+    *,
+    sample_pages: int = 20,
+    image_heavy_ratio: float = 0.85,
+    text_ratio: float = 0.15,
+) -> PdfPreflightResult:
+    """Inspect a PDF cheaply: page count + sampled text-vs-scanned estimate.
+
+    Read-only and OCR-free. Opens the PDF with PyMuPDF (``fitz``), reads the page
+    count, then probes a bounded sample of pages with ``page.get_text("text")``
+    gated by the *same* :func:`_is_meaningful_page_text` heuristic the real
+    extractor uses — so the estimate tracks actual extraction behavior. Does
+    **not** touch :func:`_extract_pdf`, never rasterizes/OCRs, and persists
+    nothing.
+
+    Raises :class:`PdfEncryptedError` for password-protected PDFs and
+    :class:`ExtractionError` for a corrupt/unopenable file (mirroring
+    ``_extract_pdf``'s corrupt message). ``import fitz`` propagating ``ImportError``
+    lets the caller degrade gracefully when PyMuPDF is unavailable.
+    """
+    import fitz  # may raise ImportError -> caller degrades to a safe verdict
+
+    try:
+        document_ctx = fitz.open(path)
+    except Exception as exc:
+        raise ExtractionError(
+            f"the file may be corrupt or not a real PDF ({type(exc).__name__})"
+        ) from exc
+
+    with document_ctx as document:
+        if getattr(document, "needs_pass", False):
+            raise PdfEncryptedError("the PDF is encrypted or password-protected")
+
+        page_count = int(document.page_count)
+        indices = _preflight_sample_indices(page_count, sample_pages)
+        meaningful = 0
+        for index in indices:
+            body = document[index].get_text("text").strip()
+            if _is_meaningful_page_text(body):
+                meaningful += 1
+        sampled = len(indices)
+        ocr_ready, _ = _ocr_available()
+
+    if sampled == 0:
+        return PdfPreflightResult(
+            page_count=page_count,
+            sampled_pages=0,
+            meaningful_pages=0,
+            text_ratio=0.0,
+            image_ratio=0.0,
+            scanned_flag="unknown",
+            ocr_available=ocr_ready,
+        )
+
+    text_ratio_val = meaningful / sampled
+    image_ratio = 1.0 - text_ratio_val
+    flag = _scanned_flag(image_ratio, image_heavy_ratio=image_heavy_ratio, text_ratio=text_ratio)
+    return PdfPreflightResult(
+        page_count=page_count,
+        sampled_pages=sampled,
+        meaningful_pages=meaningful,
+        text_ratio=round(text_ratio_val, 4),
+        image_ratio=round(image_ratio, 4),
+        scanned_flag=flag,
+        ocr_available=ocr_ready,
+    )

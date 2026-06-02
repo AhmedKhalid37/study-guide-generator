@@ -1,10 +1,72 @@
-# LARGE_PDF_PREFLIGHT_DESIGN.md — Large-PDF upload preflight (DESIGN ONLY)
+# LARGE_PDF_PREFLIGHT_DESIGN.md — Large-PDF upload preflight
 
-> **Status: design only. No code in this slice.** This document proposes a safe
-> large-PDF *preflight* system. It does **not** change upload limits, the
-> extraction/OCR pipeline, the renderer, or any existing behavior. It exists so a
-> future implementation slice starts from an agreed shape. See §10 for the
-> recommended first (small) implementation slice and §11 for explicit non-goals.
+> **Status: Slice 1 IMPLEMENTED (backend endpoint only). Later slices still
+> design-only.** The original document below proposed the full preflight system;
+> the **Slice 1 implementation note** (immediately after this banner) records what
+> actually shipped. UI, page-range flow into extraction, and split/chunk
+> processing remain **deferred** exactly as designed. The §-numbered design text is
+> unchanged and remains the agreed shape for the deferred slices.
+
+---
+
+## Slice 1 — IMPLEMENTED (backend endpoint only)
+
+**Commit:** `Add PDF preflight endpoint` (branch `large-pdf-preflight-api`).
+
+What shipped, matching §3/§10:
+
+- **New route `POST /api/preflight/pdf`** (`api/server.py`) — multipart, single
+  `file` field, **PDF-only** (non-PDF → `400`). Registered with the other
+  explicit `/api/*` routes, **before** the static SPA mount. Creates no job,
+  writes nothing persistent (temp file removed in `finally`), runs **no OCR**, and
+  changes **no limits**. The streaming size guard **reuses** the existing
+  `MAX_LLM_ATTACHMENT_BYTES` ceiling (15 MB) — over-limit → `400`, ceiling
+  unchanged.
+- **New inspection helper `pipeline.extract.preflight_pdf`** — opens with `fitz`,
+  reads `page_count`, probes a bounded, evenly spaced page sample with
+  `page.get_text("text")` gated by the **existing** `_is_meaningful_page_text`,
+  and probes OCR availability via the **existing** `_ocr_available()`. **It does
+  not touch `_extract_pdf`** (verified byte-for-byte unchanged). Returns a
+  `PdfPreflightResult`; raises `PdfEncryptedError` (encrypted) / `ExtractionError`
+  (corrupt).
+- **Verdict / warnings / actions** assembled in `_build_pdf_preflight_report`
+  (`api/server.py`). Encrypted & corrupt → `verdict: "blocked"` (with `ok: true`).
+  Any other inspection failure — incl. PyMuPDF unavailable on the host — **degrades
+  to `verdict: "ok"`** with a soft note, so preflight can never block a PDF that
+  would otherwise process.
+- **Response shape (shipped):** top-level `filename`, `content_type`,
+  `file_size_bytes`, `file_size_mb`, `page_count`, `sampled_pages`,
+  `text_pages_estimate`, `ocr_pages_estimate`, `image_ratio_est`, `is_estimate`,
+  `scanned_flag` (`text` | `mixed` | `image_heavy` | `unknown`), `recommended_mode`
+  (`full` | `first_n` | `page_range`), `ocr_available`, `verdict`
+  (`ok` | `warn` | `blocked`), `warnings[]`, `allowed_actions[]`, and `limits{}`.
+  The §3.2 estimate fields are **flattened to top level** (per the slice's required
+  minimum contract) rather than nested under `estimate`. `allowed_actions` uses the
+  names `continue` / `process_first_n` / `choose_page_range` / `remove_file`;
+  **`split_automatically` is never emitted** (deferred, §9).
+- **Env knobs (read once at import, `os.getenv` precedent):**
+  `PREFLIGHT_SAMPLE_PAGES` (20), `PREFLIGHT_WARN_PAGES` (80),
+  `PREFLIGHT_WARN_SIZE_MB` (25), `PREFLIGHT_OCR_PAGE_LIMIT` (60),
+  `PREFLIGHT_DEFAULT_FIRST_N` (20), `PREFLIGHT_IMAGE_HEAVY_RATIO` (0.85),
+  `PREFLIGHT_TEXT_RATIO` (0.15) — exactly the §4 names. `MAX_UPLOAD_MB` is
+  **reported** (as `limits.max_upload_mb`) but unchanged.
+- **Tests:** `test_scripts/test_pdf_preflight.py` (24/24 in Docker) — helper +
+  endpoint via TestClient: text / image-heavy / mixed / encrypted / corrupt /
+  non-PDF(400) / oversize(400, threshold lowered) / warn-by-page-count. Skips
+  cleanly without PyMuPDF (Docker-only).
+
+**Still deferred (unchanged from §9/§11):** the frontend banner/actions (Slice 2),
+page-range flow into `_extract_pdf` (Slice 3, `pages=` filter), and automatic
+split/chunk processing + hybrid OCR dedup (Slice 4+).
+
+---
+
+> **(Original design below — design-only for the deferred slices.)** This document
+> proposes a safe large-PDF *preflight* system. It does **not** change upload
+> limits, the extraction/OCR pipeline, the renderer, or any existing behavior. It
+> exists so a future implementation slice starts from an agreed shape. See §10 for
+> the recommended first (small) implementation slice and §11 for explicit
+> non-goals.
 
 ---
 

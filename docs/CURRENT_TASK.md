@@ -683,6 +683,48 @@ parked on the `hardening` branch — not merged, not deleted.
       container **healthy** (`/api/health` `{"ok":true}`, `/api/options` OK);
       release smoke pass.
 
+27. **Large-PDF preflight Slice 1 — backend endpoint only** — branch
+    `large-pdf-preflight-api`, commit `Add PDF preflight endpoint`. Implements the
+    first slice of `docs/LARGE_PDF_PREFLIGHT_DESIGN.md` §10: a **read-only**
+    `POST /api/preflight/pdf` that inspects ONE uploaded PDF *before* job creation
+    and returns a lightweight verdict — **no UI, no job, no extractor change, no
+    OCR, no limit change.**
+    - **New helper `pipeline.extract.preflight_pdf`** — opens with `fitz`, reads
+      `page_count`, probes a bounded, evenly spaced page sample
+      (`_preflight_sample_indices`, default 20) with `get_text("text")` gated by the
+      **existing** `_is_meaningful_page_text`, and reuses the **existing**
+      `_ocr_available()`. **`_extract_pdf` is untouched** (no behavior change).
+      Returns `PdfPreflightResult`; raises new `PdfEncryptedError` (encrypted) /
+      existing `ExtractionError` (corrupt).
+    - **Endpoint** (`api/server.py`, registered before the static mount): multipart,
+      single `file`, **PDF-only** (non-PDF → `400`). Streams to a temp file reusing
+      the **existing** `MAX_LLM_ATTACHMENT_BYTES` (15 MB) guard (over-limit → `400`,
+      ceiling unchanged); temp file removed in `finally`; inspection runs in a
+      threadpool. `_build_pdf_preflight_report` assembles `verdict` (`ok`/`warn`/
+      `blocked`) + `warnings[]` + `allowed_actions[]` + echoed `limits{}`.
+      **Encrypted/corrupt → `blocked` (with `ok: true`); any other failure (incl.
+      PyMuPDF missing on host) → degrades to `ok`** so preflight never blocks a
+      processable PDF. `allowed_actions` ∈ {`continue`, `process_first_n`,
+      `choose_page_range`, `remove_file`}; **`split_automatically` never emitted**
+      (deferred). No secrets/host temp paths in the response.
+    - **Env knobs** (`os.getenv`, read once at import; the §4 names):
+      `PREFLIGHT_SAMPLE_PAGES`/`PREFLIGHT_WARN_PAGES`/`PREFLIGHT_WARN_SIZE_MB`/
+      `PREFLIGHT_OCR_PAGE_LIMIT`/`PREFLIGHT_DEFAULT_FIRST_N`/
+      `PREFLIGHT_IMAGE_HEAVY_RATIO`/`PREFLIGHT_TEXT_RATIO`. `MAX_UPLOAD_MB` reported,
+      not changed.
+    - **Verified in Docker** (healthy): `python -m compileall api pipeline` OK;
+      `npm --prefix frontend run build` OK; `docker compose config`/`build`/`up` OK;
+      `/api/health` `{"ok":true}`; `/api/options` unchanged. New
+      `test_scripts/test_pdf_preflight.py` **24/24** (helper + endpoint via
+      TestClient: text/image-heavy/mixed/encrypted/corrupt/non-PDF-400/oversize-400/
+      warn-by-pages; skips cleanly without PyMuPDF). Release smoke **28/28**. Live
+      curl: text PDF → `ok`/`full`/`[continue]`; image-heavy → `warn`/`image_heavy`/
+      `first_n` + first-N/range/remove actions; non-PDF → `400`; corrupt `.pdf` →
+      `blocked`/`[remove_file]`.
+    - **Deferred (unchanged):** frontend banner/actions (Slice 2), page-range flow
+      into `_extract_pdf` (Slice 3), automatic split/chunk + hybrid OCR dedup
+      (Slice 4+). See the design doc's Slice-1 implementation note.
+
 ## NEXT (in order)
 
 > Slices 1–3 of the math/PDF fidelity work (`math-display-breaks` DONE #23,

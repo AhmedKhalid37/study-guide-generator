@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import io
 import json
+import os
 import re
 import tempfile
 import zipfile
@@ -80,6 +81,19 @@ ARTIFACTS = {
 }
 MAX_LLM_ATTACHMENTS = 5
 MAX_LLM_ATTACHMENT_BYTES = 15 * 1024 * 1024
+
+# Large-PDF preflight thresholds (read-only inspection — see
+# docs/LARGE_PDF_PREFLIGHT_DESIGN.md). All env-tunable, read once at import,
+# following the os.getenv precedent in pipeline/run_llm_job.py. These are ADVISORY
+# warn thresholds only; they do NOT change the hard upload ceiling
+# (MAX_LLM_ATTACHMENT_BYTES) that preflight reuses as its size guard.
+PREFLIGHT_SAMPLE_PAGES = int(os.getenv("PREFLIGHT_SAMPLE_PAGES", "20"))
+PREFLIGHT_WARN_PAGES = int(os.getenv("PREFLIGHT_WARN_PAGES", "80"))
+PREFLIGHT_WARN_SIZE_MB = float(os.getenv("PREFLIGHT_WARN_SIZE_MB", "25"))
+PREFLIGHT_OCR_PAGE_LIMIT = int(os.getenv("PREFLIGHT_OCR_PAGE_LIMIT", "60"))
+PREFLIGHT_DEFAULT_FIRST_N = int(os.getenv("PREFLIGHT_DEFAULT_FIRST_N", "20"))
+PREFLIGHT_IMAGE_HEAVY_RATIO = float(os.getenv("PREFLIGHT_IMAGE_HEAVY_RATIO", "0.85"))
+PREFLIGHT_TEXT_RATIO = float(os.getenv("PREFLIGHT_TEXT_RATIO", "0.15"))
 
 # Export bundle selectors -> (artifact filename, availability key). Only these
 # artifacts may ever be bundled; raw source, attachments, and .env are never
@@ -1259,6 +1273,46 @@ def create_upload_markdown_job(
         file.file.close()
     _apply_folder_assignment(job.id, folder_target)
     return job_response(job)
+
+
+@app.post("/api/preflight/pdf")
+async def preflight_pdf_upload(file: UploadFile = File(...)) -> dict[str, Any]:
+    """Read-only preflight of a single uploaded PDF (see
+    docs/LARGE_PDF_PREFLIGHT_DESIGN.md, Slice 1).
+
+    Inspects the PDF *before* any job is created: page count + a cheap sampled
+    text-vs-scanned estimate (no OCR), returning a verdict + warnings + allowed
+    actions. Creates no job, writes nothing persistent (the temp file is removed
+    in ``finally``), runs no OCR, and changes no limits. Accepts PDFs only.
+    """
+    filename = Path(file.filename or "document.pdf").name
+    suffix = Path(filename).suffix.lower()
+    if suffix != ".pdf":
+        raise HTTPException(status_code=400, detail="Preflight only inspects PDF files.")
+
+    temp_path: Path | None = None
+    size = 0
+    try:
+        with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf", prefix="preflight-") as tmp:
+            temp_path = Path(tmp.name)
+            # Reuse the existing streaming size guard so preflight can't smuggle a
+            # file larger than the upload ceiling. This does NOT change the limit.
+            while chunk := await file.read(1024 * 1024):
+                size += len(chunk)
+                if size > MAX_LLM_ATTACHMENT_BYTES:
+                    raise HTTPException(
+                        status_code=400,
+                        detail=f"{filename} exceeds the {MAX_LLM_ATTACHMENT_BYTES // (1024 * 1024)} MB upload limit.",
+                    )
+                tmp.write(chunk)
+        report = await run_in_threadpool(
+            _build_pdf_preflight_report, temp_path, filename=filename, file_size_bytes=size
+        )
+    finally:
+        if temp_path is not None:
+            temp_path.unlink(missing_ok=True)
+        await file.close()
+    return report
 
 
 @app.post("/api/jobs/llm")
@@ -2783,6 +2837,204 @@ async def _save_llm_attachments(uploads: list[UploadFile]) -> list[AttachmentSou
         finally:
             await upload.close()
     return attachments
+
+
+def _preflight_limits() -> dict[str, Any]:
+    """Effective threshold values echoed back so UI copy can reference them."""
+    return {
+        "max_upload_mb": MAX_LLM_ATTACHMENT_BYTES // (1024 * 1024),
+        "sample_pages": PREFLIGHT_SAMPLE_PAGES,
+        "warn_pages": PREFLIGHT_WARN_PAGES,
+        "warn_size_mb": PREFLIGHT_WARN_SIZE_MB,
+        "ocr_page_limit": PREFLIGHT_OCR_PAGE_LIMIT,
+        "default_first_n": PREFLIGHT_DEFAULT_FIRST_N,
+        "image_heavy_ratio": PREFLIGHT_IMAGE_HEAVY_RATIO,
+        "text_ratio": PREFLIGHT_TEXT_RATIO,
+    }
+
+
+def _preflight_base(filename: str, file_size_bytes: int) -> dict[str, Any]:
+    return {
+        "ok": True,
+        "filename": filename,
+        "content_type": "application/pdf",
+        "file_size_bytes": file_size_bytes,
+        "file_size_mb": round(file_size_bytes / (1024 * 1024), 2),
+        "limits": _preflight_limits(),
+    }
+
+
+def _preflight_terminal(
+    base: dict[str, Any],
+    *,
+    verdict: str,
+    scanned_flag: str,
+    recommended_mode: str,
+    warnings: list[str],
+    allowed_actions: list[str],
+    ocr_available: bool = False,
+) -> dict[str, Any]:
+    """Assemble a non-inspected report (blocked / degraded-to-ok) with the same
+    top-level shape as a successful inspection so the contract stays uniform."""
+    return {
+        **base,
+        "page_count": None,
+        "sampled_pages": 0,
+        "text_pages_estimate": 0,
+        "ocr_pages_estimate": 0,
+        "image_ratio_est": None,
+        "is_estimate": True,
+        "scanned_flag": scanned_flag,
+        "recommended_mode": recommended_mode,
+        "ocr_available": ocr_available,
+        "verdict": verdict,
+        "warnings": warnings,
+        "allowed_actions": allowed_actions,
+    }
+
+
+def _build_pdf_preflight_report(
+    path: Path, *, filename: str, file_size_bytes: int
+) -> dict[str, Any]:
+    """Turn the cheap :func:`pipeline.extract.preflight_pdf` inspection into the
+    API report (verdict + warnings + allowed actions + echoed limits).
+
+    Preflight must NEVER block a PDF that would otherwise process: encrypted /
+    corrupt files return ``verdict: "blocked"`` (the request still succeeded —
+    ``ok: true``), and any other inspection failure (incl. PyMuPDF being
+    unavailable on the host) degrades to ``verdict: "ok"`` with a soft note.
+    """
+    from pipeline.extract import ExtractionError, PdfEncryptedError, preflight_pdf
+
+    base = _preflight_base(filename, file_size_bytes)
+
+    try:
+        result = preflight_pdf(
+            path,
+            sample_pages=PREFLIGHT_SAMPLE_PAGES,
+            image_heavy_ratio=PREFLIGHT_IMAGE_HEAVY_RATIO,
+            text_ratio=PREFLIGHT_TEXT_RATIO,
+        )
+    except PdfEncryptedError:
+        return _preflight_terminal(
+            base,
+            verdict="blocked",
+            scanned_flag="unknown",
+            recommended_mode="full",
+            warnings=[
+                "This PDF is encrypted or password-protected and can't be read. "
+                "Remove it or upload an unlocked copy."
+            ],
+            allowed_actions=["remove_file"],
+        )
+    except ImportError:
+        # PyMuPDF unavailable (e.g. host venv) — never block a processable file.
+        return _preflight_terminal(
+            base,
+            verdict="ok",
+            scanned_flag="unknown",
+            recommended_mode="full",
+            warnings=["Couldn't inspect this PDF (PDF tools unavailable); it will be processed normally."],
+            allowed_actions=["continue", "remove_file"],
+        )
+    except ExtractionError:
+        return _preflight_terminal(
+            base,
+            verdict="blocked",
+            scanned_flag="unknown",
+            recommended_mode="full",
+            warnings=["This file couldn't be opened — it may be corrupt or not a real PDF."],
+            allowed_actions=["remove_file"],
+        )
+    except Exception:
+        # Any other unexpected inspection failure degrades to a safe pass.
+        return _preflight_terminal(
+            base,
+            verdict="ok",
+            scanned_flag="unknown",
+            recommended_mode="full",
+            warnings=["Couldn't fully inspect this PDF; it will be processed normally."],
+            allowed_actions=["continue", "remove_file"],
+        )
+
+    page_count = result.page_count
+    file_size_mb = base["file_size_mb"]
+    text_pages = round(result.text_ratio * page_count)
+    ocr_pages = max(0, page_count - text_pages)
+
+    warnings: list[str] = []
+    verdict = "ok"
+
+    large_by_pages = page_count > PREFLIGHT_WARN_PAGES
+    large_by_size = file_size_mb > PREFLIGHT_WARN_SIZE_MB
+    is_large = large_by_pages or large_by_size
+
+    if page_count == 0:
+        verdict = "warn"
+        warnings.append("This PDF appears to have no readable pages.")
+
+    if result.scanned_flag == "image_heavy":
+        verdict = "warn"
+        warnings.append(
+            f"This PDF appears image-based (~{round(result.image_ratio * 100)}% of sampled pages "
+            "have no text layer); OCR may take a long time."
+        )
+    elif result.scanned_flag == "mixed" and is_large:
+        verdict = "warn"
+        warnings.append(
+            "This PDF is a mix of text and scanned pages; scanned pages will be OCR'd, which can be slow."
+        )
+
+    if large_by_pages:
+        verdict = "warn"
+        warnings.append(
+            f"This PDF has {page_count} pages (over the {PREFLIGHT_WARN_PAGES}-page guidance); "
+            "generation may be slow and the extracted text may be truncated to the configured limit."
+        )
+    if large_by_size:
+        verdict = "warn"
+        warnings.append(
+            f"This PDF is {file_size_mb} MB (over the {PREFLIGHT_WARN_SIZE_MB:g} MB guidance); "
+            "processing may be slow."
+        )
+
+    if ocr_pages > PREFLIGHT_OCR_PAGE_LIMIT:
+        verdict = "warn"
+        warnings.append(
+            f"OCR would run on an estimated {ocr_pages} pages and may take a long time."
+        )
+
+    if result.scanned_flag in {"image_heavy", "mixed"} and not result.ocr_available:
+        verdict = "warn"
+        warnings.append(
+            "OCR is unavailable in this environment, so scanned pages would yield little or no text."
+        )
+
+    if verdict == "ok":
+        recommended_mode = "full"
+        allowed_actions = ["continue"]
+    else:
+        recommended_mode = "first_n" if (result.scanned_flag == "image_heavy" or is_large) else "page_range"
+        allowed_actions = ["continue"]
+        if page_count > 0:
+            allowed_actions += ["process_first_n", "choose_page_range"]
+        allowed_actions.append("remove_file")
+
+    return {
+        **base,
+        "page_count": page_count,
+        "sampled_pages": result.sampled_pages,
+        "text_pages_estimate": text_pages,
+        "ocr_pages_estimate": ocr_pages,
+        "image_ratio_est": result.image_ratio,
+        "is_estimate": True,
+        "scanned_flag": result.scanned_flag,
+        "recommended_mode": recommended_mode,
+        "ocr_available": result.ocr_available,
+        "verdict": verdict,
+        "warnings": warnings,
+        "allowed_actions": allowed_actions,
+    }
 
 
 def _validate_provider_model(provider: str, model: str) -> None:
