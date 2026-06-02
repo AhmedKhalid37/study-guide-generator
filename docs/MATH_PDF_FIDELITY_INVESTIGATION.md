@@ -208,3 +208,31 @@ No application source was modified during this investigation. The only change is
 the addition of this report under `docs/`. Renderer, theme, sanitizer, prompts,
 and pipeline code are byte-for-byte unchanged. Verified via `git status` /
 `git diff --stat` (docs-only).
+
+---
+
+## 10. Slice 1 follow-up (CSS-only) — page-break guard added
+
+Slice 1 (`Prevent display math page breaks`) added `break-inside: avoid` +
+`page-break-inside: avoid` to `.guide .katex-display` in **both** the base CSS
+and the `@media print` block, matching the existing protection on
+`table`/`pre`/`blockquote`/`img`. CSS-only; no renderer/sanitizer/prompt/
+geometry/dependency change.
+
+**Honest empirical result (real Chromium PDF render of a new
+`test_scripts/math_layout_fixture.md`, before vs. after):** KaTeX display math
+in this pipeline **already renders atomically and does not split mid-equation**,
+even without the new rule. A fitting display block (incl. tall multi-row
+`aligned`) jumps **whole** to the next page in both old and new CSS — KaTeX's
+internal HTML (vlist / positioned spans) exposes no in-equation fragmentation
+break points, and `.katex-display` additionally carries `overflow` (a scroll
+container is monolithic). The only observed "split" is an equation **taller than
+the printable page area**, which is a *forced overflow* that `break-inside`
+cannot prevent — that is the **clipping** symptom (cause B), still deferred.
+
+So Slice 1 is **defensive / consistency hardening**, not a fix for a reproduced
+visible split: it keeps display math in the same break-protected family as the
+other block elements and becomes load-bearing if a later slice removes the
+`overflow` clipping behavior. **Cause B (overflow/clipping), cause C
+(font-size), and cause D (prompt guidance) remain deferred** to Slices 2–4 as
+described in §7 — none are claimed fixed here.

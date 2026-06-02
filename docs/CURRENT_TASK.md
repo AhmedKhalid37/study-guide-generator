@@ -557,11 +557,45 @@ parked on the `hardening` branch — not merged, not deleted.
       click-through:** clicking Cancel mid-generation in the live Builder and seeing
       the cancelled state + preserved inputs.
 
+23. **Math/PDF fidelity Slice 1 — page-break guard for display math (CSS-ONLY)** —
+    branch `math-display-breaks`. Added `break-inside: avoid;` +
+    `page-break-inside: avoid;` to `.guide .katex-display` in **both** the base
+    rule and the `@media print` block of `themes/claude_clean.css`, putting display
+    math in the same break-protected family as `table`/`pre`/`blockquote`/`img`.
+    **Strictly CSS-only** — no `pdf_renderer.py`, Chromium flags, KaTeX bridge /
+    HTML renderer, sanitizer, prompts, `@page` geometry, or dependency change.
+    Diff is 5 added lines in one file.
+    - **New fixture `test_scripts/math_layout_fixture.md`** (inline + long-inline,
+      short/long display, aligned block, arrows, display-in-list, display-in-table,
+      and ~1 page of filler before a boundary equation). No external API calls.
+    - **Honest verification (real Chromium PDF render, old vs. new CSS):** KaTeX
+      display math in this pipeline **already renders atomically and never splits
+      mid-equation** — a fitting block (incl. a 14-row `aligned`) jumps **whole** to
+      the next page in both old and new CSS, at every filler offset tested. KaTeX's
+      vlist/positioned-span output exposes no in-equation break points, and
+      `.katex-display` already carries `overflow` (scroll container = monolithic).
+      The only observed "split" is an equation **taller than the page** (45-row
+      probe) — a *forced overflow* `break-inside` cannot prevent. So Slice 1 is
+      **defensive/consistency hardening**, not a fix for a reproduced visible split;
+      it becomes load-bearing if a later slice removes the overflow clipping.
+    - **NOT fixed (deferred, not claimed):** long-equation overflow/clipping
+      (cause B, Slice 2), math font-size rationalization (cause C, Slice 3), and
+      prompt guidance for multi-line form (cause D, Slice 4). See
+      `MATH_PDF_FIDELITY_INVESTIGATION.md` §10.
+    - **Verified:** `npm --prefix frontend run build` OK; `python -m compileall api
+      pipeline` OK; `docker compose config` OK; `docker compose build` OK; container
+      recreated on the new image and **healthy** (`/api/health` `{"ok":true}`, new
+      CSS confirmed baked in — 2× `page-break-inside`); `/api/options` OK, no secret
+      leak; release smoke **28/28**; plus the before/after PDF render comparison
+      above (HTML render shows 22 `.katex-display` blocks, the rule present in base
+      + print, no raw LaTeX leaked into `<code>`).
+
 ## NEXT (in order)
 
-> The rerender-preset fix (`2716995`), B4 "Export selected" (`65b9b8f`), and the
-> cooperative server-side cancel (`901d44b`) are **DONE and on trunk** — they are
-> no longer "next." See DONE #20→#22 and OPEN ITEMS.
+> Slice 1 of the math/PDF fidelity work (`math-display-breaks`, DONE #23) added the
+> display-math page-break guard. The rerender-preset fix (`2716995`), B4 "Export
+> selected" (`65b9b8f`), and the cooperative server-side cancel (`901d44b`) are
+> **DONE and on trunk** — they are no longer "next." See DONE #20→#23 and OPEN ITEMS.
 
 1. **Recommended next — pick ONE, design/investigation only (do NOT start
    implementation in a docs slice):**

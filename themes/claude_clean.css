@@ -193,6 +193,8 @@ body {
   overflow-x: auto;
   overflow-y: hidden;
   max-width: 100%;
+  break-inside: avoid;
+  page-break-inside: avoid;
 }
 
 .guide .katex-display > .katex {
@@ -227,8 +229,10 @@ body {
   .guide table,
   .guide pre,
   .guide blockquote,
-  .guide img {
+  .guide img,
+  .guide .katex-display {
     break-inside: avoid;
+    page-break-inside: avoid;
   }
 
   /* Shrink table text in print so formula-bearing columns fit the page width
