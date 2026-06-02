@@ -311,3 +311,17 @@ first, `MARKDOWN_MATH_SYSTEM` stays the final appended block. Verified by
 paths all carry the guidance with the math block still last) plus the standard
 build/compile/docker/smoke suite. **Font-size rationalization (cause C / Slice 3
 in §7's numbering) remains untouched.**
+
+### Follow-up — page-reference formatting tightened (prompt-only)
+
+Separately from the math work, a small prompt-only follow-up (branch
+`page-reference-format`, `Standardize page reference prompts`) tightened the
+`slide_page_references` include-section fragment in `pipeline/orchestrator.py`
+after manual PDF validation found inconsistent slide/page citations (`p.20`,
+`pp. 20-21`, `p.96 − 100`, bare fragments, spaced-dash ranges). The fragment now
+forces one parenthesized format — `(page N)`, `(pages N-M)`, `(pages N, M, P-Q)`
+with a normal hyphen for ranges — and explicitly bans `p.`/`pp.`/`pN` and spaced
+en-dash ranges. This touches **only** that prompt fragment: no renderer, KaTeX
+bridge, sanitizer, CSS, or `@page` change, and `MARKDOWN_MATH_SYSTEM` stays the
+final appended block (no conflict with the math guidance). Verified by
+`test_scripts/test_page_reference_format.py`.

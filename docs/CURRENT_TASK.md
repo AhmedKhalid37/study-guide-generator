@@ -659,6 +659,30 @@ parked on the `hardening` branch — not merged, not deleted.
       `docker compose config`/`build` OK; container **healthy**
       (`/api/health` `{"ok":true}`, `/api/options` OK); release smoke **28/28**.
 
+26. **Page-reference format standardization (PROMPT-ONLY)** — branch
+    `page-reference-format`, commit `Standardize page reference prompts`. Manual
+    PDF validation showed slide/page citations were inconsistent (`p.20`,
+    `p. 20`, `pp. 20-21`, `p.96 − 100`, bare fragments, spaced-dash ranges).
+    Tightened the **`slide_page_references`** include-section fragment in
+    `pipeline/orchestrator.py` so the model always cites pages in one
+    parenthesized format: `(page N)` for a single page, `(pages N-M)` for a
+    continuous range, `(pages N, M, P-Q)` for multiple pages/ranges; a normal
+    hyphen `-` for ranges (never an en dash or spaced dash). The old loose
+    `(p. N)` recommendation was removed and `p.`, `pp.`, `pN`, and bare
+    out-of-paren fragments are now explicitly banned.
+    - **Prompt-only.** No renderer, sanitizer, CSS, dependency, or pipeline
+      change. The fragment is injected via `build_include_sections_block`
+      **before** `MARKDOWN_MATH_SYSTEM`; math guidance is untouched and stays the
+      final appended block, so there is no conflict.
+    - **Verified:** new `test_scripts/test_page_reference_format.py` **21/21**
+      (fragment carries the exact format examples + bans; assembled default and
+      preset prompts include them; ordering preset<axes<include<math preserved;
+      math contract intact alongside page refs); `test_long_formula_guidance.py`
+      **10/10** regression; `python -m compileall api pipeline` OK;
+      `npm --prefix frontend run build` OK; `docker compose config`/`build` OK;
+      container **healthy** (`/api/health` `{"ok":true}`, `/api/options` OK);
+      release smoke pass.
+
 ## NEXT (in order)
 
 > Slices 1–3 of the math/PDF fidelity work (`math-display-breaks` DONE #23,

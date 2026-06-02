@@ -90,9 +90,14 @@ INCLUDE_SECTION_FRAGMENTS: dict[str, str] = {
     "slide_page_references": (
         "The source text marks each original slide/page with a '## Page N' (or 'Slide N') "
         "anchor. Carry these through: when a fact, formula, or definition comes from a "
-        "specific page, add a compact inline reference such as '(p. N)' or '(Slide N)' right "
-        "after it, and prefer grouping related content under the page it came from. Do not "
-        "invent page numbers — only cite anchors that appear in the source."
+        "specific page, add a compact reference right after it, and prefer grouping related "
+        "content under the page it came from. ALWAYS write page references inside parentheses "
+        "using this exact format: write (page N) for a single page; write (pages N-M) for a "
+        "continuous range; write (pages N, M, P-Q) for multiple separate pages and/or ranges. "
+        "Never use p., pp., pN, 'p. N', or any bare page fragment outside parentheses. Use a "
+        "normal hyphen '-' for ranges (e.g. (pages 20-21)) — never an en dash or a spaced "
+        "dash like '20 - 21'. Do not invent page numbers — only cite anchors that appear in "
+        "the source."
     ),
     # Legacy shortcut module keys kept as accepted canonical sections (backward
     # compat with library/shortcuts.json state and any old payloads). They have a
