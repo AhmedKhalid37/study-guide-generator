@@ -14,4 +14,9 @@ services:
       - "host.docker.internal:host-gateway"   # lets the container reach a
                                               # host-run llama.cpp / llama-server
     shm_size: "512m"          # headroom for headless Chromium
+    mem_limit: "2g"
+    pids_limit: 256
+    cpus: "2.0"
+    security_opt:
+      - no-new-privileges:true
     restart: unless-stopped
