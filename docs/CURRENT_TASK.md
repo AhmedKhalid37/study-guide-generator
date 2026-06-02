@@ -12,6 +12,34 @@
 - **Main branch (PR target):** `chrome-renderer-v1`
 - **Group C is COMPLETE** (C1 → C5); C4d is a frontend polish follow-up to C4b.
 
+## INTEGRATION — throwaway branch `integ-group-c` (off `origin/chrome-renderer-v1` @ `38cc822`)
+
+Group C was integrated onto the real target on a throwaway branch (NOT `chrome-renderer-v1`,
+which is untouched pending explicit approval to move it):
+
+- `6f888b2` — **Squash of the Group C stack** onto `38cc822`. Clean fast-forward, **zero
+  conflicts** (the earlier "5 conflicts" were artifacts of two local-only commits on local
+  `chrome-renderer-v1`: `863f5b7` Docker-hardening and `61c134c`, neither pushed nor in the stack).
+- `5bde798` — **Re-applied `_preprocess_ocr_image`** (the one non-duplicate piece salvaged from
+  local-only `61c134c`); its event-loop and provider-error changes were already superseded by the stack.
+- `75ec24f` — **Prompt fixes** for two manual-test findings: MCQ answer explanations were wrapped in
+  `$...$` (KaTeX stripped the spaces → `Biasshiftsthebaseline`); `slide_page_references` was too weak.
+  Strengthened `mcqs_with_answers` (prose, never `$...$`) and `slide_page_references` (carry `## Page N`
+  anchors through as compact `(p. N)` refs). Prompt-only; verified on a synthetic multi-page source.
+- `72dab90` — **Mixed scanned/text PDF OCR fallback fixed.** Real issue: `_extract_pdf` decided
+  text-vs-OCR for the WHOLE document, so one page of embedded text (a title slide) suppressed OCR for
+  the rest — the 118-page `04_Neural_Networks...Backpropagation` extracted only ~97 chars / `## Page 1`.
+  New behavior: **page-level** fallback — each page uses meaningful embedded text (≥40 chars OR ≥5
+  word-like tokens) else is OCR'd individually (reusing `_preprocess_ocr_image`); `## Page N` anchors
+  preserved; mode now `pdf_text` / `pdf_ocr` / `pdf_mixed`. Verified on the real artifact: **~97 → 18,799
+  chars, 1 → 118 `## Page` headings, mode `pdf_mixed`**. Regression test `test_scripts/test_mixed_pdf_ocr.py`
+  (synthetic page-1-text + pages-2/3-image PDF; skips cleanly without PyMuPDF/tesseract, full pass in Docker).
+  Release smoke 28/28 (the known outline-ordering check flaked once, passed on rerun).
+  - **NOT automated — needs manual click-through:** generate a guide from a real scanned PDF through the
+    Builder and confirm page references appear and MCQ answer spacing is correct in the rendered PDF.
+  - **Deferred:** large-PDF upload UX / preflight / page-range selection; moving `chrome-renderer-v1`;
+    deciding what to do with local-only `863f5b7`; reconciling local `chrome-renderer-v1` (diverged at `61c134c`).
+
 ## DONE (in order)
 
 1. **Generator presets** — Claude-Exam / Review / Cram: full system prompts +

@@ -305,3 +305,26 @@ backend `model` string verbatim. Verified by an esbuild harness driving the real
 `presetCompat`/`presetModelLabel` (9/9: Max→no-warn, Plus→no-warn, `qwen3.6-plus`→warn,
 cross-provider→warn, DeepSeek/Gemma matches→no-warn). **To extend later:** add another
 explicit token pair/group to `COMPAT_FAMILIES` — keep families tight and intentional.
+
+## PDF extraction: page-level (not whole-document) text/OCR fallback (integ-group-c)
+`_extract_pdf` (`pipeline/extract.py`) now decides text-vs-OCR **per page** instead of
+for the whole document. **Why:** the previous all-or-nothing gate (`if any embedded text
+exists, return text for the entire file; else OCR the entire file`) mis-handled *mixed*
+PDFs — a mostly-scanned deck whose title slide carried a few words of embedded text was
+treated as "fully text-extracted", so OCR never ran and pages 2–N were lost (the manual
+118-page `04_Neural_Networks...Backpropagation` test extracted ~97 chars / only `## Page 1`).
+**Heuristic:** a page's embedded text is "meaningful" — and OCR is skipped for it — when the
+stripped text is **≥ 40 chars OR has ≥ 5 word-like tokens** (`\w+`); otherwise that page is
+OCR'd individually. Chosen to be conservative: the bug's title slide (97 chars) correctly
+stays a *text* page while blank/image-only pages (≈0 chars) fall through to OCR, and a normal
+all-text PDF never triggers unnecessary OCR. A page uses embedded text **XOR** OCR (never
+both appended) so content is not duplicated; if OCR yields nothing on a sparse page, its small
+embedded text is kept rather than dropping the page. **Mode reporting** gained a third value
+**`pdf_mixed`** (alongside `pdf_text` / `pdf_ocr`) to reflect documents that used both paths;
+mode is informational metadata only (stored in `job.json` `attachments[].mode`, never branched
+on), so this widened no API contract. **Why page-level over a blanket "OCR every page":** OCR
+is slow (~1–2 s/page) and lossier than embedded text, so real text pages must keep their exact
+embedded text; blanket OCR would also regress quality on normal PDFs. Large-PDF UX (preflight,
+page-range selection, OCR cost limits) is **deliberately out of scope** here. Regression:
+`test_scripts/test_mixed_pdf_ocr.py` (synthetic page-1-text + pages-2/3-image PDF). Verified on
+the real artifact: ~97 → 18,799 chars, 1 → 118 `## Page` headings, mode `pdf_mixed`.
