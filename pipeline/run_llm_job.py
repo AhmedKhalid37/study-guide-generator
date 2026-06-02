@@ -9,7 +9,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from pipeline.job_manager import Job
+from pipeline.job_manager import Job, JobCancelled
 from pipeline.extract import ExtractionError, extract_file
 from pipeline.llm_client import LLMConfig, LLMProviderError, MissingLLMConfigError
 from pipeline.orchestrator import generate_study_guide
@@ -74,6 +74,7 @@ def run_llm_job(
     try:
         job.set_status("saving_input")
         job.set_stage("preparing")
+        job.raise_if_cancelled()
         attachment_report: dict[str, Any] = {
             "files": [],
             "warnings": [],
@@ -95,6 +96,9 @@ def run_llm_job(
             total_extracted_chars=attachment_report["total_extracted_chars"],
         )
 
+        # Best early-exit checkpoint: bail before the expensive, uninterruptible
+        # LLM call rather than after paying for it.
+        job.raise_if_cancelled()
         job.set_status("generating")
         raw_markdown = generate_study_guide(
             augmented_source,
@@ -111,7 +115,17 @@ def run_llm_job(
         job.save_text(job.raw_md, raw_markdown)
         job.update(raw_md=str(job.raw_md))
 
+        # The LLM call has returned; bail before the render phase so a cancel
+        # requested during generation skips the Chromium PDF render.
+        job.raise_if_cancelled()
         return run_raw_markdown_pipeline(job, theme=theme, strict_math=strict_math)
+    except JobCancelled as exc:
+        # Cooperative cancel observed at a safe boundary: stop cleanly, preserve
+        # whatever partial input/source was written, and end in a non-failure
+        # terminal status. Clear the marker so a later retry isn't auto-cancelled.
+        exc.job.clear_cancel_request()
+        exc.job.set_status("cancelled")
+        return exc.job
     except LLMProviderError as exc:
         job.set_status("failed", str(exc), error_category=exc.category, log_path=str(job.render_log))
         raise LLMJobError(str(exc), job) from exc

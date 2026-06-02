@@ -1593,6 +1593,35 @@ def get_job_progress(job_id: str) -> dict[str, Any]:
     }
 
 
+# Statuses a job can never be cancelled out of — it has already finished. The
+# cancel endpoint refuses to touch these so completed artifacts are never mutated.
+_TERMINAL_JOB_STATUSES = frozenset(
+    {"done", "completed_with_warnings", "failed", "cancelled"}
+)
+
+
+@app.post("/api/jobs/{job_id}/cancel")
+def cancel_job(job_id: str) -> dict[str, Any]:
+    """Request cooperative cancellation of a running generation.
+
+    Writes a sidecar cancel marker (``jobs/<id>/cancel.requested``); the running
+    job thread observes it at its next safe stage boundary and ends in status
+    ``cancelled`` with partial input/artifacts preserved. This NEVER kills a
+    process and never interrupts an in-flight LLM call or Chromium render — a
+    cancel requested mid-call takes effect at the next checkpoint. Already
+    terminal jobs (done / completed_with_warnings / failed / cancelled) are a
+    safe no-op: their artifacts are never touched and no marker is written.
+    """
+    job = _get_job(job_id)
+    status = str(job.read_manifest().get("status") or "")
+    if status in _TERMINAL_JOB_STATUSES:
+        return {"id": job.id, "cancelled": False, "status": status}
+    # Do not set status here — the running thread owns the manifest and would
+    # overwrite it. The marker is the only cross-request signal.
+    job.request_cancel()
+    return {"id": job.id, "cancelled": True, "status": "cancelling"}
+
+
 @app.post("/api/jobs/{job_id}/favorite")
 def set_job_favorite(job_id: str, request: FavoriteRequest) -> dict[str, Any]:
     job = _get_job(job_id)

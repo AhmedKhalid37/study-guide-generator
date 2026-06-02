@@ -35,6 +35,7 @@ import {
   createLlmJob,
   createPasteJob,
   createShortcut,
+  cancelJob,
   createUploadMarkdownJob,
   getFolders,
   getJob,
@@ -176,7 +177,12 @@ const TOOLTIPS = {
 
 // Terminal generation statuses: once the progress endpoint reports one of these,
 // the UI stops polling. ``status`` (not ``stage``) is the source of truth.
-const TERMINAL_STATUSES = new Set(["done", "completed_with_warnings", "failed"]);
+const TERMINAL_STATUSES = new Set([
+  "done",
+  "completed_with_warnings",
+  "failed",
+  "cancelled"
+]);
 
 function isTerminalStatus(status) {
   return Boolean(status) && TERMINAL_STATUSES.has(status);
@@ -282,6 +288,12 @@ export default function BuilderWorkspace({
   const [detailsError, setDetailsError] = useState(null);
   // Live generation progress from GET /api/jobs/{id}/progress (null when idle).
   const [progress, setProgress] = useState(null);
+  // Id of the in-flight job once the poller has discovered it (null until then).
+  // Needed so the Cancel button has a target — the create-job POST is blocking
+  // and doesn't hand back the id until it resolves.
+  const [activeJobId, setActiveJobId] = useState(null);
+  // True from the moment the user clicks Cancel until the run resolves.
+  const [cancelling, setCancelling] = useState(false);
   // True once settings change after a guide has been generated.
   const [dirty, setDirty] = useState(false);
   // Transient confirmation + error for the "save as shortcut" action.
@@ -660,7 +672,11 @@ export default function BuilderWorkspace({
             const id = job.id || job.job_id;
             return id && !knownIds.has(id);
           });
-          if (fresh) state.jobId = fresh.id || fresh.job_id;
+          if (fresh) {
+            state.jobId = fresh.id || fresh.job_id;
+            // Surface the id so the Cancel button has a target to act on.
+            if (state.active) setActiveJobId(state.jobId);
+          }
         }
         if (state.jobId) {
           const snapshot = await getJobProgress(state.jobId);
@@ -690,6 +706,8 @@ export default function BuilderWorkspace({
 
     setLoading(true);
     setError(null);
+    setActiveJobId(null);
+    setCancelling(false);
     if (completeTimerRef.current) clearTimeout(completeTimerRef.current);
     setProgress({ status: "running", stage: "preparing", stage_label: "Starting…", progress: 5 });
 
@@ -731,6 +749,18 @@ export default function BuilderWorkspace({
       assertBuilderPayload(kind, payload, { text, title, length });
       const job = await createJob(kind, payload);
       stopPolling();
+      if (job.status === "cancelled") {
+        // The run was cancelled cooperatively. Do NOT present it as a finished
+        // guide and do NOT clear the draft — the Builder inputs/selections stay
+        // so the user can simply Generate again.
+        setProgress({
+          status: "cancelled",
+          stage_label: "Generation cancelled",
+          progress: 100
+        });
+        completeTimerRef.current = setTimeout(() => setProgress(null), 1800);
+        return;
+      }
       // Show a completed state briefly, then return the button to normal.
       setProgress({
         status: job.status || "done",
@@ -750,6 +780,28 @@ export default function BuilderWorkspace({
       setError(normalizeError(requestError));
     } finally {
       setLoading(false);
+      setActiveJobId(null);
+      setCancelling(false);
+    }
+  }
+
+  // Request cooperative cancellation of the in-flight job. Targets the id the
+  // poller discovered; the running job stops at its next safe checkpoint and
+  // resolves with status "cancelled" (handled in runGeneration). Never blocks
+  // and never clears the user's inputs.
+  async function handleCancel() {
+    if (!activeJobId || cancelling) return;
+    setCancelling(true);
+    setProgress((prev) => ({
+      ...(prev || {}),
+      stage_label: "Cancelling…"
+    }));
+    try {
+      await cancelJob(activeJobId);
+    } catch {
+      // Best-effort: if the request fails the job simply continues; the poller
+      // keeps reporting real status and the button stays available.
+      setCancelling(false);
     }
   }
 
@@ -1024,6 +1076,9 @@ export default function BuilderWorkspace({
             hasResult={Boolean(result)}
             loading={loading}
             progress={progress}
+            onCancel={handleCancel}
+            canCancel={Boolean(activeJobId)}
+            cancelling={cancelling}
             onSaveShortcut={handleSaveShortcut}
             shortcutSaved={shortcutSaved}
             shortcutSaving={shortcutSaving}
@@ -1172,6 +1227,9 @@ function BuilderActionBar({
   hasResult,
   loading,
   progress,
+  onCancel,
+  canCancel = false,
+  cancelling = false,
   onSaveShortcut,
   shortcutSaved,
   shortcutSaving,
@@ -1259,6 +1317,23 @@ function BuilderActionBar({
               ? "Saved to Home"
               : "Save as shortcut"}
       </button>
+
+      {loading && (
+        <button
+          type="button"
+          onClick={onCancel}
+          disabled={!canCancel || cancelling}
+          title={
+            canCancel
+              ? "Stop this generation at the next safe step (your inputs are kept)"
+              : "Preparing… cancel becomes available once the job starts"
+          }
+          className="sg-ghost-button inline-flex items-center gap-1.5 disabled:opacity-60"
+        >
+          <X className="h-4 w-4" />
+          {cancelling ? "Cancelling…" : "Cancel"}
+        </button>
+      )}
 
       <GenerateProgressButton loading={loading} progress={progress} hasResult={hasResult} />
     </div>

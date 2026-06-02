@@ -21,6 +21,21 @@ class JobManagerError(Exception):
     """Raised for recoverable job-management problems (collisions, bad state)."""
 
 
+class JobCancelled(Exception):
+    """Cooperative-cancel signal raised when a running job observes a cancel
+    request at a safe stage boundary.
+
+    This is NOT a failure: the job stops cleanly, ends in status ``cancelled``,
+    and its already-written partial artifacts (input/source) are preserved. It
+    is caught at each pipeline entry point, which sets the ``cancelled`` status
+    and returns the job rather than classifying it as an error.
+    """
+
+    def __init__(self, job: "Job") -> None:
+        super().__init__("Job cancelled by user request.")
+        self.job = job
+
+
 def _timestamp_id() -> str:
     stamp = datetime.now().strftime("%Y%m%d-%H%M%S")
     return f"{stamp}-{secrets.token_hex(2)}"
@@ -101,6 +116,41 @@ class Job:
     @property
     def repair_log(self) -> Path:
         return self.logs_dir / "repair.log"
+
+    @property
+    def cancel_marker(self) -> Path:
+        return self.dir / "cancel.requested"
+
+    def request_cancel(self) -> None:
+        """Record a cooperative cancel request as a sidecar marker file.
+
+        Deliberately a SEPARATE file, not a ``job.json`` field: the running job
+        thread is continuously read-modify-writing the manifest via
+        ``set_stage``/``update``, so a concurrent manifest write from the cancel
+        request could be silently lost. The marker is written once by the
+        canceller and only ever read (existence-checked) by the pipeline, so
+        there is no shared-mutable-file race.
+        """
+        self.dir.mkdir(parents=True, exist_ok=True)
+        self.cancel_marker.write_text(
+            datetime.now().isoformat(timespec="seconds") + "\n", encoding="utf-8"
+        )
+
+    def cancel_requested(self) -> bool:
+        """True iff a cooperative cancel has been requested for this job."""
+        return self.cancel_marker.exists()
+
+    def clear_cancel_request(self) -> None:
+        """Remove the cancel marker (best-effort). Called once cancellation has
+        been observed so a stale marker can never auto-cancel a later retry."""
+        self.cancel_marker.unlink(missing_ok=True)
+
+    def raise_if_cancelled(self) -> None:
+        """Cooperative cancellation checkpoint: raise :class:`JobCancelled` if a
+        cancel was requested. Call ONLY at safe stage boundaries — never mid
+        ``save_clean_md`` write or mid render/LLM call."""
+        if self.cancel_requested():
+            raise JobCancelled(self)
 
     @property
     def versions_dir(self) -> Path:

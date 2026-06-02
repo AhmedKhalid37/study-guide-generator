@@ -7,8 +7,14 @@
 
 ## Current position
 - **Branch (trunk / PR target):** `chrome-renderer-v1`
-- **Latest commit:** `1d51b36` — "Add compose resource limits and no-new-privileges hardening"
-- **Remote:** `origin/chrome-renderer-v1` == `1d51b36` (pushed; local == origin)
+- **Latest commit:** `65b9b8f` — "Add Library export selected action" (B4). After the
+  Group-C integration, three more commits landed: `687c8ca` (docs reconcile),
+  `2716995` (preserve generator preset on rerender), `65b9b8f` (B4). Older `1d51b36`
+  mentions below are historical.
+- **Remote:** `origin/chrome-renderer-v1` == `65b9b8f` (pushed; local == origin)
+- **In progress (unmerged):** branch `server-side-cancel` — cooperative server-side
+  cancel (marker file + `cancelled` status + `POST /api/jobs/{id}/cancel` + Builder
+  Cancel button; no process killing, no pipeline rewrite). See `CURRENT_TASK.md` #22.
 
 ## What just landed
 - **Group C fully integrated** onto `chrome-renderer-v1` (squash `6f888b2`): generator
@@ -56,7 +62,9 @@ existing `POST /api/exports/bundle` ZIP endpoint.)
 - **GHCR publish workflow / prebuilt image** — deferred distribution decision (parked on `hardening`).
 - **Pinned dependency lockfile** — deferred; regenerate from this tree, don't lift from `hardening`.
 - **Provider-aware truncation caps** — deferred (Option B in `DECISIONS.md`).
-- **Real server-side cancel button** — deferred backend slice.
+- **Real server-side cancel button** — DONE (branch `server-side-cancel`; cooperative,
+  marker-based, `cancelled` status). Retry-from-cancelled still deferred (re-generate
+  from the Builder instead).
 - **Local Model Manager** — DESIGN-FIRST (crosses the container boundary; get sign-off).
 - **In-app provider settings** — DESIGN-FIRST (server-side secret write path; keys never reach frontend).
 - **Shortcut inspector / repair loop** — not started.

@@ -286,6 +286,17 @@ export function retryJob(jobId) {
   });
 }
 
+// Request cooperative cancellation of a running generation. The running job
+// stops at its next safe stage boundary and ends in status "cancelled"; this
+// never kills a process. Safe no-op for already-finished jobs.
+export function cancelJob(jobId) {
+  return requestJson(`/api/jobs/${encodeURIComponent(jobId)}/cancel`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({})
+  });
+}
+
 export function getJobError(jobId) {
   return requestJson(`/api/jobs/${encodeURIComponent(jobId)}/error`);
 }

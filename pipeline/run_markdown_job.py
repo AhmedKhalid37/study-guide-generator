@@ -6,7 +6,7 @@ import sys
 from pathlib import Path
 
 from pipeline.input_handler import accept_markdown_upload, accept_paste, needs_extraction
-from pipeline.job_manager import Job
+from pipeline.job_manager import Job, JobCancelled
 from pipeline.markdown_sanitizer import sanitize
 from pipeline.math_validator import validate
 from pipeline.pdf_renderer import render_pdf
@@ -50,6 +50,10 @@ def run_markdown_job(
         shutil.copy2(saved_input, job.raw_md)
         job.update(input_path=str(saved_input), raw_md=str(job.raw_md))
         return run_raw_markdown_pipeline(job, theme=theme, strict_math=strict_math)
+    except JobCancelled:
+        job.clear_cancel_request()
+        job.set_status("cancelled")
+        return job
     except MarkdownJobError:
         raise
     except Exception as exc:
@@ -84,6 +88,10 @@ def run_pasted_text_job(
         job.save_text(job.raw_md, text)
         job.update(input_path=str(pasted), raw_md=str(job.raw_md))
         return run_raw_markdown_pipeline(job, theme=theme, strict_math=strict_math)
+    except JobCancelled:
+        job.clear_cancel_request()
+        job.set_status("cancelled")
+        return job
     except MarkdownJobError:
         raise
     except Exception as exc:
@@ -94,6 +102,8 @@ def run_pasted_text_job(
 
 
 def run_raw_markdown_pipeline(job: Job, *, theme: str, strict_math: bool) -> Job:
+    # Cooperative cancel checkpoint at the phase boundary (before sanitize).
+    job.raise_if_cancelled()
     job.set_status("sanitizing")
     job.set_stage("cleaning")
     raw = job.raw_md.read_text(encoding="utf-8", errors="replace")
@@ -138,6 +148,10 @@ def run_raw_markdown_pipeline(job: Job, *, theme: str, strict_math: bool) -> Job
             file=sys.stderr,
         )
 
+    # Last safe checkpoint before the uninterruptible Chromium render: a cancel
+    # requested up to here skips the render entirely. Once render_pdf starts we
+    # let it finish (no process killing).
+    job.raise_if_cancelled()
     job.set_status("rendering")
     job.set_stage("rendering")
     # When math validation failed we must render with throwOnError=false so the

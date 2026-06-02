@@ -8,8 +8,14 @@
 ## Where we are
 
 - **Branch:** `chrome-renderer-v1` (the live integrated trunk; PR target)
-- **Last commit:** `1d51b36` — Add compose resource limits and no-new-privileges hardening
-- **`origin/chrome-renderer-v1`:** `1d51b36` (local == origin; pushed)
+- **Trunk tip:** `65b9b8f` — Add Library export selected action (B4). Since the
+  Group-C integration note below was written, three more commits landed on trunk:
+  `687c8ca` (docs reconcile), `2716995` (preserve generator preset on rerender),
+  `65b9b8f` (B4 "Export selected"). The older `1d51b36` references further down
+  are historical — trunk is now `65b9b8f`.
+- **In progress (not yet merged):** branch `server-side-cancel` — cooperative
+  server-side cancel for running generations (see DONE #22 below).
+- **`origin/chrome-renderer-v1`:** `65b9b8f` (local == origin; pushed)
 - **Group C is COMPLETE and INTEGRATED** (C1 → C5, incl. C4a–d) onto `chrome-renderer-v1`.
 - **For new sessions:** branch from `chrome-renderer-v1` @ `1d51b36` (or later). Do **not**
   re-merge any of the old stacked feature branches — they are consumed/archival (see
@@ -503,6 +509,55 @@ parked on the `hardening` branch — not merged, not deleted.
     ["pdf"]}`) returns a `200 application/zip` with `Content-Disposition:
     attachment`, both guides' `final.pdf`, and `manifest.json`.
 
+22. **Slice — cooperative server-side cancel (BACKEND + FRONTEND)** — branch
+    `server-side-cancel`. Adds a true server-side cancel for in-flight
+    generations, completing the progress/cancel/retry triad (progress + retry
+    already existed). **Design-first**, cooperative-only — **no process killing,
+    no PDF/Chromium-pipeline rewrite.**
+    - **Cancel state is a sidecar marker file** `jobs/<id>/cancel.requested`
+      (`Job.request_cancel`/`cancel_requested`/`clear_cancel_request`/
+      `raise_if_cancelled` in `pipeline/job_manager.py`), deliberately **not** a
+      `job.json` field: the running job thread continuously read-modify-writes
+      the manifest via `set_stage`/`update`, so a concurrent manifest write from
+      the cancel request could be lost. The marker is write-once by the canceller,
+      existence-checked by the pipeline → no shared-mutable-file race. Mirrors the
+      existing trash-marker pattern.
+    - **New terminal status `cancelled`** (distinct from `failed`; `error: null`).
+      A new `JobCancelled` signal is raised at safe stage boundaries and caught at
+      every pipeline entry point (`run_llm_job`, `run_pasted_text_job`,
+      `run_markdown_job`) → set `cancelled`, clear the marker, return the job
+      (never classified as a failure).
+    - **Checkpoints (`raise_if_cancelled`) only at existing stage boundaries:**
+      before extraction, **before the LLM call** (best early exit), **after the LLM
+      returns / before render** (skip Chromium), and at the top of
+      `run_raw_markdown_pipeline` + before `render_pdf`. **Never** mid-LLM-call,
+      mid-Chromium-render, or mid-`save_clean_md`. Honest limitation: cancel = "stop
+      at the next safe checkpoint," not instant abort; a cancel during the
+      uninterruptible LLM/render wait takes effect when that call returns.
+    - **Endpoint `POST /api/jobs/{job_id}/cancel`** (`api/server.py`): writes the
+      marker for a running job (`cancelled: true`); **already-terminal jobs are a
+      safe no-op** (`cancelled: false`, status echoed, **no marker, artifacts
+      untouched**); unknown id → 404. It does **not** set status itself (the running
+      thread owns the manifest).
+    - **Partial artifacts preserved** — nothing is deleted on cancel; input/source
+      stays. **Retry-from-cancelled is intentionally NOT wired** (`retry_failed_job`
+      stays gated to `failed`); the Builder keeps its inputs/selections on cancel so
+      the user simply re-generates. Documented, deferred.
+    - **Frontend** (`BuilderWorkspace.jsx` + `api/client.js`): `cancelJob` client
+      helper; the action bar shows a **Cancel** button only while running, enabled
+      once the existing job-discovery poller learns the in-flight id (the create-job
+      POST is blocking); `cancelled` added to `TERMINAL_STATUSES` so polling stops;
+      a cancelled result shows a "Generation cancelled" state and **does not** clear
+      the draft/inputs or present a guide.
+    - **Verified:** host — `compileall` OK, frontend build OK, focused test
+      `test_scripts/test_cancel_job.py` 14/14 (pipeline level). Docker (healthy,
+      uid 10001) — same test **22/22** incl. the endpoint via TestClient
+      (running→marker+true / done→no-op+no-marker / unknown→404); live curl proof on
+      a real `done` paste job (no-op, no marker) + unknown→404; release smoke
+      **28/28** (LLM/attachment/outline flows ran). **NOT automated — needs manual
+      click-through:** clicking Cancel mid-generation in the live Builder and seeing
+      the cancelled state + preserved inputs.
+
 ## NEXT (in order)
 
 1. **Library bulk actions — remaining follow-ups (deferred, not this slice).**
@@ -558,8 +613,11 @@ parked on the `hardening` branch — not merged, not deleted.
   whose manifest still records the preset after retry).
 - **Provider-aware truncation caps** — deferred (Option B in `DECISIONS.md`).
   Current caps are env-configurable with static defaults.
-- **Real cancel button** — deferred backend slice. The Builder shows progress
-  but there is no true server-side cancel yet.
+- **Real cancel button — DONE** (branch `server-side-cancel`, DONE #22). Cooperative
+  server-side cancel via a `jobs/<id>/cancel.requested` marker checked at safe stage
+  boundaries; new `cancelled` terminal status; `POST /api/jobs/{id}/cancel`; Builder
+  Cancel button. No process killing, no pipeline rewrite. **Still deferred:**
+  retry-from-cancelled (kept gated to `failed`; re-generate from the Builder instead).
 - **Docker GHCR publish workflow / prebuilt image** — deferred. `863f5b7` carried a
   `.github/workflows/publish.yml` (push image to GHCR on `v*` tags) and an
   `image: ghcr.io/...` line in compose. Needs a deliberate distribution decision before
