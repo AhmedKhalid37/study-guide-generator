@@ -120,9 +120,6 @@ export default function HomeShortcuts({
 
       <div className="sg-section-head">
         <h2>Pinned shortcuts</h2>
-        <button type="button" className="sg-ghost-button" onClick={() => setCustomizeOpen(true)}>
-          Customize
-        </button>
       </div>
 
       {error && (
