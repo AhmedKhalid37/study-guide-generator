@@ -328,7 +328,7 @@ function ProviderSettingsCard({ provider, isDefault, onSaved }) {
 
   return (
     <div className="sg-provider-card sg-recent-row">
-      <div className="sg-provider-top flex-wrap">
+      <div className="sg-provider-top">
         <span>{provider.display_name.slice(0, 1)}</span>
         <div className="min-w-0 flex-1">
           <strong className="truncate">{provider.display_name}</strong>
@@ -337,8 +337,12 @@ function ProviderSettingsCard({ provider, isDefault, onSaved }) {
             {isDefault ? " · default" : ""}
             {provider.base_url_host ? ` · ${provider.base_url_host}` : ""}
           </p>
+          {/* Status sits in normal flow under the name — never pinned to the
+              card's right edge, so it can't clip or overlap the icon. */}
+          <div className="mt-1.5">
+            <StatusPill provider={provider} />
+          </div>
         </div>
-        <StatusPill provider={provider} />
       </div>
 
       {provider.discovery_error && (
