@@ -1,14 +1,16 @@
 # LARGE_PDF_PREFLIGHT_DESIGN.md — Large-PDF upload preflight
 
-> **Status: Slices 1–4 IMPLEMENTED (backend endpoint + Builder warning UI +
-> page-selection plumbing + extraction now honors selected pages). Later slices
-> still design-only.** The original document below proposed the full preflight
-> system; the **Slice 1–4** implementation notes (immediately after this banner)
-> record what actually shipped. As of Slice 4 the persisted `page_selections`
-> **does change extraction** (PDF pages are filtered to the selection). Still
-> deferred exactly as designed: the active page-range **UI** (Slice 5), and
-> automatic split/chunk processing + hybrid OCR dedup. The §-numbered design text
-> is unchanged and remains the agreed shape for the deferred slices.
+> **Status: Slices 1–5 IMPLEMENTED (backend endpoint + Builder warning UI +
+> page-selection plumbing + extraction honors selected pages + the page-selection
+> UI is now live). Later slices still design-only.** The original document below
+> proposed the full preflight system; the **Slice 1–5** implementation notes
+> (immediately after this banner) record what actually shipped. As of Slice 4 the
+> persisted `page_selections` **changes extraction** (PDF pages are filtered to the
+> selection); as of Slice 5 the user can **set** that selection from the Builder
+> preflight card ("Process first N pages" / "Choose page range"). Still deferred
+> exactly as designed: automatic split/chunk processing + hybrid OCR dedup. The
+> §-numbered design text is unchanged and remains the agreed shape for the deferred
+> slices.
 
 ---
 
@@ -240,6 +242,64 @@ check passed on re-run). Live Docker generation with
 `page_selections={"sel.pdf": [[2, 3]]}` → the job's `input/source.txt` contains
 only `## Page 2` / `## Page 3` (not `## Page 1`) and the manifest persists the
 selection.
+
+---
+
+## Slice 5 — IMPLEMENTED (page-selection UI is live)
+
+**Commit:** `Enable PDF page selection UI` (branch `large-pdf-page-selection-ui`).
+Turns the Slice-2 inert "Process first N pages" / "Choose page range" affordances
+into **working** controls that populate the Builder's `pageSelections` state, which
+the Slice-3 plumbing already sends as `page_selections` and the Slice-4 extractor
+already honors. **Frontend/UI only — no backend, `_extract_pdf`, validation,
+limit, or dependency change** (the one tiny back-compat note: none was needed; the
+existing `_normalize_page_selections` already accepts exactly the shapes the UI
+emits).
+
+What shipped (`frontend/src/components/BuilderWorkspace.jsx`):
+
+- **Actions enabled in `PreflightCard`** (for `warn` PDFs; `blocked` still only
+  offers Remove). **Process first N pages** sets `{ "<file.name>": [[1, N]] }` where
+  `N = report.limits.default_first_n` (default 20) **capped by `page_count`** when
+  known (a 12-page deck asks for `[[1, 12]]`, never `1-20`). **Choose page range**
+  opens a small **inline editor**: free text like `1-20` or `1-20, 35-42` parsed by
+  `parsePageRanges` to `[[1,20],[35,42]]` — **1-based, inclusive**, validated
+  (positive ints, `start <= end`, sorted); a bad token shows an inline error and
+  does not apply. If a range exceeds a known `page_count` it still applies (a soft
+  note) — the backend normalizes and the extractor safely drops out-of-range pages.
+- **Active-selection confirmation.** When a selection is set the card collapses the
+  amber warning into a calm green **"Using pages 1-20"** bar (`formatPageRanges`)
+  with **Edit range** and **"Use all pages"** (clears the selection → back to all
+  pages). The **"coming later"** note and the disabled buttons are gone.
+- **Per-file, keyed by original filename.** `pageSelections` is keyed by
+  `file.name` — the exact key the backend matches on (`AttachmentSource.filename` /
+  `original_filename`). Multiple attached PDFs each carry their own selection.
+- **Removing a file clears its selection** (`removeFile`), but only when no other
+  remaining attachment shares that filename (duplicate-named siblings keep it).
+- **Default unchanged / not mandatory.** No selection ⇒ `pageSelections` stays `{}`
+  ⇒ `buildLlmPayload` omits `page_selections` ⇒ "all pages" ⇒ byte-equivalent
+  request. Page selection is purely opt-in.
+- **Persistence:** intentionally **not** added to drafts/shortcuts — the
+  attachments a selection refers to are themselves not persisted there, so an
+  orphaned selection would be meaningless. Lives beside the selected files only
+  (like `attachmentPreflights`). The preflight report is still **not** persisted to
+  `job.json` (unchanged from Slice 2/3).
+
+**Verification:** `npm --prefix frontend run build` OK; `python -m compileall api
+pipeline` OK; `docker compose config`/`build`/`up` OK (no secret output pasted);
+`/api/health` `{"ok":true}`, `/api/options` unchanged. Payload harness over the real
+`buildLlmPayload` (5/5: default & empty omit `page_selections`; first-N, multi-range,
+and multi-PDF shapes included verbatim). Parse-rule check (12/12). Served bundle
+contains the new strings ("Using pages", "Process first", "Choose page range", "Use
+all pages", "Pages to include") and **no** "coming later". `test_page_selections.py`
+**24/24**, `test_pdf_page_selection_extract.py` **39/39**, release smoke **28/28**
+(transient provider/host hiccups on overlapping runs cleared on a clean run). Live
+Docker generation with `page_selections={"multi.pdf": [[2, 3]]}` → manifest persists
+the selection and `input/source.txt` carries only `## Page 2`/`## Page 3` (not pages
+1/4).
+
+**Still deferred (unchanged):** automatic split/chunk processing and hybrid
+embedded-text + OCR dedup (§9). The per-page text-XOR-OCR behavior is unchanged.
 
 ---
 

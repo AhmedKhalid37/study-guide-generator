@@ -262,11 +262,13 @@ export default function BuilderWorkspace({
   // validateInputs. Shape per entry: { status: "checking"|"done"|"error",
   // report?, error? }.
   const [attachmentPreflights, setAttachmentPreflights] = useState({});
-  // Reserved internal state for the (deferred) PDF page-range UI: filename ->
-  // [[start, end], ...], 1-based inclusive. No control sets it yet, so it stays {}
-  // and buildLlmPayload omits page_selections entirely. Slice 3 only wires the
-  // request plumbing; the picker that populates this lands with the extraction slice.
-  // eslint-disable-next-line no-unused-vars
+  // PDF page selection (Slice 5): filename -> [[start, end], ...], 1-based
+  // inclusive. Keyed by the original upload filename (file.name) — the same key the
+  // backend plumbing matches on. Populated by the preflight card's "Process first N
+  // pages" / "Choose page range" actions; default {} means "all pages" and
+  // buildLlmPayload omits page_selections entirely. Lives beside the selected files
+  // only (like attachmentPreflights) — not persisted to drafts/shortcuts, since the
+  // attachments it refers to are not persisted either.
   const [pageSelections, setPageSelections] = useState({});
   const [folderId, setFolderId] = useState("unfiled");
   const [folders, setFolders] = useState([]);
@@ -1141,6 +1143,8 @@ export default function BuilderWorkspace({
               setAttachments={setAttachments}
               attachmentPreflights={attachmentPreflights}
               setAttachmentPreflights={setAttachmentPreflights}
+              pageSelections={pageSelections}
+              setPageSelections={setPageSelections}
               folders={folders}
               folderId={folderId}
               setFolderId={setFolderId}
@@ -1493,6 +1497,8 @@ function BuilderComposer({
   setAttachments,
   attachmentPreflights,
   setAttachmentPreflights,
+  pageSelections,
+  setPageSelections,
   folders,
   folderId,
   setFolderId,
@@ -1587,6 +1593,8 @@ function BuilderComposer({
             setAttachments={setAttachments}
             attachmentPreflights={attachmentPreflights}
             setAttachmentPreflights={setAttachmentPreflights}
+            pageSelections={pageSelections}
+            setPageSelections={setPageSelections}
           />
           <Toggle label="Strict math" checked={strictMath} onChange={setStrictMath} tip={TOOLTIPS.strictMath} />
         </div>
@@ -2352,6 +2360,61 @@ function isPdfFile(file) {
   return (file?.name || "").toLowerCase().endsWith(".pdf");
 }
 
+// Format normalized 1-based inclusive ranges back to a compact human string:
+// [[1,20],[35,42]] -> "1-20, 35-42"; a single-page range [[5,5]] -> "5".
+function formatPageRanges(ranges) {
+  if (!Array.isArray(ranges)) return "";
+  return ranges
+    .map(([start, end]) => (start === end ? `${start}` : `${start}-${end}`))
+    .join(", ");
+}
+
+// Parse a user-typed page spec like "1-20" or "1-20, 35, 40-42" into 1-based
+// inclusive [[start, end], ...]. Returns { ranges } on success or { error } on a
+// bad token. A single page "5" becomes [5, 5]. `pageCount` (when known) only drives
+// a soft `warning` — out-of-range pages are not rejected here (the backend
+// normalizes/merges and extraction safely drops pages past the real page count).
+function parsePageRanges(input, pageCount) {
+  const tokens = String(input || "")
+    .split(",")
+    .map((token) => token.trim())
+    .filter(Boolean);
+  if (tokens.length === 0) {
+    return { error: "Enter at least one page or range, e.g. 1-20 or 1-20, 35-42." };
+  }
+  const ranges = [];
+  for (const token of tokens) {
+    const range = token.match(/^(\d+)\s*-\s*(\d+)$/);
+    const single = token.match(/^(\d+)$/);
+    let start;
+    let end;
+    if (range) {
+      start = parseInt(range[1], 10);
+      end = parseInt(range[2], 10);
+    } else if (single) {
+      start = parseInt(single[1], 10);
+      end = start;
+    } else {
+      return { error: `Couldn't read "${token}". Use formats like 1-20, 5, or 1-20, 35-42.` };
+    }
+    if (start < 1 || end < 1) {
+      return { error: "Page numbers must be 1 or greater." };
+    }
+    if (start > end) {
+      return { error: `Range "${token}" must have start ≤ end.` };
+    }
+    ranges.push([start, end]);
+  }
+  ranges.sort((a, b) => a[0] - b[0]);
+  const exceeds = Number.isFinite(pageCount) && pageCount > 0 && ranges.some(([, end]) => end > pageCount);
+  return {
+    ranges,
+    warning: exceeds
+      ? `Some pages are beyond this ${pageCount}-page PDF; those pages will be ignored.`
+      : ""
+  };
+}
+
 const SCANNED_FLAG_LABEL = {
   text: "text PDF",
   mixed: "mixed text + scanned",
@@ -2362,8 +2425,24 @@ function AttachmentsPicker({
   attachments,
   setAttachments,
   attachmentPreflights = {},
-  setAttachmentPreflights
+  setAttachmentPreflights,
+  pageSelections = {},
+  setPageSelections
 }) {
+  // Page selections are keyed by the original upload filename (file.name) — the
+  // exact key the backend matches attachments on. Setting `ranges` to null/[] drops
+  // the entry, which means "all pages" again.
+  function setFileSelection(name, ranges) {
+    setPageSelections?.((current) => {
+      const next = { ...current };
+      if (!ranges || ranges.length === 0) {
+        delete next[name];
+      } else {
+        next[name] = ranges;
+      }
+      return next;
+    });
+  }
   // Read-only preflight (see docs/LARGE_PDF_PREFLIGHT_DESIGN.md, Slice 2). Runs
   // per added PDF; the result is stored beside the selected file only and never
   // sent to a job yet. A failure degrades to a soft warning — it never blocks
@@ -2403,6 +2482,15 @@ function AttachmentsPicker({
         delete next[key];
         return next;
       });
+    }
+    // Drop this file's page selection too — but only if no OTHER remaining
+    // attachment shares the same filename (selections are keyed by name, so a
+    // duplicate-named sibling legitimately still uses it).
+    if (target && setPageSelections) {
+      const stillPresent = attachments.some(
+        (file, fileIndex) => fileIndex !== index && file.name === target.name
+      );
+      if (!stillPresent) setFileSelection(target.name, null);
     }
   }
 
@@ -2456,8 +2544,12 @@ function AttachmentsPicker({
               {isPdfFile(file) && (
                 <PreflightCard
                   entry={attachmentPreflights[attachmentKey(file)]}
+                  selection={pageSelections[file.name]}
                   onRemove={() => removeFile(index)}
                   onAcknowledge={() => acknowledge(file)}
+                  onSelectFirstN={(n) => setFileSelection(file.name, [[1, n]])}
+                  onSelectRange={(ranges) => setFileSelection(file.name, ranges)}
+                  onClearSelection={() => setFileSelection(file.name, null)}
                 />
               )}
             </div>
@@ -2470,9 +2562,23 @@ function AttachmentsPicker({
 
 // Compact warning surface for a single PDF's preflight result. Stays quiet for
 // ordinary (verdict "ok", no warnings) PDFs; shows an amber card for "warn" and
-// a red, non-dismissable card for "blocked". Page-range actions are rendered as
-// disabled "coming later" affordances (Slice 3 builds the real flow).
-function PreflightCard({ entry, onRemove, onAcknowledge }) {
+// a red, non-dismissable card for "blocked". For "warn" it offers the real
+// page-selection actions (Slice 5): "Process first N pages" and "Choose page
+// range" (inline editor). An active selection collapses the warning into a calm
+// "Using pages …" bar with a "Use all pages" reset.
+function PreflightCard({
+  entry,
+  selection,
+  onRemove,
+  onAcknowledge,
+  onSelectFirstN,
+  onSelectRange,
+  onClearSelection
+}) {
+  const [rangeOpen, setRangeOpen] = useState(false);
+  const [rangeText, setRangeText] = useState("");
+  const [rangeError, setRangeError] = useState("");
+
   if (!entry) return null;
 
   if (entry.status === "checking") {
@@ -2496,28 +2602,127 @@ function PreflightCard({ entry, onRemove, onAcknowledge }) {
   const report = entry.report || {};
   const verdict = report.verdict || "ok";
   const warnings = report.warnings || [];
-  const hasIssue = verdict === "warn" || verdict === "blocked" || warnings.length > 0;
-  if (!hasIssue) {
-    // Ordinary PDF — stay quiet per the design (zero noise for the common case).
-    return null;
-  }
-
   const blocked = verdict === "blocked";
-
-  // A dismissed warning collapses to a quiet confirmation. "blocked" can never be
-  // dismissed — it must be removed/replaced (generation is gated separately).
-  if (entry.acknowledged && !blocked) {
-    return (
-      <div className="mt-1.5 flex items-center gap-2 rounded-[9px] border border-white/[0.06] bg-white/[0.02] px-2.5 py-1.5 text-[11px] text-[#9098A8]">
-        <Check className="h-3 w-3 text-[#34D399]" />
-        Continuing with this PDF despite the warning.
-      </div>
-    );
-  }
+  const hasIssue = verdict === "warn" || blocked || warnings.length > 0;
+  const pageCount = Number.isFinite(report.page_count) ? report.page_count : null;
+  const selectionActive = Array.isArray(selection) && selection.length > 0;
 
   const allowed = report.allowed_actions || [];
   const showFirstN = allowed.includes("process_first_n");
   const showRange = allowed.includes("choose_page_range");
+  const defaultFirstN = report.limits?.default_first_n ?? 20;
+  // Cap "first N" by the real page count when we know it, so a 12-page deck never
+  // asks for pages 1-20. N stays 1-based inclusive: [[1, N]].
+  const firstN = pageCount ? Math.min(defaultFirstN, pageCount) : defaultFirstN;
+
+  function openRangeEditor() {
+    setRangeText(selectionActive ? formatPageRanges(selection) : `1-${firstN}`);
+    setRangeError("");
+    setRangeOpen(true);
+  }
+
+  function applyRange() {
+    const { ranges, error } = parsePageRanges(rangeText, pageCount);
+    if (error) {
+      setRangeError(error);
+      return;
+    }
+    onSelectRange?.(ranges);
+    setRangeError("");
+    setRangeOpen(false);
+  }
+
+  function cancelRange() {
+    setRangeError("");
+    setRangeOpen(false);
+  }
+
+  // Calm confirmation shown whenever a selection is active. "blocked" PDFs never
+  // carry a selection, so this only appears for ok/warn files.
+  const selectionBar = selectionActive ? (
+    <div className="mt-1.5 flex flex-wrap items-center gap-2 rounded-[9px] border border-[rgba(52,211,153,0.28)] bg-[rgba(52,211,153,0.07)] px-2.5 py-1.5 text-[11px]">
+      <Check className="h-3 w-3 shrink-0 text-[#34D399]" />
+      <span className="font-semibold text-[#D1FAE5]">Using pages {formatPageRanges(selection)}</span>
+      {pageCount && <span className="text-[10px] text-[#6EE7B7]/80">of {pageCount}</span>}
+      <div className="ml-auto flex items-center gap-1.5">
+        {showRange && (
+          <button
+            type="button"
+            onClick={openRangeEditor}
+            className="rounded-md border border-white/[0.12] px-2 py-1 text-[10.5px] font-semibold text-[#D4D4D8] transition hover:text-[#F4F4F5]"
+          >
+            Edit range
+          </button>
+        )}
+        <button
+          type="button"
+          onClick={() => {
+            onClearSelection?.();
+            cancelRange();
+          }}
+          className="rounded-md border border-white/[0.12] px-2 py-1 text-[10.5px] font-semibold text-[#D4D4D8] transition hover:text-[#F4F4F5]"
+        >
+          Use all pages
+        </button>
+      </div>
+    </div>
+  ) : null;
+
+  // Inline range editor, opened from the warning card or the selection bar.
+  const rangeEditor = rangeOpen ? (
+    <div className="mt-1.5 rounded-[9px] border border-white/[0.1] bg-[#070B14] px-2.5 py-2 text-[11px]">
+      <label className="block text-[10.5px] font-semibold text-[#D4D4D8]">
+        Pages to include{pageCount ? ` (1-${pageCount})` : ""}
+      </label>
+      <input
+        type="text"
+        value={rangeText}
+        onChange={(event) => {
+          setRangeText(event.target.value);
+          setRangeError("");
+        }}
+        onKeyDown={(event) => {
+          if (event.key === "Enter") {
+            event.preventDefault();
+            applyRange();
+          }
+        }}
+        placeholder="e.g. 1-20 or 1-20, 35-42"
+        className="mt-1 w-full rounded-md border border-white/[0.12] bg-[#0B1220] px-2 py-1 text-[11.5px] text-[#F4F4F5] outline-none focus:border-[rgba(249,115,22,0.45)]"
+      />
+      {rangeError && <p className="mt-1 text-[10.5px] text-[#FCA5A5]">{rangeError}</p>}
+      <p className="mt-1 text-[10px] text-[#6B7280]">
+        1-based and inclusive; separate multiple ranges with commas.
+      </p>
+      <div className="mt-1.5 flex items-center gap-1.5">
+        <button
+          type="button"
+          onClick={applyRange}
+          className="rounded-md border border-[rgba(249,115,22,0.4)] bg-[rgba(249,115,22,0.12)] px-2 py-1 text-[10.5px] font-semibold text-[#FDBA74] transition hover:bg-[rgba(249,115,22,0.2)]"
+        >
+          Apply
+        </button>
+        <button
+          type="button"
+          onClick={cancelRange}
+          className="rounded-md border border-white/[0.1] px-2 py-1 text-[10.5px] font-semibold text-[#9098A8] transition hover:text-[#F4F4F5]"
+        >
+          Cancel
+        </button>
+      </div>
+    </div>
+  ) : null;
+
+  // Main body: blocked always shows the red card; warn shows the amber card unless
+  // a selection is active or the user dismissed it.
+  const showFullWarning = blocked || (hasIssue && !selectionActive && !entry.acknowledged);
+  const showCollapsedAck =
+    entry.acknowledged && !blocked && !selectionActive && !showFullWarning;
+
+  // Nothing to surface: ordinary PDF, no selection, editor closed.
+  if (!selectionBar && !rangeEditor && !showFullWarning && !showCollapsedAck) {
+    return null;
+  }
 
   const facts = [];
   if (report.file_size_mb) facts.push(`${report.file_size_mb} MB`);
@@ -2532,7 +2737,7 @@ function PreflightCard({ entry, onRemove, onAcknowledge }) {
   const recommended = blocked
     ? "Remove it or upload an unlocked, repaired copy."
     : showFirstN || showRange
-      ? `Recommended: process the first ${report.limits?.default_first_n ?? 20} pages or choose a page range. Page-range processing will be added in a later slice.`
+      ? `Recommended: process the first ${firstN} pages, or choose a page range to limit OCR/extraction.`
       : "";
 
   const tone = blocked
@@ -2542,69 +2747,76 @@ function PreflightCard({ entry, onRemove, onAcknowledge }) {
   const iconColor = blocked ? "text-[#FCA5A5]" : "text-[#FCD34D]";
 
   return (
-    <div className={`mt-1.5 rounded-[9px] border px-2.5 py-2 text-[11.5px] ${tone}`}>
-      <div className="flex items-start gap-2">
-        <Icon className={`mt-0.5 h-3.5 w-3.5 shrink-0 ${iconColor}`} />
-        <div className="min-w-0 flex-1">
-          <p className="font-semibold text-[#F4F4F5]">
-            {blocked ? "This PDF can't be processed" : "Heads up before you generate"}
-          </p>
-          {facts.length > 0 && (
-            <p className="mt-0.5 text-[10.5px] text-[#9098A8]">{facts.join(" · ")}</p>
-          )}
-          {warnings.length > 0 && (
-            <ul className="mt-1 space-y-0.5 text-[#D4D4D8]">
-              {warnings.map((message, idx) => (
-                <li key={idx} className="leading-[1.35]">• {message}</li>
-              ))}
-            </ul>
-          )}
-          {recommended && <p className="mt-1 text-[10.5px] text-[#9098A8]">{recommended}</p>}
+    <>
+      {selectionBar}
+      {rangeEditor}
+      {showCollapsedAck && (
+        <div className="mt-1.5 flex items-center gap-2 rounded-[9px] border border-white/[0.06] bg-white/[0.02] px-2.5 py-1.5 text-[11px] text-[#9098A8]">
+          <Check className="h-3 w-3 text-[#34D399]" />
+          Continuing with this PDF despite the warning.
+        </div>
+      )}
+      {showFullWarning && (
+        <div className={`mt-1.5 rounded-[9px] border px-2.5 py-2 text-[11.5px] ${tone}`}>
+          <div className="flex items-start gap-2">
+            <Icon className={`mt-0.5 h-3.5 w-3.5 shrink-0 ${iconColor}`} />
+            <div className="min-w-0 flex-1">
+              <p className="font-semibold text-[#F4F4F5]">
+                {blocked ? "This PDF can't be processed" : "Heads up before you generate"}
+              </p>
+              {facts.length > 0 && (
+                <p className="mt-0.5 text-[10.5px] text-[#9098A8]">{facts.join(" · ")}</p>
+              )}
+              {warnings.length > 0 && (
+                <ul className="mt-1 space-y-0.5 text-[#D4D4D8]">
+                  {warnings.map((message, idx) => (
+                    <li key={idx} className="leading-[1.35]">• {message}</li>
+                  ))}
+                </ul>
+              )}
+              {recommended && <p className="mt-1 text-[10.5px] text-[#9098A8]">{recommended}</p>}
 
-          <div className="mt-2 flex flex-wrap items-center gap-1.5">
-            {!blocked && (
-              <button
-                type="button"
-                onClick={onAcknowledge}
-                className="rounded-md border border-white/[0.1] bg-white/[0.04] px-2 py-1 text-[10.5px] font-semibold text-[#F4F4F5] transition hover:border-[rgba(249,115,22,0.35)]"
-              >
-                Continue anyway
-              </button>
-            )}
-            <button
-              type="button"
-              onClick={onRemove}
-              className="rounded-md border border-white/[0.1] px-2 py-1 text-[10.5px] font-semibold text-[#9098A8] transition hover:text-[#F4F4F5]"
-            >
-              Remove file
-            </button>
-            {showFirstN && (
-              <button
-                type="button"
-                disabled
-                title="Page-range processing arrives in a later slice."
-                className="cursor-not-allowed rounded-md border border-white/[0.06] px-2 py-1 text-[10.5px] font-semibold text-[#6B7280] opacity-60"
-              >
-                Process first N pages
-              </button>
-            )}
-            {showRange && (
-              <button
-                type="button"
-                disabled
-                title="Page-range processing arrives in a later slice."
-                className="cursor-not-allowed rounded-md border border-white/[0.06] px-2 py-1 text-[10.5px] font-semibold text-[#6B7280] opacity-60"
-              >
-                Choose page range
-              </button>
-            )}
-            {(showFirstN || showRange) && (
-              <span className="text-[10px] text-[#6B7280]">coming later</span>
-            )}
+              <div className="mt-2 flex flex-wrap items-center gap-1.5">
+                {!blocked && (
+                  <button
+                    type="button"
+                    onClick={onAcknowledge}
+                    className="rounded-md border border-white/[0.1] bg-white/[0.04] px-2 py-1 text-[10.5px] font-semibold text-[#F4F4F5] transition hover:border-[rgba(249,115,22,0.35)]"
+                  >
+                    Continue anyway
+                  </button>
+                )}
+                {showFirstN && (
+                  <button
+                    type="button"
+                    onClick={() => onSelectFirstN?.(firstN)}
+                    className="rounded-md border border-[rgba(249,115,22,0.35)] bg-white/[0.04] px-2 py-1 text-[10.5px] font-semibold text-[#FDBA74] transition hover:bg-[rgba(249,115,22,0.12)]"
+                  >
+                    Process first {firstN} pages
+                  </button>
+                )}
+                {showRange && (
+                  <button
+                    type="button"
+                    onClick={openRangeEditor}
+                    className="rounded-md border border-[rgba(249,115,22,0.35)] bg-white/[0.04] px-2 py-1 text-[10.5px] font-semibold text-[#FDBA74] transition hover:bg-[rgba(249,115,22,0.12)]"
+                  >
+                    Choose page range
+                  </button>
+                )}
+                <button
+                  type="button"
+                  onClick={onRemove}
+                  className="rounded-md border border-white/[0.1] px-2 py-1 text-[10.5px] font-semibold text-[#9098A8] transition hover:text-[#F4F4F5]"
+                >
+                  Remove file
+                </button>
+              </div>
+            </div>
           </div>
         </div>
-      </div>
-    </div>
+      )}
+    </>
   );
 }
 
