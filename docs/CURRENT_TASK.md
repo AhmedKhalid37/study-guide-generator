@@ -1093,6 +1093,41 @@ parked on the `hardening` branch — not merged, not deleted.
       save-to-`custom_models`; encrypted-at-rest secrets / OS keyring; `.env` import;
       the **Local Model Manager**.
 
+36. **Provider Settings Slice 5 — frontend Refresh Models UI (FRONTEND + API CLIENT
+    ONLY)** — branch `provider-settings-fetch-models-ui`, commit `Add provider model
+    refresh UI`. Wires the DONE #35 read-only endpoint into the Providers page.
+    **No backend resolver/security/store change, no Local Model Manager, no provider
+    auto-switching, no generator-preset hard-pinning, no dependency/lockfile change.**
+    - **API client (`frontend/src/api/client.js`):** new `fetchProviderModels(provider)`
+      → `POST /api/provider-settings/{provider}/fetch-models` (no body). Returns the
+      redacted `{provider, ok, models, source, base_url_host, error}` verbatim; never
+      reads a raw key.
+    - **UI (`ProviderSettingsWorkspace.jsx`):** each provider card gains a **Refresh
+      models** button with a loading state. Success renders the fetched ids in a panel
+      (`{n} fetched · {m} new`); failure shows only the backend's redacted
+      `{category, message}`; an empty list shows a calm "No models returned" state.
+      Fetched ids are **review-only** — each *new* id (not already in registry ∪ draft
+      custom models) gets a per-model **Add** button, plus **Add all new**; ids already
+      present render a non-actionable "in list"/"added" tag (dedupe).
+    - **No auto-persist / no auto-switch:** adding only stages an id into the draft
+      `custom_models`; nothing is saved until the existing **Save**
+      (`PATCH /api/provider-settings/{provider}`) runs. A successful fetch never saves,
+      never changes the default model/provider, and editing/refresh/clear invalidates a
+      shown fetch list. Builder dropdowns keep reading `/api/options`, which includes
+      the saved custom models after Save.
+    - **Verified:** frontend build OK; `compileall api pipeline` OK; `docker compose
+      config` exit 0 / no stderr (no secret expansion printed); `docker compose
+      build`/`up` OK, container healthy; `/api/health` ok, `/api/options` shape intact.
+      `test_provider_fetch_models.py` **16/16**, `test_provider_settings_store.py`
+      **26/26**, release smoke **28/28** (no outline flake). Live Docker: DeepSeek
+      (env-configured) fetch → `ok:true` real list; unconfigured local → safe
+      `provider_network`/`provider_config`; a sentinel key PATCHed on `local` appeared
+      in **none** of the fetch / `/api/provider-settings` / `/api/options` responses or
+      the served JS bundle (cleared afterward); add-a-custom-model → Save → it appears
+      in `/api/options` (then restored).
+    - **Deferred (unchanged):** encrypted-at-rest secrets / OS keyring; `.env` import;
+      the **Local Model Manager**.
+
 ## NEXT (in order)
 
 > **Provider settings core is DONE** (DONE #32→#34): design (`978516e`) → backend

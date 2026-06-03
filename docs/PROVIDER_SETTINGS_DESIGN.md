@@ -892,6 +892,57 @@ encrypted-at-rest secrets / OS keyring; `.env` import; the Local Model Manager.
 
 ---
 
+## 23. Slice 5 implementation note (landed)
+
+> **Status: the §11 frontend "Refresh models" control IMPLEMENTED** on branch
+> `provider-settings-fetch-models-ui` (commit `Add provider model refresh UI`).
+> **Frontend + API client only** — no backend resolver/security/store change, no
+> Local Model Manager, no provider auto-switching, no generator-preset hard-pinning,
+> no dependency/lockfile change. Consumes the Slice 4 (§22) read-only endpoint
+> unchanged.
+
+**API client (`frontend/src/api/client.js`).** New `fetchProviderModels(provider)`
+posts to `POST /api/provider-settings/{provider}/fetch-models` (no body) and returns
+the backend's redacted `{provider, ok, models, source, base_url_host, error}`
+verbatim. Like the other provider-settings helpers it never reads or echoes a raw
+key.
+
+**UI (`ProviderSettingsWorkspace.jsx`).** Each provider card gains a **Refresh
+models** button (in a new "Discover models" field) with a loading state:
+- **Success** renders the fetched ids in a panel summarized as `{n} fetched ·
+  {m} new`. Each *new* id (one not already in the dropdown set = registry ∪ current
+  draft `custom_models` ∪ default) shows a per-model **Add** button; an **Add all
+  new** action stages every new id at once. Ids already known render a
+  non-actionable `in list` / `added` tag (dedupe), so the user never re-adds a
+  registry model.
+- **Failure** renders only the backend's redacted `{category, message}` — never a
+  raw key, full base URL, or userinfo. `base_url_host` is shown host-only as the
+  field hint.
+- **Empty** (`ok:true`, no models) shows a calm "No models returned — your saved
+  models are unchanged" line.
+
+**Review-only, no auto-persist, no auto-switch (the §22 contract upheld in the UI).**
+Adding a fetched id only stages it into the card's **draft** `custom_models`;
+nothing is written until the existing **Save** runs `PATCH
+/api/provider-settings/{provider}`. A successful fetch never saves, never changes
+the default model or default provider, and a re-seed of the provider DTO (after
+Save / clear-key / page Refresh) clears any shown fetch list. The Builder keeps
+reading `/api/options`, which surfaces the saved `custom_models` after Save — so a
+newly-added model is selectable in the Builder only once the user deliberately
+saves it.
+
+**Security verification (frontend slice).** A sentinel key PATCHed on `local`
+appeared in **none** of the fetch-models response, `/api/provider-settings`,
+`/api/options`, or the served `frontend/dist` JS bundle, then was cleared (reverting
+`local` to `key_source:"env"`). `test_provider_fetch_models.py` 16/16,
+`test_provider_settings_store.py` 26/26, release smoke 28/28; frontend build +
+`compileall` + `docker compose config`/`build`/`up` all OK, container healthy.
+
+**Deferred (unchanged):** encrypted-at-rest secrets / OS keyring; `.env` import; the
+Local Model Manager.
+
+---
+
 ## Confirmation
 
 **The design sections above (§1–§18) remain the design of record.** Slice 1 (§19)

@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { AlertTriangle, Check, KeyRound, Loader2, Plus, RefreshCw, Trash2, X } from "lucide-react";
 import {
   clearProviderKey,
+  fetchProviderModels,
   getProviderSettings,
   setDefaultProvider,
   testProviderSettings,
@@ -192,11 +193,16 @@ function ProviderSettingsCard({ provider, isDefault, onSaved }) {
   // Only reflects a Test pressed in THIS session — never a stale persisted
   // last_test — so a prior failure never lingers after save/clear/edits.
   const [testResult, setTestResult] = useState(null);
+  // Read-only model discovery result for THIS session. Fetched ids are never
+  // auto-saved — the user adds them to custom models deliberately, then Save.
+  const [fetching, setFetching] = useState(false);
+  const [fetchResult, setFetchResult] = useState(null); // { ok, models, error }
 
   // Re-seed the draft whenever the provider DTO changes identity (after a save,
   // clear-key, or refresh). This also clears the write-only key + base-url inputs.
   useEffect(() => {
     setDraft(draftFromProvider(provider));
+    setFetchResult(null); // a refreshed/saved DTO invalidates a prior fetch list
   }, [provider]);
 
   const set = (field) => (event) => {
@@ -316,6 +322,48 @@ function ProviderSettingsCard({ provider, isDefault, onSaved }) {
 
   const removeCustomModel = (id) => {
     setDraft((d) => ({ ...d, customModels: d.customModels.filter((m) => m !== id) }));
+    setTestResult(null);
+  };
+
+  // Read-only fetch: hit the provider's /models endpoint and show the ids for
+  // review. Nothing is saved here — adding to custom models is a separate,
+  // deliberate step below. Failures show only the backend's redacted message.
+  const handleFetchModels = async () => {
+    setFetching(true);
+    setFetchResult(null);
+    setNotice(null);
+    try {
+      const result = await fetchProviderModels(provider.id);
+      setFetchResult(result);
+    } catch (err) {
+      // requestJson surfaces the server's redacted `detail`; never a raw key.
+      setFetchResult({ ok: false, models: [], error: { category: "error", message: err?.message || "Fetch failed." } });
+    } finally {
+      setFetching(false);
+    }
+  };
+
+  // Models already in the dropdown (registry ∪ current custom drafts ∪ default).
+  const knownModelSet = useMemo(() => new Set(models), [models]);
+  // Fetched ids not already known — the only ones worth adding to custom models.
+  const newFetchedModels = useMemo(() => {
+    if (!fetchResult?.ok || !Array.isArray(fetchResult.models)) return [];
+    return fetchResult.models.filter((m) => m && !knownModelSet.has(m));
+  }, [fetchResult, knownModelSet]);
+
+  const addFetchedModel = (id) => {
+    if (!id || draft.customModels.includes(id)) return;
+    setDraft((d) => ({ ...d, customModels: [...d.customModels, id] }));
+    setTestResult(null);
+  };
+
+  const addAllNewModels = () => {
+    if (newFetchedModels.length === 0) return;
+    setDraft((d) => {
+      const additions = newFetchedModels.filter((m) => !d.customModels.includes(m));
+      if (additions.length === 0) return d;
+      return { ...d, customModels: [...d.customModels, ...additions] };
+    });
     setTestResult(null);
   };
 
@@ -439,6 +487,33 @@ function ProviderSettingsCard({ provider, isDefault, onSaved }) {
         </div>
       </Field>
 
+      {/* Refresh models — read-only discovery; fetched ids are review-only and
+          only added to custom models on an explicit Add (then Save). */}
+      <Field
+        label="Discover models"
+        hint={fetchResult?.base_url_host ? `from: ${fetchResult.base_url_host}` : null}
+      >
+        <button
+          type="button"
+          className="sg-ghost-button"
+          onClick={handleFetchModels}
+          disabled={fetching}
+        >
+          {fetching ? <Loader2 size={14} className="animate-spin" /> : <RefreshCw size={14} />}
+          <span className="ml-1.5">{fetching ? "Fetching…" : "Refresh models"}</span>
+        </button>
+        {fetchResult && (
+          <FetchedModelsPanel
+            result={fetchResult}
+            newModels={newFetchedModels}
+            knownModelSet={knownModelSet}
+            customModels={draft.customModels}
+            onAdd={addFetchedModel}
+            onAddAll={addAllNewModels}
+          />
+        )}
+      </Field>
+
       {/* Sampling + runtime */}
       <div className="grid grid-cols-3 gap-2">
         <NumField label="Temperature" value={draft.temperature} onChange={set("temperature")} step="0.1" min="0" max="2" />
@@ -514,6 +589,85 @@ function TestChip({ result }) {
         {result.message && <span className="block break-words text-[#9098A8]">{result.message}</span>}
         {result.model && <span className="block text-[#6B7185]">model: {result.model}</span>}
       </div>
+    </div>
+  );
+}
+
+function FetchedModelsPanel({ result, newModels, knownModelSet, customModels, onAdd, onAddAll }) {
+  // Failure: only the backend's redacted { category, message } — never a key,
+  // full base URL, or userinfo.
+  if (!result.ok) {
+    const err = result.error || {};
+    return (
+      <div className="mt-2 flex items-start gap-2 rounded-lg border border-[#FCA5A5]/30 bg-[#FCA5A5]/[0.06] p-2.5 text-[11.5px] leading-5 text-[#FCA5A5]">
+        <AlertTriangle size={14} className="mt-0.5 shrink-0" />
+        <div className="min-w-0">
+          <strong className="block">
+            Couldn’t fetch models{err.category ? ` · ${err.category}` : ""}
+          </strong>
+          {err.message && <span className="block break-words text-[#9098A8]">{err.message}</span>}
+        </div>
+      </div>
+    );
+  }
+
+  const models = Array.isArray(result.models) ? result.models : [];
+  // Calm empty state when the provider returned nothing.
+  if (models.length === 0) {
+    return (
+      <p className="mt-2 text-[11.5px] leading-5 text-[#6B7185]">
+        No models returned. Nothing to add — your saved models are unchanged.
+      </p>
+    );
+  }
+
+  const newCount = newModels.length;
+
+  return (
+    <div className="mt-2 rounded-lg border border-white/10 bg-white/[0.03] p-2.5">
+      <div className="mb-2 flex items-center justify-between gap-2">
+        <span className="text-[11px] text-[#9098A8]">
+          {models.length} fetched · {newCount} new
+        </span>
+        {newCount > 0 && (
+          <button
+            type="button"
+            className="inline-flex items-center gap-1 text-[11.5px] text-[#86EFAC] hover:underline"
+            onClick={onAddAll}
+          >
+            <Plus size={12} /> Add all new
+          </button>
+        )}
+      </div>
+      <div className="flex flex-wrap gap-1.5">
+        {models.map((m) => {
+          const added = customModels.includes(m);
+          const known = knownModelSet.has(m);
+          return (
+            <span
+              key={m}
+              className="inline-flex h-[22px] items-center gap-1 rounded-full border border-white/10 bg-white/5 px-2 text-[10.5px] text-[#D4D4D8]"
+            >
+              {m}
+              {added || known ? (
+                <span className="text-[#6B7185]">{added ? "added" : "in list"}</span>
+              ) : (
+                <button
+                  type="button"
+                  className="inline-flex items-center text-[#86EFAC] hover:text-[#bbf7d0]"
+                  title="Add to custom models"
+                  onClick={() => onAdd(m)}
+                >
+                  <Plus size={11} />
+                </button>
+              )}
+            </span>
+          );
+        })}
+      </div>
+      <p className="mt-2 text-[11px] leading-4 text-[#6B7185]">
+        Review only — added models are saved with the provider on <strong>Save</strong>.
+      </p>
     </div>
   );
 }

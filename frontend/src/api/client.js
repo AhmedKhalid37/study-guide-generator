@@ -131,6 +131,18 @@ export function testProviderSettings(provider, payload = null) {
   });
 }
 
+// Read-only model discovery against the provider's /models endpoint. Returns
+// { provider, ok, models, source, base_url_host, error } where `error` is null
+// on success or { category, message } on failure — all already redacted
+// server-side (no raw key, host-only base URL). This NEVER persists: a fetched
+// model becomes a custom model only when the user saves it via
+// updateProviderSettings. No request body is needed.
+export function fetchProviderModels(provider) {
+  return requestJson(`/api/provider-settings/${encodeURIComponent(provider)}/fetch-models`, {
+    method: "POST"
+  });
+}
+
 export function getStyles() {
   return requestJson("/api/styles");
 }
