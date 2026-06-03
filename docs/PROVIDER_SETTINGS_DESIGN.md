@@ -698,6 +698,55 @@ backend landing and a review of the redaction tests.
 
 ---
 
+## 20. Slice 2 implementation note (landed)
+
+> **Status: the §11 frontend Providers page IMPLEMENTED** on branch
+> `provider-settings-ui` (commit `Add provider settings UI`). **Frontend + API
+> client only** — no backend resolver/security change, no Local Model Manager, no
+> provider auto-switching, no generator-preset hard-pinning, no dependency/lockfile
+> change. Builds on the Slice 1 endpoints (§19) unchanged.
+
+**Shipped (per §11)**
+- **API client helpers** (`frontend/src/api/client.js`): `getProviderSettings`,
+  `updateProviderSettings(provider, patch)`, `setDefaultProvider(provider)`,
+  `clearProviderKey(provider)`, `testProviderSettings(provider, payload?)`. The
+  patch is partial and includes `api_key` **only when non-empty** (blank = keep
+  current key, per §8). No helper ever reads a raw key back.
+- **New workspace** `ProviderSettingsWorkspace.jsx`, routed from the existing
+  **Models** sidebar item. The previous read-only `ModelsPage` (which only rendered
+  `/api/options`) was removed in favour of this editor. One card per provider with
+  **safe fields only**: configured pill, `key_source`, last-4 `key_hint`,
+  `base_url_host`, default-model select (registry ∪ custom), custom-model chips,
+  temperature/top_p/max_tokens/timeout/retries, qwen-only thinking tri-state, and
+  the `last_test` chip. A top "default provider" select calls
+  `PATCH /api/provider-settings {default_provider}`.
+- **Write-only key UX (§8):** the API-key input is a password field, never
+  prefilled (placeholder shows only the masked `····<hint>`), empty on every load,
+  sent only on Save, and cleared after Save. A **Remove key** button calls
+  `clear-key` behind a confirm and is disabled unless `key_source === "store"`.
+- **Test button (§7):** shows loading → OK/failure and renders only the backend's
+  already-classified `{category, message, latency_ms, model}` — never a raw key or
+  request body. **Base URL** is a blank-keeps-current override input since the
+  backend exposes only `base_url_host`.
+- **Resilience (§10):** the Builder keeps reading `/api/options` directly, so a
+  failed `GET /api/provider-settings` only surfaces a recoverable error + Retry on
+  the settings page; generation is unaffected.
+
+**Security verification (frontend slice)**
+- A sentinel key PATCHed on `local` appeared in **none** of
+  `/api/provider-settings`, `/api/options`, the PATCH/test responses, the served
+  `frontend/dist` JS bundle, or the non-secret `config/provider_settings.json`. It
+  lived **only** in `secrets.json` (`0600`); host `cat config/secrets.json` is
+  **Permission denied** (expected — the file is owned by the container app user),
+  which supports rather than contradicts the §2 model. `clear-key` removed it and
+  reverted `local` to `key_source:"env"`.
+
+**Deferred (unchanged from §19):** wiring store `timeout_seconds`/`retry_count`/
+`thinking_default` into the live client; `fetch-models`; encrypted-at-rest secrets /
+OS keyring; `.env` import.
+
+---
+
 ## Confirmation
 
 **The design sections above (§1–§18) remain the design of record.** Slice 1 (§19)

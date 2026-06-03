@@ -947,6 +947,47 @@ parked on the `hardening` branch — not merged, not deleted.
       `thinking_default` into the live client (stored + displayed only this slice);
       `fetch-models`; encrypted-at-rest secrets / OS keyring; `.env` import.
 
+33. **Provider Settings Slice 2 — frontend settings UI (FRONTEND + API CLIENT ONLY)** —
+    branch `provider-settings-ui`, commit `Add provider settings UI`. The §11
+    Providers page consuming the Slice 1 endpoints. **No backend resolver/security
+    change, no Local Model Manager, no provider auto-switching, no preset
+    hard-pinning, no dependency/lockfile change.**
+    - **API client** (`frontend/src/api/client.js`): added `getProviderSettings`,
+      `updateProviderSettings(provider, patch)`, `setDefaultProvider(provider)`,
+      `clearProviderKey(provider)`, `testProviderSettings(provider, payload?)`. The
+      patch is partial; `api_key` is included **only when non-empty** (blank = keep
+      current). Nothing reads a raw key back.
+    - **New workspace** `frontend/src/components/ProviderSettingsWorkspace.jsx`,
+      routed from the existing **Models** sidebar item (the old read-only
+      `ModelsPage`/`ProviderCard`/`normalizeModelProviders` in `DesktopDashboard.jsx`
+      were removed — that page only read `/api/options`; the new page is the editor).
+      One card per provider showing safe fields only (configured pill, `key_source`,
+      last-4 `key_hint`, `base_url_host`, default model, custom models, temperature/
+      top_p/max_tokens/timeout/retries, qwen thinking, `last_test`).
+    - **API key field is write-only**: a password input, never prefilled, empty =
+      unchanged, sent only on Save, cleared after Save. **Remove key** button calls
+      `clear-key` behind a `window.confirm` (disabled unless `key_source==="store"`).
+      **Test connection** shows loading/OK/failure with the server's already-redacted
+      message + category + latency only — never a raw key or request body. Base URL is
+      a blank-keeps-current override (only the host is ever exposed by the backend).
+    - **Resilience:** the Builder still reads `/api/options` independently, so a failed
+      `GET /api/provider-settings` only shows a recoverable error + Retry on the
+      settings page; generation is unaffected.
+    - **Verified:** `npm … build` OK; `compileall api pipeline` OK; `compose config`
+      PASS (no secret output); `compose build`/`up` OK; `/api/health` `{"ok":true}`;
+      `/api/options` OK; release smoke **27/28** (the one fail is the non-deterministic
+      "outline followed in order" LLM-output assertion, unrelated — no backend/pipeline
+      code changed). **Secret-leak proof:** PATCHed a sentinel key
+      `sk-FAKE-LEAKCHECK-…` on `local` → it appears in **none** of `/api/provider-settings`,
+      `/api/options`, the PATCH/test responses, the served `frontend/dist` JS, or the
+      non-secret `config/provider_settings.json`; it lived **only** in `secrets.json`
+      (`0600`, uid 10001/appuser) and host `cat config/secrets.json` is **Permission
+      denied** (expected, supports the model). `clear-key` reverted `local` to
+      `key_source:"env"` and removed the sentinel from `secrets.json`.
+    - **Deferred (unchanged from Slice 1):** wiring store `timeout_seconds`/
+      `retry_count`/`thinking_default` into the live client; `fetch-models`;
+      encrypted-at-rest secrets / OS keyring; `.env` import.
+
 ## NEXT (in order)
 
 > **Large-PDF core is DONE end-to-end** (`841d3f9`→`60c3e78`, DONE #27→#31):

@@ -83,6 +83,54 @@ export function emptyTrash() {
   });
 }
 
+// ── Provider settings (safe, server-side; raw API keys are write-only) ───────
+// The frontend NEVER receives a raw API key. getProviderSettings returns only
+// the redacted view (configured / key_source / key_hint / base_url_host /
+// model lists / numeric defaults / last_test). updateProviderSettings sends a
+// PARTIAL patch: include `api_key` ONLY when setting a new key — an empty or
+// absent `api_key` means "keep the current key" (never clears it). Use
+// clearProviderKey to remove a key explicitly. None of these responses, errors,
+// or payloads echo a raw key back to the client.
+
+export function getProviderSettings() {
+  return requestJson("/api/provider-settings");
+}
+
+export function updateProviderSettings(provider, patch) {
+  return requestJson(`/api/provider-settings/${encodeURIComponent(provider)}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(patch ?? {})
+  });
+}
+
+export function setDefaultProvider(provider) {
+  return requestJson("/api/provider-settings", {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ default_provider: provider })
+  });
+}
+
+export function clearProviderKey(provider) {
+  return requestJson(`/api/provider-settings/${encodeURIComponent(provider)}/clear-key`, {
+    method: "POST"
+  });
+}
+
+// Connectivity/auth probe against the provider's effective settings. The backend
+// reads no request body today (it uses the resolved settings); `payload` is
+// forwarded as JSON for forward-compatibility only and never carries a raw key.
+// The returned { ok, category, message, latency_ms, model } is already redacted
+// server-side.
+export function testProviderSettings(provider, payload = null) {
+  return requestJson(`/api/provider-settings/${encodeURIComponent(provider)}/test`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload ?? {})
+  });
+}
+
 export function getStyles() {
   return requestJson("/api/styles");
 }

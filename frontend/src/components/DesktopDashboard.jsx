@@ -18,9 +18,10 @@ import RecentJobsPanel from "./RecentJobsPanel";
 import StylesWorkspace from "./StylesWorkspace";
 import LibraryWorkspace from "./LibraryWorkspace";
 import ExportsWorkspace from "./ExportsWorkspace";
+import ProviderSettingsWorkspace from "./ProviderSettingsWorkspace";
 import HomeShortcuts from "./HomeShortcuts";
 import { INPUT_TO_SOURCE } from "../shortcutMeta";
-import { getJobs, getOptions } from "../api/client";
+import { getJobs } from "../api/client";
 import {
   BoltGlyph,
   BookGlyph,
@@ -62,7 +63,6 @@ export default function DesktopDashboard() {
   const [selectedStyle, setSelectedStyle] = useState("exam_cram");
   const [jobsRefreshKey, setJobsRefreshKey] = useState(0);
   const [latestJob, setLatestJob] = useState(null);
-  const [apiOptions, setApiOptions] = useState(null);
   const [jobs, setJobs] = useState([]);
   // Builder prefill from a builder_setup shortcut: { payload, nonce }.
   const [builderPrefill, setBuilderPrefill] = useState(null);
@@ -70,14 +70,6 @@ export default function DesktopDashboard() {
   const [libraryView, setLibraryView] = useState(null);
   // Latest Builder setup snapshot, so the customize modal can "Capture from Builder".
   const [builderSetup, setBuilderSetup] = useState(null);
-
-  useEffect(() => {
-    let cancelled = false;
-    getOptions().then((options) => !cancelled && setApiOptions(options)).catch(() => !cancelled && setApiOptions(null));
-    return () => {
-      cancelled = true;
-    };
-  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -162,7 +154,7 @@ export default function DesktopDashboard() {
             onReportSetup={setBuilderSetup}
           />
         )}
-        {activeSection === "models" && <ModelsPage apiOptions={apiOptions} />}
+        {activeSection === "models" && <ProviderSettingsWorkspace />}
         {activeSection === "styles" && (
           <StylesWorkspace selectedStyle={selectedStyle} onSelectStyle={setSelectedStyle} onOpenBuilder={openBuilder} />
         )}
@@ -290,120 +282,5 @@ function Sidebar({ activeSection, onNavigate, onNewGuide }) {
         <SettingsI size={16} stroke="#6B7185" sw={2} />
       </div>
     </aside>
-  );
-}
-
-function ModelsPage({ apiOptions }) {
-  const providerDetails = normalizeModelProviders(apiOptions);
-  const defaultProvider =
-    providerDetails.find((provider) => provider.configured) ||
-    providerDetails[0];
-
-  return (
-    <div className="sg-page">
-      <PageHead title="Models" subtitle="Server-side provider registry. Keys stay on the backend." />
-      <div className="sg-default-card">
-        <Tile size={42} radius={11}><SparkleGlyph size={20} /></Tile>
-        <div>
-          <span>Default model</span>
-          <strong>
-            {defaultProvider
-              ? `${defaultProvider.display_name} · ${defaultProvider.default_model || defaultProvider.models[0] || "no model configured"}`
-              : "Waiting for /api/options"}
-          </strong>
-        </div>
-        <em>No secrets exposed</em>
-      </div>
-      <SectionHeading title="Provider registry" right="Real options from /api/options" />
-      <div className="sg-provider-grid">
-        {providerDetails.map((provider) => (
-          <ProviderCard key={provider.id} provider={provider} />
-        ))}
-      </div>
-    </div>
-  );
-}
-
-function ProviderCard({ provider }) {
-  return (
-    <div className="sg-provider-card sg-recent-row">
-      <div className="sg-provider-top">
-        <span>{provider.display_name.slice(0, 1)}</span>
-        <div>
-          <strong>{provider.display_name}</strong>
-          <p>
-            {provider.configured
-              ? `${provider.models.length || 1} model${provider.models.length === 1 ? "" : "s"} · default ${provider.default_model || "unset"}`
-              : "Not configured"}
-          </p>
-        </div>
-      </div>
-      <div className="sg-provider-tags">
-        {(provider.models.length ? provider.models.slice(0, 4) : ["No models discovered"]).map((item) => (
-          <span key={item}>{item}</span>
-        ))}
-      </div>
-      {provider.base_url && (
-        <p className="mt-2 break-all text-[11.5px] leading-5 text-[#9098A8]">
-          Base URL: {provider.base_url}
-        </p>
-      )}
-      {provider.discovery_error && (
-        <p className="mt-2 text-[11.5px] leading-5 text-[#FCA5A5]">
-          Discovery error: {provider.discovery_error}
-        </p>
-      )}
-      <button type="button" className="sg-ghost-button" disabled={!provider.configured}>
-        {provider.configured ? "Available in Builder" : "Configure in .env"}
-      </button>
-    </div>
-  );
-}
-
-function normalizeModelProviders(apiOptions) {
-  const details = apiOptions?.provider_details ?? apiOptions?.providers_v2;
-  if (Array.isArray(details) && details.length > 0) {
-    return details.map((provider) => ({
-      id: provider.id,
-      display_name: provider.display_name || provider.name || provider.id,
-      configured: Boolean(provider.configured),
-      models: Array.isArray(provider.available_models) ? provider.available_models : [],
-      default_model: provider.default_model || "",
-      base_url: provider.base_url || "",
-      discovery_error: provider.discovery_error || ""
-    }));
-  }
-
-  const providers = apiOptions?.providers ?? ["DeepSeek", "Qwen"];
-  const models = apiOptions?.models ?? {};
-  return providers.map((name) => ({
-    id: String(name).toLowerCase(),
-    display_name: name,
-    configured: false,
-    models: models[name] ?? [],
-    default_model: models[name]?.[0] ?? "",
-    base_url: "",
-    discovery_error: ""
-  }));
-}
-
-function PageHead({ title, subtitle, right }) {
-  return (
-    <div className="sg-page-head">
-      <div>
-        <h1>{title}</h1>
-        {subtitle && <p>{subtitle}</p>}
-      </div>
-      {right}
-    </div>
-  );
-}
-
-function SectionHeading({ title, right }) {
-  return (
-    <div className="sg-section-head">
-      <h2>{title}</h2>
-      {right && <span>{right}</span>}
-    </div>
   );
 }
