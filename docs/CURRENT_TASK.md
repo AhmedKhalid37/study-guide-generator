@@ -8,18 +8,21 @@
 ## Where we are
 
 - **Branch:** `chrome-renderer-v1` (the live integrated trunk; PR target)
-- **Trunk tip:** `40df617` — "Apply provider runtime settings". The **in-app
-  provider settings core** landed as four commits on top of the large-PDF core
-  (`60c3e78`) and its docs reconcile (`624ff02`): `978516e` (design doc),
+- **Trunk tip:** `61fb423` — "Add provider model refresh UI". The **in-app
+  provider settings feature group** landed as six commits on top of the large-PDF
+  core (`60c3e78`) and its docs reconcile (`624ff02`): `978516e` (design doc),
   `1ba2b28` (backend settings store + safe endpoints), `3024a33` (frontend
-  Providers UI), and `40df617` (runtime settings applied to live generation).
-  Earlier `60c3e78` / `901d44b` / `1d51b36` / `65b9b8f` references further down
-  are historical — trunk is now `40df617`.
-- **`origin/chrome-renderer-v1`:** `40df617` (local == origin; pushed)
-- **Provider settings core is COMPLETE** (design → backend store/endpoints →
-  Providers UI → runtime wiring). See DONE #32 (backend store), #33 (Providers
-  UI), #34 (runtime), and the design doc `docs/PROVIDER_SETTINGS_DESIGN.md`.
-  Highlights:
+  Providers UI), `40df617` (runtime settings applied to live generation),
+  `6da944a` (backend fetch-models endpoint), and `61fb423` (frontend Refresh
+  Models UI). (`1d528c3` polished the provider card layout and `672c96e`
+  reconciled docs in between.) Earlier `60c3e78` / `901d44b` / `1d51b36` /
+  `65b9b8f` references further down are historical — trunk is now `61fb423`.
+- **`origin/chrome-renderer-v1`:** `61fb423` (local == origin; pushed)
+- **Provider settings feature group is COMPLETE through Slice 5** (design →
+  backend store/endpoints → Providers UI → runtime wiring → fetch-models endpoint
+  → Refresh Models UI). See DONE #32 (backend store), #33 (Providers UI), #34
+  (runtime), #35 (fetch-models endpoint), #36 (Refresh Models UI), and the design
+  doc `docs/PROVIDER_SETTINGS_DESIGN.md`. Highlights:
   - **Security:** raw API keys stay **server-side only**. `/api/options` and
     `/api/provider-settings` are **redacted** (no key field by construction —
     only `configured`/`key_source`/last-4 `key_hint`/`base_url_host`).
@@ -37,16 +40,23 @@
   - **fetch-models endpoint: DONE** (DONE #35, branch
     `provider-settings-fetch-models`) — read-only `POST
     /api/provider-settings/{provider}/fetch-models`, no auto-persist.
-  - **Deferred:** the frontend "Refresh models" button + save-to-`custom_models`,
-    encrypted-at-rest / OS keyring, `.env` import, the **Local Model Manager**
-    (separate design-first feature), and the optional Builder "Provider default"
-    thinking UI polish.
+  - **Refresh Models UI: DONE** (DONE #36, branch
+    `provider-settings-fetch-models-ui`) — each Providers card has a **Refresh
+    models** button calling the read-only endpoint. Fetched ids are
+    **review-only**; a per-model **Add** / **Add all new** stages them into the
+    draft `custom_models`, and an **explicit Save** is required to persist (after
+    which `/api/options` includes the saved custom models — Builder dropdowns keep
+    reading `/api/options`). Fetching never auto-saves and never auto-switches the
+    provider/default model.
+  - **Deferred:** encrypted-at-rest / OS keyring, `.env` import, the **Local Model
+    Manager** (separate design-first feature), and the optional Builder "Provider
+    default" thinking UI polish.
 - **Large-PDF core is COMPLETE end-to-end** (preflight design → endpoint →
   Builder warning UI → page-selection plumbing → extraction honors selected
   pages → first-N/manual page-range UI). See DONE #27→#31. Automatic
   split/chunk processing and hybrid embedded-text + OCR dedup remain **deferred**.
 - **Group C is COMPLETE and INTEGRATED** (C1 → C5, incl. C4a–d) onto `chrome-renderer-v1`.
-- **For new sessions:** branch from `chrome-renderer-v1` @ `40df617` (or later). Do **not**
+- **For new sessions:** branch from `chrome-renderer-v1` @ `61fb423` (or later). Do **not**
   re-merge any of the old stacked feature branches — they are consumed/archival (see
   `DECISIONS.md` → "Consumed feature branches must not be re-merged"). The short one-page
   start-here is `docs/NEXT_CHAT_HANDOFF.md`.
@@ -1015,7 +1025,7 @@ parked on the `hardening` branch — not merged, not deleted.
 
 34. **Provider Settings Slice 3 — runtime defaults wired into live generation
     (BACKEND ONLY)** — branch `provider-settings-runtime`, commit `Apply provider
-    runtime settings` (trunk tip `40df617`). The stored `timeout_seconds`,
+    runtime settings` (commit `40df617`). The stored `timeout_seconds`,
     `retry_count`, and `thinking_default` now reach the live model call. **No
     Local Model Manager, no provider auto-switching, no generator-preset
     hard-pinning, no new env knob.**
@@ -1130,50 +1140,56 @@ parked on the `hardening` branch — not merged, not deleted.
 
 ## NEXT (in order)
 
-> **Provider settings core is DONE** (DONE #32→#34): design (`978516e`) → backend
-> store + safe endpoints (`1ba2b28`) → frontend Providers UI (`3024a33`) → runtime
-> settings applied to live generation (`40df617`). Raw keys stay **server-side
-> only**; `/api/options` and `/api/provider-settings` are **redacted**;
-> `config/provider_settings.json` is non-secret (`0644`), `config/secrets.json` is
-> secret-only (`0600`). Precedence: **per-job request > provider-settings default
-> > `.env` > built-in**; generator presets **never hard-pin** provider/model
-> (`model_hint` advisory), and an **explicit** preset sampling/thinking value
-> overrides the stored runtime default. The **fetch-models endpoint is now DONE**
-> (DONE #35, branch `provider-settings-fetch-models`) — read-only, no auto-persist.
-> Still deferred from provider settings: **the frontend "Refresh models" button +
-> save-to-`custom_models`, encrypted-at-rest / OS keyring, `.env` import, the
-> Local Model Manager (separate design-first feature), and the optional Builder
-> "Provider default" thinking UI polish.**
+> **Provider settings feature group is DONE through Slice 5** (DONE #32→#36):
+> design (`978516e`) → backend store + safe endpoints (`1ba2b28`) → frontend
+> Providers UI (`3024a33`) → runtime settings applied to live generation
+> (`40df617`) → backend fetch-models endpoint (`6da944a`) → frontend Refresh
+> Models UI (`61fb423`). Raw keys stay **server-side only**; `/api/options` and
+> `/api/provider-settings` are **redacted**; `config/provider_settings.json` is
+> non-secret (`0644`), `config/secrets.json` is secret-only (`0600`). Precedence:
+> **per-job request > provider-settings default > `.env` > built-in**; generator
+> presets **never hard-pin** provider/model (`model_hint` advisory), and an
+> **explicit** preset sampling/thinking value overrides the stored runtime default.
+> The **fetch-models endpoint** (DONE #35) is read-only and never auto-persists;
+> the **Refresh Models UI** (DONE #36) fetches review-only model ids, stages new
+> ids into draft `custom_models` via Add / Add all new, and requires an **explicit
+> Save** to persist (after which `/api/options` exposes the saved custom models).
+> Still deferred from provider settings: **encrypted-at-rest / OS keyring, `.env`
+> import, the Local Model Manager (separate design-first feature), and the optional
+> Builder "Provider default" thinking UI polish.**
 >
 > **Large-PDF core (DONE #27→#31) and Group C (C1→C5) also remain done.** The
 > earlier "in-app provider settings — design-first" recommendation is now
 > **completed and removed**. The only remaining math/PDF slice is **font-size
 > rationalization** (cause C, CSS-only) — optional, not the headline.
 
-1. **Recommended next — pick ONE safe option:**
-   - **Real-world validation pass.** Exercise the now-complete provider settings
-     end-to-end (set/clear a key, change default model + sampling/timeout/retry/
-     thinking, run "Test connection", then generate) and confirm redaction holds
-     and the runtime defaults reach live generation; also re-run the large-PDF
-     core on a handful of real big/scanned decks. Pure validation / manual
-     click-through — no code unless a concrete bug surfaces.
-   - **Fetch-models endpoint — DESIGN/IMPLEMENT.** A safe, server-side
-     "list models for this provider" call so the Providers UI can populate the
-     model dropdown from the live provider instead of the static registry. Keep
-     keys server-side; redact as usual. Design the request/response shape first.
-   - **Shortcut inspector / repair loop — DESIGN/POLISH.** Surface the store's
-     `valid`/`reason` "references unavailable …" state and a repair UX for broken
-     provider/preset/style references. Design first.
-2. **Local Model Manager — DESIGN-FIRST.** Backend spawns/kills a host
+1. **Real-world validation pass over provider settings + large-PDF workflows.**
+   Exercise the now-complete provider settings end-to-end (set/clear a key, change
+   default model + sampling/timeout/retry/thinking, run "Test connection",
+   **Refresh models → Add → Save**, then generate) and confirm redaction holds and
+   the runtime defaults reach live generation; also re-run the large-PDF core on a
+   handful of real big/scanned decks (preflight verdicts, first-N + manual range,
+   original `## Page N` anchors, OCR only on selected pages, rendered PDF). Pure
+   validation / manual click-through — no code unless a concrete bug surfaces.
+2. **Shortcut inspector / repair loop — DESIGN/POLISH.** Surface the store's
+   `valid`/`reason` "references unavailable …" state and a repair UX for broken
+   provider/preset/style references. Design first.
+3. **Local Model Manager — DESIGN-FIRST only.** Backend spawns/kills a host
    `llama-server`. This **crosses the container boundary** (non-root uid 10001
    container managing a host process) — design and get sign-off before coding. It
    stays a **separate** feature from the now-complete in-app provider settings.
-3. **Math/PDF font-size rationalization (cause C, CSS-only).** Optional remaining
-   fidelity slice; investigate the CSS-only font sizing before any change.
-4. **Library archive / tag model — DESIGN-FIRST.** Bulk **archive** needs a new
-   archive state designed + a `DECISIONS.md` entry first; bulk **tag** needs a
-   tag model designed first. Neither is started. Bulk **export** is already DONE
-   (B4). Do not begin either without an explicit slice + design sign-off.
+4. **Math/PDF font-size rationalization (cause C) — optional CSS-only
+   investigation.** The remaining math/PDF fidelity slice; investigate the
+   CSS-only font sizing before any change.
+5. **Large-PDF preflight size-limit polish — optional, later.** Raising/uniting
+   the upload ceiling + preflight size thresholds is a possible later slice. It is
+   **explicitly not part of this docs slice** and not started.
+
+(**Also still on the books, design-first:** Library archive / tag model — bulk
+**archive** needs a new archive state designed + a `DECISIONS.md` entry first;
+bulk **tag** needs a tag model designed first. Neither is started. Bulk **export**
+is already DONE (B4). Do not begin either without an explicit slice + design
+sign-off.)
 
 ## OPEN ITEMS
 

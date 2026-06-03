@@ -6,7 +6,7 @@
 > `DECISIONS.md`. The canonical project brief is `../CLAUDE.md`.
 >
 > **Trunk:** `chrome-renderer-v1` is the integrated trunk. Branch new work from it
-> (currently `40df617` or later) — never from the old consumed feature branches
+> (currently `61fb423` or later) — never from the old consumed feature branches
 > (see `DECISIONS.md` → "Consumed feature branches must not be re-merged").
 
 ---
@@ -48,13 +48,18 @@ flashcards with CSV / Anki / Quizlet export.
 - **DeepSeek** and **Qwen** — verified-working providers. **Local llama.cpp** —
   supported via env/discovery; typically shows `configured: false` until a local
   server is set up.
-- **Configurable in-app (provider settings core, DONE `978516e`→`40df617`).** Keys,
-  base URLs, default models, custom models, and sampling/runtime defaults
-  (`timeout_seconds`/`retry_count`/`thinking_default`) can be set from the
-  **Providers** page instead of hand-editing `.env`. Backed by a two-file
-  server-side store: `config/provider_settings.json` (NON-secret, `0644`) and
-  `config/secrets.json` (raw API keys ONLY, `0600`), both gitignored +
-  dockerignored.
+- **Configurable in-app (provider settings, DONE through Slice 5
+  `978516e`→`61fb423`).** Keys, base URLs, default models, custom models, and
+  sampling/runtime defaults (`timeout_seconds`/`retry_count`/`thinking_default`)
+  can be set from the **Providers** page instead of hand-editing `.env`. Backed by
+  a two-file server-side store: `config/provider_settings.json` (NON-secret,
+  `0644`) and `config/secrets.json` (raw API keys ONLY, `0600`), both gitignored +
+  dockerignored. The Providers page also has a per-card **Refresh models** button
+  (read-only `POST /api/provider-settings/{provider}/fetch-models`): fetched ids
+  are **review-only** and staged into the draft `custom_models` via Add / Add all
+  new; an **explicit Save** is required to persist them (after which `/api/options`
+  exposes the saved custom models). Fetching never auto-saves and never
+  auto-switches the provider/default model.
 - **Resolution precedence:** **per-job request > provider-settings store default >
   `.env` > built-in default**. With no store files present every lookup falls
   through to the prior `.env` path, byte-identical to before the store existed.
@@ -96,9 +101,10 @@ flashcards with CSV / Anki / Quizlet export.
   **settings store → `.env` → built-in default** (with per-job request still
   winning); no store files ⇒ byte-identical to the prior env path. Endpoints:
   `GET /api/provider-settings`, `PATCH /api/provider-settings/{provider}`,
-  `…/clear-key`, `…/test`. The stored `timeout_seconds`/`retry_count`/
-  `thinking_default` are applied at the live model-call boundary
-  (`build_provider_config` → `generate_chat_completion`). See `DECISIONS.md`.
+  `…/clear-key`, `…/test`, `…/fetch-models` (read-only model discovery, no
+  auto-persist). The stored `timeout_seconds`/`retry_count`/`thinking_default` are
+  applied at the live model-call boundary (`build_provider_config` →
+  `generate_chat_completion`). See `DECISIONS.md`.
 - **Shortcut store** is a whitelist-validated JSON file at
   `library/shortcuts.json`. Import/export only accepts whitelisted fields.
 - **Job stage reporting.** Coarse status (`queued/running/done/

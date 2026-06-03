@@ -1,11 +1,17 @@
 # PROVIDER_SETTINGS_DESIGN.md — In-app provider settings
 
-> **Status: DESIGN ONLY. No code in this slice.** This document proposes a safe,
-> server-side provider-settings system so a user can configure providers, models,
-> and sampling/runtime defaults **from inside the app** instead of hand-editing
-> `.env`, while API keys and other secrets stay strictly server-side and never
-> reach the frontend. Nothing here is implementation-ready until the design is
-> reviewed and a first slice is signed off (see §13).
+> **Status: DESIGN OF RECORD + Slices 1–5 IMPLEMENTED.** Sections §1–§18 below are
+> the original **design record** (written design-first, before any code) for a
+> safe, server-side provider-settings system so a user can configure providers,
+> models, and sampling/runtime defaults **from inside the app** instead of
+> hand-editing `.env`, while API keys and other secrets stay strictly server-side
+> and never reach the frontend. **The implementation has since landed in five
+> slices** — see the "implementation note (landed)" sections §19 (backend store +
+> safe endpoints), §20 (frontend Providers UI), §21 (runtime defaults wired into
+> live generation), §22 (backend fetch-models endpoint), and §23 (frontend Refresh
+> Models UI). Where an implementation note tightened or deferred something relative
+> to the design, the note is authoritative. The "DESIGN ONLY" framing applies to
+> §1–§18 as the agreed shape; it does **not** mean the feature is unbuilt.
 >
 > **Scope guard.** This design touches only the provider-configuration layer
 > (`pipeline/provider_config.py`, `pipeline/llm_client.py`, the `/api/options` and
@@ -945,7 +951,14 @@ Local Model Manager.
 
 ## Confirmation
 
-**The design sections above (§1–§18) remain the design of record.** Slice 1 (§19)
-implements the backend store + safe endpoints only: no frontend UI, no Local Model
-Manager, no provider auto-switching, no generator-preset hard-pinning, and no
-dependency/lockfile change. Raw API keys never leave the server.
+**The design sections above (§1–§18) remain the design of record; Slices 1–5 are
+now implemented** (notes §19–§23): backend store + safe endpoints (§19), frontend
+Providers UI (§20), runtime defaults wired into live generation (§21), the
+read-only fetch-models endpoint (§22), and the frontend Refresh Models UI (§23).
+Across all five: no provider auto-switching, no generator-preset hard-pinning, no
+dependency/lockfile change, and **raw API keys never leave the server**. The
+fetch-models endpoint is read-only and never auto-persists; the Refresh Models UI
+stages fetched ids into the draft `custom_models` and requires an **explicit Save**
+to persist. **Still deferred:** encrypted-at-rest secrets / OS keyring; `.env`
+import; and the **Local Model Manager** — which remains a **separate**,
+design-first feature, not part of this provider-settings work.

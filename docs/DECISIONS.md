@@ -490,3 +490,21 @@ host-only; errors are classified to a coarse category and redacted of the key/fu
 URL before returning. **Safety on the edges:** unknown provider → HTTP 400;
 unconfigured / no base URL → a safe non-OK result, never the missing-key specifics.
 Provider/model precedence and preset `model_hint`-advisory behavior are untouched.
+
+## Refresh Models UI stages fetched models but requires an explicit Save (2026-06-03)
+The frontend Refresh Models control (provider settings Slice 5) treats the
+read-only fetch-models result as **review-only**: fetched ids are shown, and
+**Add** / **Add all new** only stage a new id into the card's **draft**
+`custom_models` — nothing is written until the user runs the existing **Save**
+(`PATCH /api/provider-settings/{provider}`). **Why stage-then-save, not
+auto-persist:** the discovered list is whatever the upstream `/models` endpoint
+returns and may include experimental, deprecated, or irrelevant ids; silently
+writing them into `custom_models` (and thus into the Builder's model dropdown via
+`/api/options`) would clutter the user's real choices and mutate persisted state
+behind a query. Keeping the decision deliberate mirrors the backend contract
+("fetch-models is read-only and does not auto-persist") at the UI layer, and keeps
+the request/Save the single point where state changes. A successful fetch also
+**never auto-switches** the default model or default provider, and re-seeding the
+provider DTO (after Save / clear-key / page refresh) clears any shown fetch list.
+Only after an explicit Save does `/api/options` surface the new ids — so a fetched
+model is Builder-selectable only once the user has chosen to keep it.
