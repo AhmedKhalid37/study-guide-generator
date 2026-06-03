@@ -235,7 +235,7 @@ deepseek — even though full generation on those same providers succeeds (smoke
 
 ### Finding #2 — Store `default_provider` has no runtime effect (LOW) — ✅ FIXED
 > **Resolved** on branch `fix-default-provider-precedence` (2026-06-03), commit
-> `76bea36`. When no per-request provider is given,
+> `e524c79`. When no per-request provider is given,
 > `api/server.py:_pick_generate_provider(None)` now honors the stored
 > `default_provider` when it resolves to a known, **configured** provider (via the
 > new `provider_config.stored_default_provider_entry` helper), and otherwise falls
