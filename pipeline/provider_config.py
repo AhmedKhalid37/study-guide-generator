@@ -198,6 +198,27 @@ def resolve_provider_id(provider: str) -> str | None:
     return PROVIDER_ALIASES.get(provider) or PROVIDER_ALIASES.get(provider.strip())
 
 
+def stored_default_provider_entry(registry: list[dict[str, Any]]) -> dict[str, Any] | None:
+    """Resolve the stored provider-settings ``default_provider`` against a registry.
+
+    Returns the matching public registry dict ONLY when the stored default is set,
+    known, AND configured; otherwise ``None`` (no usable stored default → the caller
+    falls back to its existing first-configured / env / built-in default behavior).
+
+    This encodes one precedence rule: the stored ``default_provider`` is a DEFAULT
+    only — it ranks BELOW an explicit per-request provider and ABOVE the
+    first-configured fallback. It never raises and never exposes a raw key (it reads
+    only the non-secret ``default_provider`` field + the public registry dicts).
+    """
+    default_id = provider_settings_store.get_default_provider()
+    if not default_id:
+        return None
+    return next(
+        (item for item in registry if item.get("id") == default_id and item.get("configured")),
+        None,
+    )
+
+
 def get_provider_entry(provider: str, *, discover_local: bool = True) -> ProviderRegistryEntry | None:
     load_env_file()
     provider_id = resolve_provider_id(provider)

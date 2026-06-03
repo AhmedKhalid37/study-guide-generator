@@ -233,7 +233,22 @@ deepseek — even though full generation on those same providers succeeds (smoke
   `test_provider` catch the empty-response `RuntimeError` and classify it as
   `ok` since a choice was returned). Pre-existing — not introduced here.
 
-### Finding #2 — Store `default_provider` has no runtime effect (LOW)
+### Finding #2 — Store `default_provider` has no runtime effect (LOW) — ✅ FIXED
+> **Resolved** on branch `fix-default-provider-precedence` (2026-06-03), commit
+> `76bea36`. When no per-request provider is given,
+> `api/server.py:_pick_generate_provider(None)` now honors the stored
+> `default_provider` when it resolves to a known, **configured** provider (via the
+> new `provider_config.stored_default_provider_entry` helper), and otherwise falls
+> straight through to the historical first-configured behavior. The precedence
+> ladder is **explicit per-request provider > stored `default_provider` >
+> first-configured fallback** (see DECISIONS.md, "Stored default_provider is a
+> default only"). Per-job request provider/model still win; the stored
+> `default_model` path is unchanged; generator presets remain advisory (sampling
+> only — never repin provider/model). Surfacing `default_provider` in
+> `/api/options` for a Builder pre-select was left out of scope (the redacted
+> `/api/provider-settings` already exposes it). No raw key is read or exposed by
+> the new path. Covered by `test_scripts/test_default_provider_precedence.py`.
+
 The provider-settings `default_provider` (settable via
 `PATCH /api/provider-settings {default_provider}`, shown in
 `/api/provider-settings`) is **not** consulted when no per-job provider is given:

@@ -48,6 +48,7 @@ from pipeline.provider_config import (
     get_provider_settings_view,
     resolve_provider_id,
     set_default_provider,
+    stored_default_provider_entry,
     test_provider,
     update_provider_settings,
     validate_provider_model,
@@ -512,6 +513,18 @@ def _pick_generate_provider(provider: str | None) -> tuple[str, str]:
                 detail=f"{entry['display_name']} is not configured on the server.",
             )
         return entry["id"], entry.get("default_model") or ""
+
+    # No per-request provider: honor the stored provider-settings default_provider
+    # when it resolves to a known, configured provider. This is a DEFAULT only — it
+    # sits BELOW an explicit per-request provider (handled above) and ABOVE the
+    # first-configured fallback (below). An unset/unknown/unconfigured stored default
+    # returns None and falls straight through to the historical first-configured
+    # behavior. The model returned is that provider's effective default_model
+    # (store → env → built-in), which the caller still overrides with any per-request
+    # model.
+    default_entry = stored_default_provider_entry(registry)
+    if default_entry is not None:
+        return default_entry["id"], default_entry.get("default_model") or ""
 
     entry = next((item for item in registry if item["configured"]), None)
     if entry is None:

@@ -1163,6 +1163,34 @@ parked on the `hardening` branch — not merged, not deleted.
       **26/26**, `test_provider_fetch_models.py` **16/16**, release smoke **28/28**.
       See `DECISIONS.md` → "Provider Test Connection accepts empty content".
 
+38. **Fix — stored `default_provider` precedence was inert (BACKEND ONLY)** —
+    branch `fix-default-provider-precedence`. Resolves validation **Finding #2**:
+    with no per-request provider, `api/server.py:_pick_generate_provider(None)`
+    always picked the **first configured** provider (DeepSeek) and ignored the
+    stored provider-settings `default_provider` (e.g. Qwen).
+    - **Fix (narrow):** new pure helper
+      `provider_config.stored_default_provider_entry(registry)` resolves the stored
+      `default_provider` against the registry and returns its public entry **only**
+      when it is set, known, and **configured** (else `None`). `_pick_generate_provider`
+      consults it in the no-request-provider branch, **before** the first-configured
+      fallback. Precedence ladder is now **explicit per-request provider > stored
+      `default_provider` > first-configured fallback**.
+    - **Scope guard:** an explicit per-request provider still wins (the
+      `if provider:` branch is untouched); an unset / unknown / unconfigured stored
+      default falls straight through to the historical first-configured behavior.
+      The stored `default_model` path is unchanged (request model still wins, else
+      the selected provider's effective default_model). Generator presets stay
+      advisory — sampling only, never repinning provider/model. No raw key is read
+      or exposed by the new path; `/api/options` Builder pre-select left out of scope.
+    - **Verified:** `compileall api pipeline` OK; new
+      `test_scripts/test_default_provider_precedence.py` **14/14** (stored default
+      picked over first-configured; request provider wins; unconfigured/unknown/unset
+      default → first-configured fallback; stored default_model used when request
+      model absent; request model wins; preset stays advisory; leak-scan clean),
+      `test_provider_settings_store.py` **26/26**, `test_provider_runtime_settings.py`
+      **28/28**, `test_provider_fetch_models.py` **16/16**. See `DECISIONS.md` →
+      "Stored default_provider is a default only".
+
 ## NEXT (in order)
 
 > **Provider settings feature group is DONE through Slice 5** (DONE #32→#36):

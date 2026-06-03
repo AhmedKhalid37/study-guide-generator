@@ -524,3 +524,23 @@ study-guide generation must still reject empty output so a bad/empty model
 response is never silently accepted — `allow_empty_content` defaults to `False`,
 so only the probe path is lenient. A response with **no** choices at all remains a
 failure on both paths (it proves nothing about reachability).
+
+## Stored default_provider is a default only (2026-06-03)
+When a generation request supplies **no** provider, provider selection now
+consults the stored provider-settings `default_provider` (via
+`provider_config.stored_default_provider_entry`) **before** falling back to the
+first-configured provider — but only when that stored default resolves to a
+known, **configured** provider. The full precedence ladder is **explicit
+per-request provider > stored `default_provider` > first-configured fallback**.
+**Why a default and not a pin:** a per-job request is always authoritative (the
+Builder sends an explicit provider/model), so the stored default must rank below
+it; but it must rank above the historical "first provider in registry order"
+guess so a user who sets, say, Qwen as their default actually gets Qwen when
+nothing is chosen. An unset / unknown / unconfigured stored default returns `None`
+and falls straight through to the old first-configured behavior, so the change is
+inert unless a usable default is set (validation Finding #2 was that this tier was
+missing for *provider* — it already worked for *model*). The stored `default_model`
+behavior is unchanged (request model wins, else the selected provider's effective
+default_model), and generator presets remain advisory — they fill sampling only and
+never repin provider/model. The helper reads only the non-secret `default_provider`
+field plus the already-redacted public registry, so no raw key is read or exposed.
