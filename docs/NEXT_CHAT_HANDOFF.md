@@ -7,14 +7,25 @@
 
 ## Current position
 - **Branch (trunk / PR target):** `chrome-renderer-v1`
-- **Latest commit:** `901d44b` — "Add cooperative job cancellation". After the
-  Group-C integration, several commits landed: `687c8ca` (docs reconcile),
-  `2716995` (preserve generator preset on rerender), `65b9b8f` (B4 "Export selected"),
-  and `901d44b` (cooperative server-side cancel). Older `1d51b36` / `65b9b8f`
+- **Latest commit:** `60c3e78` — "Enable PDF page selection UI". The **large-PDF
+  core workflow** landed as five slices on top of cooperative cancel (`901d44b`):
+  `841d3f9` (preflight endpoint), `9eefe25` (Builder preflight warnings),
+  `d00380b` (page-selection plumbing), `db4de9d` (extraction honors selected
+  pages), `60c3e78` (page-selection UI). Older `901d44b` / `1d51b36` / `65b9b8f`
   mentions below are historical.
-- **Remote:** `origin/chrome-renderer-v1` == `901d44b` (pushed; local == origin)
+- **Remote:** `origin/chrome-renderer-v1` == `60c3e78` (pushed; local == origin)
 
 ## What just landed
+- **Large-PDF core workflow — COMPLETE end-to-end** (`841d3f9`→`60c3e78`): a
+  read-only `POST /api/preflight/pdf` verdict (`ok`/`warn`/`blocked`), a Builder
+  preflight warning card, `page_selections` (`{filename: [[start,end],…]}`,
+  1-based inclusive) plumbed through the request + persisted in the manifest, the
+  extractor restricting matching PDFs to the selected ORIGINAL pages (anchors
+  preserved, OCR only on selected pages), and a live first-N / manual page-range
+  UI. **Usable end-to-end:** preflight warns → user picks first N or a range →
+  the request carries `page_selections` → extraction uses the original page
+  anchors. **Automatic split/chunk processing and hybrid embedded-text + OCR
+  dedup remain deferred.** See `CURRENT_TASK.md` #27→#31.
 - **Cooperative server-side cancel** (`901d44b`): a `jobs/<id>/cancel.requested` marker
   checked at safe stage boundaries, a new `cancelled` terminal status,
   `POST /api/jobs/{id}/cancel`, and a Builder Cancel button. **Checkpoint-based,
@@ -53,23 +64,30 @@ Local-only `61c134c` and `863f5b7` stay **parked on the `hardening` branch** —
 pieces already salvaged; the rest is deferred (below).
 
 ## RULE for new work
-**Branch from `chrome-renderer-v1` @ `901d44b` (or later) — never from an old stacked
+**Branch from `chrome-renderer-v1` @ `60c3e78` (or later) — never from an old stacked
 branch.** One small slice per branch; verify (build + compile + docker + smoke) and
 commit before moving on. Surgical edits, not rewrites. The PDF/Chromium pipeline is
 load-bearing — do not rewrite casually.
 
 ## Next recommended slice
-**Pick ONE — and do design/investigation first, do not jump to implementation:**
-- **Math / PDF fidelity investigation.** Diagnose how reliably math (KaTeX spans,
-  formula sheets) and page references survive the Chromium PDF render across real
-  multi-page sources, and write up findings before any change. The PDF/Chromium
-  pipeline is load-bearing — investigate first, do not rewrite casually.
-- **Large-PDF preflight design (DESIGN-FIRST).** Design the upload preflight /
-  page-range selection / OCR-cost UX for big scanned PDFs (deliberately out of scope
-  in the page-level OCR fallback). Design + sign-off before any code.
+**Pick ONE safe option:**
+- **Real-world validation pass over several large PDFs.** The large-PDF core is now
+  complete end-to-end; run it on a handful of real big/scanned decks and confirm
+  preflight verdicts, first-N + manual range selection, original `## Page N` anchors,
+  OCR only on selected pages, and the rendered PDF. Validation/manual click-through
+  only — no code unless a concrete bug surfaces.
+- **In-app provider settings (DESIGN-FIRST).** Design the server-side secret-write
+  path (keys never reach the frontend) before any code.
+- **Shortcut inspector / repair loop (DESIGN/POLISH).** Surface the store's
+  `valid`/`reason` "references unavailable …" state and a repair UX for broken
+  provider/preset/style references. Design first.
 
-(The previously-recommended **rerender `generator_preset` fix**, **B4 "Export selected"**,
-and **server-side cancel** are all DONE and on trunk — see "What just landed".)
+(The previously-recommended **Math/PDF fidelity investigation** and **Large-PDF
+preflight design** are **both DONE** — the preflight design shipped as Slices 1–5
+(`841d3f9`→`60c3e78`) and the math/PDF fidelity Slices 1–3 shipped (#23–#25). The
+rerender `generator_preset` fix, B4 "Export selected", and server-side cancel are
+also DONE and on trunk — see "What just landed". The only remaining math/PDF slice
+is the optional **font-size rationalization** (cause C, CSS-only).)
 
 ## Open / deferred items
 - **rerender drops `generator_preset`** — DONE (`2716995`, on trunk). Rerender now
@@ -79,9 +97,16 @@ and **server-side cancel** are all DONE and on trunk — see "What just landed".
   checkpoint-based, marker file, `cancelled` status; does not kill processes; preserves
   uploads/inputs/settings). Retry-from-cancelled still deferred (re-generate from the
   Builder instead).
-- **Math / PDF fidelity investigation** — recommended next (above); investigate first.
-- **Large-PDF preflight / page-range / OCR-cost UX** — DESIGN-FIRST (deliberately out of
-  scope in the page-level OCR fallback; design + sign-off before code).
+- **Large-PDF core (preflight + page-range selection)** — DONE end-to-end
+  (`841d3f9`→`60c3e78`, #27→#31): preflight verdict endpoint, Builder warning card,
+  `page_selections` plumbing + manifest persistence, extraction honoring selected
+  ORIGINAL pages (OCR only on selected pages), and the first-N / manual page-range UI.
+- **Math / PDF fidelity Slices 1–3** — DONE (#23–#25). Remaining optional slice:
+  **font-size rationalization** (cause C, CSS-only).
+- **Large-PDF — still deferred:** automatic split/chunk processing; hybrid
+  embedded-text + OCR dedup; raising the upload ceiling (`MAX_UPLOAD_MB`); persisting
+  the preflight report in `job.json`; carrying page selections into drafts/shortcuts.
+  None started — do not begin without an explicit slice + design.
 - **Local Model Manager** — DESIGN-FIRST (crosses the container boundary; get sign-off).
 - **In-app provider settings** — DESIGN-FIRST (server-side secret write path; keys never reach frontend).
 - **Library archive / tag model** — DESIGN-FIRST (bulk archive needs an archive state +

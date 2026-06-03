@@ -8,15 +8,20 @@
 ## Where we are
 
 - **Branch:** `chrome-renderer-v1` (the live integrated trunk; PR target)
-- **Trunk tip:** `901d44b` — Add cooperative job cancellation. Since the
-  Group-C integration note below was written, several more commits landed on trunk:
-  `687c8ca` (docs reconcile), `2716995` (preserve generator preset on rerender),
-  `65b9b8f` (B4 "Export selected"), and `901d44b` (cooperative server-side cancel).
-  The older `1d51b36` / `65b9b8f` references further down are historical — trunk is
-  now `901d44b`.
-- **`origin/chrome-renderer-v1`:** `901d44b` (local == origin; pushed)
+- **Trunk tip:** `60c3e78` — Enable PDF page selection UI. Since cooperative
+  cancel (`901d44b`), the **large-PDF core workflow** landed as five slices:
+  `841d3f9` (preflight endpoint), `9eefe25` (Builder preflight warnings),
+  `d00380b` (page-selection request/manifest plumbing), `db4de9d` (extraction
+  honors selected pages), and `60c3e78` (page-selection UI live). Earlier
+  `901d44b` / `1d51b36` / `65b9b8f` references further down are historical —
+  trunk is now `60c3e78`.
+- **`origin/chrome-renderer-v1`:** `60c3e78` (local == origin; pushed)
+- **Large-PDF core is COMPLETE end-to-end** (preflight design → endpoint →
+  Builder warning UI → page-selection plumbing → extraction honors selected
+  pages → first-N/manual page-range UI). See DONE #27→#31. Automatic
+  split/chunk processing and hybrid embedded-text + OCR dedup remain **deferred**.
 - **Group C is COMPLETE and INTEGRATED** (C1 → C5, incl. C4a–d) onto `chrome-renderer-v1`.
-- **For new sessions:** branch from `chrome-renderer-v1` @ `901d44b` (or later). Do **not**
+- **For new sessions:** branch from `chrome-renderer-v1` @ `60c3e78` (or later). Do **not**
   re-merge any of the old stacked feature branches — they are consumed/archival (see
   `DECISIONS.md` → "Consumed feature branches must not be re-merged"). The short one-page
   start-here is `docs/NEXT_CHAT_HANDOFF.md`.
@@ -897,26 +902,31 @@ parked on the `hardening` branch — not merged, not deleted.
 
 ## NEXT (in order)
 
-> Slices 1–3 of the math/PDF fidelity work (`math-display-breaks` DONE #23,
-> `math-display-overflow` DONE #24, `math-formula-guidance` DONE #25) added the
-> display-math page-break guard, the long-equation overflow improvement, and the
-> prompt-side long-formula guidance (cause D). The one remaining math/PDF slice is
-> **font-size rationalization** (cause C, CSS-only). The rerender-preset fix
-> (`2716995`), B4 "Export selected" (`65b9b8f`), and the cooperative server-side
-> cancel (`901d44b`) are **DONE and on trunk**. See DONE #20→#24 and OPEN ITEMS.
+> **Large-PDF core is DONE end-to-end** (`841d3f9`→`60c3e78`, DONE #27→#31):
+> preflight warns → user chooses first-N or a manual page range → the request
+> carries `page_selections` → extraction restricts to those ORIGINAL pages
+> (anchors preserved) → only selected pages are OCR'd. **Automatic split/chunk
+> processing and hybrid embedded-text + OCR dedup remain deferred (§9).** The
+> earlier "Math/PDF investigation next" and "Large-PDF preflight design next"
+> recommendations are **both completed and removed** — preflight design shipped
+> (`docs/LARGE_PDF_PREFLIGHT_DESIGN.md` realized through Slices 1–5), and the
+> math/PDF fidelity Slices 1–3 (`math-display-breaks` #23, `math-display-overflow`
+> #24, `math-formula-guidance` #25) shipped. The remaining math/PDF slice is
+> **font-size rationalization** (cause C, CSS-only) — optional, not the headline.
 
-1. **Recommended next — pick ONE, design/investigation only (do NOT start
-   implementation in a docs slice):**
-   - **Math / PDF fidelity investigation.** Diagnose how reliably math (KaTeX
-     spans, formula sheets) and page references survive the Chromium PDF render
-     across real multi-page sources. The PDF/Chromium pipeline is load-bearing —
-     investigate and write findings first; do not rewrite casually.
-   - **Large-PDF preflight design (DESIGN-FIRST).** Design the upload
-     preflight / page-range selection / OCR-cost UX for big scanned PDFs
-     (deliberately left out of the page-level OCR fallback). Design + sign-off
-     before any code.
-2. **Output modules + preset naming/icons.** Output module options plus
-   naming/iconography for presets.
+1. **Recommended next — pick ONE safe option:**
+   - **Real-world validation pass over several large PDFs.** Run the now-complete
+     large-PDF core end-to-end on a handful of real big/scanned decks: confirm
+     preflight verdicts, first-N + manual range selection, original `## Page N`
+     anchors, OCR only on selected pages, and the rendered PDF. Pure
+     validation/manual click-through — no code unless a concrete bug surfaces.
+   - **In-app provider settings — DESIGN-FIRST.** Design the server-side
+     secret-write path (keys never reach the frontend) before any code.
+   - **Shortcut inspector / repair loop — DESIGN/POLISH.** Surface the store's
+     `valid`/`reason` "references unavailable …" state and a repair UX for broken
+     provider/preset/style references. Design first.
+2. **Math/PDF font-size rationalization (cause C, CSS-only).** Optional remaining
+   fidelity slice; investigate the CSS-only font sizing before any change.
 3. **Local Model Manager — DESIGN-FIRST.** Backend spawns/kills a host
    `llama-server`. This **crosses the container boundary** (non-root uid 10001
    container managing a host process) — design and get sign-off before coding.

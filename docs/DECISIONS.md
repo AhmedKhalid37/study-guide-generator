@@ -387,3 +387,45 @@ user's Builder inputs/selections are preserved, so the user simply re-generates.
 **Retry-from-cancelled is intentionally NOT wired** (`retry_failed_job` stays gated to
 `failed`) — re-generate from the Builder instead; already-terminal jobs are a safe no-op
 (no marker written, artifacts untouched).
+
+## Large-PDF core: read-only preflight + flat `page_selections`, original anchors, no auto-split (841d3f9→60c3e78)
+The large-PDF workflow (`docs/LARGE_PDF_PREFLIGHT_DESIGN.md`, shipped as Slices 1–5)
+makes a big/scanned PDF inspectable and page-selectable **before** generation, without
+rewriting the load-bearing extractor or OCR. Several non-obvious choices:
+**Preflight is read-only and degrades to `ok`, never blocking a processable PDF.**
+`POST /api/preflight/pdf` (`api/server.py` + `pipeline.extract.preflight_pdf`) probes a
+**bounded, evenly spaced page sample** (not the whole document) and reuses the existing
+`_is_meaningful_page_text` / `_ocr_available()` heuristics; `_extract_pdf` is **untouched**
+by preflight. It returns `verdict` (`ok`/`warn`/`blocked`) + `warnings[]` + `allowed_actions[]`.
+Only **encrypted/corrupt** PDFs are `blocked`; **any other inspection failure (incl.
+PyMuPDF missing) degrades to `ok`** so preflight can never stop a PDF the real extractor
+could process. **Why:** preflight is advisory UX, not a gate — a flaky/absent inspector
+must fail open. The frontend also treats a preflight network/parse failure as a soft
+warning that never blocks generation. **`split_automatically` is never emitted** (the
+auto-split path is deferred).
+**`page_selections` is a flat `{filename: [[start, end], …]}` (1-based inclusive), chosen
+over the design doc's `{mode, first_n, ranges}` object.** "First N" is just `[[1, N]]`, so
+the flat list-of-ranges form needs no mode discriminator and normalizes uniformly.
+Validation (`_normalize_page_selections`) sorts + merges overlapping/adjacent ranges to a
+canonical spec, rejects bad shapes with **HTTP 400** (bool rejected), and is bounded
+(`MAX_PAGE_SELECTION_FILES`=20 / `MAX_PAGE_RANGES_PER_FILE`=50). It is wired into **both**
+the JSON and multipart request paths (per the permanent two-path rule) and **persisted in
+`job.json`**, preserved across retry. Absent/empty ⇒ `{}` ⇒ all pages ⇒ byte-equivalent to
+the previous behaviour.
+**Extraction keeps ORIGINAL page anchors and OCRs only selected pages.** `_extract_pdf` was
+extended **surgically** with an optional `pages=` filter (PDF-only; ignored for every other
+type): a single `if index not in selected: continue` at the top of the existing per-page
+loop, **before** any `get_text`/OCR, so OCR never runs on unselected pages. The loop still
+enumerates from 1 and emits `## Page {original index}`, so selecting pages 20–21 yields
+`## Page 20`/`## Page 21`, **never** renumbered to page 1. Selections are matched by the
+attachment's **original filename** (exact `dict.get`, no fuzzy/index guessing); out-of-range
+pages are **dropped (not clamped)** with a warning; if no selected page is in range the
+extractor returns empty cleanly (no crash). **Why original anchors:** page references in the
+guide must point at the source's real page numbers to stay meaningful (consistent with
+"Page-anchors, not slide-anchors").
+**Deferred, deliberately:** automatic split/chunk processing; hybrid embedded-text + OCR
+dedup; raising the upload ceiling (`MAX_UPLOAD_MB`, reported but unchanged); persisting the
+**preflight report** in `job.json`; carrying page selections into **drafts/shortcuts** (the
+attachments they reference are not persisted either, so a stored selection would be
+orphaned). None are started — each is its own future slice with sign-off, not an
+implementation-ready item.

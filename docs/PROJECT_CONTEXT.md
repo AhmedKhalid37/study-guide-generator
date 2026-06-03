@@ -6,7 +6,7 @@
 > `DECISIONS.md`. The canonical project brief is `../CLAUDE.md`.
 >
 > **Trunk:** `chrome-renderer-v1` is the integrated trunk. Branch new work from it
-> (currently `901d44b` or later) — never from the old consumed feature branches
+> (currently `60c3e78` or later) — never from the old consumed feature branches
 > (see `DECISIONS.md` → "Consumed feature branches must not be re-merged").
 
 ---
@@ -81,6 +81,16 @@ flashcards with CSV / Anki / Quizlet export.
   the job ends in the terminal `cancelled` status. It is **checkpoint-based, not a
   process kill**, so it takes effect at the next safe checkpoint and **preserves**
   partial artifacts + the user's inputs/settings (see `DECISIONS.md`).
+- **Large-PDF core (preflight + page selection).** A read-only
+  `POST /api/preflight/pdf` inspects an uploaded PDF *before* job creation and
+  returns a soft verdict (`ok`/`warn`/`blocked`); the Builder surfaces it as a
+  warning card. The user can pick **first N pages** or a **manual page range**,
+  which becomes `page_selections` (`{filename: [[start, end], …]}`, **1-based
+  inclusive**) on the LLM request, persisted in `job.json`. Extraction then
+  restricts matching PDFs to the selected **ORIGINAL** pages (original `## Page N`
+  anchors preserved; OCR runs **only** on selected pages). Default (no selection)
+  ⇒ all pages, byte-equivalent to before. **Automatic split/chunk processing and
+  hybrid embedded-text + OCR dedup are deferred** (see `DECISIONS.md`).
 
 ## 5. Working conventions
 
