@@ -471,3 +471,22 @@ value > store `thinking_default` > `True`; `qwen_thinking` defaulting to `None`
 the Builder still sends an explicit boolean so the UI is unchanged. **Migration
 guarantee preserved:** no store ⇒ no timeout, zero retries, thinking `True` ⇒
 byte-identical to trunk.
+
+## Provider fetch-models is read-only and does not auto-persist
+The `POST /api/provider-settings/{provider}/fetch-models` endpoint (provider settings
+Slice 4) lists a provider's upstream models by reusing the existing
+OpenAI-compatible `_discover_openai_models` `/models` discovery (the same path the
+`local` provider already uses) against the **effective** base URL + key
+(store → `.env` → built-in default). **Why read-only:** fetching is a query, not a
+mutation — it creates no job/artifacts, writes neither `provider_settings.json` nor
+`secrets.json`, and **does not** auto-add the discovered ids to `custom_models`. It
+returns the ids only; persisting a *selected* model belongs to the future frontend
+"Refresh models" slice, where the user makes a deliberate choice. **Why no
+`build_provider_config`:** model listing needs only base URL + key, so it skips the
+config builder (which requires/resolves a model and would raise for a model-less
+`local` provider). **Redaction unchanged:** the raw key never appears in the
+response (`{provider, ok, models, source, base_url_host, error}`); `base_url_host` is
+host-only; errors are classified to a coarse category and redacted of the key/full
+URL before returning. **Safety on the edges:** unknown provider → HTTP 400;
+unconfigured / no base URL → a safe non-OK result, never the missing-key specifics.
+Provider/model precedence and preset `model_hint`-advisory behavior are untouched.

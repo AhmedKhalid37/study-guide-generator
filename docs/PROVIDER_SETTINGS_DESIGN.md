@@ -820,6 +820,78 @@ OS keyring; `.env` import.
 
 ---
 
+## 22. Slice 4 implementation note (landed)
+
+> **Status: the §6 `POST …/{provider}/fetch-models` endpoint IMPLEMENTED** on branch
+> `provider-settings-fetch-models` (commit `Add provider fetch-models endpoint`).
+> **Backend + tests/docs only** — no frontend UI, no Local Model Manager, no provider
+> auto-switching, no generator-preset hard-pinning, no dependency/lockfile change.
+> Closes the long-standing `fetch-models` deferral from §19/§20/§21.
+
+**Endpoint.** `POST /api/provider-settings/{provider}/fetch-models`, registered with
+the other `/api/provider-settings*` routes **before** the static mount. Unknown
+provider → **HTTP 400** (via the existing `_resolve_known_provider`). Runs in a
+threadpool (blocking `urllib` call). Returns a small, stable JSON schema:
+
+```jsonc
+{ "provider": "qwen", "ok": true, "models": ["…"], "source": "provider",
+  "base_url_host": "dashscope-intl.aliyuncs.com", "error": null }
+```
+
+On failure `ok:false`, `models:[]`, and `error:{category, message}` (a redacted,
+user-safe message). `base_url_host` is **host-only** (`_base_url_host`, userinfo
+stripped) — never the full URL.
+
+**Fetch behavior (`provider_config.fetch_provider_models`).** It resolves the
+**effective** base URL + key (store → `.env` → built-in default) via the existing
+resolvers, then **reuses `_discover_openai_models(base_url, api_key=…)`** — the same
+OpenAI-compatible `/models` discovery the `local` provider already uses — for **all**
+providers (cloud + local). DeepSeek/Qwen hit `…/v1/models`; local hits
+`{base_url}/models` (keeping the existing `host.docker.internal`-only-in-Docker
+guard). A short fail-fast `PROVIDER_FETCH_MODELS_TIMEOUT` (10s) replaces the
+discovery default so a "Refresh models" probe never hangs. The returned list is
+**sorted + de-duplicated** (already done inside `_discover_openai_models`).
+
+- **No model is required for listing.** It does **not** call `build_provider_config`
+  (which requires/resolves a model and would force a `local` model error); it only
+  needs base URL + key, so an unconfigured-model provider can still list.
+- **Unconfigured / no base URL → safe non-OK** (no 400, no leak): missing base URL →
+  `error.category:"provider_config"`; provider not `configured` →
+  `"provider_auth"` with a generic "{provider} is not configured" message — never
+  the missing-key specifics.
+- **Errors classified + redacted:** `_classify_fetch_error` maps the discovery error
+  string to a coarse category (`provider_auth` / `provider_ratelimit` /
+  `provider_model` / `provider_network` / `local_offline` / `provider_error`);
+  `_safe_fetch_message` strips the raw key and collapses any full base URL to host
+  before returning (and caps length).
+
+**Persistence behavior — READ-ONLY.** The endpoint creates **no job, no artifacts**,
+and **does not write** `provider_settings.json` or `secrets.json`. It **does not**
+auto-add the fetched ids to `custom_models` — it returns them only. Saving a selected
+model into `custom_models` belongs to the future frontend "Refresh models" slice.
+(See `DECISIONS.md` "fetch-models is read-only and does not auto-persist".)
+
+**Precedence untouched.** No change to provider/model resolution
+(request > store default > `.env` > built-in) or to the sampling/runtime ladders;
+generator-preset `model_hint` stays a soft advisory and never repins provider/model.
+
+**Verification.** `test_scripts/test_provider_fetch_models.py` (16 checks): sorted/
+deduped success; local uses the `/models` discovery path; unconfigured → safe error;
+HTTP 401 + network failures → classified, redacted, no key leak; the stored fake key
+absent from the fetch response, `/api/provider-settings`, and `/api/options`; fetch
+writes neither JSON file and adds no `custom_models`; provider/model precedence +
+preset-pin advisory behavior unchanged. Plus live Docker proof: unknown → 400, local
+→ safe `provider_network` timeout, DeepSeek (env-configured) → `ok:true` with the
+real provider list; a sentinel key PATCHed on `local` appeared in **none** of the
+fetch / `/api/provider-settings` / `/api/options` responses or the container logs,
+and was cleared afterward. `test_provider_settings_store.py` 26/26,
+`test_provider_runtime_settings.py` 22/22, release smoke **28/28**.
+
+**Still deferred:** the frontend "Refresh models" button + save-to-`custom_models`;
+encrypted-at-rest secrets / OS keyring; `.env` import; the Local Model Manager.
+
+---
+
 ## Confirmation
 
 **The design sections above (§1–§18) remain the design of record.** Slice 1 (§19)

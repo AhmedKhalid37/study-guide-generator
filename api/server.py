@@ -43,6 +43,7 @@ from pipeline import provider_settings_store
 from pipeline.provider_config import (
     build_provider_config,
     clear_provider_key,
+    fetch_provider_models,
     get_provider_registry,
     get_provider_settings_view,
     resolve_provider_id,
@@ -399,6 +400,15 @@ def clear_provider_settings_key(provider: str) -> dict[str, Any]:
 async def test_provider_settings(provider: str) -> dict[str, Any]:
     provider_id = _resolve_known_provider(provider)
     return await run_in_threadpool(test_provider, provider_id)
+
+
+@app.post("/api/provider-settings/{provider}/fetch-models")
+async def fetch_provider_settings_models(provider: str) -> dict[str, Any]:
+    # Read-only model discovery (Slice 4): hits the provider's /models endpoint and
+    # returns the ids only. Never persists, never returns a raw key; unknown
+    # provider → 400 via _resolve_known_provider.
+    provider_id = _resolve_known_provider(provider)
+    return await run_in_threadpool(fetch_provider_models, provider_id)
 
 
 @app.get("/api/styles")

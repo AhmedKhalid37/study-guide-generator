@@ -34,9 +34,13 @@
     `thinking_default` now reach the live model call (resolved once in
     `build_provider_config`, applied in `generate_chat_completion`). No store
     files ⇒ byte-identical to trunk (no timeout, 0 retries, thinking `True`).
-  - **Deferred:** fetch-models endpoint, encrypted-at-rest / OS keyring, `.env`
-    import, the **Local Model Manager** (separate design-first feature), and the
-    optional Builder "Provider default" thinking UI polish.
+  - **fetch-models endpoint: DONE** (DONE #35, branch
+    `provider-settings-fetch-models`) — read-only `POST
+    /api/provider-settings/{provider}/fetch-models`, no auto-persist.
+  - **Deferred:** the frontend "Refresh models" button + save-to-`custom_models`,
+    encrypted-at-rest / OS keyring, `.env` import, the **Local Model Manager**
+    (separate design-first feature), and the optional Builder "Provider default"
+    thinking UI polish.
 - **Large-PDF core is COMPLETE end-to-end** (preflight design → endpoint →
   Builder warning UI → page-selection plumbing → extraction honors selected
   pages → first-N/manual page-range UI). See DONE #27→#31. Automatic
@@ -1043,6 +1047,52 @@ parked on the `hardening` branch — not merged, not deleted.
       / OS keyring; `.env` import; the **Local Model Manager** (separate
       design-first feature); optional Builder "Provider default" thinking UI polish.
 
+35. **Provider Settings Slice 4 — backend fetch-models endpoint (BACKEND ONLY)** —
+    branch `provider-settings-fetch-models`, commit `Add provider fetch-models
+    endpoint`. Adds the long-deferred read-only model-discovery endpoint. **No
+    frontend UI, no Local Model Manager, no provider auto-switching, no
+    generator-preset hard-pinning, no dependency/lockfile change.**
+    - **Endpoint:** `POST /api/provider-settings/{provider}/fetch-models`,
+      registered **before** the static mount, run in a threadpool. Unknown provider
+      → **HTTP 400** (existing `_resolve_known_provider`). Returns the stable schema
+      `{provider, ok, models, source, base_url_host, error}` — `error` is `null` on
+      success or `{category, message}` (redacted) on failure. `base_url_host` is
+      host-only (never the full URL).
+    - **Fetch (`provider_config.fetch_provider_models`):** resolves the **effective**
+      base URL + key (store → `.env` → built-in default) and **reuses the existing
+      `_discover_openai_models` `/models` discovery** (the same path `local` already
+      used) for **all** providers — DeepSeek/Qwen hit `…/v1/models`, local hits
+      `{base_url}/models` (keeping the `host.docker.internal`-only-in-Docker guard).
+      A short fail-fast `PROVIDER_FETCH_MODELS_TIMEOUT` (10s) is used; the list comes
+      back sorted + de-duplicated. It does **not** call `build_provider_config`, so a
+      model-less provider can still list.
+    - **READ-ONLY / no auto-persist:** no job, no artifacts; writes neither
+      `provider_settings.json` nor `secrets.json`; does **not** add fetched ids to
+      `custom_models` (returns them only — saving belongs to the future frontend
+      "Refresh models" slice). Provider/model precedence + preset `model_hint`
+      advisory behavior unchanged.
+    - **Redaction:** the raw key never appears in the response; errors are mapped to
+      a coarse category (`provider_auth`/`provider_ratelimit`/`provider_model`/
+      `provider_network`/`local_offline`/`provider_error`) and stripped of the key +
+      full URL. Unconfigured / no base URL → a **safe non-OK** result (not a 400,
+      never the missing-key specifics).
+    - **Verified:** new `test_scripts/test_provider_fetch_models.py` **16/16**
+      (sorted/deduped success; local uses `/models`; unconfigured safe error;
+      401 + network failures classified + redacted, no key leak; sentinel key absent
+      from fetch / `/api/provider-settings` / `/api/options`; no file writes / no
+      `custom_models`; precedence + preset advisory intact). `compileall` OK; frontend
+      build OK; `docker compose config`/`build`/`up` OK, container healthy. Live
+      Docker: unknown → 400; local → safe `provider_network` timeout; DeepSeek
+      (env-configured) → `ok:true` with the real provider list; a fake key PATCHed on
+      `local` appeared in **none** of the fetch / `/api/provider-settings` /
+      `/api/options` responses or the container logs (cleared afterward).
+      `test_provider_settings_store.py` 26/26, `test_provider_runtime_settings.py`
+      22/22, release smoke **28/28**. See `DECISIONS.md` → "Provider fetch-models is
+      read-only and does not auto-persist".
+    - **Deferred (unchanged):** the frontend "Refresh models" button +
+      save-to-`custom_models`; encrypted-at-rest secrets / OS keyring; `.env` import;
+      the **Local Model Manager**.
+
 ## NEXT (in order)
 
 > **Provider settings core is DONE** (DONE #32→#34): design (`978516e`) → backend
@@ -1053,8 +1103,10 @@ parked on the `hardening` branch — not merged, not deleted.
 > secret-only (`0600`). Precedence: **per-job request > provider-settings default
 > > `.env` > built-in**; generator presets **never hard-pin** provider/model
 > (`model_hint` advisory), and an **explicit** preset sampling/thinking value
-> overrides the stored runtime default. Still deferred from provider settings:
-> **fetch-models endpoint, encrypted-at-rest / OS keyring, `.env` import, the
+> overrides the stored runtime default. The **fetch-models endpoint is now DONE**
+> (DONE #35, branch `provider-settings-fetch-models`) — read-only, no auto-persist.
+> Still deferred from provider settings: **the frontend "Refresh models" button +
+> save-to-`custom_models`, encrypted-at-rest / OS keyring, `.env` import, the
 > Local Model Manager (separate design-first feature), and the optional Builder
 > "Provider default" thinking UI polish.**
 >

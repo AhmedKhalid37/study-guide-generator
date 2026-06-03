@@ -670,3 +670,101 @@ def test_provider(provider_id: str) -> dict[str, Any]:
     }
     provider_settings_store.record_test_result(provider_id, result)
     return result
+
+
+# ---------------------------------------------------------------------------
+# Read-only model discovery for the (future) "Refresh models" button (Slice 4)
+#
+# Fetches the upstream `/models` list from a provider's resolved base URL using
+# the SAME OpenAI-compatible discovery the `local` provider already uses
+# (`_discover_openai_models`). It is strictly READ-ONLY: it creates no job, writes
+# no artifacts, and does NOT persist the fetched ids into `custom_models` (saving
+# a selection belongs to a later frontend slice). Errors are classified + redacted
+# and no raw key ever appears in the result.
+# ---------------------------------------------------------------------------
+
+# Short fail-fast timeout for model listing — independent of the generation
+# timeout. A "Refresh models" probe should not hang on a slow/unreachable host.
+PROVIDER_FETCH_MODELS_TIMEOUT = 10.0
+
+
+def _classify_fetch_error(error_text: str) -> str:
+    """Coarse category for a discovery error string (no exception in hand here —
+    `_discover_openai_models` returns ``str(exc)``). Kept conservative; the message
+    itself is redacted before it reaches the client."""
+    low = (error_text or "").lower()
+    if "host.docker.internal" in low:
+        return "local_offline"
+    if any(tok in low for tok in ("401", "403", "unauthorized", "forbidden", "authentication")):
+        return "provider_auth"
+    if "429" in low or "rate limit" in low:
+        return "provider_ratelimit"
+    if "404" in low or "not found" in low:
+        return "provider_model"
+    if any(tok in low for tok in ("refused", "timed out", "timeout", "urlopen error", "getaddrinfo", "name or service", "connection")):
+        return "provider_network"
+    return "provider_error"
+
+
+def _safe_fetch_message(error_text: str, *, base_url: str | None, api_key: str | None) -> str:
+    """Redact the raw key and collapse any full base URL to host-only, then cap
+    length. Discovery error strings from urllib do not normally embed the key
+    (it travels in a header), but redacting is precautionary and cheap."""
+    msg = _redact_secret(str(error_text or ""), api_key)
+    if base_url:
+        msg = msg.replace(base_url, _base_url_host(base_url) or "the provider")
+    return msg[:300]
+
+
+def fetch_provider_models(provider_id: str) -> dict[str, Any]:
+    """Fetch available model ids from a configured provider's ``/models`` endpoint.
+
+    Read-only: no job, no artifacts, and **no persistence** — the fetched ids are
+    returned only (auto-saving into ``custom_models`` is a future slice). The raw
+    API key never appears in the result; errors are classified + redacted. The
+    stable response schema is::
+
+        {provider, ok, models, source, base_url_host, error}
+
+    where ``error`` is ``None`` on success or ``{category, message}`` on failure.
+    """
+    load_env_file()
+    entry = _entry_for_id(provider_id, discover_local=False)
+    if entry is None:
+        raise MissingLLMConfigError(f"Unsupported LLM provider: {provider_id}")
+
+    base_url = _effective_base_url(provider_id)
+    host = _base_url_host(base_url)
+
+    def _result(ok: bool, models: list[str], error: dict[str, str] | None) -> dict[str, Any]:
+        return {
+            "provider": provider_id,
+            "ok": ok,
+            "models": models,
+            "source": "provider",
+            "base_url_host": host,
+            "error": error,
+        }
+
+    if not base_url:
+        return _result(False, [], {
+            "category": "provider_config",
+            "message": f"{entry.display_name} has no base URL configured.",
+        })
+    if not entry.configured:
+        return _result(False, [], {
+            "category": "provider_auth",
+            "message": f"{entry.display_name} is not configured on the server.",
+        })
+
+    api_key = _effective_api_key(provider_id) or "local"
+    models, discovery_error = _discover_openai_models(
+        base_url, api_key=api_key, timeout=PROVIDER_FETCH_MODELS_TIMEOUT
+    )
+    if discovery_error:
+        return _result(False, [], {
+            "category": _classify_fetch_error(discovery_error),
+            "message": _safe_fetch_message(discovery_error, base_url=base_url, api_key=api_key),
+        })
+    # `_discover_openai_models` already returns a sorted, de-duplicated list.
+    return _result(True, models, None)
