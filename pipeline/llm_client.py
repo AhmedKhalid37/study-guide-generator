@@ -66,7 +66,9 @@ class LLMConfig:
         )
 
 
-def generate_chat_completion(messages: list[dict], config: LLMConfig) -> str:
+def generate_chat_completion(
+    messages: list[dict], config: LLMConfig, *, timeout: float | None = None
+) -> str:
     try:
         from openai import OpenAI
     except ImportError as exc:
@@ -75,7 +77,12 @@ def generate_chat_completion(messages: list[dict], config: LLMConfig) -> str:
             "Install dependencies with: python -m pip install -r requirements.txt"
         ) from exc
 
-    client = OpenAI(base_url=config.base_url, api_key=config.api_key)
+    client_kwargs: dict = {"base_url": config.base_url, "api_key": config.api_key}
+    # Only passed when a caller (e.g. the provider test probe) supplies it, so
+    # normal generation keeps the OpenAI client's default timeout — byte-identical.
+    if timeout is not None:
+        client_kwargs["timeout"] = timeout
+    client = OpenAI(**client_kwargs)
     params = {
         "model": config.model,
         "messages": messages,

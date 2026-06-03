@@ -17,6 +17,7 @@ frontend/dist
 .env
 .env.save
 .env.*.local
+config
 
 # Generated output / runtime data (mounted as a volume instead)
 jobs

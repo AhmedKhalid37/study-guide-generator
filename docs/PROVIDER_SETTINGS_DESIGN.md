@@ -642,10 +642,65 @@ backend landing and a review of the redaction tests.
 
 ---
 
+## 19. Slice 1 implementation note (landed)
+
+> **Status: §18 first slice IMPLEMENTED** on branch `provider-settings-backend`
+> (commit `Add backend provider settings store`). Backend-only; `/api/options`
+> shape unchanged; no frontend UI. The original "DESIGN ONLY" banner at the top
+> applies to §1–§18 as the design of record; this section records what actually
+> shipped and the few places the implementation tightened or deferred the design.
+
+**Shipped exactly as designed**
+- Two-file split under a gitignored `config/`: `provider_settings.json` (`0644`,
+  non-secret) and `secrets.json` (`0600`, raw keys only), via
+  `pipeline/provider_settings_store.py` mirroring the repo's JSON-store discipline
+  (atomic temp-file + `os.replace`, whitelist parsing, fail-safe defensive load).
+- Precedence §4: a single resolver in `provider_config` (settings → `.env` →
+  built-in default) feeds both the registry entries and `build_provider_config`.
+  **No store files ⇒ byte-identical to the prior env path** (§15), verified.
+  Sampling precedence is preset pin → store → env/default (§4b); presets are never
+  a tier on the provider/model ladder (§13) and never repin provider/model.
+- Endpoints `GET /api/provider-settings`, `PATCH /api/provider-settings/{provider}`
+  (and `PATCH /api/provider-settings` for `default_provider`),
+  `POST …/{provider}/clear-key`, `POST …/{provider}/test`, all before the static
+  mount, all through the single redacting serializer `_settings_to_public_dict`
+  (no key field by construction). `api_key` is write-only; blank = unchanged.
+- Test probe: `max_tokens:1`, `temperature:0`, a short dedicated timeout
+  (`PROVIDER_TEST_TIMEOUT = 10s`) added to `generate_chat_completion` as an
+  opt-in kwarg (default `None` ⇒ byte-identical normal generation), no retries,
+  no job/artifacts, errors via `classify_exception` and additionally scrubbed of
+  the raw key.
+
+**Tightened vs. the design**
+- **`key_hint` requires length > 4** (not `>= 4`). A 4-char placeholder key (e.g.
+  a `local` provider set to `"none"`) would otherwise have its last-4 hint equal
+  the whole value; requiring `> 4` guarantees the hint is always a proper subset.
+  The `local` env default `"local"` is likewise treated as "no real key" for
+  `key_source` display.
+- **`key_hint`/`key_source` are computed on read** from the secret store / env
+  inside the server (the doc's recommended option in §3) — nothing secret-derived
+  is persisted in `provider_settings.json`.
+
+**Deferred to a later slice (stored/displayed but not yet wired into generation)**
+- `timeout_seconds`, `retry_count`, and `thinking_default` are validated, persisted,
+  and surfaced in the public view, but **not** yet applied to the live OpenAI
+  client (today's calls always pass an explicit `qwen_thinking`, and timeout/retry
+  were never app-configurable). Wiring these is additive and left for the slice
+  that needs them.
+- `POST …/fetch-models`, encrypted-at-rest secrets / OS keyring, `.env` import, and
+  the frontend Providers page (§11) remain deferred.
+
+**Docker**
+- `config/` added to `.gitignore` **and** `.dockerignore`; `./config` volume added
+  to `docker-compose.yml`; `docker-entrypoint.sh` now chowns `/app/config` to
+  `appuser` (the other runtime mounts were already chowned) so the non-root process
+  can create the store. Confirmed writable end-to-end in Docker.
+
+---
+
 ## Confirmation
 
-**This document is docs-only. No application code, configuration, `.env`, provider
-config, API behavior, frontend, Docker, or dependency/lockfile was changed in this
-slice.** The only change is the addition of this design report under `docs/`.
-Provider-settings implementation is **NOT** implementation-ready until this design is
-reviewed and the first slice (§18) is signed off.
+**The design sections above (§1–§18) remain the design of record.** Slice 1 (§19)
+implements the backend store + safe endpoints only: no frontend UI, no Local Model
+Manager, no provider auto-switching, no generator-preset hard-pinning, and no
+dependency/lockfile change. Raw API keys never leave the server.

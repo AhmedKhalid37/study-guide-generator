@@ -900,6 +900,53 @@ parked on the `hardening` branch — not merged, not deleted.
     - **Deferred (unchanged):** automatic split/chunk processing + hybrid
       embedded-text + OCR dedup (§9).
 
+32. **Provider Settings Slice 1 — backend store + safe endpoints (BACKEND ONLY)** —
+    branch `provider-settings-backend`, commit `Add backend provider settings store`.
+    Server-side foundation for in-app provider settings per
+    `docs/PROVIDER_SETTINGS_DESIGN.md` §18. **No frontend UI, no Local Model
+    Manager, no provider auto-switching, no generator-preset hard-pinning.**
+    - **New store** `pipeline/provider_settings_store.py` mirroring the existing
+      JSON stores (atomic temp-file + `os.replace`, whitelist parsing, defensive
+      load). Two files under a gitignored `config/`: `provider_settings.json`
+      (NON-SECRET, `0644`) and `secrets.json` (raw API keys ONLY, `0600`). Raw keys
+      live **only** in `secrets.json` — never in the public file, a response DTO, a
+      log line, a job manifest, or an export.
+    - **Resolver layer** in `pipeline/provider_config.py`: a single
+      settings-store → `.env` → built-in-default chain (`_effective_api_key` /
+      `_effective_base_url` / `_effective_default_model` + custom-model merge) used
+      by both the registry entries and `build_provider_config`. **No store files ⇒
+      byte-identical to the old env path** (the migration guarantee). Per-job
+      request provider/model still wins; the store only supplies defaults; sampling
+      precedence is preset pin → store → env/default (§4b).
+    - **Endpoints** (registered before the static mount): `GET /api/provider-settings`,
+      `PATCH /api/provider-settings/{provider}` (partial; `api_key` write-only —
+      blank = unchanged), `POST /api/provider-settings/{provider}/clear-key`, and
+      `POST /api/provider-settings/{provider}/test` (tiny `max_tokens:1` probe, 10s
+      timeout, no retries, **no job/artifacts**, classified+redacted errors). All go
+      through one redacting serializer (`_settings_to_public_dict`) that has **no key
+      field by construction** — it exposes only `configured`, a `key_source`
+      (`store`/`env`/`none`), a last-4 `key_hint` (only when len > 4), `base_url_host`
+      (host only, userinfo stripped), models, sampling, and `last_test`.
+    - **`/api/options` unchanged in shape**; it now derives values from the resolver
+      (store → env), so a saved key flips `configured` without any Builder change.
+    - **Docker:** `config/` added to `.gitignore` + `.dockerignore`; `./config`
+      volume added to compose; `docker-entrypoint.sh` chowns `/app/config` to
+      `appuser` so the non-root process can write the store.
+    - **Verified** (Docker healthy, uid 10001/appuser): `test_provider_settings_store.py`
+      **26/26** (no-store byte-identical; PATCH non-secret → settings.json, key →
+      secrets.json `0600` only; blank=no-op; clear-key flips `configured`; bounds
+      400s; preset sampling override never repins provider/model). `npm … build` OK;
+      `compileall api pipeline` OK; `compose config`/`build`/`up` OK (no secret
+      output); `/api/health` `{"ok":true}`; release smoke **28/28**. **Secret-leak
+      scan**: the three real configured keys appear in **none** of `/api/options`,
+      `/api/provider-settings`, or live PATCH/test responses; live PATCH→GET→test→
+      clear-key proven end-to-end against DeepSeek (test probe returns a redacted
+      `provider_auth` for a bad key, no raw key in the body).
+    - **Deferred (not started — need an explicit slice):** the frontend Providers
+      settings page (§11); wiring store `timeout_seconds`/`retry_count`/
+      `thinking_default` into the live client (stored + displayed only this slice);
+      `fetch-models`; encrypted-at-rest secrets / OS keyring; `.env` import.
+
 ## NEXT (in order)
 
 > **Large-PDF core is DONE end-to-end** (`841d3f9`→`60c3e78`, DONE #27→#31):

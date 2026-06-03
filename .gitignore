@@ -3,6 +3,7 @@ output/
 jobs/
 user_prompts/
 library/
+config/
 .venv/
 .env
 __pycache__/

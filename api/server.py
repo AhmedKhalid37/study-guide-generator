@@ -39,12 +39,19 @@ from pipeline.orchestrator import (
     OUTPUT_DEPTH_VALUES,
     generate_study_guide,
 )
+from pipeline import provider_settings_store
 from pipeline.provider_config import (
     build_provider_config,
+    clear_provider_key,
     get_provider_registry,
+    get_provider_settings_view,
     resolve_provider_id,
+    set_default_provider,
+    test_provider,
+    update_provider_settings,
     validate_provider_model,
 )
+from pipeline.provider_settings_store import ProviderSettingsError
 from pipeline.run_llm_job import AttachmentSource, LLMJobError, run_llm_job
 from pipeline.run_markdown_job import (
     MarkdownJobError,
@@ -327,6 +334,68 @@ def options() -> dict[str, Any]:
         "provider_details": provider_details,
         "providers_v2": provider_details,
     }
+
+
+# ── Provider settings (Slice 1 — backend store + safe endpoints) ─────────────
+# Raw API keys are write-only and never returned. All responses go through the
+# single redacting serializer in provider_config (no key field by construction).
+
+def _resolve_known_provider(provider: str) -> str:
+    provider_id = resolve_provider_id(provider)
+    if provider_id not in provider_settings_store.KNOWN_PROVIDER_IDS:
+        raise HTTPException(status_code=400, detail="Unsupported provider.")
+    return provider_id
+
+
+async def _json_body(request: Request) -> dict[str, Any]:
+    try:
+        data = await request.json()
+    except Exception as exc:
+        raise HTTPException(status_code=400, detail="Request body must be valid JSON.") from exc
+    if not isinstance(data, dict):
+        raise HTTPException(status_code=400, detail="Request body must be a JSON object.")
+    return data
+
+
+@app.get("/api/provider-settings")
+def get_provider_settings() -> dict[str, Any]:
+    return get_provider_settings_view()
+
+
+@app.patch("/api/provider-settings")
+async def patch_provider_defaults(request: Request) -> dict[str, Any]:
+    body = await _json_body(request)
+    if "default_provider" in body:
+        try:
+            return set_default_provider(body.get("default_provider"))
+        except ProviderSettingsError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return get_provider_settings_view()
+
+
+@app.patch("/api/provider-settings/{provider}")
+async def patch_provider_settings(provider: str, request: Request) -> dict[str, Any]:
+    provider_id = _resolve_known_provider(provider)
+    body = await _json_body(request)
+    try:
+        return update_provider_settings(provider_id, body)
+    except ProviderSettingsError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@app.post("/api/provider-settings/{provider}/clear-key")
+def clear_provider_settings_key(provider: str) -> dict[str, Any]:
+    provider_id = _resolve_known_provider(provider)
+    try:
+        return clear_provider_key(provider_id)
+    except ProviderSettingsError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@app.post("/api/provider-settings/{provider}/test")
+async def test_provider_settings(provider: str) -> dict[str, Any]:
+    provider_id = _resolve_known_provider(provider)
+    return await run_in_threadpool(test_provider, provider_id)
 
 
 @app.get("/api/styles")

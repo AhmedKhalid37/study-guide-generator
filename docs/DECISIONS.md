@@ -429,3 +429,23 @@ dedup; raising the upload ceiling (`MAX_UPLOAD_MB`, reported but unchanged); per
 attachments they reference are not persisted either, so a stored selection would be
 orphaned). None are started — each is its own future slice with sign-off, not an
 implementation-ready item.
+
+## Provider settings: two-file split, write-only keys, redaction by construction
+The in-app provider settings store (Slice 1, `pipeline/provider_settings_store.py`)
+splits state into two gitignored files: `config/provider_settings.json` (non-secret,
+`0644`) and `config/secrets.json` (raw API keys ONLY, `0600`). **Why split, not one
+file:** it makes the security boundary physical, not a code convention — a reviewer
+verifies "no key leaks" by checking the public serializer reads only the non-secret
+file + `configured`/`key_source` flags and never serializes `secrets.json`. Keys are
+**write-only over the API** (set or cleared, never read back); a blank `api_key` in a
+PATCH is a no-op (never a clear) so saving other fields cannot wipe a key. The public
+DTO (`_settings_to_public_dict`) has **no key field by construction**, exposing only
+`configured`, a `key_source` (store/env/none), a last-4 `key_hint` (only when the key
+length is > 4, so a short placeholder is never echoed whole), and `base_url_host`
+(host only, userinfo stripped). **Resolution is settings -> .env -> built-in default**,
+so with no store files present every lookup falls through to the prior env path,
+byte-identical to before the store existed (the migration guarantee). Per-job
+request provider/model still wins; the store only fills defaults; generator presets
+override sampling only and never the selected provider/model. **Why env stays the
+fallback (no `.env` rewrite):** consistent with "translate-on-read beats in-place
+migration" — env values are consulted live, never copied into the store.
