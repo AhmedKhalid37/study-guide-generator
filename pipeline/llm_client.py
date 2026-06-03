@@ -113,6 +113,7 @@ def generate_chat_completion(
     *,
     timeout: float | None = None,
     retries: int | None = None,
+    allow_empty_content: bool = False,
 ) -> str:
     try:
         from openai import OpenAI
@@ -168,7 +169,19 @@ def generate_chat_completion(
             from pipeline.errors import classify_exception
             category, user_message = classify_exception(exc, base_url=config.base_url)
             raise LLMProviderError(category, user_message) from exc
+    # A response with no choices at all is always a failure: there is nothing the
+    # provider returned, even for the connectivity probe.
+    if not getattr(response, "choices", None):
+        raise RuntimeError("LLM returned an empty response.")
     content = response.choices[0].message.content
     if not content:
+        # The provider-settings "Test connection" probe only verifies
+        # auth/connectivity/model reachability; reasoning/thinking models (e.g.
+        # Qwen with thinking, DeepSeek V4 Pro) can return a valid choice with empty
+        # content under max_tokens=1. For that path a returned choice counts as
+        # success. Real generation stays strict (default) so bad/empty model
+        # outputs are never silently accepted.
+        if allow_empty_content:
+            return content or ""
         raise RuntimeError("LLM returned an empty response.")
     return content

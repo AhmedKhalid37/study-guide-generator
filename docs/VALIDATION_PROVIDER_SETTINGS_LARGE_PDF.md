@@ -61,7 +61,8 @@ discovery_error, display_name, id, kind, supports_thinking}` — **no key field*
 1. Viewed provider settings (B1). Active store: `default_provider=qwen`,
    `qwen.default_model=qwen3.7-plus`, `deepseek.default_model=deepseek-v4-pro`.
 2. **Test connection** (`POST …/{provider}/test`) on qwen + deepseek → HTTP 200,
-   redacted result body. ⚠️ both returned `ok:false` — see **Finding #1**.
+   redacted result body. ⚠️ both returned `ok:false` — see **Finding #1**
+   (✅ now fixed on `fix-provider-test-empty-content`).
 3. **Refresh models** (`POST …/{provider}/fetch-models`):
    - deepseek → `ok:true`, 2 models, `source:provider`,
      `base_url_host:api.deepseek.com`, `error:null`, **no `api_key` field**.
@@ -196,7 +197,17 @@ container user). No real secret value appears in this report.
 
 ## Findings / follow-up slices
 
-### Finding #1 — Test Connection reports a false failure for reasoning/thinking models (MEDIUM)
+### Finding #1 — Test Connection reports a false failure for reasoning/thinking models (MEDIUM) — ✅ FIXED
+> **Resolved** on branch `fix-provider-test-empty-content` (2026-06-03). The probe
+> now passes `allow_empty_content=True` into `generate_chat_completion`, so a
+> returned choice with empty/null content counts as a successful connection
+> (`test_provider` reports `ok:true`). Normal generation is unchanged — it still
+> raises on empty content. A response with **no** choices is still a failure on
+> both paths, and real auth/network/model errors during the probe still report
+> `ok:false`. Covered by new checks in
+> `test_scripts/test_provider_runtime_settings.py` (section 9). See DECISIONS.md
+> ("Provider Test Connection accepts empty content").
+
 `POST /api/provider-settings/{provider}/test` returns `ok:false`
 ("LLM returned an empty response.", `category:"unknown"`) for **both** qwen and
 deepseek — even though full generation on those same providers succeeds (smoke

@@ -508,3 +508,19 @@ the request/Save the single point where state changes. A successful fetch also
 provider DTO (after Save / clear-key / page refresh) clears any shown fetch list.
 Only after an explicit Save does `/api/options` surface the new ids — so a fetched
 model is Builder-selectable only once the user has chosen to keep it.
+
+## Provider Test Connection accepts empty content (2026-06-03)
+The provider-settings "Test connection" probe (`POST …/{provider}/test` →
+`test_provider`) now treats a returned chat-completion **choice with empty/null
+content** as a **successful** connection, via a narrow `allow_empty_content=True`
+kwarg on `generate_chat_completion`. **Why:** the probe sends `max_tokens=1` only
+to verify **auth / connectivity / model reachability** — the content is
+irrelevant (design §7: "Success = a non-error HTTP response with a choice").
+Reasoning/thinking models (Qwen with thinking enabled, DeepSeek V4 Pro) spend the
+single token on reasoning and return an empty visible message, so the strict
+empty-content guard in `generate_chat_completion` was misclassifying a working
+provider as broken (validation Finding #1). **Why not loosen it globally:** real
+study-guide generation must still reject empty output so a bad/empty model
+response is never silently accepted — `allow_empty_content` defaults to `False`,
+so only the probe path is lenient. A response with **no** choices at all remains a
+failure on both paths (it proves nothing about reachability).

@@ -1138,6 +1138,31 @@ parked on the `hardening` branch — not merged, not deleted.
     - **Deferred (unchanged):** encrypted-at-rest secrets / OS keyring; `.env` import;
       the **Local Model Manager**.
 
+37. **Fix — Provider "Test connection" false-negative on empty content (BACKEND
+    ONLY)** — branch `fix-provider-test-empty-content`. Resolves validation
+    **Finding #1**: `POST /api/provider-settings/{provider}/test` reported
+    `ok:false` for reasoning/thinking models (Qwen with thinking, DeepSeek V4 Pro)
+    because the `max_tokens=1` probe gets a valid choice with **empty visible
+    content**, and `generate_chat_completion` raised "LLM returned an empty
+    response."
+    - **Fix (narrow):** added an `allow_empty_content: bool = False` kwarg to
+      `generate_chat_completion` (`pipeline/llm_client.py`). When `True`, a choice
+      with empty/null content returns `""` instead of raising; a response with **no
+      choices** still raises on both paths. `test_provider`
+      (`pipeline/provider_config.py`) now passes `allow_empty_content=True` —
+      nothing else on the probe changed (still `max_tokens=1`, `retries=0`,
+      `PROVIDER_TEST_TIMEOUT`).
+    - **Scope guard:** normal study-guide generation is **unchanged** — default
+      `allow_empty_content=False` keeps it strict so empty/bad model output is
+      never silently accepted. No change to provider/model precedence, fetch-models,
+      or the frontend.
+    - **Verified:** `compileall api pipeline` OK; `test_provider_runtime_settings.py`
+      **28/28** (added section 9: probe accepts empty/null content & reports
+      `ok:true`; normal generation still rejects empty; a probe 401 still
+      `ok:false`; probe result JSON carries no raw key), `test_provider_settings_store.py`
+      **26/26**, `test_provider_fetch_models.py` **16/16**, release smoke **28/28**.
+      See `DECISIONS.md` → "Provider Test Connection accepts empty content".
+
 ## NEXT (in order)
 
 > **Provider settings feature group is DONE through Slice 5** (DONE #32→#36):

@@ -648,6 +648,10 @@ def test_provider(provider_id: str) -> dict[str, Any]:
             # A test should fail fast, never hammer upstream — force 0 retries even
             # if the provider's stored retry_count is non-zero (design §7).
             retries=0,
+            # The probe only checks auth/connectivity/model reachability. Reasoning
+            # models can return a valid choice with empty content under max_tokens=1;
+            # that still proves the provider works, so accept it as success.
+            allow_empty_content=True,
         )
         ok = True
     except LLMProviderError as exc:

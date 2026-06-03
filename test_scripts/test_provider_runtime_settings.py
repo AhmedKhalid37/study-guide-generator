@@ -309,6 +309,59 @@ def run():
         FAKE_KEY not in redacted and "***" in redacted,
     )
 
+    # ── 9. Empty-content handling: strict for generation, lenient for the probe ─
+    # (a) Real generation rejects an empty-content choice (no silent bad output).
+    _reset_client([("return", "")])
+    empty_rejected = False
+    try:
+        llm_client.generate_chat_completion([{"role": "user", "content": "x"}], cfg)
+    except RuntimeError:
+        empty_rejected = True
+    check(
+        "empty: normal generation still rejects an empty-content choice",
+        empty_rejected,
+    )
+    # (b) The provider-test path accepts an empty-content choice as success.
+    _reset_client([("return", "")])
+    out = llm_client.generate_chat_completion(
+        [{"role": "user", "content": "ping"}], cfg, allow_empty_content=True
+    )
+    check(
+        "empty: provider-test path accepts an empty-content choice (returns '')",
+        out == "",
+    )
+    # (c) None content (not just "") is also accepted on the probe path.
+    _reset_client([("return", None)])
+    out = llm_client.generate_chat_completion(
+        [{"role": "user", "content": "ping"}], cfg, allow_empty_content=True
+    )
+    check(
+        "empty: provider-test path accepts a null-content choice",
+        out == "",
+    )
+    # (d) test_provider reports ok=True when the provider returns an empty choice
+    #     (the Finding #1 false-negative). Force a configured deepseek + empty reply.
+    provider_config.update_provider_settings("deepseek", {"api_key": "sk-cfg-EMPTYTEST"})
+    _reset_client([("return", "")])
+    tp = provider_config.test_provider("deepseek")
+    check(
+        "test_provider: empty-content reply counts as a successful connection",
+        tp["ok"] is True and tp["category"] == "ok",
+        detail=f"ok={tp['ok']} category={tp['category']}",
+    )
+    # (e) A real auth/network failure during the probe still reports ok=False.
+    _reset_client([("raise", FakeAPIError("bad key", status_code=401))])
+    tp = provider_config.test_provider("deepseek")
+    check(
+        "test_provider: a 401 during the probe still reports failure",
+        tp["ok"] is False and tp["category"] != "ok",
+        detail=f"ok={tp['ok']} category={tp['category']}",
+    )
+    check(
+        "test_provider: probe result JSON carries no raw key",
+        FAKE_KEY not in json.dumps(tp) and "sk-cfg-EMPTYTEST" not in json.dumps(tp),
+    )
+
     failed = [name for name, ok in results if not ok]
     print(f"\n{len(results) - len(failed)}/{len(results)} checks passed.")
     if failed:
