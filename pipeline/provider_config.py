@@ -141,6 +141,41 @@ def _effective_default_model(provider_id: str) -> str | None:
     return _store_field(provider_id, "default_model") or _env_default_model(provider_id)
 
 
+def _effective_timeout_seconds(provider_id: str | None) -> float | None:
+    """Per-call request timeout from the settings store, else None (the OpenAI
+    client default). No env knob and no preset tier exist for timeout, so with no
+    store the result is None ⇒ byte-identical to the pre-settings client default.
+    A non-numeric / non-positive stored value (e.g. a hand-edited file) is ignored."""
+    value = _store_field(provider_id, "timeout_seconds")
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        return None
+    return float(value) if value > 0 else None
+
+
+def _effective_retry_count(provider_id: str | None) -> int:
+    """Bounded retry count from the settings store, else 0 (single attempt). Clamped
+    to the same [0, 10] range the PATCH validation enforces, defensively, in case the
+    JSON file was hand-edited. No store ⇒ 0 ⇒ byte-identical (no retries)."""
+    value = _store_field(provider_id, "retry_count")
+    if isinstance(value, bool) or not isinstance(value, int):
+        return 0
+    return max(0, min(value, 10))
+
+
+def _effective_qwen_thinking(explicit: bool | None) -> bool:
+    """Resolve the Qwen ``enable_thinking`` flag (qwen-only; ignored by other
+    providers). Precedence: an explicit request/preset value wins; otherwise the
+    provider-settings ``thinking_default`` fills; otherwise ``True`` (the historical
+    default). With no store and no explicit value this returns ``True`` ⇒ identical
+    to the previous always-True behavior."""
+    if explicit is not None:
+        return explicit
+    store_value = _store_field("qwen", "thinking_default")
+    if isinstance(store_value, bool):
+        return store_value
+    return True
+
+
 def _merge_custom_models(models: list[str], provider_id: str) -> list[str]:
     """Registry list ∪ user-added custom ids (registry-first, deduped)."""
     merged = list(models)
@@ -196,7 +231,7 @@ def build_provider_config(
     model_choice: str,
     custom_model: str | None = None,
     *,
-    qwen_thinking_enabled: bool = True,
+    qwen_thinking_enabled: bool | None = None,
     temperature_override: float | None = None,
     top_p: float | None = None,
     max_tokens: int | None = None,
@@ -221,6 +256,13 @@ def build_provider_config(
     if max_tokens is None:
         max_tokens = _store_field(provider_id, "max_tokens")
 
+    # Runtime knobs (Slice 3): per-call timeout + bounded retry count from the
+    # settings store. These resolve store → default with no preset tier; with no
+    # store both are "unset" (None / 0), so the LLMConfig stays byte-identical and
+    # the live call behaves exactly as before provider settings existed.
+    timeout_seconds = _effective_timeout_seconds(provider_id)
+    retry_count = _effective_retry_count(provider_id)
+
     if provider_id == "deepseek":
         api_key = _effective_api_key("deepseek")
         if not api_key:
@@ -238,6 +280,8 @@ def build_provider_config(
             top_p=top_p,
             max_tokens=max_tokens,
             provider="deepseek",
+            timeout=timeout_seconds,
+            retry_count=retry_count,
         )
 
     if provider_id == "qwen":
@@ -257,7 +301,11 @@ def build_provider_config(
             top_p=top_p,
             max_tokens=max_tokens,
             provider="qwen",
-            extra_body={"enable_thinking": qwen_thinking_enabled},
+            # Thinking precedence (qwen-only): explicit request/preset value wins,
+            # else the store thinking_default fills, else True (historical default).
+            extra_body={"enable_thinking": _effective_qwen_thinking(qwen_thinking_enabled)},
+            timeout=timeout_seconds,
+            retry_count=retry_count,
         )
 
     if provider_id == "local":
@@ -280,6 +328,8 @@ def build_provider_config(
             top_p=top_p,
             max_tokens=max_tokens,
             provider="local",
+            timeout=timeout_seconds,
+            retry_count=retry_count,
         )
 
     raise MissingLLMConfigError(f"Unsupported LLM provider: {provider}")
@@ -595,6 +645,9 @@ def test_provider(provider_id: str) -> dict[str, Any]:
             [{"role": "user", "content": "ping"}],
             config,
             timeout=PROVIDER_TEST_TIMEOUT,
+            # A test should fail fast, never hammer upstream — force 0 retries even
+            # if the provider's stored retry_count is non-zero (design §7).
+            retries=0,
         )
         ok = True
     except LLMProviderError as exc:

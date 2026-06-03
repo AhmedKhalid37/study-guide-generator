@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import time
 from dataclasses import dataclass
 
 
@@ -34,6 +35,12 @@ class LLMConfig:
     max_tokens: int | None = None
     provider: str = "openai_compatible"
     extra_body: dict | None = None
+    # Runtime knobs resolved from provider settings (Slice 3). Both default to the
+    # "unset" values so the from_env()/CLI path and any caller that does not set
+    # them stay byte-identical: no app-level timeout (the OpenAI client uses its own
+    # default) and no retries (a single attempt, exactly as before).
+    timeout: float | None = None
+    retry_count: int = 0
 
     @classmethod
     def from_env(cls) -> "LLMConfig":
@@ -66,8 +73,46 @@ class LLMConfig:
         )
 
 
+# Exception type-name fragments for transient provider/transport failures that a
+# retry can plausibly fix (matched by name to avoid importing the provider SDK).
+# Deterministic failures — auth (401), model-not-found (404), bad request (400) —
+# are deliberately NOT here: retrying them just repeats the same failure.
+_RETRYABLE_TYPE_NAMES = (
+    "APITimeoutError",
+    "APIConnectionError",
+    "InternalServerError",
+    "ConnectionError",
+    "ConnectionResetError",
+    "ConnectionRefusedError",
+    "TimeoutError",
+)
+
+# Linear backoff between retries (seconds). Kept as a module constant so a test can
+# monkeypatch ``time.sleep`` to avoid real waits.
+_RETRY_BACKOFF_SECONDS = 0.5
+
+
+def _is_retryable_exception(exc: Exception) -> bool:
+    """True only for transient API/transport failures a retry could fix.
+
+    Non-retryable by design: any 4xx (auth, model-not-found, bad request) and any
+    error not positively classified as transient. Validation / missing-config /
+    unsupported provider never reach here — the config is already built and the
+    HTTP call has begun by this point, so a retry only ever re-issues the same
+    in-flight model call (no new job, no new artifacts)."""
+    status = getattr(exc, "status_code", None)
+    if isinstance(status, int):
+        return status == 429 or status >= 500
+    name = type(exc).__name__
+    return any(fragment in name for fragment in _RETRYABLE_TYPE_NAMES)
+
+
 def generate_chat_completion(
-    messages: list[dict], config: LLMConfig, *, timeout: float | None = None
+    messages: list[dict],
+    config: LLMConfig,
+    *,
+    timeout: float | None = None,
+    retries: int | None = None,
 ) -> str:
     try:
         from openai import OpenAI
@@ -77,11 +122,20 @@ def generate_chat_completion(
             "Install dependencies with: python -m pip install -r requirements.txt"
         ) from exc
 
+    # Timeout precedence: an explicit caller value (e.g. the provider test probe's
+    # short fail-fast timeout) wins; otherwise the provider-settings value carried
+    # on the config; otherwise None ⇒ the OpenAI client's own default (byte-identical
+    # to before provider settings existed).
+    effective_timeout = timeout if timeout is not None else config.timeout
+    # Retry precedence: an explicit caller value (the test probe forces 0) wins;
+    # otherwise the provider-settings retry_count on the config; otherwise 0.
+    effective_retries = retries if retries is not None else config.retry_count
+    if not isinstance(effective_retries, int) or effective_retries < 0:
+        effective_retries = 0
+
     client_kwargs: dict = {"base_url": config.base_url, "api_key": config.api_key}
-    # Only passed when a caller (e.g. the provider test probe) supplies it, so
-    # normal generation keeps the OpenAI client's default timeout — byte-identical.
-    if timeout is not None:
-        client_kwargs["timeout"] = timeout
+    if effective_timeout is not None:
+        client_kwargs["timeout"] = effective_timeout
     client = OpenAI(**client_kwargs)
     params = {
         "model": config.model,
@@ -97,12 +151,23 @@ def generate_chat_completion(
     if config.extra_body is not None:
         params["extra_body"] = config.extra_body
 
-    try:
-        response = client.chat.completions.create(**params)
-    except Exception as exc:
-        from pipeline.errors import classify_exception
-        category, user_message = classify_exception(exc, base_url=config.base_url)
-        raise LLMProviderError(category, user_message) from exc
+    # One attempt by default (retry_count 0 ⇒ identical to the pre-retry behavior);
+    # additional attempts only for transient failures, up to retry_count.
+    attempts = effective_retries + 1
+    response = None
+    for attempt in range(attempts):
+        try:
+            response = client.chat.completions.create(**params)
+            break
+        except Exception as exc:
+            is_last = attempt + 1 >= attempts
+            if not is_last and _is_retryable_exception(exc):
+                if _RETRY_BACKOFF_SECONDS:
+                    time.sleep(_RETRY_BACKOFF_SECONDS * (attempt + 1))
+                continue
+            from pipeline.errors import classify_exception
+            category, user_message = classify_exception(exc, base_url=config.base_url)
+            raise LLMProviderError(category, user_message) from exc
     content = response.choices[0].message.content
     if not content:
         raise RuntimeError("LLM returned an empty response.")

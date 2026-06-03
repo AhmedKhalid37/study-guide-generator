@@ -70,6 +70,26 @@ parked on the `hardening` branch — not merged, not deleted.
 
 ## DONE (in order)
 
+0. **Provider settings Slice 3 — runtime defaults wired into live generation**
+   (`provider-settings-runtime`). The stored `timeout_seconds`, `retry_count`, and
+   `thinking_default` now reach the live model call. Mechanism: `LLMConfig` gained
+   `timeout`/`retry_count` fields, resolved in `build_provider_config` (store →
+   default; no preset tier, no new env knob) and consumed in
+   `generate_chat_completion`, so **every** path that builds a config via
+   `build_provider_config` (study-guide, style, outline, section-regen, quiz)
+   picks them up. Timeout: an explicit caller `timeout=` (the test probe's short
+   fail-fast value) wins over `config.timeout`; the probe also forces `retries=0`.
+   Retry: bounded `[0,10]`, retries only transient API/transport failures (429,
+   5xx, connection/timeout type-names); **never** 4xx (auth/model/bad-request),
+   missing config, unsupported provider, or cancel; retry is internal to the model
+   call only (no duplicate jobs/artifacts). Thinking (qwen-only): explicit
+   request/preset value wins, else store `thinking_default` fills, else `True`;
+   `LLMJobRequest.qwen_thinking` / the multipart default became `None` so "unset"
+   lets the store fill (frontend still sends an explicit bool ⇒ unchanged UI).
+   **No store files ⇒ byte-identical to trunk** (timeout None, 0 retries, thinking
+   True). Tests: `test_scripts/test_provider_runtime_settings.py` (22 checks) +
+   existing `test_provider_settings_store.py` (26) + `smoke_release.py` (28/0/0).
+
 1. **Generator presets** — Claude-Exam / Review / Cram: full system prompts +
    tuned sampling params (`a97d763`).
 2. **Slice 3 — env-configurable attachment caps** (200k/600k default) +

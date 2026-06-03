@@ -747,6 +747,79 @@ OS keyring; `.env` import.
 
 ---
 
+## 21. Slice 3 implementation note (landed)
+
+> **Status: runtime defaults WIRED INTO LIVE GENERATION** on branch
+> `provider-settings-runtime` (commit `Apply provider runtime settings`).
+> **Backend/runtime + tests/docs only** — no frontend UI change, no provider/model
+> auto-switching, no generator-preset hard-pinning, no dependency/lockfile change.
+> Closes the "stored/displayed but not yet wired" deferral from §19/§20 for
+> `timeout_seconds`, `retry_count`, and `thinking_default`.
+
+**Where the wiring lives (call boundary, not job orchestration).** `LLMConfig`
+gained two fields — `timeout: float | None = None` and `retry_count: int = 0` —
+both defaulting to the "unset" values so `from_env()` / the CLI path / any caller
+that doesn't set them stays byte-identical. `build_provider_config` resolves them
+once (settings store → default; **no preset tier and no new env knob**, since
+timeout/retry were never env-configurable) and stamps them on every `LLMConfig` it
+returns. `generate_chat_completion` consumes them. Because the resolution is in the
+shared builder + the single call boundary, **all** generation paths that build a
+config through `build_provider_config` (study-guide, style-generate,
+outline-generate, section-regenerate, quiz) inherit the behavior consistently,
+without touching the orchestrator or job manager.
+
+**Timeout (§4b, store → default).** Precedence in `generate_chat_completion`: an
+explicit `timeout=` kwarg wins (the provider **test probe** still passes its short
+fail-fast `PROVIDER_TEST_TIMEOUT`), else `config.timeout` from the store, else
+`None` ⇒ the OpenAI client's own default (the pre-settings behavior). Passed as the
+client-level `timeout` exactly as the Slice 1 probe kwarg did — no second
+mechanism.
+
+**Retry (§16 "transient only").** Bounded `[0,10]` (clamped defensively in the
+resolver in case the JSON was hand-edited). `generate_chat_completion` makes
+`retry_count + 1` attempts, retrying **only** transient API/transport failures —
+HTTP 429, any 5xx, and connection/timeout SDK error type-names. It **never**
+retries 4xx (auth 401, model-not-found 404, bad-request 400), and missing-config /
+unsupported-provider raise in `build_provider_config` *before* any call, so they
+can't be retried at all. Cancel is observed at the job boundary, never inside the
+(uninterruptible) completion call. The retry is **internal to the single model
+call** — no new job, no duplicate artifacts. The test probe forces `retries=0` so a
+test fails fast and never hammers upstream (design §7). Linear backoff via a module
+constant (`_RETRY_BACKOFF_SECONDS`) so a test can zero it.
+
+**Thinking (§13, qwen-only).** `build_provider_config(qwen_thinking_enabled=...)`
+became `bool | None`: an explicit request/preset value wins, else the store
+`thinking_default` fills, else `True` (the historical default). The preset path
+already passes the preset's pinned `thinking`, so **a preset's thinking beats the
+store default** (explicit > store). To let "unset" actually fill from the store,
+`LLMJobRequest.qwen_thinking` and the multipart default became `None`; the Builder
+frontend still sends an explicit boolean, so the **UI behavior is unchanged** —
+`thinking_default` only fills for API callers that omit the field. Applies to qwen
+only (the sole `supports_thinking` provider); non-qwen branches ignore it.
+
+**Compatibility guarantee re-verified.** With no `config/provider_settings.json` and
+no `config/secrets.json`: `config.timeout is None`, `config.retry_count == 0`, qwen
+`enable_thinking == True`, the OpenAI client is built with **no** `timeout` kwarg,
+and exactly one attempt is made — byte-identical to trunk.
+
+**Secret redaction unchanged.** No raw key is added to any view, config-as-response,
+job manifest, or log: `LLMConfig.api_key` is server-side only and never serialized;
+`/api/options` and `/api/provider-settings` still pass through the single redacting
+serializers; the probe path still scrubs the key from classified error messages.
+
+**Tests.** `test_scripts/test_provider_runtime_settings.py` (22 checks: no-store
+byte-identical; stored timeout reaches the client; stored retry drives transient
+retries and stops after `retry_count`; 401/400/404/missing-config are **not**
+retried; `thinking_default` fills only when unset; preset thinking wins; preset
+never changes provider/model; no key leaks in views or redacted errors). Plus the
+existing `test_provider_settings_store.py` (26) and `smoke_release.py` (28/0/0,
+incl. live LLM generation through the new path).
+
+**Still deferred (unchanged):** `POST …/fetch-models`; encrypted-at-rest secrets /
+OS keyring; `.env` import.
+
+---
+
 ## Confirmation
 
 **The design sections above (§1–§18) remain the design of record.** Slice 1 (§19)

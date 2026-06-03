@@ -449,3 +449,25 @@ request provider/model still wins; the store only fills defaults; generator pres
 override sampling only and never the selected provider/model. **Why env stays the
 fallback (no `.env` rewrite):** consistent with "translate-on-read beats in-place
 migration" — env values are consulted live, never copied into the store.
+
+## Provider runtime settings: timeout/retry at the call boundary, transient-only retry
+Wiring the stored `timeout_seconds`/`retry_count`/`thinking_default` into live
+generation (provider settings Slice 3) puts timeout + retry on `LLMConfig`,
+resolved once in `build_provider_config` and consumed in `generate_chat_completion`.
+**Why the call boundary, not job orchestration:** one place to resolve and one place
+to apply means every generation path (study-guide, style, outline, section-regen,
+quiz) inherits the behavior without touching the orchestrator/job manager, and the
+retry stays *internal to the single model call* — no duplicate jobs or artifacts.
+**Why retry is transient-only:** retries fire only for HTTP 429, 5xx, and
+connection/timeout SDK errors; 4xx (auth/model/bad-request), missing config, and
+unsupported provider are deterministic — retrying just repeats the same failure (and
+missing-config raises *before* any call). The provider test probe forces `retries=0`
+and its own short timeout so a test fails fast instead of hammering upstream.
+**Why timeout/retry have no preset tier and no new env knob:** they were never
+env-configurable, and a preset tunes *sampling*, not transport — so they resolve
+store → default only. **Thinking precedence (qwen-only):** explicit request/preset
+value > store `thinking_default` > `True`; `qwen_thinking` defaulting to `None`
+(instead of `True`) is what lets an omitted field fall through to the store, while
+the Builder still sends an explicit boolean so the UI is unchanged. **Migration
+guarantee preserved:** no store ⇒ no timeout, zero retries, thinking `True` ⇒
+byte-identical to trunk.

@@ -175,7 +175,10 @@ class LLMJobRequest(BaseModel):
     model: str
     theme: str = "claude_clean"
     strict_math: bool = True
-    qwen_thinking: bool = True
+    # None ⇒ "not explicitly set": the provider-settings thinking_default fills it
+    # (qwen only), falling back to True. An explicit true/false from the request
+    # still wins. With no store this resolves to True ⇒ unchanged behavior.
+    qwen_thinking: bool | None = None
     folder_id: str | None = None
     outline: OutlineData | None = None
     # Optional output-section toggles (dict-of-bool, e.g. {"glossary": true}).
@@ -2841,7 +2844,9 @@ async def _parse_llm_request(request: Request) -> tuple[LLMJobRequest, list[Atta
             "model": _form_text(form, "model") or "",
             "theme": _form_text(form, "theme") or "claude_clean",
             "strict_math": _form_bool(form, "strict_math", True),
-            "qwen_thinking": _form_bool(form, "qwen_thinking", True),
+            # Absent ⇒ None so the provider-settings thinking_default can fill it on
+            # the multipart path too (parity with the JSON LLMJobRequest default).
+            "qwen_thinking": _form_bool(form, "qwen_thinking", None),
             "folder_id": _form_text(form, "folder_id"),
             # C2 generation axes ride along as plain form text (unset → None so the
             # default request stays axis-free). Validated downstream like the JSON path.
@@ -2907,7 +2912,7 @@ def _form_text(form: Any, key: str) -> str | None:
     return None
 
 
-def _form_bool(form: Any, key: str, default: bool) -> bool:
+def _form_bool(form: Any, key: str, default: bool | None) -> bool | None:
     value = form.get(key)
     if value is None:
         return default
