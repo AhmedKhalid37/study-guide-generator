@@ -8,20 +8,41 @@
 ## Where we are
 
 - **Branch:** `chrome-renderer-v1` (the live integrated trunk; PR target)
-- **Trunk tip:** `60c3e78` — Enable PDF page selection UI. Since cooperative
-  cancel (`901d44b`), the **large-PDF core workflow** landed as five slices:
-  `841d3f9` (preflight endpoint), `9eefe25` (Builder preflight warnings),
-  `d00380b` (page-selection request/manifest plumbing), `db4de9d` (extraction
-  honors selected pages), and `60c3e78` (page-selection UI live). Earlier
-  `901d44b` / `1d51b36` / `65b9b8f` references further down are historical —
-  trunk is now `60c3e78`.
-- **`origin/chrome-renderer-v1`:** `60c3e78` (local == origin; pushed)
+- **Trunk tip:** `40df617` — "Apply provider runtime settings". The **in-app
+  provider settings core** landed as four commits on top of the large-PDF core
+  (`60c3e78`) and its docs reconcile (`624ff02`): `978516e` (design doc),
+  `1ba2b28` (backend settings store + safe endpoints), `3024a33` (frontend
+  Providers UI), and `40df617` (runtime settings applied to live generation).
+  Earlier `60c3e78` / `901d44b` / `1d51b36` / `65b9b8f` references further down
+  are historical — trunk is now `40df617`.
+- **`origin/chrome-renderer-v1`:** `40df617` (local == origin; pushed)
+- **Provider settings core is COMPLETE** (design → backend store/endpoints →
+  Providers UI → runtime wiring). See DONE #32 (backend store), #33 (Providers
+  UI), #34 (runtime), and the design doc `docs/PROVIDER_SETTINGS_DESIGN.md`.
+  Highlights:
+  - **Security:** raw API keys stay **server-side only**. `/api/options` and
+    `/api/provider-settings` are **redacted** (no key field by construction —
+    only `configured`/`key_source`/last-4 `key_hint`/`base_url_host`).
+    `config/provider_settings.json` is **non-secret** (`0644`);
+    `config/secrets.json` holds **raw keys only** (`0600`, gitignored +
+    dockerignored). The frontend never receives a raw key.
+  - **Precedence:** provider/model resolves **per-job request > provider-settings
+    default > `.env` > built-in default**. Generator presets **never hard-pin**
+    provider/model — `model_hint` stays **advisory** — but a preset's **explicit**
+    sampling/thinking value **can override** the stored runtime defaults.
+  - **Runtime applied:** the stored `timeout_seconds`, `retry_count`, and
+    `thinking_default` now reach the live model call (resolved once in
+    `build_provider_config`, applied in `generate_chat_completion`). No store
+    files ⇒ byte-identical to trunk (no timeout, 0 retries, thinking `True`).
+  - **Deferred:** fetch-models endpoint, encrypted-at-rest / OS keyring, `.env`
+    import, the **Local Model Manager** (separate design-first feature), and the
+    optional Builder "Provider default" thinking UI polish.
 - **Large-PDF core is COMPLETE end-to-end** (preflight design → endpoint →
   Builder warning UI → page-selection plumbing → extraction honors selected
   pages → first-N/manual page-range UI). See DONE #27→#31. Automatic
   split/chunk processing and hybrid embedded-text + OCR dedup remain **deferred**.
 - **Group C is COMPLETE and INTEGRATED** (C1 → C5, incl. C4a–d) onto `chrome-renderer-v1`.
-- **For new sessions:** branch from `chrome-renderer-v1` @ `60c3e78` (or later). Do **not**
+- **For new sessions:** branch from `chrome-renderer-v1` @ `40df617` (or later). Do **not**
   re-merge any of the old stacked feature branches — they are consumed/archival (see
   `DECISIONS.md` → "Consumed feature branches must not be re-merged"). The short one-page
   start-here is `docs/NEXT_CHAT_HANDOFF.md`.
@@ -69,26 +90,6 @@ parked on the `hardening` branch — not merged, not deleted.
 - **Deferred:** large-PDF upload UX / preflight / page-range selection.
 
 ## DONE (in order)
-
-0. **Provider settings Slice 3 — runtime defaults wired into live generation**
-   (`provider-settings-runtime`). The stored `timeout_seconds`, `retry_count`, and
-   `thinking_default` now reach the live model call. Mechanism: `LLMConfig` gained
-   `timeout`/`retry_count` fields, resolved in `build_provider_config` (store →
-   default; no preset tier, no new env knob) and consumed in
-   `generate_chat_completion`, so **every** path that builds a config via
-   `build_provider_config` (study-guide, style, outline, section-regen, quiz)
-   picks them up. Timeout: an explicit caller `timeout=` (the test probe's short
-   fail-fast value) wins over `config.timeout`; the probe also forces `retries=0`.
-   Retry: bounded `[0,10]`, retries only transient API/transport failures (429,
-   5xx, connection/timeout type-names); **never** 4xx (auth/model/bad-request),
-   missing config, unsupported provider, or cancel; retry is internal to the model
-   call only (no duplicate jobs/artifacts). Thinking (qwen-only): explicit
-   request/preset value wins, else store `thinking_default` fills, else `True`;
-   `LLMJobRequest.qwen_thinking` / the multipart default became `None` so "unset"
-   lets the store fill (frontend still sends an explicit bool ⇒ unchanged UI).
-   **No store files ⇒ byte-identical to trunk** (timeout None, 0 retries, thinking
-   True). Tests: `test_scripts/test_provider_runtime_settings.py` (22 checks) +
-   existing `test_provider_settings_store.py` (26) + `smoke_release.py` (28/0/0).
 
 1. **Generator presets** — Claude-Exam / Review / Cram: full system prompts +
    tuned sampling params (`a97d763`).
@@ -1005,43 +1006,84 @@ parked on the `hardening` branch — not merged, not deleted.
       denied** (expected, supports the model). `clear-key` reverted `local` to
       `key_source:"env"` and removed the sentinel from `secrets.json`.
     - **Deferred (unchanged from Slice 1):** wiring store `timeout_seconds`/
-      `retry_count`/`thinking_default` into the live client; `fetch-models`;
-      encrypted-at-rest secrets / OS keyring; `.env` import.
+      `retry_count`/`thinking_default` into the live client (now DONE — see #34);
+      `fetch-models`; encrypted-at-rest secrets / OS keyring; `.env` import.
+
+34. **Provider Settings Slice 3 — runtime defaults wired into live generation
+    (BACKEND ONLY)** — branch `provider-settings-runtime`, commit `Apply provider
+    runtime settings` (trunk tip `40df617`). The stored `timeout_seconds`,
+    `retry_count`, and `thinking_default` now reach the live model call. **No
+    Local Model Manager, no provider auto-switching, no generator-preset
+    hard-pinning, no new env knob.**
+    - **Mechanism:** `LLMConfig` gained `timeout`/`retry_count` fields, resolved
+      in `build_provider_config` (store → default) and consumed in
+      `generate_chat_completion`, so **every** path that builds a config via
+      `build_provider_config` (study-guide, style, outline, section-regen, quiz)
+      picks them up. Timeout: an explicit caller `timeout=` (the test probe's
+      short fail-fast value) wins over `config.timeout`; the probe also forces
+      `retries=0`.
+    - **Retry is transient-only:** bounded `[0,10]`, retries only transient
+      API/transport failures (429, 5xx, connection/timeout type-names); **never**
+      4xx (auth/model/bad-request), missing config, unsupported provider, or
+      cancel. Retry is internal to the single model call (no duplicate
+      jobs/artifacts).
+    - **Thinking precedence (qwen-only):** explicit request/preset value wins,
+      else store `thinking_default` fills, else `True`. `LLMJobRequest.qwen_thinking`
+      / the multipart default became `None` so an "unset" field lets the store
+      fill, while the Builder still sends an explicit bool ⇒ unchanged UI. This is
+      the rule "a preset's explicit sampling/thinking can override the stored
+      runtime default; provider/model is never hard-pinned."
+    - **Migration guarantee:** no store files ⇒ byte-identical to trunk (timeout
+      `None`, 0 retries, thinking `True`).
+    - **Verified:** `test_scripts/test_provider_runtime_settings.py` (22 checks) +
+      existing `test_provider_settings_store.py` (26) + `smoke_release.py`
+      (28/0/0). See `DECISIONS.md` → "Provider runtime settings: timeout/retry at
+      the call boundary, transient-only retry".
+    - **Deferred (unchanged):** `fetch-models` endpoint; encrypted-at-rest secrets
+      / OS keyring; `.env` import; the **Local Model Manager** (separate
+      design-first feature); optional Builder "Provider default" thinking UI polish.
 
 ## NEXT (in order)
 
-> **Large-PDF core is DONE end-to-end** (`841d3f9`→`60c3e78`, DONE #27→#31):
-> preflight warns → user chooses first-N or a manual page range → the request
-> carries `page_selections` → extraction restricts to those ORIGINAL pages
-> (anchors preserved) → only selected pages are OCR'd. **Automatic split/chunk
-> processing and hybrid embedded-text + OCR dedup remain deferred (§9).** The
-> earlier "Math/PDF investigation next" and "Large-PDF preflight design next"
-> recommendations are **both completed and removed** — preflight design shipped
-> (`docs/LARGE_PDF_PREFLIGHT_DESIGN.md` realized through Slices 1–5), and the
-> math/PDF fidelity Slices 1–3 (`math-display-breaks` #23, `math-display-overflow`
-> #24, `math-formula-guidance` #25) shipped. The remaining math/PDF slice is
-> **font-size rationalization** (cause C, CSS-only) — optional, not the headline.
+> **Provider settings core is DONE** (DONE #32→#34): design (`978516e`) → backend
+> store + safe endpoints (`1ba2b28`) → frontend Providers UI (`3024a33`) → runtime
+> settings applied to live generation (`40df617`). Raw keys stay **server-side
+> only**; `/api/options` and `/api/provider-settings` are **redacted**;
+> `config/provider_settings.json` is non-secret (`0644`), `config/secrets.json` is
+> secret-only (`0600`). Precedence: **per-job request > provider-settings default
+> > `.env` > built-in**; generator presets **never hard-pin** provider/model
+> (`model_hint` advisory), and an **explicit** preset sampling/thinking value
+> overrides the stored runtime default. Still deferred from provider settings:
+> **fetch-models endpoint, encrypted-at-rest / OS keyring, `.env` import, the
+> Local Model Manager (separate design-first feature), and the optional Builder
+> "Provider default" thinking UI polish.**
+>
+> **Large-PDF core (DONE #27→#31) and Group C (C1→C5) also remain done.** The
+> earlier "in-app provider settings — design-first" recommendation is now
+> **completed and removed**. The only remaining math/PDF slice is **font-size
+> rationalization** (cause C, CSS-only) — optional, not the headline.
 
 1. **Recommended next — pick ONE safe option:**
-   - **Real-world validation pass over several large PDFs.** Run the now-complete
-     large-PDF core end-to-end on a handful of real big/scanned decks: confirm
-     preflight verdicts, first-N + manual range selection, original `## Page N`
-     anchors, OCR only on selected pages, and the rendered PDF. Pure
-     validation/manual click-through — no code unless a concrete bug surfaces.
-   - **In-app provider settings — DESIGN-FIRST.** Design the server-side
-     secret-write path (keys never reach the frontend) before any code.
+   - **Real-world validation pass.** Exercise the now-complete provider settings
+     end-to-end (set/clear a key, change default model + sampling/timeout/retry/
+     thinking, run "Test connection", then generate) and confirm redaction holds
+     and the runtime defaults reach live generation; also re-run the large-PDF
+     core on a handful of real big/scanned decks. Pure validation / manual
+     click-through — no code unless a concrete bug surfaces.
+   - **Fetch-models endpoint — DESIGN/IMPLEMENT.** A safe, server-side
+     "list models for this provider" call so the Providers UI can populate the
+     model dropdown from the live provider instead of the static registry. Keep
+     keys server-side; redact as usual. Design the request/response shape first.
    - **Shortcut inspector / repair loop — DESIGN/POLISH.** Surface the store's
      `valid`/`reason` "references unavailable …" state and a repair UX for broken
      provider/preset/style references. Design first.
-2. **Math/PDF font-size rationalization (cause C, CSS-only).** Optional remaining
-   fidelity slice; investigate the CSS-only font sizing before any change.
-3. **Local Model Manager — DESIGN-FIRST.** Backend spawns/kills a host
+2. **Local Model Manager — DESIGN-FIRST.** Backend spawns/kills a host
    `llama-server`. This **crosses the container boundary** (non-root uid 10001
-   container managing a host process) — design and get sign-off before coding.
-4. **In-app provider settings — DESIGN-FIRST.** Frontend writes provider config
-   to **server-side secrets**. Keys must stay server-side only; the frontend
-   must never receive raw keys. Design the secret-write path before coding.
-5. **Library archive / tag model — DESIGN-FIRST.** Bulk **archive** needs a new
+   container managing a host process) — design and get sign-off before coding. It
+   stays a **separate** feature from the now-complete in-app provider settings.
+3. **Math/PDF font-size rationalization (cause C, CSS-only).** Optional remaining
+   fidelity slice; investigate the CSS-only font sizing before any change.
+4. **Library archive / tag model — DESIGN-FIRST.** Bulk **archive** needs a new
    archive state designed + a `DECISIONS.md` entry first; bulk **tag** needs a
    tag model designed first. Neither is started. Bulk **export** is already DONE
    (B4). Do not begin either without an explicit slice + design sign-off.

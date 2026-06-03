@@ -6,7 +6,7 @@
 > `DECISIONS.md`. The canonical project brief is `../CLAUDE.md`.
 >
 > **Trunk:** `chrome-renderer-v1` is the integrated trunk. Branch new work from it
-> (currently `60c3e78` or later) — never from the old consumed feature branches
+> (currently `40df617` or later) — never from the old consumed feature branches
 > (see `DECISIONS.md` → "Consumed feature branches must not be re-merged").
 
 ---
@@ -45,12 +45,27 @@ flashcards with CSV / Anki / Quizlet export.
 
 ## 3. Providers
 
-- **DeepSeek** and **Qwen** — configured via `.env` (real keys, server-side
-  only, gitignored). These are the verified-working providers.
-- **Local llama.cpp** — supported via env/discovery; typically shows
-  `configured: false` until a local server is set up.
-- `/api/options` exposes only non-secret derived info (e.g. which providers are
-  `configured`). **Raw keys never reach the frontend.**
+- **DeepSeek** and **Qwen** — verified-working providers. **Local llama.cpp** —
+  supported via env/discovery; typically shows `configured: false` until a local
+  server is set up.
+- **Configurable in-app (provider settings core, DONE `978516e`→`40df617`).** Keys,
+  base URLs, default models, custom models, and sampling/runtime defaults
+  (`timeout_seconds`/`retry_count`/`thinking_default`) can be set from the
+  **Providers** page instead of hand-editing `.env`. Backed by a two-file
+  server-side store: `config/provider_settings.json` (NON-secret, `0644`) and
+  `config/secrets.json` (raw API keys ONLY, `0600`), both gitignored +
+  dockerignored.
+- **Resolution precedence:** **per-job request > provider-settings store default >
+  `.env` > built-in default**. With no store files present every lookup falls
+  through to the prior `.env` path, byte-identical to before the store existed.
+  Generator presets **never hard-pin** provider/model (`model_hint` stays
+  advisory); a preset's **explicit** sampling/thinking value can override the
+  stored runtime default.
+- **Security.** `/api/options` and `/api/provider-settings` expose only non-secret
+  derived info — `configured`, `key_source` (store/env/none), a last-4 `key_hint`,
+  `base_url_host`. The public DTO has **no key field by construction**; the API key
+  is write-only over the API (set/cleared, never read back). **Raw keys never reach
+  the frontend.**
 
 ## 4. Architecture facts a new session MUST know
 
@@ -70,7 +85,20 @@ flashcards with CSV / Anki / Quizlet export.
   **not** kill the job.
 - **Generator presets** inject a full system prompt and **append**
   `MARKDOWN_MATH_SYSTEM` (`pipeline/orchestrator.py`). Presets are distinct from
-  styles (see `DECISIONS.md`).
+  styles (see `DECISIONS.md`). Presets tune **sampling** only — they **never
+  hard-pin** the provider/model; `model_hint` is a soft advisory. A preset's
+  explicit sampling/thinking value can override the stored runtime default.
+- **Provider settings store** (`pipeline/provider_settings_store.py`). A two-file,
+  whitelist-parsed, atomic JSON store under a gitignored `config/`:
+  `provider_settings.json` (non-secret, `0644`) and `secrets.json` (raw API keys
+  ONLY, `0600`). Keys are write-only over the API and redacted out of every
+  response by construction. The resolver in `pipeline/provider_config.py` chains
+  **settings store → `.env` → built-in default** (with per-job request still
+  winning); no store files ⇒ byte-identical to the prior env path. Endpoints:
+  `GET /api/provider-settings`, `PATCH /api/provider-settings/{provider}`,
+  `…/clear-key`, `…/test`. The stored `timeout_seconds`/`retry_count`/
+  `thinking_default` are applied at the live model-call boundary
+  (`build_provider_config` → `generate_chat_completion`). See `DECISIONS.md`.
 - **Shortcut store** is a whitelist-validated JSON file at
   `library/shortcuts.json`. Import/export only accepts whitelisted fields.
 - **Job stage reporting.** Coarse status (`queued/running/done/
