@@ -495,6 +495,49 @@ smoke), one branch per slice, surgical edits.
   Apply disabled/"coming next". (Or gate the whole drawer behind Slice 3 if
   preferred — but read-only inspection is useful on its own.)
 
+> **IMPLEMENTED — Slice 2 (branch `shortcut-inspector-ui`, DONE #40 in
+> `CURRENT_TASK.md`).** Frontend-only + API client + a node harness + docs;
+> **no backend behaviour changed** (the Slice 1 response shape was correct as-is).
+> Read-only — there is no preview/apply/repair/mutation anywhere in this slice.
+>
+> - **API client:** `inspectShortcut(id)` in `frontend/src/api/client.js` → `GET
+>   /api/shortcuts/{id}/inspect`, using the shared `requestJson` helper (404 /
+>   network errors surface the server `detail` like every other helper). The
+>   response is already redacted; the client never handles a raw key.
+> - **Status helpers (`frontend/src/shortcutStatus.js`, pure, no React):**
+>   `shortcutStatus` (prefers `validity.status`; **fallback** for old payloads
+>   with no `validity` → `valid:false` ⇒ broken, else valid), `statusBadge`
+>   (label/tone: valid→"Valid", degraded→"Needs attention", broken→"Broken"),
+>   `countFindingsBySeverity`, `issueCount`, `shortcutFindings`. Tolerates missing
+>   validity, unknown status, non-array findings, null shortcut.
+> - **Home cards (`HomeShortcuts.jsx`):** valid stays quiet (no badge); degraded →
+>   amber "Needs attention" chip, broken → red "Broken" chip. The chip + a small
+>   Info button are clickable (`stopPropagation`) to open the Inspector. **Card
+>   activation is unchanged** — still gated on the legacy `valid` boolean, routed
+>   by `DesktopDashboard.handleActivateShortcut` exactly as before (broken
+>   shortcuts are never auto-routed to Builder/Tools by this slice).
+> - **Customize rows:** per-row tiered status chip + issue count, plus an
+>   **Inspect** icon-button opening the drawer. Create/edit/import/export/reorder/
+>   pin/delete behaviour untouched. Import-preview rows left as-is (they have no
+>   saved id to inspect; "repair after import" stays a Slice 3 idea).
+> - **Inspector drawer (`ShortcutInspector.jsx`):** right-side read-only panel.
+>   Calls `inspectShortcut(id)` on open (seeds header from the list view while
+>   loading); shows loading / 404 / network-error states; renders name, type,
+>   status pill, legacy `valid/reason` (when blocked), every finding (code, field,
+>   severity, message, current_value, repairable + candidate count), and a
+>   candidates **summary** (configured/total providers, models-per-provider,
+>   style/preset/section/axis counts). States plainly: *"Repair actions are not
+>   available yet. This inspector is read-only."* The only repair control is a
+>   **disabled** "Repair (coming next)" button — no Save/Apply.
+> - **Tests:** node harness `frontend/scripts/verify-shortcut-status.mjs` (25/25,
+>   wired into `npm --prefix frontend test`) covering status normalization, old-
+>   payload fallback, finding counts, badge labels. Backend `test_shortcut_*`
+>   unchanged (19/19 + 39/39). Live Docker: real Chromium drove the degraded badge
+>   → Inspector (findings + candidates + read-only note + disabled repair, no
+>   Apply), the Customize-row Inspect button, and a valid shortcut's "No problems
+>   found". Full secret scan (served bundle + inspect/list/options/provider-
+>   settings + logs) clean.
+
 ### Slice 3 — repair apply flow
 - Add `POST …/repair/preview` (pure) and `POST …/repair/apply`
   (`update_shortcut` in place, or `create_shortcut` when `clone`).

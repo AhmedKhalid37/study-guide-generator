@@ -606,3 +606,27 @@ out-of-enum axis at load), not broken; and `tool_route_missing` is reused for bo
 an unavailable tool and an unavailable library view (the `field` distinguishes
 them). Inspection is fail-soft — a registry read that throws yields an
 `inspection_error` *degraded* finding, never a crash or a false `broken`.
+
+---
+
+## Shortcut inspector Slice 2: badges are informational; activation still gates on legacy `valid` (2026-06-04)
+Slice 2 adds 3-tier validity badges (Home cards + Customize rows) and a read-only
+Inspector drawer, but it deliberately does **not** touch
+`DesktopDashboard.handleActivateShortcut`. The new `validity.status` drives only
+the **badge colour/label and the Inspector**; clicking a shortcut to *launch* it
+still keys off the legacy `valid` boolean exactly as before. **Why:** the Slice 1
+divergence above means a degraded-only shortcut can be `valid:true` +
+`status:"degraded"` (model/section/axis) — those already launch today and must
+keep launching ("degraded shortcuts remain launchable"); the pre-existing broken
+cases keep `valid:false` and the existing guard keeps routing them to Models
+("broken shortcuts keep legacy guard behaviour"). Re-deriving launch gating from
+the new status here would either block a currently-working degraded shortcut or
+silently auto-load a broken one — both violate the brief. The badge chip and the
+small Info button on a card call `stopPropagation`, so opening the read-only
+Inspector never also fires the card's activate handler. Consent-gated activation
+of degraded shortcuts + the actual repair flow are Slice 3, not this slice.
+Corollary: the **status helpers live in a pure module** (`shortcutStatus.js`, no
+React) so a plain-node harness can unit-test them without a test runner, matching
+the existing `verify-assets.mjs` pattern — and they include an explicit fallback
+(`shortcutStatus`) for old shortcut payloads that predate the `validity` field, so
+the UI never crashes on a shortcut that only carries the legacy boolean.

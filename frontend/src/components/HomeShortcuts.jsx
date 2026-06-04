@@ -8,6 +8,7 @@ import {
   ChevronRight,
   Copy,
   Download,
+  Info,
   Loader2,
   Pencil,
   Pin,
@@ -51,8 +52,26 @@ import {
   VIEW_BASE_LABELS
 } from "../shortcutMeta";
 import RecentJobsPanel from "./RecentJobsPanel";
+import ShortcutInspector from "./ShortcutInspector";
+import {
+  issueCount,
+  shortcutFindings,
+  shortcutStatus,
+  statusBadge,
+  STATUS_BROKEN,
+  STATUS_DEGRADED,
+  STATUS_VALID
+} from "../shortcutStatus";
 
 const DEFAULT_COLOR = COLOR_CHOICES[0];
+
+// Tailwind classes per validity tier, shared by the Home card badge and the
+// customize-row chip so all surfaces read the same.
+const STATUS_CHIP_CLASSES = {
+  [STATUS_VALID]: "border-emerald-400/30 bg-emerald-400/10 text-emerald-200",
+  [STATUS_DEGRADED]: "border-amber-400/30 bg-amber-400/10 text-amber-200",
+  [STATUS_BROKEN]: "border-red-400/30 bg-red-400/10 text-red-200"
+};
 
 // ── Home page ───────────────────────────────────────────────────────────────
 
@@ -69,6 +88,8 @@ export default function HomeShortcuts({
   const [error, setError] = useState(null);
   const [reloadKey, setReloadKey] = useState(0);
   const [customizeOpen, setCustomizeOpen] = useState(false);
+  // Read-only inspector target (a shortcut view), or null when closed.
+  const [inspecting, setInspecting] = useState(null);
 
   const reload = useCallback(() => setReloadKey((key) => key + 1), []);
 
@@ -150,6 +171,7 @@ export default function HomeShortcuts({
               shortcut={shortcut}
               delay={index * 45}
               onActivate={() => onActivateShortcut?.(shortcut)}
+              onInspect={() => setInspecting(shortcut)}
             />
           ))}
         </div>
@@ -172,6 +194,10 @@ export default function HomeShortcuts({
           onActivateShortcut={onActivateShortcut}
         />
       )}
+
+      {inspecting && (
+        <ShortcutInspector shortcut={inspecting} onClose={() => setInspecting(null)} />
+      )}
     </div>
   );
 }
@@ -183,11 +209,24 @@ function shortcutEmoji(shortcut) {
   return "📝";
 }
 
-function ShortcutCard({ shortcut, delay, onActivate }) {
+function ShortcutCard({ shortcut, delay, onActivate, onInspect }) {
   const accent = shortcut.color || DEFAULT_COLOR;
+  // Activation gating stays on the LEGACY `valid` boolean so Home behaviour is
+  // byte-for-byte unchanged (DesktopDashboard owns the routing). The badge below
+  // is driven by the richer 3-tier validity.status and is purely informational.
   const invalid = shortcut.valid === false;
   const typeLabel = TYPE_LABELS[shortcut.type] || shortcut.type;
   const reasonHint = invalid ? invalidHint(shortcut) : null;
+  const status = shortcutStatus(shortcut);
+  const badge = statusBadge(status);
+  // Valid shortcuts stay quiet (no badge); degraded/broken surface a chip.
+  const showBadge = status === STATUS_DEGRADED || status === STATUS_BROKEN;
+
+  function handleInspect(event) {
+    event.stopPropagation();
+    event.preventDefault();
+    onInspect?.();
+  }
 
   return (
     <button
@@ -203,11 +242,38 @@ function ShortcutCard({ shortcut, delay, onActivate }) {
         <span className="sg-card-icon" style={{ fontSize: 24 }} aria-hidden>
           {shortcutEmoji(shortcut)}
         </span>
-        {invalid && (
-          <span className="sg-shortcut-badge" title={reasonHint}>
-            <AlertTriangle size={12} /> Needs setup
+        <span className="ml-auto inline-flex items-center gap-1.5">
+          {showBadge && (
+            <span
+              role="button"
+              tabIndex={0}
+              onClick={handleInspect}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" || e.key === " ") handleInspect(e);
+              }}
+              className={`inline-flex cursor-pointer items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] font-semibold ${
+                STATUS_CHIP_CLASSES[status] || ""
+              }`}
+              title={`${badge.label} — click to inspect`}
+            >
+              {status === STATUS_BROKEN ? <AlertCircle size={11} /> : <AlertTriangle size={11} />}
+              {badge.label}
+            </span>
+          )}
+          <span
+            role="button"
+            tabIndex={0}
+            onClick={handleInspect}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" || e.key === " ") handleInspect(e);
+            }}
+            className="grid h-6 w-6 cursor-pointer place-items-center rounded-lg text-slate-400 hover:bg-white/10 hover:text-white"
+            title="Inspect shortcut"
+            aria-label="Inspect shortcut"
+          >
+            <Info size={13} />
           </span>
-        )}
+        </span>
       </span>
       <strong>{shortcut.name}</strong>
       <p>{invalid ? reasonHint : shortcut.description || summarizePayload(shortcut)}</p>
@@ -246,6 +312,8 @@ function CustomizeShortcutsModal({ shortcuts, currentBuilderSetup, onClose, onCh
   const [error, setError] = useState(null);
   const [confirmDelete, setConfirmDelete] = useState(null);
   const [confirmReset, setConfirmReset] = useState(false);
+  // Read-only inspector target (a shortcut view), or null when closed.
+  const [inspecting, setInspecting] = useState(null);
   // Local working copy so reorder/pin feel instant; persisted on each action.
   const [items, setItems] = useState(shortcuts);
 
@@ -417,6 +485,7 @@ function CustomizeShortcutsModal({ shortcuts, currentBuilderSetup, onClose, onCh
                       onEdit={() => { setEditing(shortcut); setMode("form"); }}
                       onDuplicate={() => handleDuplicate(shortcut)}
                       onDelete={() => setConfirmDelete(shortcut)}
+                      onInspect={() => setInspecting(shortcut)}
                     />
                   ))}
                 </ul>
@@ -465,13 +534,20 @@ function CustomizeShortcutsModal({ shortcuts, currentBuilderSetup, onClose, onCh
           onConfirm={handleReset}
         />
       )}
+      {inspecting && (
+        <ShortcutInspector shortcut={inspecting} onClose={() => setInspecting(null)} />
+      )}
     </div>
   );
 }
 
-function ShortcutRow({ shortcut, busy, isFirst, isLast, onUp, onDown, onTogglePin, onEdit, onDuplicate, onDelete }) {
+function ShortcutRow({ shortcut, busy, isFirst, isLast, onUp, onDown, onTogglePin, onEdit, onDuplicate, onDelete, onInspect }) {
   const accent = shortcut.color || DEFAULT_COLOR;
-  const invalid = shortcut.valid === false;
+  const status = shortcutStatus(shortcut);
+  const badge = statusBadge(status);
+  const issues = issueCount(shortcut);
+  const showChip = status === STATUS_DEGRADED || status === STATUS_BROKEN;
+  const firstFinding = shortcutFindings(shortcut)[0];
   return (
     <li className="flex items-center gap-2 rounded-xl border border-white/10 bg-white/[0.03] px-3 py-2.5">
       <div className="flex flex-col">
@@ -495,9 +571,12 @@ function ShortcutRow({ shortcut, busy, isFirst, isLast, onUp, onDown, onTogglePi
           <span className="shrink-0 rounded border border-white/10 px-1.5 py-0.5 text-[10px] uppercase tracking-wide text-slate-400">
             {TYPE_LABELS[shortcut.type] || shortcut.type}
           </span>
-          {invalid && (
-            <span className="shrink-0 rounded border border-amber-400/30 bg-amber-400/10 px-1.5 py-0.5 text-[10px] text-amber-200" title={shortcut.reason}>
-              needs setup
+          {showChip && (
+            <span
+              className={`shrink-0 rounded border px-1.5 py-0.5 text-[10px] ${STATUS_CHIP_CLASSES[status] || ""}`}
+              title={firstFinding?.message || shortcut.reason || badge.label}
+            >
+              {badge.label}{issues > 0 ? ` · ${issues}` : ""}
             </span>
           )}
         </div>
@@ -505,6 +584,7 @@ function ShortcutRow({ shortcut, busy, isFirst, isLast, onUp, onDown, onTogglePi
       </div>
       {busy && <Loader2 size={14} className="animate-spin text-slate-400" />}
       <div className="flex shrink-0 items-center gap-0.5">
+        <IconBtn title="Inspect" onClick={onInspect}><Info size={14} /></IconBtn>
         <IconBtn title={shortcut.pinned ? "Unpin from Home" : "Pin to Home"} onClick={onTogglePin}>
           {shortcut.pinned ? <Pin size={14} className="text-[#F97316]" /> : <PinOff size={14} />}
         </IconBtn>

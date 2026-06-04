@@ -546,6 +546,17 @@ export function getShortcut(shortcutId) {
   return requestJson(`/api/shortcuts/${encodeURIComponent(shortcutId)}`);
 }
 
+// Read-only Shortcut Inspector (Slice 2). Returns the flat
+//   { id, name, type, valid, reason, validity, repair_candidates }
+// shape from the Slice 1 backend — the legacy valid/reason plus the additive
+// validity object (status + findings) and live, already-redacted repair
+// candidates (provider/model/style/preset ids + labels only, never a raw key).
+// Never mutates the shortcut; an unknown id rejects via requestJson with the
+// server's `detail` (404). Repair preview/apply is a later slice.
+export function inspectShortcut(shortcutId) {
+  return requestJson(`/api/shortcuts/${encodeURIComponent(shortcutId)}/inspect`);
+}
+
 export function createShortcut(shortcut) {
   return requestJson("/api/shortcuts", {
     method: "POST",

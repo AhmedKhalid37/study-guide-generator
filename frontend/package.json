@@ -7,7 +7,8 @@
     "dev": "vite",
     "build": "vite build",
     "preview": "vite preview",
-    "test": "node scripts/verify-assets.mjs"
+    "test": "node scripts/verify-assets.mjs",
+    "test:shortcut-status": "node scripts/verify-shortcut-status.mjs"
   },
   "dependencies": {
     "@vitejs/plugin-react": "^4.3.4",

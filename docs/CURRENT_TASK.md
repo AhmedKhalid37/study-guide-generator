@@ -5,7 +5,7 @@
 
 ---
 
-## NEXT — Shortcut Inspector / Repair Loop (Slice 1 backend DONE; Slice 2 next)
+## NEXT — Shortcut Inspector / Repair Loop (Slices 1+2 DONE; Slice 3 next)
 
 - **Design doc:** `docs/SHORTCUT_INSPECTOR_REPAIR_DESIGN.md`. Safe UX + backend
   contract for inspecting and repairing shortcuts whose saved references
@@ -18,10 +18,22 @@
   **unchanged**. Fixes all three gaps: 3-tier status (binary→`valid`/`degraded`/
   `broken`), **full** findings list (not first-failure), and the previously-missing
   **saved-model** check. No writes, no frontend, no store refactor.
-- **NEXT is Slice 2 — frontend badges + read-only Inspector UI.** Drive the Home
-  card badge + customize-row chip off `validity.status` (3 tiers) and add the
-  Inspector drawer that calls `…/inspect` and renders findings + repair-candidate
-  controls (Apply still disabled / deferred to Slice 3). No apply yet.
+- **Slice 2 (frontend badges + read-only Inspector UI) is DONE** (DONE #40, branch
+  `shortcut-inspector-ui`). `inspectShortcut` API helper + pure
+  `frontend/src/shortcutStatus.js` status/badge/finding helpers (3-tier, with a
+  fallback for old payloads lacking `validity`) + 3-tier badges on Home cards
+  (valid quiet; degraded amber "Needs attention"; broken red "Broken") and
+  Customize rows + a read-only `ShortcutInspector` drawer (findings + redacted
+  repair-candidate summary + "read-only; repair comes next"). **No mutation, no
+  preview/apply, no provider/model auto-switch, no raw keys.** Card activation is
+  **unchanged** (still gated on legacy `valid`; broken never auto-routed). Backend
+  untouched. node harness `verify-shortcut-status.mjs` 25/25; live Chromium UI
+  proof; secret scan clean.
+- **NEXT is Slice 3 — repair preview + apply flow.** Add `POST …/repair/preview`
+  (pure) + `POST …/repair/apply` (in place via `update_shortcut`, or `clone` via
+  `create_shortcut`) and wire the Inspector's live preview/diff + Apply /
+  Save-as-copy + the degraded-activation confirm. Unless manual UI validation of
+  Slice 2 surfaces problems first.
 - **Slice 3 (later):** `POST …/repair/preview` (pure) + `POST …/repair/apply`
   (in place via `update_shortcut`, or `clone` via `create_shortcut`). **No
   migration-on-read, no silent overwrite, no auto-switch of provider/model, no
@@ -1257,6 +1269,53 @@ parked on the `hardening` branch — not merged, not deleted.
       `smoke_release.py` **28/28**; secret scan clean across
       inspect/list/options/provider-settings + container logs. **No frontend, no
       repair preview/apply, no store refactor in this slice.**
+
+40. **Shortcut Inspector Slice 2 — frontend badges + read-only Inspector drawer
+    (FRONTEND + API client + node harness + docs)** — branch
+    `shortcut-inspector-ui`. Surfaces Slice 1's `validity` data in the UI.
+    **Read-only: no mutation, no preview/apply, no provider/model auto-switch, no
+    raw keys; backend behaviour unchanged** (the Slice 1 response shape was
+    already correct).
+    - **API client (`frontend/src/api/client.js`):** `inspectShortcut(id)` →
+      `GET /api/shortcuts/{id}/inspect` via the shared `requestJson` helper (404 /
+      network errors surface the server `detail` like the other helpers; the
+      already-redacted response never carries a raw key).
+    - **Status helpers (`frontend/src/shortcutStatus.js`, pure / no React):**
+      `shortcutStatus` prefers `validity.status` and **falls back** for old
+      payloads with no `validity` (`valid:false`⇒broken, else valid);
+      `statusBadge` (valid→"Valid", degraded→"Needs attention", broken→"Broken"),
+      `countFindingsBySeverity`, `issueCount`, `shortcutFindings`. Tolerates
+      missing validity, unknown status, non-array findings, null shortcut.
+    - **Home cards (`HomeShortcuts.jsx`):** valid stays quiet (no badge); degraded
+      → amber "Needs attention" chip, broken → red "Broken" chip; the chip + a
+      small Info button open the Inspector (`stopPropagation`, so card activation
+      is not triggered). **Activation unchanged** — still gated on the legacy
+      `valid` boolean and routed by `DesktopDashboard.handleActivateShortcut`
+      exactly as before; broken shortcuts are never auto-routed to Builder/Tools.
+    - **Customize rows:** per-row tiered status chip + issue count + an **Inspect**
+      icon-button. Create/edit/import/export/reorder/pin/delete untouched; import-
+      preview rows left as-is (no saved id to inspect).
+    - **Inspector drawer (`ShortcutInspector.jsx`, new):** right-side read-only
+      panel; calls `inspectShortcut(id)` on open (seeds header from the list view
+      while loading); loading / 404 / network-error states; renders name, type,
+      status pill, legacy `valid/reason` (when blocked), every finding
+      (code/field/severity/message/current_value/repairable + candidate count), and
+      a redacted candidates **summary** (configured-vs-total providers, models per
+      provider, style/preset/section/axis counts). States plainly *"Repair actions
+      are not available yet. This inspector is read-only."*; the only repair
+      control is a **disabled** "Repair (coming next)" button — no Save/Apply.
+    - **Verified:** node harness `frontend/scripts/verify-shortcut-status.mjs`
+      **25/25** (status normalization, old-payload fallback, finding counts, badge
+      labels), wired into `npm --prefix frontend test`. `npm … build` OK;
+      `compileall api pipeline` OK; backend `test_shortcut_inspector.py` **19/19** +
+      `test_shortcut_store.py` **39/39** unchanged. Docker (healthy): `/api/health`
+      ok, `/api/options` ok, live `…/inspect` shape/404 confirmed; real Chromium
+      drove the degraded badge → Inspector (findings + candidates + read-only note
+      + disabled repair, **no Apply/Save**), the Customize-row Inspect button, and a
+      valid shortcut's "No problems found". `smoke_release.py` **28/28**; full
+      secret scan (served bundle + inspect/list/options/provider-settings + logs)
+      **clean**. **NOT automated — operator judgment:** badge/drawer visual
+      polish, spacing, colour legibility.
 
 ## NEXT (in order)
 
