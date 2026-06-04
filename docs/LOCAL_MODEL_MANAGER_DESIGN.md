@@ -531,6 +531,37 @@ Each slice: **scope / files likely touched / tests / acceptance / non-goals.**
   ever appears; existing `/api/options` + provider-settings untouched.
 - **Non-goals:** any UI; any start/stop; any persistence; any GGUF/path handling.
 
+> **Slice 2 implementation note (DONE — branch `local-model-status-api`).** Built
+> `GET /api/local-model/status` + a thin `POST /api/local-model/check` alias in
+> `api/server.py` (registered before the SPA mount, via `run_in_threadpool`) backed
+> by `get_local_model_status()` in `pipeline/provider_config.py`.
+> - **One probing implementation, not the status/check split sketched in §4.1.** In
+>   practice the operator opens the Local Models panel *specifically* to see live
+>   state, so `status` **does** probe (fail-fast 10 s, reusing `_discover_openai_models`)
+>   and `check` is a same-behavior alias for an explicit "Refresh" verb. This keeps a
+>   single code path and a stable contract; if a truly cheap non-probing open is
+>   wanted later it can read the registry view without changing the DTO.
+> - **`ok` is decoupled from `reachable`** as §4.2 requires: `ok:true` means the
+>   request succeeded; offline / no-base-URL / malformed-URL all return HTTP 200 with
+>   `reachable:false` and a classified `error`, never a crash.
+> - **DTO shipped** (superset of §4.2): `{ok, provider, configured, base_url_host,
+>   base_url_configured, in_docker, reachable, models, model_count, default_model,
+>   selected_model, latency_ms, error, actions, notes}`. `base_url_host` is **host
+>   only** (no port — §4.2's optional `base_url_port` was **not** added; host-only is
+>   the default the doc says to pick when unsure). `actions` carries
+>   `open_provider_settings` (enabled) + `copy_start_command` (**disabled**, deferred
+>   to Slice 4); `notes` surfaces the `--host 0.0.0.0` gotcha only when the host is
+>   `host.docker.internal`.
+> - **Error normalization (§1.6) realized** via `_classify_local_status_error`: every
+>   connection failure (refused / timeout / DNS / out-of-Docker `host.docker.internal`
+>   guard) → a single `local_offline`; auth/model errors keep their category; no base
+>   URL → `provider_config`. Messages reuse `_safe_fetch_message` (key-redacted,
+>   URL-collapsed, length-capped).
+> - **Tests:** `test_scripts/test_local_model_status.py` (17/17), existing provider
+>   fetch-models / settings-store / runtime-settings suites unchanged; release smoke
+>   28/28; live offline proof + clean secret scan. **No** process control, file
+>   browsing, writes, or new deps.
+
 ### LMM Slice 3 — Local Models status panel (FRONTEND)
 - **Scope:** the §5 Local Models view consuming Slice 2 + the existing local
   fetch-models. Status card, base-URL host display + link to Providers, Refresh,

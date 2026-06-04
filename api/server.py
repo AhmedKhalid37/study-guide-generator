@@ -44,6 +44,7 @@ from pipeline.provider_config import (
     build_provider_config,
     clear_provider_key,
     fetch_provider_models,
+    get_local_model_status,
     get_provider_registry,
     get_provider_settings_view,
     resolve_provider_id,
@@ -410,6 +411,25 @@ async def fetch_provider_settings_models(provider: str) -> dict[str, Any]:
     # provider → 400 via _resolve_known_provider.
     provider_id = _resolve_known_provider(provider)
     return await run_in_threadpool(fetch_provider_models, provider_id)
+
+
+@app.get("/api/local-model/status")
+async def local_model_status() -> dict[str, Any]:
+    # Local Model Manager — detection-only status (LMM Slice 2). Read-only: probes
+    # the configured local server's /models with a fail-fast timeout and returns a
+    # safe DTO (no raw key, host-only URL, offline normalized to local_offline). It
+    # spawns nothing, browses no files, and writes no config — provider settings
+    # remain the single config writer. `ok` reflects only that this request
+    # succeeded; the server's live state is in `reachable`/`error`.
+    return await run_in_threadpool(get_local_model_status)
+
+
+@app.post("/api/local-model/check")
+async def local_model_check() -> dict[str, Any]:
+    # Refresh action — same read-only probe as GET /status (the status endpoint
+    # already does the live network round-trip). Kept as a thin POST alias so the
+    # frontend "Refresh" verb is explicit; it adds no new behavior or writer.
+    return await run_in_threadpool(get_local_model_status)
 
 
 @app.get("/api/styles")

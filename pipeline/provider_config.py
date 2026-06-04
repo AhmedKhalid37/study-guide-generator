@@ -793,3 +793,175 @@ def fetch_provider_models(provider_id: str) -> dict[str, Any]:
         })
     # `_discover_openai_models` already returns a sorted, de-duplicated list.
     return _result(True, models, None)
+
+
+# ---------------------------------------------------------------------------
+# Local Model Manager — detection-only status (LMM Slice 2)
+#
+# A safe, READ-ONLY view of the configured `local` OpenAI-compatible server: is a
+# base URL configured, is the server reachable, what models does it expose, and at
+# what latency. It reuses the exact resolution + discovery primitives the `local`
+# provider already uses (`_effective_base_url("local")`, `_discover_openai_models`,
+# the redaction helpers) — there is NO second config path and NO second HTTP path.
+#
+# Hard guarantees (design §4 / §7):
+#   * No process spawn, no start/stop, no PID, no file browsing, no command exec.
+#   * No writes — never touches provider settings, secrets, jobs, or artifacts.
+#   * No raw API key in the response (no key field by construction).
+#   * No full base URL — host only via `_base_url_host` (drops userinfo/path/query).
+#   * Connection failures normalize to a single `local_offline` category (§1.6).
+#   * `ok` means the STATUS REQUEST succeeded — never that the server is reachable;
+#     use `reachable` / `error` for the local server's live state.
+# ---------------------------------------------------------------------------
+
+# Fail-fast probe timeout for the status check — matches fetch-models so a slow or
+# unreachable local host can never hang the status panel.
+LOCAL_MODEL_STATUS_TIMEOUT = 10.0
+
+
+def _classify_local_status_error(error_text: str) -> str:
+    """Category for a local discovery error string. Per design §1.6 the LMM
+    NORMALIZES every connection failure (refused / timed out / DNS / the
+    out-of-Docker ``host.docker.internal`` guard) to a single ``local_offline`` —
+    unlike fetch-models, which splits docker-host vs ``provider_network``. Genuine
+    auth / model errors keep their specific category so the UI can advise correctly.
+    """
+    low = (error_text or "").lower()
+    if any(tok in low for tok in ("401", "403", "unauthorized", "forbidden", "authentication")):
+        return "provider_auth"
+    if "404" in low or "not found" in low:
+        return "provider_model"
+    # Refused / timeout / urlopen error / getaddrinfo / docker-host guard / any
+    # other transport failure ⇒ the server simply is not reachable.
+    return "local_offline"
+
+
+def _local_model_actions() -> list[dict[str, Any]]:
+    """Static, side-effect-free action descriptors for the Local Models UI. These
+    are hints the FRONTEND acts on (navigate / copy) — the backend executes none of
+    them. The start-command helper is deferred to LMM Slice 4, so it is advertised
+    but disabled, never an enabled control that does nothing (design §5.2)."""
+    return [
+        {
+            "id": "open_provider_settings",
+            "label": "Edit local provider settings",
+            "enabled": True,
+        },
+        {
+            "id": "copy_start_command",
+            "label": "Copy llama-server start command",
+            "enabled": False,
+            "reason": "Command helper is planned for a later slice.",
+        },
+    ]
+
+
+def get_local_model_status() -> dict[str, Any]:
+    """Detection-only status of the configured local model server (LMM Slice 2).
+
+    Resolves the effective local base URL (store → env, no built-in default),
+    probes ``/models`` with a fail-fast timeout reusing ``_discover_openai_models``,
+    and returns a safe DTO. Never writes, never spawns, never exposes a raw key or a
+    full URL. A missing / invalid base URL or an offline server is a normal status
+    result, NOT an error — ``ok`` stays ``True`` and the local server's state lives
+    in ``reachable`` / ``error``.
+    """
+    import time
+
+    load_env_file()
+    provider_id = "local"
+    base_url = _effective_base_url(provider_id)
+    host = _base_url_host(base_url)
+    default_model = _effective_default_model(provider_id)
+    in_docker = Path("/.dockerenv").exists()
+    actions = _local_model_actions()
+
+    # No base URL configured → safe, non-probing "not configured" result.
+    if not base_url:
+        return {
+            "ok": True,
+            "provider": "local",
+            "configured": False,
+            "base_url_host": None,
+            "base_url_configured": False,
+            "in_docker": in_docker,
+            "reachable": False,
+            "models": [],
+            "model_count": 0,
+            "default_model": default_model,
+            "selected_model": default_model,
+            "latency_ms": None,
+            "error": {
+                "category": "provider_config",
+                "message": "No local base URL is configured. Set it in Providers ▸ Local.",
+            },
+            "actions": actions,
+            "notes": [
+                "Configure the local base URL in Providers ▸ Local to enable detection.",
+            ],
+        }
+
+    # Probe reachability + discover models (read-only, fail-fast).
+    api_key = _effective_api_key(provider_id) or "local"
+    start = time.monotonic()
+    models, discovery_error = _discover_openai_models(
+        base_url, api_key=api_key, timeout=LOCAL_MODEL_STATUS_TIMEOUT
+    )
+    latency_ms = int((time.monotonic() - start) * 1000)
+
+    if discovery_error:
+        notes: list[str] = []
+        # The single most common local-setup gotcha (design §5.2): a server bound to
+        # 127.0.0.1 is unreachable from the container, which reaches the host via
+        # host.docker.internal. Surface the hint only when it is actually relevant.
+        if host == "host.docker.internal":
+            notes.append(
+                "Make sure llama-server binds --host 0.0.0.0 (not 127.0.0.1) so the "
+                "container can reach it."
+            )
+        return {
+            "ok": True,
+            "provider": "local",
+            "configured": False,
+            "base_url_host": host,
+            "base_url_configured": True,
+            "in_docker": in_docker,
+            "reachable": False,
+            "models": [],
+            "model_count": 0,
+            "default_model": default_model,
+            "selected_model": default_model,
+            "latency_ms": None,
+            "error": {
+                "category": _classify_local_status_error(discovery_error),
+                "message": _safe_fetch_message(
+                    discovery_error, base_url=base_url, api_key=api_key
+                ),
+            },
+            "actions": actions,
+            "notes": notes,
+        }
+
+    # Reachable. Merge user-added custom ids exactly like the registry, then resolve
+    # the selected/default model the same way `_local_entry` does.
+    merged = _merge_custom_models(models, provider_id)
+    selected = default_model or (merged[0] if merged else None)
+    if selected and selected not in merged:
+        merged = [selected, *merged]
+    return {
+        "ok": True,
+        "provider": "local",
+        "configured": bool(selected),
+        "base_url_host": host,
+        "base_url_configured": True,
+        "in_docker": in_docker,
+        "reachable": True,
+        "models": merged,
+        "model_count": len(merged),
+        "default_model": default_model,
+        "selected_model": selected,
+        "latency_ms": latency_ms,
+        "error": None,
+        "actions": actions,
+        "notes": [],
+    }

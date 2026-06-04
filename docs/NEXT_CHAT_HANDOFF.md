@@ -7,20 +7,34 @@
 
 ## Current position
 - **Branch (trunk / PR target):** `chrome-renderer-v1`
-- **Latest commit:** `4458c9a` — "Wire shortcut repair UI to preview/apply
-  (Slice 3B)". The **Shortcut Inspector / Repair Loop** landed as five commits on
-  top of the provider-settings group + its follow-up fixes (`70544de` validation
-  report, `6a1499c` Test-Connection empty-content fix, `e524c79`
-  stored-`default_provider` precedence, `2ea4380` validation-doc pointer):
-  `a0f96d1` (design doc), `482c377` (Slice 1 backend inspector), `1f9034f`
-  (Slice 2 read-only inspector UI), `e148cc4` (Slice 3A repair preview/apply
-  endpoints), `4458c9a` (Slice 3B repair UI wiring). The **in-app provider
-  settings feature group** (`978516e`→`61fb423`) and the large-PDF core
-  (`60c3e78`) remain on trunk below it; older `61fb423` / `60c3e78` / `901d44b` /
-  `65b9b8f` mentions below are historical.
-- **Remote:** `origin/chrome-renderer-v1` == `4458c9a` (pushed; local == origin)
+- **Latest commit:** `94003bc` — "Design Local Model Manager (detection-first,
+  docs-only)" (LMM Slice 1). On top of the **Shortcut Inspector / Repair Loop** five
+  commits (`a0f96d1`→`4458c9a`) + the Edit-preset follow-up (`adc2a7e`). The
+  **in-app provider settings feature group** (`978516e`→`61fb423`) and the large-PDF
+  core (`60c3e78`) remain on trunk below.
+- **Active work branch:** `local-model-status-api` — **LMM Slice 2** (detection-only
+  backend status endpoint) is implemented + verified here; see "What just landed".
+- **Remote:** `origin/chrome-renderer-v1` == `94003bc` (the Slice 2 branch is local,
+  not yet pushed/merged).
 
 ## What just landed
+- **Local Model Manager — Slice 2: detection-only backend status endpoint**
+  (branch `local-model-status-api`, backend-only). Read-only
+  `GET /api/local-model/status` + a thin `POST /api/local-model/check` alias, backed
+  by `get_local_model_status()` in `pipeline/provider_config.py`. Resolves the
+  effective `local` base URL (existing `_effective_base_url` chain), probes
+  `/v1/models` with a fail-fast 10 s timeout reusing `_discover_openai_models`, and
+  returns a safe DTO: `{ok, provider, configured, base_url_host, base_url_configured,
+  in_docker, reachable, models, model_count, default_model, selected_model,
+  latency_ms, error, actions, notes}`. **`ok` ≠ reachable** — offline / no-base-URL /
+  malformed-URL all return HTTP 200 with `reachable:false` + a classified error.
+  Connection failures normalize to a single `local_offline`
+  (`_classify_local_status_error`). **No process spawn, no writes, no file browsing,
+  no raw key (no key field by construction), host-only URL.** `actions` advertises
+  `open_provider_settings` (enabled) + `copy_start_command` (disabled, Slice 4).
+  Tests: `test_scripts/test_local_model_status.py` 17/17; provider suites unchanged;
+  smoke 28/28; live offline proof + clean secret scan. See `CURRENT_TASK.md` #46 +
+  `LOCAL_MODEL_MANAGER_DESIGN.md` §11 (Slice 2 note).
 - **Shortcut Inspector — degraded-activation confirm + "Repair instead"**
   (branch `shortcut-inspector-degraded-activation`, frontend-only). Home card
   launches now route through a pure `activationDecision` (`shortcutStatus.js` →
@@ -127,18 +141,18 @@ load-bearing — do not rewrite casually.
 
 ## Next recommended slice
 **Pick ONE safe option:**
-- **Local Model Manager — LMM Slice 2: detection-only backend status endpoint
-  (recommended).** The **design is DONE** (LMM Slice 1, docs-only —
-  `docs/LOCAL_MODEL_MANAGER_DESIGN.md`): a staged, **detection-first** plan. The
-  next implementation slice is the **detection-only** backend: read-only
-  `GET /api/local-model/status` + `POST /api/local-model/check` returning safe
-  fields only (base-URL host, reachable, latency, model count/list, default model,
-  classified `local_offline` error, start instructions). **No process control, no
-  raw key, no full URL.** Reuse `_effective_base_url`/`_discover_openai_models`/the
-  redaction helpers; provider config WRITES stay on
-  `PATCH /api/provider-settings/local`. **Direct Docker→host process spawn is
-  REJECTED** — host process control is deferred to an optional host companion
-  (Phase 2, design-only). See design §4 + §11 + §13.
+- **Local Model Manager — LMM Slice 3: Local Models status panel (FRONTEND,
+  recommended).** Slice 2 backend **is DONE** (branch `local-model-status-api`,
+  `GET /api/local-model/status` + `POST /api/local-model/check`). Build the §5 Local
+  Models view consuming it + the existing local fetch-models: status card (reachable
+  green / configured-but-unreachable amber / not-configured grey dot, latency, model
+  count), base-URL **host** display + a "Configure base URL" link to **Providers ▸
+  Local** (single config writer — no inline edit), **Refresh**, discovered model
+  list, and a **first-class** offline/troubleshooting state. Start/Stop omitted or
+  disabled-"Planned" (no enabled control that does nothing). New
+  `LocalModelsWorkspace.jsx` (or Providers sub-panel) + `client.js` helpers + nav
+  wiring. **No process control; no raw key/URL in the bundle or network tab.** See
+  design §5 + §11.
 - **Focused manual validation / polish of the Shortcut Inspector UI.** The
   inspect→repair loop + degraded-activation confirm are complete and validated at
   the API + harness level; the remaining gap is a human click-through of the live
@@ -194,14 +208,15 @@ is the optional **font-size rationalization** (cause C, CSS-only).)
   draft `custom_models` → explicit Save). Keys stay server-side only; presets never
   hard-pin provider/model. **Still deferred:** encrypted-at-rest / OS keyring; `.env`
   import; optional Builder "Provider default" thinking UI polish.
-- **Local Model Manager** — **design DONE** (LMM Slice 1, docs-only —
-  `docs/LOCAL_MODEL_MANAGER_DESIGN.md`): staged detection-first plan (Phase 1
-  detection-only; Phase 2 optional host companion; direct Docker→host spawn
-  **rejected**). **Next implementation slice = LMM Slice 2: detection-only backend
-  status endpoint** (`GET /api/local-model/status` + `POST /api/local-model/check`,
-  safe fields only, no process control). Remains a **separate** feature from the
-  now-complete in-app provider settings; provider config writes stay on
-  `PATCH /api/provider-settings/local`.
+- **Local Model Manager** — **design DONE** (LMM Slice 1) + **Slice 2 DONE** (branch
+  `local-model-status-api`): the detection-only backend status endpoint
+  (`GET /api/local-model/status` + `POST /api/local-model/check`,
+  `get_local_model_status()`) ships safe fields only — reachable / latency / model
+  list / host-only URL / normalized `local_offline` — with **no** process control,
+  writes, file browsing, or raw key. **Next implementation slice = LMM Slice 3:
+  Local Models status panel (frontend)** consuming Slice 2 + local fetch-models.
+  Remains a **separate** feature from the now-complete in-app provider settings;
+  provider config writes stay on `PATCH /api/provider-settings/local`.
 - **Library archive / tag model** — DESIGN-FIRST (bulk archive needs an archive state +
   `DECISIONS.md` entry; bulk tag needs a tag model; neither started).
 - **GHCR publish workflow / prebuilt image** — deferred distribution decision (parked on `hardening`).

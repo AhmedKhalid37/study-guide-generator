@@ -798,3 +798,28 @@ model, a classified error, start instructions) — **no raw key, no full URL, no
 userinfo** (URLs collapsed to host via `urlparse`, messages redacted + length-capped).
 The next implementation slice after the design is **LMM Slice 2** (the detection-only
 backend status endpoint).
+
+## LMM Slice 2: one probing endpoint, not the design's status(cheap)/check(probe) split (2026-06-04)
+The design (§4.1) sketched **two** endpoints — `GET /status` cheap/non-probing for page
+open, `POST /check` for the active network probe. The implementation (branch
+`local-model-status-api`, `get_local_model_status()` in `pipeline/provider_config.py`)
+**collapses these into a single probing implementation**: `GET /api/local-model/status`
+**does** probe (fail-fast 10 s, reusing `_discover_openai_models`) and
+`POST /api/local-model/check` is a **thin alias** delegating to the same function.
+**Why:** the operator opens the Local Models panel *specifically* to learn the live
+state ("is my server up, what models?"), so a non-probing status would just return stale
+"unknown" and force an immediate second call; one path keeps a single contract and no
+duplicate discovery. The fail-fast timeout (10 s, matching fetch-models) bounds the cost,
+and the DTO is identical from either route, so a future truly-cheap non-probing open can
+be added later (reading the registry view) without changing the response shape. **`ok` is
+deliberately decoupled from `reachable`** — `ok:true` means the status *request*
+succeeded; offline / no-base-URL / malformed-URL are normal results (HTTP 200) with
+`reachable:false` + a classified `error`, never a crash. Connection failures
+(refused/timeout/DNS + the out-of-Docker `host.docker.internal` guard) **normalize to a
+single `local_offline`** (`_classify_local_status_error`), per design §1.6 — unlike
+fetch-models, which splits docker-host vs `provider_network`. The §4.2 optional
+`base_url_port` was **not** added: host-only is the documented default-when-unsure, and a
+bare host (via `urlparse().hostname`, which drops userinfo) is the smaller leak surface.
+`actions` ships `copy_start_command` as **disabled** ("planned for a later slice") rather
+than omitted — the roadmap is visible without an enabled control that does nothing
+(design §5.2). The next slice is **LMM Slice 3** (the frontend Local Models panel).

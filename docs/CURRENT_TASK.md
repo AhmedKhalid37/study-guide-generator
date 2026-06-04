@@ -5,25 +5,25 @@
 
 ---
 
-## NEXT — Local Model Manager — DESIGN DONE (LMM Slice 1); NEXT = LMM Slice 2 (detection-only backend)
+## NEXT — Local Model Manager — Slice 2 DONE (detection-only backend); NEXT = LMM Slice 3 (frontend status panel)
 
-- **Local Model Manager design is DONE (LMM Slice 1, docs-only)** — see
-  `docs/LOCAL_MODEL_MANAGER_DESIGN.md` and DONE #45 below. The design investigates
-  the current `local` provider behavior, compares architectures A–D, and recommends
-  a **staged, detection-first** approach: **Phase 1 = detection-only** Local Model
-  Manager (status/health + `/v1/models` discovery + a copy-able "how to start
-  llama-server" command, reusing the existing local provider + fetch-models),
-  Phase 2 = an **optional host companion launcher** (design-only), Phase 3 = an
-  optional packaged desktop/native flow. **Direct Docker→host process spawn
-  (Option D) is REJECTED**; in-container llama-server (Option C) is not the default.
-- **NEXT — LMM Slice 2: detection-only backend status endpoint.** Add read-only
-  `GET /api/local-model/status` + `POST /api/local-model/check` returning safe
-  fields only (base-URL host, reachable, latency, model count/list, default model,
-  classified `local_offline` error, start instructions) — **no process control, no
-  raw key, no full URL**. Reuse `_effective_base_url`/`_discover_openai_models`/the
-  redaction helpers. Provider config WRITES still go through the existing
-  `PATCH /api/provider-settings/local` (LMM adds no second writer). See the design
-  doc §4 + §11 for the full slice plan and acceptance criteria.
+- **LMM Slice 2 is DONE (detection-only backend status endpoint)** — branch
+  `local-model-status-api`, see DONE #46 below. Added read-only
+  `GET /api/local-model/status` (+ a thin `POST /api/local-model/check` alias) that
+  resolves the effective `local` base URL, probes `/v1/models` with a fail-fast
+  10 s timeout reusing `_discover_openai_models`, and returns a safe DTO
+  (`reachable`, `latency_ms`, model list/count, `default`/`selected_model`,
+  host-only `base_url_host`, normalized `local_offline` error, `actions`, `notes`).
+  `ok` means the **status request** succeeded, never that the server is up.
+  **No process spawn, no writes, no file browsing, no raw key, no full URL.**
+- **LMM Slice 1 design is DONE** (DONE #45) — `docs/LOCAL_MODEL_MANAGER_DESIGN.md`:
+  detection-first, Option D (Docker→host spawn) REJECTED, Option C not the default.
+- **NEXT — LMM Slice 3: Local Models status panel (FRONTEND).** Consume Slice 2 +
+  the existing local fetch-models: status card (reachable/amber/grey dot), base-URL
+  host display + link to Providers, Refresh (calls `/status` or `/check`), discovered
+  models, first-class offline/troubleshooting state, Start/Stop omitted or
+  disabled-"Planned". No process control, no inline base-URL editing (links to
+  Providers). See design §5 + §11.
 - **The Shortcut Inspector / Repair loop is COMPLETE** (Slices 1+2+3A+3B + the
   degraded-activation confirm polish, DONE #39→#43). See the block just below and
   DONE #43 for the latest slice. **A follow-up shortcut slice (DONE #44) then
@@ -1618,6 +1618,61 @@ parked on the `hardening` branch — not merged, not deleted.
       `python -m compileall api pipeline` OK (code opened read-only for the §1
       investigation; **none changed**). No Docker run required (no code touched).
 
+46. **Local Model Manager — Slice 2: detection-only backend status endpoint
+    (BACKEND ONLY)** — branch `local-model-status-api`. A safe, **read-only** status
+    API for the configured `local` OpenAI-compatible server. Per design §4 + §11.
+    - **New route `GET /api/local-model/status`** (+ a thin `POST
+      /api/local-model/check` alias for the frontend "Refresh" verb — same probe,
+      no new behavior). Both registered in `api/server.py` **before** the static SPA
+      mount and run through `run_in_threadpool` like the existing test/fetch routes.
+    - **New `get_local_model_status()` in `pipeline/provider_config.py`** — resolves
+      the effective local base URL via the existing `_effective_base_url("local")`
+      chain (store → `LOCAL_LLM_BASE_URL`/`LLM_BASE_URL`, no built-in default),
+      probes `{base}/models` with a fail-fast 10 s timeout reusing
+      **`_discover_openai_models`** (the same single discovery path as fetch-models),
+      and returns the §4.2 DTO: `{ok, provider, configured, base_url_host,
+      base_url_configured, in_docker, reachable, models, model_count, default_model,
+      selected_model, latency_ms, error, actions, notes}`. Models are merged with
+      stored `custom_models` exactly like `_local_entry`; `selected_model` resolves
+      `default → first discovered`.
+    - **`ok` ≠ reachable.** `ok:true` means the **status request** succeeded; the
+      live server state is in `reachable`/`error`. Offline, no-base-URL, and
+      malformed-URL are all **normal status results** (HTTP 200), never a crash.
+    - **Error normalization:** a new `_classify_local_status_error` collapses **all**
+      connection failures (refused / timed out / DNS / the out-of-Docker
+      `host.docker.internal` guard) to a single **`local_offline`** (design §1.6),
+      while genuine auth/model errors keep `provider_auth`/`provider_model`. No-base-
+      URL uses `provider_config` (matching fetch-models). Messages pass through the
+      existing `_safe_fetch_message` (raw key redacted, full URL collapsed to host,
+      length-capped).
+    - **Safety held:** no process spawn / start / stop / PID; no file or GGUF
+      browsing; no command execution; **no writes** (provider settings, secrets,
+      jobs, artifacts all untouched — provider config writes stay on
+      `PATCH /api/provider-settings/local`); **no raw key** (no key field by
+      construction); **host-only URL** via `_base_url_host` (drops userinfo/port/
+      path/query). `actions` advertises `open_provider_settings` (enabled) and
+      `copy_start_command` (**disabled**, "planned for a later slice" — no enabled
+      control that does nothing); `notes` surfaces the `--host 0.0.0.0` gotcha only
+      when the host is `host.docker.internal`. No new dependencies; no Docker-config,
+      renderer, prompt, or pipeline changes.
+    - **Tests:** new `test_scripts/test_local_model_status.py` (**17/17**) — reachable
+      (sorted/de-duped models + count + latency), offline → `local_offline` + null
+      latency, unconfigured (no base URL), malformed URL (redacted, no crash),
+      host-only (no full URL/userinfo/query), sentinel key never in the response,
+      no-write (settings/secrets unchanged, id not auto-persisted), and the action
+      descriptors. Existing `test_provider_fetch_models.py` (16/16),
+      `test_provider_settings_store.py` (26/26), `test_provider_runtime_settings.py`
+      (28/28) all still pass.
+    - **Verified:** `compileall` OK; `npm run build` OK; `docker compose config`
+      exit 0; image built; container **healthy**. Live with **no** local server:
+      `GET /api/local-model/status` and `POST /api/local-model/check` return HTTP 200
+      with `reachable:false`, `error.category:"local_offline"`, `latency_ms:null`,
+      and the `--host 0.0.0.0` note. `/api/options` 200; release smoke **28/28**.
+      Secret scan clean — no configured key, `sk-` token, full URL, or userinfo in
+      `/status`, `/options`, or `/provider-settings`; container logs carry 0 key
+      tokens. **No live local server required for the automated tests** (urllib
+      `urlopen` is monkeypatched; `/.dockerenv` faked).
+
 ## NEXT (in order)
 
 > **Provider settings feature group is DONE through Slice 5** (DONE #32→#36):
@@ -1653,15 +1708,19 @@ parked on the `hardening` branch — not merged, not deleted.
 > Shortcut Inspector itself was validated in
 > `docs/VALIDATION_SHORTCUT_INSPECTOR_REPAIR.md` (docs-only; no code changed).
 
-1. **Local Model Manager — LMM Slice 2: detection-only backend status endpoint
-   (RECOMMENDED next).** The LMM **design is DONE** (DONE #45,
-   `docs/LOCAL_MODEL_MANAGER_DESIGN.md`). The next implementation slice is the
-   **detection-only** backend: read-only `GET /api/local-model/status` + `POST
-   /api/local-model/check` returning safe fields only (base-URL host, reachable,
-   latency, model count/list, default model, classified `local_offline` error,
-   start instructions). **No process control, no raw key, no full URL.** Reuse
-   `_effective_base_url`/`_discover_openai_models`/the redaction helpers; provider
-   config WRITES stay on `PATCH /api/provider-settings/local`. See design §4 + §11.
+1. **Local Model Manager — LMM Slice 3: Local Models status panel (FRONTEND,
+   RECOMMENDED next).** The backend **is DONE** (DONE #46, `GET
+   /api/local-model/status` + `POST /api/local-model/check`). Build the §5 Local
+   Models view: status card (reachable green / configured-but-unreachable amber /
+   not-configured grey dot, latency, model count), base-URL **host** display + a
+   "Configure base URL" link to **Providers ▸ Local** (the single config writer —
+   no inline editing), **Refresh** (calls `/status` or `/check`), discovered model
+   list (reuse the existing local fetch-models), and a **first-class** offline/
+   troubleshooting state (surface the `--host 0.0.0.0` note). Start/Stop omitted or
+   disabled-"Planned" — no enabled control that does nothing. New
+   `LocalModelsWorkspace.jsx` (or a Providers sub-panel) + `client.js` status/check
+   helpers + nav wiring. **No process control; no raw key/URL in the bundle or
+   network tab.** See design §5 + §11.
 2. **Focused manual validation / polish of the Shortcut Inspector UI.** The
    inspect→repair loop is complete and validated at the API + served-bundle level
    (`docs/VALIDATION_SHORTCUT_INSPECTOR_REPAIR.md`); the remaining gap is a human

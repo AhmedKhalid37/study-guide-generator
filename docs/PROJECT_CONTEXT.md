@@ -71,19 +71,24 @@ flashcards with CSV / Anki / Quizlet export.
   `base_url_host`. The public DTO has **no key field by construction**; the API key
   is write-only over the API (set/cleared, never read back). **Raw keys never reach
   the frontend.**
-- **Local Model Manager — PLANNED / DESIGN-FIRST (not implemented).** A *separate*
-  feature from Provider Settings, designed in `docs/LOCAL_MODEL_MANAGER_DESIGN.md`
-  (LMM Slice 1, docs-only). It will help the operator run + use a local
-  OpenAI-compatible server (llama.cpp / `llama-server`). The chosen approach is
-  **staged + detection-first**: Phase 1 = **detection-only** (status/health +
-  `/v1/models` discovery + a copy-able "how to start llama-server" command, reusing
-  the existing `local` provider + fetch-models — **no process control**); Phase 2 =
-  an optional **host companion launcher** (design-only); Phase 3 = an optional
-  packaged desktop flow. **Direct Docker→host process spawn is rejected** — a
-  non-root (uid 10001), `no-new-privileges` container cannot safely manage host
-  processes. The next implementation slice is **LMM Slice 2** (the detection-only
-  backend status endpoint). Provider config edits stay on Provider Settings (no
-  second writer). See `DECISIONS.md`.
+- **Local Model Manager — DETECTION-ONLY BACKEND IMPLEMENTED (Slice 2); FRONTEND
+  PLANNED.** A *separate* feature from Provider Settings, designed in
+  `docs/LOCAL_MODEL_MANAGER_DESIGN.md`. The chosen approach is **staged +
+  detection-first**: Phase 1 = **detection-only**. **Slice 2 is DONE** (branch
+  `local-model-status-api`): a read-only **`GET /api/local-model/status`** (+ thin
+  `POST /api/local-model/check` alias), backed by `get_local_model_status()` in
+  `pipeline/provider_config.py`, reports whether the configured local server is
+  reachable and what models it exposes — reusing the existing `local` base-URL
+  resolution + `_discover_openai_models` + the redaction helpers. It returns safe
+  fields only (host-only URL, reachable, latency, model list/count, default/selected
+  model, normalized `local_offline` error, `actions`, `notes`); **`ok` means the
+  status request succeeded, not that the server is up**. It **spawns nothing, writes
+  nothing, browses no files, and never exposes a raw key or full URL.** Still ahead:
+  **LMM Slice 3** (frontend Local Models status panel), then Slice 4 (command-helper
+  copy), then an optional **host companion launcher** (Phase 2, design-only). **Direct
+  Docker→host process spawn is rejected** — a non-root (uid 10001),
+  `no-new-privileges` container cannot safely manage host processes. Provider config
+  edits stay on Provider Settings (no second writer). See `DECISIONS.md`.
 
 ## 4. Architecture facts a new session MUST know
 
