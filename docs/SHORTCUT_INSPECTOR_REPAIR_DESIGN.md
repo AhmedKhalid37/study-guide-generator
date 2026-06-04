@@ -411,6 +411,28 @@ A focused panel (reuse the modal shell) showing, for one shortcut:
   than silently loading a changed setup. Choosing "Repair instead" opens the
   Inspector.
 
+> **IMPLEMENTATION NOTE (degraded-activation confirm — DONE, branch
+> `shortcut-inspector-degraded-activation`).** Built as a frontend-only slice on
+> top of Slice 2/3B. A pure `activationDecision(shortcut)` in
+> `frontend/src/shortcutStatus.js` returns `"launch" | "confirm" | "blocked"` and
+> is the single source of truth (node-tested by
+> `frontend/scripts/verify-shortcut-activation.mjs`):
+>   - **Legacy `valid === false` always → `blocked`** (the hard guard is
+>     unchanged); `validity.status === "broken"` also blocks.
+>   - **`validity.status === "degraded"` while `valid !== false` → `confirm`.**
+>   - Everything else (valid, or an old payload with no `validity`) → `launch`.
+> `HomeShortcuts.jsx` routes every card launch through a `requestActivate` gate:
+>   - **launch** → the unchanged `onActivateShortcut` path (no prompt, no mutation).
+>   - **confirm** → a dialog (name, "Needs attention · N issues found", top
+>     findings capped at 3, "some saved settings may be ignored or replaced by
+>     defaults") with **Continue anyway** (original launch path, no repair),
+>     **Repair instead** (opens the existing `ShortcutInspector` drawer — no
+>     preview/apply until the user acts), **Cancel** (no launch).
+>   - **blocked** → a "This shortcut is broken." dialog offering **Inspect /
+>     Repair** (opens the Inspector) or Cancel; it never routes to Builder/Tools.
+> Reuses the single existing Inspector drawer (no second inspector system) and the
+> Slice 2 status helpers (no duplicated status logic). No backend change.
+
 ---
 
 ## 6. Safety rules preserved

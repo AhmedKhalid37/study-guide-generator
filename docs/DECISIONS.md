@@ -697,3 +697,32 @@ all candidates come from the already-redacted inspect response — **no raw key*
 Home **activation stays byte-for-byte unchanged** (still gated on legacy `valid`);
 the degraded-activation confirm + "Repair instead" path from design §5.5 is
 deliberately **deferred**, not silently changed.
+
+## Degraded shortcuts stay launchable but require an explicit confirm; legacy `valid` is still the hard guard (2026-06-04)
+The degraded-activation slice (branch `shortcut-inspector-degraded-activation`)
+finally lets a **degraded** shortcut's `validity.status` influence *launch*
+behaviour — but **only** to interpose a confirmation, never to block. A pure
+`activationDecision(shortcut)` (`frontend/src/shortcutStatus.js`) is the single
+source of truth and returns `launch | confirm | blocked` with the **legacy
+`valid` boolean as the hard guard**: `valid === false` is **always** `blocked`
+(byte-for-byte the old block behaviour), and only then does status matter —
+`validity.status === "broken"` also blocks, `degraded` (with `valid !== false`)
+asks, and everything else (valid, or an old payload that predates `validity`)
+launches. **Why this ordering:** the Slice 1/2 divergence means a degraded
+shortcut is `valid:true` + `status:"degraded"` and **launches today**; the brief
+requires it to *stay* launchable, just not *silently*. Deriving the decision from
+status alone would have risked blocking a `valid:true` shortcut whose status was
+mislabeled, or (worse) launching a `valid:false` one whose status drifted to
+`degraded`; gating on legacy `valid` **first** makes both impossible. **Continue
+anyway** calls the unchanged `onActivateShortcut` path with **no repair/mutation**
+— degraded parts are dropped/defaulted by the pipeline exactly as before, the
+confirm only makes that consequence visible ("some saved settings may be ignored
+or replaced by defaults"). **Repair instead** only opens the existing single
+`ShortcutInspector` drawer (no second inspector system); it triggers **no**
+preview/apply until the user drives the existing repair UI. **Broken** shortcuts,
+which previously routed silently (e.g. a missing-provider `builder_setup` jumped
+to Models), now surface a "This shortcut is broken." dialog offering Inspect /
+Repair and **never route to Builder/Tools** — staying blocked while making the fix
+discoverable. The gate lives in `HomeShortcuts.requestActivate` and reuses the
+pure Slice 2 status helpers, so no status logic is duplicated and the decision is
+node-testable (`verify-shortcut-activation.mjs`). Backend untouched.

@@ -5,7 +5,20 @@
 
 ---
 
-## NEXT — Shortcut Inspector / Repair Loop (Slices 1+2+3A+3B DONE; wrap-up next)
+## NEXT — Local Model Manager — DESIGN-FIRST (Shortcut Inspector loop COMPLETE)
+
+- **The Shortcut Inspector / Repair loop is COMPLETE** (Slices 1+2+3A+3B + the
+  degraded-activation confirm polish, DONE #39→#43). See the block just below and
+  DONE #43 for the latest slice.
+- **NEXT — Local Model Manager (DESIGN-FIRST).** A separate feature for
+  configuring/managing the local llama.cpp provider (discovery, base-URL/model
+  config, health). **Do not start building before a design doc + explicit slice
+  sign-off** — same design-first discipline as provider settings. Out of scope for
+  the shortcut work; do not begin without an explicit slice.
+
+---
+
+## Shortcut Inspector / Repair Loop (Slices 1+2+3A+3B + degraded-activation DONE)
 
 - **Design doc:** `docs/SHORTCUT_INSPECTOR_REPAIR_DESIGN.md`. Safe UX + backend
   contract for inspecting and repairing shortcuts whose saved references
@@ -52,15 +65,24 @@
   no repair-on-open, no auto-switch, no raw keys. `verify-shortcut-repair.mjs`
   green; backend tests unchanged; live in-container repair flow + secret scan
   clean. Card activation behaviour is **unchanged**.
-- **NEXT — Shortcut Inspector wrap-up / deferred polish.** The core inspect→
-  repair loop is complete. Remaining (deferred, not started — pick one as an
-  explicit slice): (a) the **degraded-activation confirm + "Repair instead"** Home
-  path from design §5.5 (this slice kept Home activation byte-for-byte unchanged);
-  (b) manual browser click-through of the live Preview→Apply UX + drawer layout
-  polish; (c) the design §"Optional later polish" — "Repair all" batch, a Home
-  "N shortcuts need attention" banner, model auto-suggest (preselect-only). Then
-  the next major option. See design doc §5/§7 and the `DECISIONS.md` repair
-  entries (incl. "Apply requires a fresh preview").
+- **Degraded-activation confirm + "Repair instead" is DONE** (DONE #43, branch
+  `shortcut-inspector-degraded-activation`). Home activation is now gated through a
+  pure `activationDecision` (`frontend/src/shortcutStatus.js`): a **valid** shortcut
+  launches immediately (no prompt); a **degraded-yet-launchable** shortcut
+  (`validity.status === "degraded"` while legacy `valid === true`) raises a
+  confirm dialog (**Continue anyway** / **Repair instead** → existing Inspector
+  drawer / **Cancel**) before launching; a **broken** shortcut (`valid === false`)
+  stays blocked and now shows a "This shortcut is broken" dialog offering
+  **Inspect / Repair** instead of silently routing. **Legacy `valid` is still the
+  hard guard**; Continue anyway calls the unchanged launch path with **no
+  mutation**; Repair instead only opens the Inspector (no preview/apply until the
+  user acts). New node harness `verify-shortcut-activation.mjs` (wired into
+  `test:shortcuts`). Backend untouched; secret scan clean.
+- **Remaining deferred polish (not started — pick one as an explicit slice):**
+  (a) manual browser click-through of the live Preview→Apply UX + drawer/dialog
+  layout polish; (b) the design §"Optional later polish" — "Repair all" batch, a
+  Home "N shortcuts need attention" banner, model auto-suggest (preselect-only).
+  See design doc §5/§7 and the `DECISIONS.md` repair entries.
 
 ---
 
@@ -1430,6 +1452,51 @@ parked on the `hardening` branch — not merged, not deleted.
       the live Preview→Apply UX in a browser, and the degraded-activation
       confirm/"Repair instead" Home path (deferred — see below).
 
+43. **Shortcut Inspector — degraded-activation confirm + "Repair instead"
+    (FRONTEND ONLY + harness + docs)** — branch
+    `shortcut-inspector-degraded-activation`. Closes the design §5.5 gap that
+    Slice 2/3B deliberately deferred: a **degraded** shortcut used to launch
+    silently because legacy `valid === true`. **No backend change, no new repair
+    logic, no bulk/auto repair.**
+    - **Pure gating (`frontend/src/shortcutStatus.js`):** new `activationDecision`
+      → `"launch" | "confirm" | "blocked"`. Legacy `valid === false` is still the
+      hard guard (always `blocked`); `validity.status === "broken"` blocks; a
+      degraded-yet-launchable shortcut (`status === "degraded"`, `valid !== false`)
+      returns `confirm`; everything else (valid / old payload with no `validity`)
+      returns `launch`. Pure + node-testable; the component duplicates no status
+      logic.
+    - **Home wiring (`HomeShortcuts.jsx`):** every card launch routes through a
+      `requestActivate` gate. **Valid → launches immediately** via the unchanged
+      `onActivateShortcut` path (no prompt). **Degraded → a confirm dialog**
+      (shortcut name, "Needs attention · N issues found", top finding messages
+      capped at 3, "some saved settings may be ignored or replaced by defaults")
+      with **Continue anyway** (calls the original launch path, **no mutation**) /
+      **Repair instead** (opens the existing `ShortcutInspector` drawer focused on
+      that shortcut — **no preview/apply** until the user acts) / **Cancel** (no
+      launch). **Broken → a "This shortcut is broken." dialog** offering **Inspect /
+      Repair** (opens the Inspector) or Cancel — it no longer silently routed
+      anywhere, and never routes to Builder/Tools.
+    - **Safety held:** Continue anyway never repairs/modifies; Repair instead only
+      opens the Inspector (reusing the single existing drawer, not a second
+      system); no preview/apply call happens until the user uses the existing
+      repair UI. Existing Home/Customize 3-tier badges + the repair preview/apply
+      flow are unchanged.
+    - **Verified:** `python -m compileall api pipeline` OK; backend
+      `test_shortcut_store.py` **39/39** + `test_shortcut_inspector.py` **19/19** +
+      `test_shortcut_repair.py` **29/29** (unchanged); new node harness
+      `verify-shortcut-activation.mjs` (10/10, wired into `npm --prefix frontend
+      run test:shortcuts` alongside the status + repair harnesses) covers
+      valid→launch, degraded→confirm, broken→blocked, the legacy-guard-wins cases,
+      and the missing-`validity` fallback; frontend build OK; `docker compose
+      config/build/up` OK; `/api/health` ok; `/api/options` unchanged; release
+      smoke **28/28**. Secret scan (served bundle + shortcut list/inspect + repair
+      preview/apply + `/api/options` + `/api/provider-settings` + container logs)
+      clean — the only env-value matches are **non-secret** model ids / base URLs,
+      **0 API-key leaks**.
+    - **NOT automated — needs manual click-through:** clicking a degraded card and
+      seeing the confirm before launch, Continue anyway launching, Repair instead
+      opening the Inspector repair UI, Cancel doing nothing, and the broken dialog.
+
 ## NEXT (in order)
 
 > **Provider settings feature group is DONE through Slice 5** (DONE #32→#36):
@@ -1471,10 +1538,13 @@ parked on the `hardening` branch — not merged, not deleted.
    click-through of the live Home/Customize 3-tier badges, the Inspector drawer
    layout, and the Preview→Apply / clone flow (incl. the stale-preview re-disable).
    Validation / polish only — no feature work unless a concrete UI bug surfaces.
-2. **Optional degraded-activation confirm + "Repair instead" path** (design §5.5).
-   Slice 3B deliberately left Home **activation byte-for-byte unchanged**; this
-   slice would add the one-line confirm when launching a *degraded* card and a
-   "Repair instead" entry into the Inspector. Net-new behaviour — its own slice.
+2. **Local Model Manager — DESIGN-FIRST.** The recommended next major feature.
+   Configure/manage the local llama.cpp provider (discovery, base-URL/model,
+   health). The backend spawns/kills a host `llama-server`, which **crosses the
+   container boundary** (non-root uid 10001 managing a host process) — write a
+   design doc + get sign-off **before** coding. Separate from the now-complete
+   in-app provider settings. (The degraded-activation confirm + "Repair instead"
+   path from design §5.5 is now **DONE** — DONE #43.)
 3. **Math/PDF font-size rationalization (cause C) — optional CSS-only
    investigation.** The remaining math/PDF fidelity slice; investigate the
    CSS-only font sizing before any change.
@@ -1523,7 +1593,10 @@ sign-off.)
   degraded-activation confirm / "Repair instead" Home path (§5.5), "Repair all"
   batch, a Home "N need attention" banner, model auto-suggest/fuzzy match,
   imported preview-row repair before import, and tool/view repair (repair is
-  scoped to `builder_setup` only).
+  scoped to `builder_setup` only). **Update:** the degraded-activation confirm /
+  "Repair instead" Home path (§5.5) is now **DONE (#43)** — degraded shortcuts ask
+  before launch, broken stay blocked with an Inspect/Repair dialog, valid launch
+  unchanged.
 - **Rerender drops `generator_preset` — FIXED** (`2716995`, branch
   `fix-rerender-generator-preset`, now on trunk).
   `retry_failed_job` (`api/server.py`, `path_mode == "generate"`) now reads

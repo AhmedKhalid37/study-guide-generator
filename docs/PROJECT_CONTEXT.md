@@ -121,7 +121,12 @@ flashcards with CSV / Anki / Quizlet export.
   read-only**; **apply is the only write** and is an explicit whitelisted patch
   (no arbitrary merge-patch); **clone mode mints a new id** and leaves the original
   untouched; no provider/model auto-switch and no raw key ever read or returned.
-  **Card activation is unchanged** — still gated on the legacy `valid` boolean.
+  **Activation gating:** the legacy `valid` boolean is still the hard guard. A
+  **valid** shortcut launches immediately. A **degraded** shortcut (`valid:true` +
+  `status:degraded`) **asks before launch** — a confirm dialog offers Continue
+  anyway (unchanged launch, no mutation), Repair instead (opens the Inspector), or
+  Cancel. A **broken** shortcut (`valid:false`) **stays blocked** and offers
+  Inspect / Repair instead of launching.
 - **Job stage reporting.** Coarse status (`queued/running/done/
   completed_with_warnings/failed/cancelled`) is augmented by finer `stage`/`progress`,
   surfaced via `GET /api/jobs/{id}/progress` and polled by the Builder.

@@ -21,6 +21,19 @@
 - **Remote:** `origin/chrome-renderer-v1` == `4458c9a` (pushed; local == origin)
 
 ## What just landed
+- **Shortcut Inspector — degraded-activation confirm + "Repair instead"**
+  (branch `shortcut-inspector-degraded-activation`, frontend-only). Home card
+  launches now route through a pure `activationDecision` (`shortcutStatus.js` →
+  `launch`/`confirm`/`blocked`): a **valid** shortcut launches immediately; a
+  **degraded-yet-launchable** one (`validity.status === "degraded"` while legacy
+  `valid === true`) raises a confirm dialog — **Continue anyway** (unchanged
+  launch path, no mutation) / **Repair instead** (opens the existing Inspector
+  drawer, no preview/apply until the user acts) / **Cancel**; a **broken** one
+  (`valid === false`) stays blocked and shows a "This shortcut is broken."
+  Inspect/Repair dialog instead of silently routing. Legacy `valid` is still the
+  hard guard. New node harness `verify-shortcut-activation.mjs` (wired into
+  `test:shortcuts`). No backend change. See `CURRENT_TASK.md` #43 +
+  `SHORTCUT_INSPECTOR_REPAIR_DESIGN.md` §5.5 + `DECISIONS.md`.
 - **Shortcut Inspector / Repair Loop — COMPLETE through Slice 3B**
   (`a0f96d1`→`4458c9a`, DONE #39→#42): a read-only inspector with an additive
   `validity` object (3-tier `valid`/`degraded`/`broken` status, the **full**
@@ -114,16 +127,17 @@ load-bearing — do not rewrite casually.
 
 ## Next recommended slice
 **Pick ONE safe option:**
+- **Local Model Manager — DESIGN-FIRST (recommended).** Separate feature from
+  provider settings; the backend spawns/kills a host `llama-server`, which
+  **crosses the container boundary** (non-root uid 10001 managing a host process)
+  — write a design doc + get sign-off **before** any code.
 - **Focused manual validation / polish of the Shortcut Inspector UI.** The
-  inspect→repair loop is complete and validated at the API + served-bundle level
-  (`docs/VALIDATION_SHORTCUT_INSPECTOR_REPAIR.md`); the remaining gap is a human
-  click-through of the live Home/Customize 3-tier badges, the Inspector drawer
-  layout, and the Preview→Apply / clone flow (incl. the stale-preview re-disable).
-  Validation / polish only — no code unless a concrete UI bug surfaces.
-- **Optional degraded-activation confirm + "Repair instead" path (design §5.5).**
-  Slice 3B left Home **activation byte-for-byte unchanged**; this slice would add
-  the one-line confirm when launching a *degraded* card and a "Repair instead"
-  entry into the Inspector. Net-new behaviour — its own slice, design the copy.
+  inspect→repair loop + degraded-activation confirm are complete and validated at
+  the API + harness level; the remaining gap is a human click-through of the live
+  Home/Customize 3-tier badges, the Inspector drawer, the Preview→Apply / clone
+  flow (incl. the stale-preview re-disable), and the new degraded/broken
+  activation dialogs. Validation / polish only — no code unless a concrete UI bug
+  surfaces.
 - **Math/PDF font-size rationalization (cause C, CSS-only).** Optional remaining
   fidelity slice; CSS-only investigation before any change.
 - **Large-PDF preflight size-limit polish — optional, later.** Raising the upload
@@ -184,11 +198,12 @@ is the optional **font-size rationalization** (cause C, CSS-only).)
   …/inspect`, 3-tier badges + read-only Inspector drawer, repair preview
   (read-only) / apply (the only write; in-place + clone) + repair UI
   (Preview-before-Apply, stale-preview re-disable, explicit confirm). Validated
-  docs-only (`docs/VALIDATION_SHORTCUT_INSPECTOR_REPAIR.md`). **Still deferred:**
-  degraded-activation confirm / "Repair instead" Home path (§5.5), "Repair all"
-  batch, a Home "N need attention" banner, model auto-suggest/fuzzy match,
-  imported preview-row repair before import, tool/view repair (repair is scoped to
-  `builder_setup`).
+  docs-only (`docs/VALIDATION_SHORTCUT_INSPECTOR_REPAIR.md`). The
+  **degraded-activation confirm / "Repair instead" Home path (§5.5) is now DONE**
+  (branch `shortcut-inspector-degraded-activation`, #43 — see "What just landed").
+  **Still deferred:** "Repair all" batch, a Home "N need attention" banner, model
+  auto-suggest/fuzzy match, imported preview-row repair before import, tool/view
+  repair (repair is scoped to `builder_setup`).
 - **Branch retirement** — deferred housekeeping (do not delete branches).
 - **Group D** — not started; do not begin without an explicit slice request.
 

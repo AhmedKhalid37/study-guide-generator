@@ -69,3 +69,25 @@ export function issueCount(shortcut) {
   const counts = countFindingsBySeverity(shortcutFindings(shortcut));
   return counts.error + counts.warning;
 }
+
+// ── Activation gating (degraded-activation confirm slice) ─────────────────────
+//
+// What should happen when a user CLICKS a shortcut to launch it. The legacy
+// `valid` boolean stays the hard guard — `valid === false` always blocks, so
+// launch behaviour is byte-for-byte unchanged for broken shortcuts. A shortcut
+// that is still launchable (`valid !== false`) but carries warning findings
+// (`validity.status === "degraded"`) asks for an explicit confirmation before
+// launching; everything else launches immediately.
+export const ACTIVATE_LAUNCH = "launch"; // launch straight away, no prompt
+export const ACTIVATE_CONFIRM = "confirm"; // degraded — ask before launching
+export const ACTIVATE_BLOCKED = "blocked"; // broken — do not launch
+
+export function activationDecision(shortcut) {
+  // Legacy guard wins: a blocked shortcut never auto-launches, regardless of
+  // what the richer validity.status says.
+  if (shortcut?.valid === false) return ACTIVATE_BLOCKED;
+  const status = shortcutStatus(shortcut);
+  if (status === STATUS_BROKEN) return ACTIVATE_BLOCKED;
+  if (status === STATUS_DEGRADED) return ACTIVATE_CONFIRM;
+  return ACTIVATE_LAUNCH;
+}

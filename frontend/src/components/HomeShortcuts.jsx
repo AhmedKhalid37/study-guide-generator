@@ -20,6 +20,7 @@ import {
   Trash2,
   Upload,
   Wand2,
+  Wrench,
   X
 } from "lucide-react";
 import {
@@ -54,6 +55,9 @@ import {
 import RecentJobsPanel from "./RecentJobsPanel";
 import ShortcutInspector from "./ShortcutInspector";
 import {
+  activationDecision,
+  ACTIVATE_BLOCKED,
+  ACTIVATE_CONFIRM,
   issueCount,
   shortcutFindings,
   shortcutStatus,
@@ -90,8 +94,32 @@ export default function HomeShortcuts({
   const [customizeOpen, setCustomizeOpen] = useState(false);
   // Read-only inspector target (a shortcut view), or null when closed.
   const [inspecting, setInspecting] = useState(null);
+  // A degraded shortcut awaiting an explicit launch confirmation, or null.
+  const [confirmDegraded, setConfirmDegraded] = useState(null);
+  // A broken shortcut the user clicked (blocked from launch), or null.
+  const [blockedShortcut, setBlockedShortcut] = useState(null);
 
   const reload = useCallback(() => setReloadKey((key) => key + 1), []);
+
+  // Gate every Home launch through the shared activation decision so the legacy
+  // `valid` guard still controls launch/block, but a degraded-yet-launchable
+  // shortcut asks first instead of silently launching with ignored settings.
+  const requestActivate = useCallback(
+    (shortcut) => {
+      if (!shortcut) return;
+      const decision = activationDecision(shortcut);
+      if (decision === ACTIVATE_BLOCKED) {
+        setBlockedShortcut(shortcut);
+        return;
+      }
+      if (decision === ACTIVATE_CONFIRM) {
+        setConfirmDegraded(shortcut);
+        return;
+      }
+      onActivateShortcut?.(shortcut);
+    },
+    [onActivateShortcut]
+  );
 
   useEffect(() => {
     let cancelled = false;
@@ -170,7 +198,7 @@ export default function HomeShortcuts({
               key={shortcut.id}
               shortcut={shortcut}
               delay={index * 45}
-              onActivate={() => onActivateShortcut?.(shortcut)}
+              onActivate={() => requestActivate(shortcut)}
               onInspect={() => setInspecting(shortcut)}
             />
           ))}
@@ -195,6 +223,33 @@ export default function HomeShortcuts({
         />
       )}
 
+      {confirmDegraded && (
+        <DegradedActivationDialog
+          shortcut={confirmDegraded}
+          onContinue={() => {
+            const target = confirmDegraded;
+            setConfirmDegraded(null);
+            onActivateShortcut?.(target);
+          }}
+          onRepair={() => {
+            setInspecting(confirmDegraded);
+            setConfirmDegraded(null);
+          }}
+          onCancel={() => setConfirmDegraded(null)}
+        />
+      )}
+
+      {blockedShortcut && (
+        <BrokenActivationDialog
+          shortcut={blockedShortcut}
+          onInspect={() => {
+            setInspecting(blockedShortcut);
+            setBlockedShortcut(null);
+          }}
+          onCancel={() => setBlockedShortcut(null)}
+        />
+      )}
+
       {inspecting && (
         <ShortcutInspector
           shortcut={inspecting}
@@ -202,6 +257,118 @@ export default function HomeShortcuts({
           onRepaired={reload}
         />
       )}
+    </div>
+  );
+}
+
+// ── Activation dialogs (degraded confirm + broken block) ──────────────────────
+//
+// A degraded shortcut is still launchable (legacy valid === true) but some saved
+// settings may be ignored/defaulted. Rather than launch silently we ask first
+// and offer to repair instead. A broken shortcut (valid === false) stays blocked
+// and only offers Inspect/Repair — never a silent launch.
+
+// Top finding messages, capped so the dialog stays calm. Prefers warning/error
+// findings (the actionable ones) and falls back to the legacy reason.
+function topFindingMessages(shortcut, cap = 3) {
+  const findings = shortcutFindings(shortcut);
+  const ranked = [
+    ...findings.filter((f) => f?.severity === "error"),
+    ...findings.filter((f) => f?.severity === "warning"),
+    ...findings.filter((f) => f?.severity === "info")
+  ];
+  const messages = ranked.map((f) => f?.message).filter(Boolean);
+  if (messages.length === 0 && shortcut?.reason) return [shortcut.reason];
+  return messages.slice(0, cap);
+}
+
+function DegradedActivationDialog({ shortcut, onContinue, onRepair, onCancel }) {
+  const issues = issueCount(shortcut);
+  const messages = topFindingMessages(shortcut);
+  const findings = shortcutFindings(shortcut);
+  const extra = Math.max(0, findings.length - messages.length);
+  return (
+    <div className="fixed inset-0 z-[70] flex items-center justify-center p-4">
+      <button type="button" aria-label="Cancel" className="absolute inset-0 cursor-default bg-black/60" onClick={onCancel} />
+      <div role="dialog" aria-modal="true" className="relative w-full max-w-md rounded-2xl border border-white/10 bg-[#0B0F19] p-5 shadow-2xl">
+        <div className="flex items-start gap-3">
+          <AlertTriangle className="mt-0.5 h-5 w-5 shrink-0 text-amber-400" />
+          <div className="min-w-0 flex-1">
+            <h2 className="text-sm font-bold text-white">
+              Launch “{shortcut.name}”?
+            </h2>
+            <p className="mt-1 inline-flex items-center gap-1.5 rounded-full border border-amber-400/30 bg-amber-400/10 px-2 py-0.5 text-[11px] font-semibold text-amber-200">
+              Needs attention{issues > 0 ? ` · ${issues} issue${issues === 1 ? "" : "s"} found` : ""}
+            </p>
+            {messages.length > 0 && (
+              <ul className="mt-2 flex flex-col gap-1 text-xs text-slate-300">
+                {messages.map((message, index) => (
+                  <li key={index} className="flex items-start gap-1.5">
+                    <span className="mt-0.5 text-amber-400">•</span>
+                    <span className="min-w-0">{message}</span>
+                  </li>
+                ))}
+                {extra > 0 && (
+                  <li className="text-[11px] text-slate-500">+{extra} more in the inspector</li>
+                )}
+              </ul>
+            )}
+            <p className="mt-2 text-xs text-slate-400">
+              You can continue, but some saved settings may be ignored or replaced by defaults.
+            </p>
+          </div>
+        </div>
+        <div className="mt-5 flex flex-wrap justify-end gap-2">
+          <button type="button" onClick={onCancel} className="inline-flex h-9 items-center rounded-lg border border-white/15 bg-white/[0.04] px-3.5 text-sm font-bold text-slate-200 hover:bg-white/[0.08]">
+            Cancel
+          </button>
+          <button type="button" onClick={onRepair} className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-sky-400/40 bg-sky-400/15 px-3.5 text-sm font-bold text-sky-100 hover:bg-sky-400/25">
+            <Wrench size={14} /> Repair instead
+          </button>
+          <button type="button" autoFocus onClick={onContinue} className="inline-flex h-9 items-center rounded-lg border border-[#F97316]/50 bg-[#F97316]/80 px-3.5 text-sm font-bold text-white hover:bg-[#F97316]">
+            Continue anyway
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function BrokenActivationDialog({ shortcut, onInspect, onCancel }) {
+  const messages = topFindingMessages(shortcut);
+  const hint = invalidHint(shortcut);
+  return (
+    <div className="fixed inset-0 z-[70] flex items-center justify-center p-4">
+      <button type="button" aria-label="Cancel" className="absolute inset-0 cursor-default bg-black/60" onClick={onCancel} />
+      <div role="dialog" aria-modal="true" className="relative w-full max-w-md rounded-2xl border border-white/10 bg-[#0B0F19] p-5 shadow-2xl">
+        <div className="flex items-start gap-3">
+          <AlertCircle className="mt-0.5 h-5 w-5 shrink-0 text-red-400" />
+          <div className="min-w-0 flex-1">
+            <h2 className="text-sm font-bold text-white">This shortcut is broken.</h2>
+            <p className="mt-1 text-xs text-slate-400">
+              “{shortcut.name}” can’t launch as saved. {hint}
+            </p>
+            {messages.length > 0 && (
+              <ul className="mt-2 flex flex-col gap-1 text-xs text-slate-300">
+                {messages.map((message, index) => (
+                  <li key={index} className="flex items-start gap-1.5">
+                    <span className="mt-0.5 text-red-400">•</span>
+                    <span className="min-w-0">{message}</span>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+        </div>
+        <div className="mt-5 flex justify-end gap-2">
+          <button type="button" onClick={onCancel} className="inline-flex h-9 items-center rounded-lg border border-white/15 bg-white/[0.04] px-3.5 text-sm font-bold text-slate-200 hover:bg-white/[0.08]">
+            Cancel
+          </button>
+          <button type="button" autoFocus onClick={onInspect} className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-sky-400/40 bg-sky-400/15 px-3.5 text-sm font-bold text-sky-100 hover:bg-sky-400/25">
+            <Wrench size={14} /> Inspect / Repair
+          </button>
+        </div>
+      </div>
     </div>
   );
 }
