@@ -1,9 +1,12 @@
 # SHORTCUT_INSPECTOR_REPAIR_DESIGN.md — Inspect & repair broken shortcuts
 
-> **Status: DESIGN ONLY.** No backend or frontend code is implemented in this
-> slice. This document defines a safe UX and backend contract for inspecting and
-> repairing shortcuts whose saved references (provider / model / style / preset /
-> section / axis / tool / view) have become invalid or degraded over time.
+> **Status: IMPLEMENTED through Slice 3B** (`a0f96d1`→`4458c9a`, DONE #39→#42 in
+> `CURRENT_TASK.md`). The original design is preserved below; per-slice
+> **IMPLEMENTED** notes are inlined in §7, and the remaining deferred polish is
+> listed in §7 "Deferred (not yet implemented)". This document defines a safe UX
+> and backend contract for inspecting and repairing shortcuts whose saved
+> references (provider / model / style / preset / section / axis / tool / view)
+> have become invalid or degraded over time.
 >
 > **Scope guards honoured by this design:** it does **not** touch provider
 > settings runtime, the Local Model Manager, or the large-PDF pipeline; it does
@@ -653,11 +656,28 @@ smoke), one branch per slice, surgical edits.
 >   (served bundle + inspect/preview/apply/list/options/provider-settings + logs)
 >   clean.
 
-### Optional later polish
-- "Repair all" batch action across multiple broken shortcuts (loops apply).
-- A Home banner summarising "N shortcuts need attention".
-- Auto-suggest the closest model by normalized-token match (reuse `presetMeta`'s
-  matcher idea) — still preselect-only, never auto-apply.
+### Deferred (not yet implemented)
+
+The core inspect→repair loop (Slices 1, 2, 3A, 3B) is complete. The following were
+explicitly scoped out and remain **not started** — each is its own future slice:
+
+- **Degraded-activation confirm + "Repair instead" path** (design §5.5). Slice 3B
+  kept Home **activation byte-for-byte unchanged** (still gated on legacy `valid`,
+  broken never auto-routed). The one-line confirm when launching a *degraded* card,
+  and a "Repair instead" entry into the Inspector, are not built.
+- **"Repair all" / batch repair** across multiple broken shortcuts (would loop the
+  existing apply).
+- **Home "N shortcuts need attention" banner** summarising the count.
+- **Model auto-suggest / fuzzy suggestions** — auto-suggest the closest model by
+  normalized-token match (reuse `presetMeta`'s matcher idea); still preselect-only,
+  never auto-apply.
+- **Imported preview-row repair before import** — import-preview rows have no saved
+  id, so "repair after import" runs against the saved shortcut post-import; repairing
+  a row *before* import is not built.
+- **Tool / library-view repair** — repair is **scoped to `builder_setup` only** (the
+  type whose references rot against live config); `tool`/`library_view` shortcuts are
+  inspected/badged but a repair request for them returns a safe 400. A repair flow
+  for those types is not implemented.
 
 ---
 

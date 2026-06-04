@@ -107,6 +107,21 @@ flashcards with CSV / Anki / Quizlet export.
   `generate_chat_completion`). See `DECISIONS.md`.
 - **Shortcut store** is a whitelist-validated JSON file at
   `library/shortcuts.json`. Import/export only accepts whitelisted fields.
+- **Shortcut Inspector / Repair Loop.** Shortcuts whose saved references
+  (provider / model / style / preset / section / axis) rot against live config can
+  be inspected and repaired. Each shortcut view carries an **additive `validity`**
+  object — a 3-tier status (`valid`/`degraded`/`broken`), the **full** findings
+  list, and a saved-`model` check — computed at read time alongside the unchanged
+  legacy `valid`/`reason`. `GET /api/shortcuts/{id}/inspect` adds redacted repair
+  candidates; `POST …/repair/preview` (read-only) and `…/repair/apply` (the only
+  write) drive a Home/Customize badge + Inspector drawer repair UI. **Safety
+  model:** **no migration-on-read** (inspect/preview never rewrite
+  `shortcuts.json`); **legacy `valid`/`reason` are preserved** byte-for-byte (so a
+  degraded-only shortcut can read `valid:true` + `status:degraded`); **preview is
+  read-only**; **apply is the only write** and is an explicit whitelisted patch
+  (no arbitrary merge-patch); **clone mode mints a new id** and leaves the original
+  untouched; no provider/model auto-switch and no raw key ever read or returned.
+  **Card activation is unchanged** — still gated on the legacy `valid` boolean.
 - **Job stage reporting.** Coarse status (`queued/running/done/
   completed_with_warnings/failed/cancelled`) is augmented by finer `stage`/`progress`,
   surfaced via `GET /api/jobs/{id}/progress` and polled by the Builder.

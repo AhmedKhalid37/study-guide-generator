@@ -67,16 +67,18 @@
 ## Where we are
 
 - **Branch:** `chrome-renderer-v1` (the live integrated trunk; PR target)
-- **Trunk tip:** `61fb423` — "Add provider model refresh UI". The **in-app
-  provider settings feature group** landed as six commits on top of the large-PDF
-  core (`60c3e78`) and its docs reconcile (`624ff02`): `978516e` (design doc),
-  `1ba2b28` (backend settings store + safe endpoints), `3024a33` (frontend
-  Providers UI), `40df617` (runtime settings applied to live generation),
-  `6da944a` (backend fetch-models endpoint), and `61fb423` (frontend Refresh
-  Models UI). (`1d528c3` polished the provider card layout and `672c96e`
-  reconciled docs in between.) Earlier `60c3e78` / `901d44b` / `1d51b36` /
-  `65b9b8f` references further down are historical — trunk is now `61fb423`.
-- **`origin/chrome-renderer-v1`:** `61fb423` (local == origin; pushed)
+- **Trunk tip:** `4458c9a` — "Wire shortcut repair UI to preview/apply (Slice 3B)".
+  The **Shortcut Inspector / Repair Loop** landed as five commits on top of the
+  provider-settings group and its follow-up fixes (`70544de` provider/large-PDF
+  validation report, `6a1499c` Test-Connection empty-content fix, `e524c79`
+  stored-`default_provider` precedence, `2ea4380` validation-doc pointer):
+  `a0f96d1` (design doc), `482c377` (Slice 1 backend inspector), `1f9034f`
+  (Slice 2 read-only inspector UI), `e148cc4` (Slice 3A repair preview/apply
+  endpoints), and `4458c9a` (Slice 3B repair UI wiring). The earlier **in-app
+  provider settings feature group** (`978516e`→`61fb423`) and the large-PDF core
+  (`60c3e78`) remain on trunk below it. Older `61fb423` / `60c3e78` / `901d44b` /
+  `65b9b8f` references further down are historical — trunk is now `4458c9a`.
+- **`origin/chrome-renderer-v1`:** `4458c9a` (local == origin; pushed)
 - **Provider settings feature group is COMPLETE through Slice 5** (design →
   backend store/endpoints → Providers UI → runtime wiring → fetch-models endpoint
   → Refresh Models UI). See DONE #32 (backend store), #33 (Providers UI), #34
@@ -1452,32 +1454,37 @@ parked on the `hardening` branch — not merged, not deleted.
 > earlier "in-app provider settings — design-first" recommendation is now
 > **completed and removed**. The only remaining math/PDF slice is **font-size
 > rationalization** (cause C, CSS-only) — optional, not the headline.
+>
+> **Shortcut Inspector / Repair Loop is COMPLETE through Slice 3B** (DONE #39→#42,
+> `a0f96d1`→`4458c9a`): backend read-only inspector + `validity`, read-only
+> Inspector UI, repair preview/apply endpoints, and the repair UI. The earlier
+> "shortcut inspector / repair loop — design/polish" recommendation is **done and
+> removed** from this list. The provider-settings real-world validation pass also
+> ran (see `docs/VALIDATION_PROVIDER_SETTINGS_LARGE_PDF.md`) and surfaced two
+> already-fixed findings, so it is no longer a recommended next step either. The
+> Shortcut Inspector itself was validated in
+> `docs/VALIDATION_SHORTCUT_INSPECTOR_REPAIR.md` (docs-only; no code changed).
 
-1. **Real-world validation pass over provider settings + large-PDF workflows.**
-   Exercise the now-complete provider settings end-to-end (set/clear a key, change
-   default model + sampling/timeout/retry/thinking, run "Test connection",
-   **Refresh models → Add → Save**, then generate) and confirm redaction holds and
-   the runtime defaults reach live generation; also re-run the large-PDF core on a
-   handful of real big/scanned decks (preflight verdicts, first-N + manual range,
-   original `## Page N` anchors, OCR only on selected pages, rendered PDF). Pure
-   validation / manual click-through — no code unless a concrete bug surfaces.
-2. **Shortcut inspector / repair loop — Slice 2 (frontend badges + Inspector UI).**
-   Slice 1 backend inspector is DONE (DONE #39): `validity` rides every shortcut
-   view + `GET …/shortcuts/{id}/inspect` exists. **Slice 2** drives the Home card
-   badge + customize-row chip off `validity.status` (3 tiers) and adds the
-   read-only Inspector drawer (calls `…/inspect`, renders findings + repair
-   candidates, Apply deferred). **Slice 3** adds `…/repair/preview` + `…/repair/
-   apply`. See `docs/SHORTCUT_INSPECTOR_REPAIR_DESIGN.md` §7.
-3. **Local Model Manager — DESIGN-FIRST only.** Backend spawns/kills a host
+1. **Focused manual validation / polish of the Shortcut Inspector UI.** The
+   inspect→repair loop is complete and validated at the API + served-bundle level
+   (`docs/VALIDATION_SHORTCUT_INSPECTOR_REPAIR.md`); the remaining gap is a human
+   click-through of the live Home/Customize 3-tier badges, the Inspector drawer
+   layout, and the Preview→Apply / clone flow (incl. the stale-preview re-disable).
+   Validation / polish only — no feature work unless a concrete UI bug surfaces.
+2. **Optional degraded-activation confirm + "Repair instead" path** (design §5.5).
+   Slice 3B deliberately left Home **activation byte-for-byte unchanged**; this
+   slice would add the one-line confirm when launching a *degraded* card and a
+   "Repair instead" entry into the Inspector. Net-new behaviour — its own slice.
+3. **Math/PDF font-size rationalization (cause C) — optional CSS-only
+   investigation.** The remaining math/PDF fidelity slice; investigate the
+   CSS-only font sizing before any change.
+4. **Large-PDF preflight size-limit polish — optional, later.** Raising/uniting
+   the upload ceiling + preflight size thresholds is a possible later slice. It is
+   **explicitly not part of this slice** and not started.
+5. **Local Model Manager — DESIGN-FIRST only.** Backend spawns/kills a host
    `llama-server`. This **crosses the container boundary** (non-root uid 10001
    container managing a host process) — design and get sign-off before coding. It
    stays a **separate** feature from the now-complete in-app provider settings.
-4. **Math/PDF font-size rationalization (cause C) — optional CSS-only
-   investigation.** The remaining math/PDF fidelity slice; investigate the
-   CSS-only font sizing before any change.
-5. **Large-PDF preflight size-limit polish — optional, later.** Raising/uniting
-   the upload ceiling + preflight size thresholds is a possible later slice. It is
-   **explicitly not part of this docs slice** and not started.
 
 (**Also still on the books, design-first:** Library archive / tag model — bulk
 **archive** needs a new archive state designed + a `DECISIONS.md` entry first;
@@ -1498,17 +1505,25 @@ sign-off.)
   badge, model chip, purpose, description, recommended use, selected state) consuming
   the C4a `/api/options.generator_presets` metadata, plus a soft, advisory
   `model_hint`-vs-selected-model compatibility warning that never blocks Generate.
-  See `presetMeta.js` + `DECISIONS.md`. **Still open:** richer **shortcut** cards on
-  Home and the shortcut **inspector/repair** loop (the store's `valid`/`reason`
-  "references unavailable …" surfacing) are not built yet.
+  See `presetMeta.js` + `DECISIONS.md`. The shortcut **inspector/repair** loop
+  (the store's `valid`/`reason` "references unavailable …" surfacing) is now
+  **DONE** (DONE #39→#42). **Still open:** richer **shortcut** cards on Home.
 - **Home duplicate "Customize" button — DONE (`7f78542`, Slice C5).** The lower
   duplicate "Customize" button in the Pinned-shortcuts section head was removed;
   the single page-head "Customize Shortcuts" entry is kept and opens the shortcut
   customization modal (not Styles). Smart Tools confirmed already absent from Home;
   Compare Styles confirmed already living in Styles. No longer open.
-- **Shortcut inspector / repair loop** — a later UX for inspecting an invalid
-  shortcut and repairing its broken references (provider/preset/style) is not
-  started.
+- **Shortcut inspector / repair loop — DONE** (DONE #39→#42, `a0f96d1`→`4458c9a`,
+  on trunk). Read-only inspector + additive `validity` (3-tier status, full
+  findings list, saved-model check), 3-tier Home/Customize badges + read-only
+  Inspector drawer, repair preview/apply endpoints (preview read-only, apply the
+  only write, in-place + clone), and the repair UI (Preview-before-Apply,
+  stale-preview re-disables Apply, explicit confirm). Validated docs-only in
+  `docs/VALIDATION_SHORTCUT_INSPECTOR_REPAIR.md`. **Still deferred:** the
+  degraded-activation confirm / "Repair instead" Home path (§5.5), "Repair all"
+  batch, a Home "N need attention" banner, model auto-suggest/fuzzy match,
+  imported preview-row repair before import, and tool/view repair (repair is
+  scoped to `builder_setup` only).
 - **Rerender drops `generator_preset` — FIXED** (`2716995`, branch
   `fix-rerender-generator-preset`, now on trunk).
   `retry_failed_job` (`api/server.py`, `path_mode == "generate"`) now reads

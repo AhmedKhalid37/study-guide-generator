@@ -276,9 +276,11 @@ default its provider dropdown to it either.
   merge/push** as the validation record.
 - The **core Provider-Settings and Large-PDF features are validated and working**
   end-to-end, redaction holds, and cancel behaves as designed.
-- **Before relying on the Test Connection button**, address **Finding #1** in a
-  small, isolated follow-up slice (it is the most user-visible issue). **Finding
-  #2** is low-priority polish.
+- **Both findings have since been fixed on trunk** (no longer "next" work):
+  **Finding #1** (Test Connection false-negative on empty content) on
+  `fix-provider-test-empty-content` → commit `6a1499c`, and **Finding #2** (stored
+  `default_provider` inert at runtime) on `fix-default-provider-precedence` →
+  commit `e524c79`. See each finding's ✅ FIXED note above and `DECISIONS.md`.
 - No old/consumed branches were merged, rebased, or cherry-picked; no
   force-push; no `docker compose config` output pasted; no real secret printed.
 </content>

@@ -7,18 +7,35 @@
 
 ## Current position
 - **Branch (trunk / PR target):** `chrome-renderer-v1`
-- **Latest commit:** `61fb423` — "Add provider model refresh UI". The **in-app
-  provider settings feature group** landed as six commits on top of the large-PDF
-  core (`60c3e78`) and its docs reconcile (`624ff02`): `978516e` (design doc),
-  `1ba2b28` (backend settings store + safe endpoints), `3024a33` (frontend
-  Providers UI), `40df617` (runtime settings applied to live generation),
-  `6da944a` (backend fetch-models endpoint), `61fb423` (frontend Refresh Models
-  UI); `1d528c3` / `672c96e` polished the card layout + reconciled docs in
-  between. Older `60c3e78` / `901d44b` / `1d51b36` / `65b9b8f` mentions below are
-  historical.
-- **Remote:** `origin/chrome-renderer-v1` == `61fb423` (pushed; local == origin)
+- **Latest commit:** `4458c9a` — "Wire shortcut repair UI to preview/apply
+  (Slice 3B)". The **Shortcut Inspector / Repair Loop** landed as five commits on
+  top of the provider-settings group + its follow-up fixes (`70544de` validation
+  report, `6a1499c` Test-Connection empty-content fix, `e524c79`
+  stored-`default_provider` precedence, `2ea4380` validation-doc pointer):
+  `a0f96d1` (design doc), `482c377` (Slice 1 backend inspector), `1f9034f`
+  (Slice 2 read-only inspector UI), `e148cc4` (Slice 3A repair preview/apply
+  endpoints), `4458c9a` (Slice 3B repair UI wiring). The **in-app provider
+  settings feature group** (`978516e`→`61fb423`) and the large-PDF core
+  (`60c3e78`) remain on trunk below it; older `61fb423` / `60c3e78` / `901d44b` /
+  `65b9b8f` mentions below are historical.
+- **Remote:** `origin/chrome-renderer-v1` == `4458c9a` (pushed; local == origin)
 
 ## What just landed
+- **Shortcut Inspector / Repair Loop — COMPLETE through Slice 3B**
+  (`a0f96d1`→`4458c9a`, DONE #39→#42): a read-only inspector with an additive
+  `validity` object (3-tier `valid`/`degraded`/`broken` status, the **full**
+  findings list, and the previously-missing saved-`model` check) + `GET
+  /api/shortcuts/{id}/inspect`, with the legacy `valid`/`reason` preserved
+  byte-for-byte; 3-tier Home/Customize badges + a read-only Inspector drawer;
+  repair endpoints `POST /api/shortcuts/{id}/repair/preview` (read-only) +
+  `…/repair/apply` (the only write — explicit whitelisted patch, in-place or
+  clone); and the repair UI (Keep/Replace/Remove controls, in-place vs clone,
+  **Preview required before Apply**, editing the draft re-disables Apply,
+  explicit confirm). No migration-on-read; preview never mutates `shortcuts.json`;
+  clone mints a new id and leaves the original untouched; **card activation is
+  unchanged** (still gated on legacy `valid`). Validated docs-only in
+  `docs/VALIDATION_SHORTCUT_INSPECTOR_REPAIR.md`. See `CURRENT_TASK.md` #39→#42 +
+  `DECISIONS.md` (shortcut inspector/repair entries).
 - **In-app provider settings feature group — COMPLETE through Slice 5**
   (`978516e`→`61fb423`): a two-file server-side store
   (`config/provider_settings.json` non-secret `0644` + `config/secrets.json`
@@ -97,34 +114,36 @@ load-bearing — do not rewrite casually.
 
 ## Next recommended slice
 **Pick ONE safe option:**
-- **Real-world validation pass over provider settings + large-PDF workflows.**
-  Exercise the now-complete **provider settings** end-to-end (set/clear a key,
-  change default model + sampling/timeout/retry/thinking, run "Test connection",
-  **Refresh models → Add → Save**, then generate) — confirm redaction holds and the
-  runtime defaults reach live generation — and re-run the large-PDF core on a handful
-  of real big/scanned decks (preflight verdicts, first-N + manual range, original
-  `## Page N` anchors, OCR only on selected pages, rendered PDF). Validation/manual
-  click-through only — no code unless a concrete bug surfaces.
-- **Shortcut inspector / repair loop (DESIGN/POLISH).** Surface the store's
-  `valid`/`reason` "references unavailable …" state and a repair UX for broken
-  provider/preset/style references. Design first.
-- **Local Model Manager (DESIGN-FIRST).** Separate feature from provider settings;
-  crosses the container boundary — get sign-off before any code.
+- **Focused manual validation / polish of the Shortcut Inspector UI.** The
+  inspect→repair loop is complete and validated at the API + served-bundle level
+  (`docs/VALIDATION_SHORTCUT_INSPECTOR_REPAIR.md`); the remaining gap is a human
+  click-through of the live Home/Customize 3-tier badges, the Inspector drawer
+  layout, and the Preview→Apply / clone flow (incl. the stale-preview re-disable).
+  Validation / polish only — no code unless a concrete UI bug surfaces.
+- **Optional degraded-activation confirm + "Repair instead" path (design §5.5).**
+  Slice 3B left Home **activation byte-for-byte unchanged**; this slice would add
+  the one-line confirm when launching a *degraded* card and a "Repair instead"
+  entry into the Inspector. Net-new behaviour — its own slice, design the copy.
 - **Math/PDF font-size rationalization (cause C, CSS-only).** Optional remaining
   fidelity slice; CSS-only investigation before any change.
 - **Large-PDF preflight size-limit polish — optional, later.** Raising the upload
-  ceiling + preflight size thresholds is a possible later slice; **not part of this
-  docs slice** and not started.
+  ceiling + preflight size thresholds is a possible later slice; **not part of any
+  current slice** and not started.
+- **Local Model Manager (DESIGN-FIRST).** Separate feature from provider settings;
+  crosses the container boundary — get sign-off before any code.
 
-(The previously-recommended **in-app provider settings** (now COMPLETE through
-**Slice 5** — the **fetch-models endpoint** + **Refresh Models UI** included),
+(The previously-recommended **in-app provider settings** (COMPLETE through
+**Slice 5** — fetch-models endpoint + Refresh Models UI), the **shortcut inspector
+/ repair loop** (now COMPLETE through **Slice 3B**, `a0f96d1`→`4458c9a`),
 **Math/PDF fidelity investigation**, and **Large-PDF preflight design** are **all
-DONE** — provider settings shipped as #32→#36 (`978516e`→`61fb423`), the preflight
-design shipped as Slices 1–5 (`841d3f9`→`60c3e78`), and the math/PDF fidelity Slices
-1–3 shipped (#23–#25). The rerender `generator_preset` fix, B4 "Export selected", and
-server-side cancel are also DONE and on trunk — see "What just landed". The only
-remaining math/PDF slice is the optional **font-size rationalization** (cause C,
-CSS-only).)
+DONE** — provider settings shipped as #32→#36 (`978516e`→`61fb423`), the shortcut
+inspector shipped as #39→#42, the preflight design shipped as Slices 1–5
+(`841d3f9`→`60c3e78`), and the math/PDF fidelity Slices 1–3 shipped (#23–#25). The
+provider-settings real-world validation pass also ran
+(`docs/VALIDATION_PROVIDER_SETTINGS_LARGE_PDF.md`, two now-fixed findings). The
+rerender `generator_preset` fix, B4 "Export selected", and server-side cancel are
+also DONE and on trunk — see "What just landed". The only remaining math/PDF slice
+is the optional **font-size rationalization** (cause C, CSS-only).)
 
 ## Open / deferred items
 - **rerender drops `generator_preset`** — DONE (`2716995`, on trunk). Rerender now
@@ -159,7 +178,17 @@ CSS-only).)
 - **GHCR publish workflow / prebuilt image** — deferred distribution decision (parked on `hardening`).
 - **Pinned dependency lockfile** — deferred; regenerate from this tree, don't lift from `hardening`.
 - **Provider-aware truncation caps** — deferred (Option B in `DECISIONS.md`).
-- **Shortcut inspector / repair loop** — not started.
+- **Shortcut inspector / repair loop** — DONE through Slice 3B
+  (`a0f96d1`→`4458c9a`, #39→#42): additive `validity` (3-tier status, full
+  findings, saved-model check; legacy `valid`/`reason` preserved), `GET
+  …/inspect`, 3-tier badges + read-only Inspector drawer, repair preview
+  (read-only) / apply (the only write; in-place + clone) + repair UI
+  (Preview-before-Apply, stale-preview re-disable, explicit confirm). Validated
+  docs-only (`docs/VALIDATION_SHORTCUT_INSPECTOR_REPAIR.md`). **Still deferred:**
+  degraded-activation confirm / "Repair instead" Home path (§5.5), "Repair all"
+  batch, a Home "N need attention" banner, model auto-suggest/fuzzy match,
+  imported preview-row repair before import, tool/view repair (repair is scoped to
+  `builder_setup`).
 - **Branch retirement** — deferred housekeeping (do not delete branches).
 - **Group D** — not started; do not begin without an explicit slice request.
 
