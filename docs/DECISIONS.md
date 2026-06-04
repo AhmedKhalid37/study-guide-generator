@@ -544,3 +544,40 @@ behavior is unchanged (request model wins, else the selected provider's effectiv
 default_model), and generator presets remain advisory — they fill sampling only and
 never repin provider/model. The helper reads only the non-secret `default_provider`
 field plus the already-redacted public registry, so no raw key is read or exposed.
+
+## Shortcut inspector: additive `validity`, no migration-on-read, preview-before-apply (2026-06-04, DESIGN)
+The Shortcut Inspector / Repair design
+(`docs/SHORTCUT_INSPECTOR_REPAIR_DESIGN.md`) makes two non-obvious choices that
+need recording even though no code ships in the design slice.
+**Keep the legacy `valid`/`reason` byte-compatible and ADD a richer `validity`
+object — do not repurpose `valid`.** Today `_evaluate_validity`
+(`pipeline/shortcut_store.py`) returns a binary `(valid, reason)` and the
+frontend's activation guard (`DesktopDashboard.handleActivateShortcut`) treats
+`valid:false` as "do NOT load this setup, redirect instead". Silently widening
+`valid` to mean "usable with warnings" would let a *degraded* shortcut (e.g. a
+deleted style) auto-load with parts missing — a silent rewrite of intent. So the
+design adds a separate `validity` object with a **3-tier status**
+(`valid`/`degraded`/`broken`, = worst severity of a full `findings[]` list) and
+keeps `valid == (status == "valid")` / `reason` unchanged, so every existing
+consumer keeps working while new UI can distinguish "usable but warn" from
+"blocked". This also fixes three real gaps in the current check: it is **binary**
+(can't express degraded), **first-failure-only** (returns at the first bad
+reference, hiding the rest), and **never validates the saved `model`** (a model
+removed from the provider's `available_models` is silently defaulted at Builder
+prefill, so the card wrongly reads valid).
+**No migration-on-read; the only write is an explicit per-field repair apply.**
+Consistent with the existing "translate-on-read beats in-place migration"
+decision, the enriched `validity`, `GET …/inspect`, and `POST …/repair/preview`
+are all **read-only** and write nothing — `shortcuts.json` stays byte-identical
+until the user explicitly runs `POST …/repair/apply`. Apply reuses the existing
+`update_shortcut` (in place) or `create_shortcut` (`clone:true`, original kept)
+CRUD — **no new raw write path**, so the store's whitelist + atomic-write
+invariants hold automatically. Repairs are **opt-in per field**
+(`replace`/`remove`/`keep`/`drop_unknown`); replacement provider/model are
+**preselected suggestions only, never auto-applied** (per "soft `model_hint`, not
+a hard pin"); and all provider data flows through the already-redacted
+`provider_config` surface, so **no raw key** is ever read or returned. Import
+semantics are untouched (still whitelist-normalized with an `errors` batch); the
+inspector only makes the *post-import* "needs repair" state visible and
+actionable. Recommended build order: Slice 1 backend inspector (read-only),
+Slice 2 frontend badges + Inspector drawer, Slice 3 repair preview + apply.

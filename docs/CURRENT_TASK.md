@@ -5,6 +5,32 @@
 
 ---
 
+## NEXT / DESIGN — Shortcut Inspector / Repair Loop (DESIGN ONLY, not started)
+
+- **Design doc:** `docs/SHORTCUT_INSPECTOR_REPAIR_DESIGN.md` (branch
+  `shortcut-inspector-repair-design`, docs-only). Designs a safe UX + backend
+  contract for inspecting and repairing shortcuts whose saved references
+  (provider/model/style/preset/section/axis/tool/view) have gone invalid.
+- **Key design points:** keep the legacy `valid`/`reason` byte-compatible and
+  **add** a richer `validity` object with a **3-tier status**
+  (`valid`/`degraded`/`broken`) + full `findings[]`; fixes three real gaps in
+  today's check — it is binary, first-failure-only, and never validates the saved
+  `model`. New read-only endpoints `GET /api/shortcuts/{id}/inspect` +
+  `POST …/repair/preview`; the **only** write is `POST …/repair/apply` (in place
+  via `update_shortcut`, or `clone` via `create_shortcut`). **No
+  migration-on-read, no silent overwrite, no auto-switch of provider/model, no
+  raw keys, no shortcut-store refactor.**
+- **Slices:** (1) backend inspector only (read-only findings + `validity` +
+  `…/inspect`); (2) frontend badges (3-tier) + Inspector drawer; (3) repair
+  preview + apply flow. Optional later: "Repair all", Home "N need attention"
+  banner, token-match model suggestion.
+- **Status:** DESIGN ONLY — no backend/frontend code implemented this slice.
+  Recommendation: start with Slice 1 (low-risk, additive). See the design doc
+  §7–§10 and the `DECISIONS.md` entry "Shortcut inspector: additive `validity`,
+  no migration-on-read, preview-before-apply".
+
+---
+
 ## Where we are
 
 - **Branch:** `chrome-renderer-v1` (the live integrated trunk; PR target)
