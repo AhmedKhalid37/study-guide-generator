@@ -29,7 +29,6 @@ import {
   exportShortcutUrl,
   exportShortcutsUrl,
   getOptions,
-  getPresets,
   getStyles,
   importShortcuts,
   listShortcuts,
@@ -50,7 +49,11 @@ import {
   TOOL_LABELS,
   TYPE_LABELS,
   VIEW_BASES,
-  VIEW_BASE_LABELS
+  VIEW_BASE_LABELS,
+  generatorPresetOptions,
+  payloadHasSavedPrompt,
+  withSavedPrompt,
+  MAX_SAVED_PROMPT_CHARS
 } from "../shortcutMeta";
 import RecentJobsPanel from "./RecentJobsPanel";
 import ShortcutInspector from "./ShortcutInspector";
@@ -754,6 +757,14 @@ function ShortcutRow({ shortcut, busy, isFirst, isLast, onUp, onDown, onTogglePi
               {badge.label}{issues > 0 ? ` · ${issues}` : ""}
             </span>
           )}
+          {payloadHasSavedPrompt(shortcut.payload) && (
+            <span
+              className="shrink-0 rounded border border-sky-400/30 bg-sky-400/10 px-1.5 py-0.5 text-[10px] text-sky-200"
+              title="This shortcut includes saved prompt/source text (user content)."
+            >
+              Saved prompt
+            </span>
+          )}
         </div>
         <p className="truncate text-xs text-slate-400">{shortcut.description || summarizePayload(shortcut)}</p>
       </div>
@@ -824,6 +835,14 @@ function ShortcutForm({ editing, currentBuilderSetup, onCancel, onSaved, onError
     return v.startsWith("search:") ? v.slice(7) : "";
   });
 
+  // Opt-in saved prompt/source text. Only builder_setup shortcuts can carry it.
+  // `savedPromptText` is the captured content (here, only ever an EXISTING saved
+  // prompt being edited — the live-prompt capture path is the Builder's own
+  // "Save as shortcut"). `savePrompt` governs whether it persists on save, so an
+  // editor can deliberately strip user content from a shortcut.
+  const [savedPromptText, setSavedPromptText] = useState(editing?.payload?.saved_prompt || "");
+  const [savePrompt, setSavePrompt] = useState(Boolean(editing?.payload?.saved_prompt));
+
   // Option sources for the builder_setup form.
   const [providers, setProviders] = useState([]);
   const [presets, setPresets] = useState([]);
@@ -845,11 +864,16 @@ function ShortcutForm({ editing, currentBuilderSetup, onCancel, onSaved, onError
               }))
             : []
         );
+        // CANONICAL generator presets — the same /api/options.generator_presets the
+        // Builder Style tab uses (None / Claude-Exam / Claude-Review / Claude-Cram).
+        // NOT /api/presets (those are Outline quick-templates, a separate registry).
+        setPresets(Array.isArray(opts?.generator_presets) ? opts.generator_presets : []);
       })
-      .catch(() => !cancelled && setProviders([]));
-    getPresets()
-      .then((res) => !cancelled && setPresets(res?.presets ?? []))
-      .catch(() => !cancelled && setPresets([]));
+      .catch(() => {
+        if (cancelled) return;
+        setProviders([]);
+        setPresets([]);
+      });
     getStyles()
       .then((res) => !cancelled && setStyles([...(res?.builtin ?? []), ...(res?.custom ?? [])]))
       .catch(() => !cancelled && setStyles([]));
@@ -873,7 +897,7 @@ function ShortcutForm({ editing, currentBuilderSetup, onCancel, onSaved, onError
       const view = viewBase === "search" ? `search:${viewQuery.trim()}` : viewBase;
       return { view };
     }
-    return {
+    const base = {
       ...builder,
       target_pages: Number(builder.target_pages) || 20,
       provider: builder.provider || null,
@@ -881,6 +905,9 @@ function ShortcutForm({ editing, currentBuilderSetup, onCancel, onSaved, onError
       generator_preset: builder.generator_preset || null,
       style: builder.style || null
     };
+    // saved_prompt is opt-in: withSavedPrompt strips any inherited key and only
+    // re-attaches the captured text when the checkbox is on — never silently.
+    return withSavedPrompt(base, { savePrompt, sourceText: savedPromptText });
   }
 
   async function handleSubmit(event) {
@@ -1014,9 +1041,8 @@ function ShortcutForm({ editing, currentBuilderSetup, onCancel, onSaved, onError
               </Field>
               <Field label="Generator preset">
                 <select className="sg-input" value={builder.generator_preset} onChange={(e) => setBuilder({ ...builder, generator_preset: e.target.value })}>
-                  <option value="" className="bg-[#0B0F19]">None</option>
-                  {presets.map((p) => (
-                    <option key={p.id} value={p.id} className="bg-[#0B0F19]">{p.name || p.id}</option>
+                  {generatorPresetOptions(presets, builder.generator_preset).map((opt) => (
+                    <option key={opt.id || "__none__"} value={opt.id} className="bg-[#0B0F19]">{opt.label}</option>
                   ))}
                 </select>
               </Field>
@@ -1056,6 +1082,13 @@ function ShortcutForm({ editing, currentBuilderSetup, onCancel, onSaved, onError
                 })}
               </div>
             </div>
+
+            <SavedPromptControl
+              savePrompt={savePrompt}
+              setSavePrompt={setSavePrompt}
+              savedPromptText={savedPromptText}
+              setSavedPromptText={setSavedPromptText}
+            />
           </div>
         )}
 
@@ -1261,6 +1294,11 @@ function ImportPanel({ onCancel, onImported, onActivateShortcut, onCloseModal, o
                   )}
                 </div>
                 <p className="mt-2 text-xs text-slate-400">{summarizePayload(item)}</p>
+                {payloadHasSavedPrompt(item.payload) && (
+                  <p className="mt-1 text-[11px] text-sky-300">
+                    Includes saved prompt/source text ({item.payload.saved_prompt.length.toLocaleString()} chars) — user content will be imported.
+                  </p>
+                )}
                 {item._id_regenerated && (
                   <p className="mt-1 text-[11px] text-sky-300">Will be imported as a new shortcut (new id).</p>
                 )}
@@ -1313,6 +1351,54 @@ function Field({ label, children }) {
       <span className="mb-1 block text-[11px] font-bold uppercase tracking-wide text-slate-400">{label}</span>
       {children}
     </label>
+  );
+}
+
+// Opt-in "Save prompt/source text with this shortcut" control (builder_setup).
+// Default OFF. The textarea is only shown when ON and there is captured text to
+// review/edit so prompt content is never displayed (or saved) unless intended.
+// When editing a shortcut that already carries a saved prompt, the count makes
+// the included user content explicit; unchecking strips it on save.
+function SavedPromptControl({ savePrompt, setSavePrompt, savedPromptText, setSavedPromptText }) {
+  const len = (savedPromptText || "").length;
+  const over = len > MAX_SAVED_PROMPT_CHARS;
+  return (
+    <div className="rounded-lg border border-white/10 bg-white/[0.02] p-3">
+      <label className="flex items-start gap-2 text-xs text-slate-200">
+        <input
+          type="checkbox"
+          className="mt-0.5"
+          checked={savePrompt}
+          onChange={(e) => setSavePrompt(e.target.checked)}
+        />
+        <span>
+          <span className="font-semibold">Save prompt/source text with this shortcut</span>
+          <span className="mt-0.5 block text-[11px] font-normal text-slate-400">
+            Includes the current prompt/text inside the shortcut export. Leave off for
+            reusable settings only. This may contain private course material.
+          </span>
+        </span>
+      </label>
+      {savePrompt && (
+        <div className="mt-2">
+          <textarea
+            className="sg-input min-h-[88px] w-full font-mono text-[12px]"
+            value={savedPromptText}
+            onChange={(e) => setSavedPromptText(e.target.value)}
+            placeholder="Source prompt/text to store inside this shortcut…"
+          />
+          <div className={`mt-1 text-[11px] ${over ? "text-red-300" : "text-slate-400"}`}>
+            {len.toLocaleString()} / {MAX_SAVED_PROMPT_CHARS.toLocaleString()} chars
+            {over ? " — too long; shorten before saving." : ""}
+          </div>
+        </div>
+      )}
+      {!savePrompt && savedPromptText && (
+        <div className="mt-2 text-[11px] text-amber-300">
+          Saved prompt will be removed from this shortcut when you save.
+        </div>
+      )}
+    </div>
   );
 }
 

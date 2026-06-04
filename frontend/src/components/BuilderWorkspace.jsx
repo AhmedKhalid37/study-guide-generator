@@ -50,7 +50,10 @@ import {
 import {
   builderStateToPayload,
   INPUT_TO_SOURCE,
-  pagesToLength
+  pagesToLength,
+  withSavedPrompt,
+  clampSavedPrompt,
+  MAX_SAVED_PROMPT_CHARS
 } from "../shortcutMeta";
 import {
   DIFFICULTY_OPTIONS,
@@ -315,6 +318,9 @@ export default function BuilderWorkspace({
   const [shortcutSaved, setShortcutSaved] = useState(false);
   const [shortcutSaveError, setShortcutSaveError] = useState(null);
   const [shortcutSaving, setShortcutSaving] = useState(false);
+  // "Save as shortcut" dialog (replaces a bare window.prompt so we can offer the
+  // opt-in "save prompt/source text" checkbox). Null when closed.
+  const [shortcutDialog, setShortcutDialog] = useState(null);
   const pollStateRef = useRef(null);
   const pollTimerRef = useRef(null);
   const completeTimerRef = useRef(null);
@@ -860,6 +866,10 @@ export default function BuilderWorkspace({
         setModel(payload.model);
       }
       if (payload.generator_preset !== undefined) setGeneratorPreset(payload.generator_preset || "");
+      // Opt-in saved prompt/source text: prefill the Builder source so a shortcut
+      // that captured its prompt reopens ready to generate. Only when present, so a
+      // settings-only shortcut never clears whatever the user already typed.
+      if (typeof payload.saved_prompt === "string" && payload.saved_prompt) setText(payload.saved_prompt);
       if (payload.style) onSelectStyle?.(payload.style);
       if (typeof payload.strict_math === "boolean") setStrictMath(payload.strict_math);
       if (payload.target_pages) setLength(pagesToLength(payload.target_pages));
@@ -918,19 +928,30 @@ export default function BuilderWorkspace({
     onReportSetup?.(buildShortcutSetup());
   }, [onReportSetup, buildShortcutSetup]);
 
-  async function handleSaveShortcut() {
+  function handleSaveShortcut() {
     if (shortcutSaving) return;
     const defaultName =
       title && title !== DEFAULT_TITLE
         ? title
         : `${selectedStyleOption?.name || selectedStyleOption?.label || "Study"} setup`;
-    const name = window.prompt("Name this shortcut", defaultName);
-    if (name === null) return; // cancelled
-    const trimmed = name.trim();
+    // Open the dialog (name + opt-in "save prompt" checkbox). The checkbox starts
+    // OFF, so the default behavior — reusable settings only — is unchanged.
+    setShortcutSaveError(null);
+    setShortcutDialog({ name: defaultName, savePrompt: false });
+  }
+
+  async function commitSaveShortcut({ name, savePrompt }) {
+    const trimmed = (name || "").trim();
     if (!trimmed) return;
     setShortcutSaving(true);
     setShortcutSaveError(null);
     try {
+      // saved_prompt is opt-in: only attached when the checkbox is on and there is
+      // typed source text to save. Uploaded files / attachments are never included.
+      const payload = withSavedPrompt(buildShortcutSetup(), {
+        savePrompt,
+        sourceText: text
+      });
       await createShortcut({
         name: trimmed,
         type: "builder_setup",
@@ -939,8 +960,9 @@ export default function BuilderWorkspace({
         }`,
         pinned: true,
         icon: "⭐",
-        payload: buildShortcutSetup()
+        payload
       });
+      setShortcutDialog(null);
       setShortcutSaved(true);
       if (shortcutTimerRef.current) clearTimeout(shortcutTimerRef.current);
       shortcutTimerRef.current = setTimeout(() => setShortcutSaved(false), 1600);
@@ -1228,6 +1250,103 @@ export default function BuilderWorkspace({
         onRetry={openJobDetails}
         initialTab={detailsInitialTab}
       />
+      {shortcutDialog && (
+        <SaveShortcutDialog
+          dialog={shortcutDialog}
+          setDialog={setShortcutDialog}
+          sourceText={text}
+          saving={shortcutSaving}
+          error={shortcutSaveError}
+          onConfirm={commitSaveShortcut}
+        />
+      )}
+    </div>
+  );
+}
+
+// "Save as shortcut" dialog: a name plus the opt-in "save prompt/source text"
+// checkbox. The checkbox defaults OFF (reusable settings only). When ON, the
+// current typed source text is included; the live char count surfaces the shared
+// size limit so an over-limit prompt is caught before the server rejects it. Only
+// typed source text is offered — uploaded files / attachments are never captured.
+function SaveShortcutDialog({ dialog, setDialog, sourceText, saving, error, onConfirm }) {
+  const willSave = dialog.savePrompt ? clampSavedPrompt(sourceText) : "";
+  const len = (sourceText || "").length;
+  const over = dialog.savePrompt && len > MAX_SAVED_PROMPT_CHARS;
+  const nothingToSave = dialog.savePrompt && !willSave;
+  return (
+    <div className="fixed inset-0 z-[70] flex items-center justify-center p-4">
+      <button
+        type="button"
+        aria-label="Close"
+        className="absolute inset-0 cursor-default bg-black/60"
+        onClick={() => !saving && setDialog(null)}
+      />
+      <div
+        role="dialog"
+        aria-modal="true"
+        className="relative w-full max-w-md rounded-2xl border border-white/10 bg-[#0B0F19] p-5 shadow-2xl"
+      >
+        <h2 className="text-sm font-bold text-white">Save as shortcut</h2>
+        <label className="mt-3 block">
+          <span className="mb-1 block text-[11px] font-bold uppercase tracking-wide text-slate-400">Name</span>
+          <input
+            className="sg-input"
+            autoFocus
+            value={dialog.name}
+            maxLength={120}
+            onChange={(e) => setDialog({ ...dialog, name: e.target.value })}
+            placeholder="Name this shortcut"
+          />
+        </label>
+
+        <div className="mt-3 rounded-lg border border-white/10 bg-white/[0.02] p-3">
+          <label className="flex items-start gap-2 text-xs text-slate-200">
+            <input
+              type="checkbox"
+              className="mt-0.5"
+              checked={dialog.savePrompt}
+              onChange={(e) => setDialog({ ...dialog, savePrompt: e.target.checked })}
+            />
+            <span>
+              <span className="font-semibold">Save prompt/source text with this shortcut</span>
+              <span className="mt-0.5 block text-[11px] font-normal text-slate-400">
+                Includes the current prompt/text inside the shortcut export. Leave off for
+                reusable settings only. This may contain private course material.
+              </span>
+            </span>
+          </label>
+          {dialog.savePrompt && (
+            <div className={`mt-2 text-[11px] ${over ? "text-red-300" : "text-slate-400"}`}>
+              {len.toLocaleString()} / {MAX_SAVED_PROMPT_CHARS.toLocaleString()} chars
+              {over ? " — too long; shorten the source text." : ""}
+              {nothingToSave && !over ? " — no typed source text to save yet." : ""}
+            </div>
+          )}
+        </div>
+
+        {error && <p className="mt-3 text-xs text-red-300">{error}</p>}
+
+        <div className="mt-4 flex justify-end gap-2">
+          <button
+            type="button"
+            onClick={() => setDialog(null)}
+            disabled={saving}
+            className="inline-flex h-9 items-center rounded-lg border border-white/15 bg-white/[0.04] px-3.5 text-sm font-bold text-slate-200 hover:bg-white/[0.08] disabled:opacity-50"
+          >
+            Cancel
+          </button>
+          <button
+            type="button"
+            onClick={() => onConfirm({ name: dialog.name, savePrompt: dialog.savePrompt })}
+            disabled={saving || !dialog.name.trim() || over}
+            className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-[#F97316]/50 bg-[#F97316]/80 px-3.5 text-sm font-bold text-white hover:bg-[#F97316] disabled:opacity-50"
+          >
+            {saving && <Loader2 className="h-4 w-4 animate-spin" />}
+            Save
+          </button>
+        </div>
+      </div>
     </div>
   );
 }

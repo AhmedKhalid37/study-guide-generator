@@ -1,5 +1,17 @@
 # SHORTCUT_INSPECTOR_REPAIR_DESIGN.md — Inspect & repair broken shortcuts
 
+> **Follow-up fix (2026-06-04, DONE #44, branch `shortcut-prompt-save-and-preset-fix`):**
+> the Shortcut **Edit modal's Generator Preset dropdown** was sourcing the wrong
+> registry — `/api/presets` (Outline quick-templates) instead of
+> `/api/options.generator_presets` (the real generator presets the Builder Style tab
+> uses). It therefore saved outline-template ids into `payload.generator_preset`,
+> which this inspector then correctly flagged as `generator_preset_missing`. The root
+> cause was the modal, not the inspector; the modal now uses the canonical source via
+> `generatorPresetOptions()` and a legacy/invalid stored id loads as a trailing
+> "unavailable" option (no crash, no rewrite-on-read). The same slice added the opt-in
+> `saved_prompt` field with an **info-only** finding `saved_prompt_included` (length
+> only, never the text; does not affect validity, no repair). See `DECISIONS.md`.
+>
 > **Status: IMPLEMENTED through Slice 3B** (`a0f96d1`→`4458c9a`, DONE #39→#42 in
 > `CURRENT_TASK.md`). The original design is preserved below; per-slice
 > **IMPLEMENTED** notes are inlined in §7, and the remaining deferred polish is

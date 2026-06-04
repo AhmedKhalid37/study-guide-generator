@@ -726,3 +726,39 @@ Repair and **never route to Builder/Tools** — staying blocked while making the
 discoverable. The gate lives in `HomeShortcuts.requestActivate` and reuses the
 pure Slice 2 status helpers, so no status logic is duplicated and the decision is
 node-testable (`verify-shortcut-activation.mjs`). Backend untouched.
+
+## Outline templates and generator presets are separate registries; the Shortcut Edit modal must use the generator-preset one (2026-06-04)
+Two distinct registries exist and must never be conflated. **Generator presets**
+(`pipeline/generator_presets.py`, exposed at `/api/options.generator_presets`:
+`claude_exam` / `claude_review` / `claude_cram`) drive the *system prompt + sampling
+params* and populate the Builder **Style** tab's preset cards and the shortcut
+payload field `generator_preset`. **Outline quick-templates** (`pipeline/presets.py`,
+exposed at `/api/presets`: `exam_guide` / `report_guide` / `presentation` /
+`chapter_summary` / `final_revision`) are *outline section bundles* that populate the
+Builder **Outline** tab. The Shortcut Edit modal regressed by sourcing its "Generator
+Preset" dropdown from `/api/presets` (the wrong registry), so it saved outline ids
+into `payload.generator_preset` and the Inspector flagged them
+`generator_preset_missing`. **Decision:** the modal now reads
+`/api/options.generator_presets` (the same canonical list the Builder Style tab uses)
+via the pure `generatorPresetOptions()` helper. A non-empty stored id absent from the
+live list is shown as a trailing **"unavailable"** option — loaded, not crashed, and
+**not rewritten on read** (consistent with the no-migration-on-read rule). The Outline
+flow keeps using `/api/presets` unchanged.
+
+## Shortcut `saved_prompt` is opt-in because shortcut exports may contain private user content (2026-06-04)
+A builder_setup shortcut may optionally carry the typed **source prompt/text** under a
+whitelisted `saved_prompt` field, but it is **opt-in and default OFF**, captured only
+when the user ticks the *"Save prompt/source text with this shortcut"* checkbox.
+**Why:** shortcuts are exportable/importable JSON and a study-guide source prompt can
+be **private course material**; baking it into every shortcut (or saving it silently)
+would leak user content into shared exports. So the key is **omitted entirely** unless
+opted in, the inspector marker `saved_prompt_included` carries the **length only, never
+the text** (so list/inspect responses don't echo content), and UI surfaces ("Saved
+prompt" badges, import-preview line) make inclusion visible rather than hidden. It is
+**user content, not a secret/key** — it is intentionally present in shortcut
+read/export when the user chose to include it, which is distinct from API keys (which
+are *never* exposed). Scope guards: only **typed source text** is saved (never uploaded
+files, attachments, page selections, or file paths), capped at **100 000 chars**
+(`MAX_SAVED_PROMPT_CHARS`), oversized **rejected** not truncated, no encryption this
+slice. The backend whitelist (`_clean_saved_prompt`) is the boundary; export/import and
+repair round-trip it by re-running the same normalizer.

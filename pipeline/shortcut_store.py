@@ -60,6 +60,11 @@ MAX_VIEW_CHARS = 200
 MAX_SHORTCUTS = 200
 MIN_TARGET_PAGES = 1
 MAX_TARGET_PAGES = 100
+# Opt-in saved prompt/source text (builder_setup only). This is USER CONTENT, not a
+# secret/key — it is only ever present when the user explicitly opted in at save
+# time. Capped to keep exports a sane size; oversized input is rejected (HTTP 400
+# on create/update, skipped on import) rather than silently truncated.
+MAX_SAVED_PROMPT_CHARS = 100_000
 
 # The three shortcut types and the payload shape each one carries.
 TYPE_BUILDER = "builder_setup"
@@ -212,6 +217,29 @@ def _clean_axis(value: Any, allowed: tuple[str, ...], field: str) -> str | None:
     return text
 
 
+def _clean_saved_prompt(value: Any) -> str | None:
+    """Normalize the optional opt-in ``saved_prompt`` (builder_setup only).
+
+    Unset/empty → ``None`` (the key is then omitted entirely, so a shortcut that
+    did not opt in carries no prompt field at all). Non-empty text is kept verbatim
+    (it is user content — markdown/source/typed prompt, never a key/secret) but an
+    oversized prompt is **rejected** by raising ``ShortcutStoreError`` rather than
+    silently truncated, matching the axis-rejection convention: HTTP 400 on
+    create/update, skipped into the batch ``errors`` list on import.
+    """
+    if value is None:
+        return None
+    text = str(value)
+    if not text.strip():
+        return None
+    if len(text) > MAX_SAVED_PROMPT_CHARS:
+        raise ShortcutStoreError(
+            f"saved_prompt exceeds the {MAX_SAVED_PROMPT_CHARS}-character limit "
+            f"(got {len(text)}); shorten the source text or save settings only."
+        )
+    return text
+
+
 # ---------------------------------------------------------------------------
 # WHITELIST parsing — the security boundary
 # ---------------------------------------------------------------------------
@@ -259,7 +287,7 @@ def _normalize_payload(shortcut_type: str, raw: Any) -> dict[str, Any]:
 
     mode = (str(raw.get("mode") or "").strip() or DEFAULT_MODE)[:MAX_STR_CHARS]
 
-    return {
+    payload = {
         "input_type": input_type,
         "provider": _clean_str_field(raw.get("provider")),
         "model": _clean_str_field(raw.get("model")),
@@ -279,6 +307,15 @@ def _normalize_payload(shortcut_type: str, raw: Any) -> dict[str, Any]:
         "strict_math": _clean_bool(raw.get("strict_math"), default=True),
         "export_formats": export_formats,
     }
+
+    # Opt-in saved prompt/source text. Only added when the incoming payload carries
+    # non-empty text, so a config-only shortcut never grows the key — keeping "off"
+    # the default and making "Includes saved prompt" a reliable signal downstream.
+    saved_prompt = _clean_saved_prompt(raw.get("saved_prompt"))
+    if saved_prompt is not None:
+        payload["saved_prompt"] = saved_prompt
+
+    return payload
 
 
 def _normalize_shortcut(
@@ -407,6 +444,10 @@ FINDING_TOOL_ROUTE_MISSING = "tool_route_missing"
 FINDING_LEGACY_FIELD_IGNORED = "legacy_field_ignored"
 FINDING_PAYLOAD_SHAPE_INVALID = "payload_shape_invalid"
 FINDING_INSPECTION_ERROR = "inspection_error"
+# Informational only (never affects validity): the shortcut carries an opt-in saved
+# prompt/source text. Surfaced so the UI / import preview can disclose that the
+# shortcut includes user content rather than settings only. Not repairable.
+FINDING_SAVED_PROMPT_INCLUDED = "saved_prompt_included"
 
 # Severity → status tier. error ⇒ broken, warning ⇒ degraded, info ⇒ valid.
 SEVERITY_ERROR = "error"
@@ -661,6 +702,17 @@ def _collect_findings_inner(record: dict[str, Any]) -> list[dict[str, Any]]:
                     "A legacy module key is not recognized and is ignored on read.",
                     current_value=key, repairable=True,
                 ))
+
+    # --- saved prompt: opt-in user content -> info (never affects validity) ---
+    # ``current_value`` is the LENGTH only — never the prompt text — so inspection
+    # responses stay small and never echo the content back into a list view.
+    saved_prompt = payload.get("saved_prompt")
+    if isinstance(saved_prompt, str) and saved_prompt.strip():
+        findings.append(_finding(
+            FINDING_SAVED_PROMPT_INCLUDED, SEVERITY_INFO, "payload.saved_prompt",
+            "Includes saved prompt/source text (user content) captured at save time.",
+            current_value=len(saved_prompt), repairable=False,
+        ))
 
     return findings
 

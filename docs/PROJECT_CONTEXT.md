@@ -126,7 +126,19 @@ flashcards with CSV / Anki / Quizlet export.
   `status:degraded`) **asks before launch** — a confirm dialog offers Continue
   anyway (unchanged launch, no mutation), Repair instead (opens the Inspector), or
   Cancel. A **broken** shortcut (`valid:false`) **stays blocked** and offers
-  Inspect / Repair instead of launching.
+  Inspect / Repair instead of launching. The Edit modal's **Generator Preset**
+  dropdown is sourced from `/api/options.generator_presets` (the canonical
+  generator-preset registry, same as the Builder Style tab) — **not** the Outline
+  quick-template registry (`/api/presets`), which is a separate thing.
+- **Shortcuts may optionally include saved prompt/source text.** A builder_setup
+  shortcut can carry the typed source prompt under a whitelisted `saved_prompt`
+  field, but **only when the user explicitly opts in** (a "Save prompt/source text
+  with this shortcut" checkbox, default off). It captures **typed source text
+  only** (never uploaded files/attachments/page selections), is capped at
+  `MAX_SAVED_PROMPT_CHARS` (100 000), and is **user content, not a secret** — it is
+  intentionally present in shortcut read/export when opted in (the inspector shows
+  an info-only "Includes saved prompt" marker carrying the *length only*). Applying
+  such a shortcut prefills the Builder source text. See `DECISIONS.md`.
 - **Job stage reporting.** Coarse status (`queued/running/done/
   completed_with_warnings/failed/cancelled`) is augmented by finer `stage`/`progress`,
   surfaced via `GET /api/jobs/{id}/progress` and polled by the Builder.

@@ -12,6 +12,7 @@ saved shortcut that contains NONE of those fields (whitelist parsing).
 
     python test_scripts/test_shortcut_store.py
 """
+import json
 import sys
 import tempfile
 from pathlib import Path
@@ -292,6 +293,88 @@ def run():
     old = shortcut_store.get_shortcut("sc_oldnothing")["payload"]
     check("old shortcut (no modules/sections) not forced to grow include_sections",
           "include_sections" not in old, f"{sorted(old.keys())}")
+
+    # 19. saved_prompt — opt-in: omitted when absent/empty, persisted when present
+    no_prompt = shortcut_store.create_shortcut({
+        "name": "No Prompt", "type": "builder_setup",
+        "payload": {"provider": "deepseek"},
+    })
+    check("saved_prompt omitted when not provided", "saved_prompt" not in no_prompt["payload"],
+          f"{sorted(no_prompt['payload'].keys())}")
+    empty_prompt = shortcut_store.create_shortcut({
+        "name": "Empty Prompt", "type": "builder_setup",
+        "payload": {"provider": "deepseek", "saved_prompt": "   "},
+    })
+    check("blank saved_prompt omitted (not stored)", "saved_prompt" not in empty_prompt["payload"],
+          f"{sorted(empty_prompt['payload'].keys())}")
+
+    PROMPT = "Photosynthesis lecture notes:\nLight reactions vs Calvin cycle."
+    with_prompt = shortcut_store.create_shortcut({
+        "name": "With Prompt", "type": "builder_setup",
+        "payload": {"provider": "deepseek", "saved_prompt": PROMPT},
+    })
+    wp_id = with_prompt["id"]
+    check("saved_prompt persisted verbatim when provided",
+          with_prompt["payload"].get("saved_prompt") == PROMPT, "")
+    check("saved_prompt survives read-back",
+          shortcut_store.get_shortcut(wp_id)["payload"].get("saved_prompt") == PROMPT, "")
+
+    # 19b. saved_prompt does NOT affect validity (info only, still valid)
+    insp = shortcut_store.inspect_shortcut(wp_id)
+    statuses = insp["validity"]["status"]
+    codes = {f["code"] for f in insp["validity"]["findings"]}
+    check("saved_prompt does not break validity (still valid:true)", with_prompt["valid"] is True,
+          f"reason={with_prompt.get('reason')}")
+    check("inspector emits info marker saved_prompt_included",
+          shortcut_store.FINDING_SAVED_PROMPT_INCLUDED in codes, f"codes={sorted(codes)}")
+    check("saved_prompt marker is info severity (status valid)", statuses == shortcut_store.STATUS_VALID,
+          f"status={statuses}")
+    # The inspection finding must carry the LENGTH, never the prompt text.
+    sp_finding = next(f for f in insp["validity"]["findings"]
+                      if f["code"] == shortcut_store.FINDING_SAVED_PROMPT_INCLUDED)
+    check("inspector marker carries length, not prompt text",
+          sp_finding.get("current_value") == len(PROMPT)
+          and PROMPT not in json.dumps(insp), f"cv={sp_finding.get('current_value')}")
+
+    # 19c. export includes saved_prompt; import round-trips it
+    exported_wp = shortcut_store.export_shortcut(wp_id)
+    check("export includes saved_prompt", exported_wp["payload"].get("saved_prompt") == PROMPT, "")
+    reimported = shortcut_store.import_shortcuts(exported_wp)
+    new_wp = shortcut_store.get_shortcut(reimported["shortcuts"][0]["id"])
+    check("import round-trips saved_prompt", new_wp["payload"].get("saved_prompt") == PROMPT, "")
+
+    # 19d. import preview preserves saved_prompt (without saving)
+    prev = shortcut_store.preview_import({
+        "name": "Preview Prompt", "type": "builder_setup",
+        "payload": {"provider": "deepseek", "saved_prompt": PROMPT},
+    })
+    check("import preview preserves saved_prompt",
+          prev["shortcuts"][0]["payload"].get("saved_prompt") == PROMPT and prev["saved"] is False, "")
+
+    # 19e. oversized saved_prompt is rejected (not silently truncated)
+    huge = "x" * (shortcut_store.MAX_SAVED_PROMPT_CHARS + 1)
+    try:
+        shortcut_store.create_shortcut({
+            "name": "Huge Prompt", "type": "builder_setup",
+            "payload": {"provider": "deepseek", "saved_prompt": huge},
+        })
+        check("oversized saved_prompt rejected", False)
+    except shortcut_store.ShortcutStoreError:
+        check("oversized saved_prompt rejected", True)
+    # at-limit is accepted
+    at_limit = shortcut_store.create_shortcut({
+        "name": "Limit Prompt", "type": "builder_setup",
+        "payload": {"provider": "deepseek", "saved_prompt": "y" * shortcut_store.MAX_SAVED_PROMPT_CHARS},
+    })
+    check("at-limit saved_prompt accepted",
+          len(at_limit["payload"].get("saved_prompt") or "") == shortcut_store.MAX_SAVED_PROMPT_CHARS, "")
+
+    # 19f. removing saved_prompt on update (edit modal "remove") clears the key
+    cleared = shortcut_store.update_shortcut(wp_id, {
+        "payload": {**shortcut_store.get_shortcut(wp_id)["payload"], "saved_prompt": ""},
+    })
+    check("update with blank saved_prompt removes the key", "saved_prompt" not in cleared["payload"],
+          f"{sorted(cleared['payload'].keys())}")
 
     print("\n--- SUMMARY ---")
     passed = sum(1 for _, ok in results if ok)

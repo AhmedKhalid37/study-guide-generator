@@ -9,7 +9,9 @@
 
 - **The Shortcut Inspector / Repair loop is COMPLETE** (Slices 1+2+3A+3B + the
   degraded-activation confirm polish, DONE #39→#43). See the block just below and
-  DONE #43 for the latest slice.
+  DONE #43 for the latest slice. **A follow-up shortcut slice (DONE #44) then
+  fixed the Edit-modal generator-preset source bug and added opt-in
+  `saved_prompt`** — see DONE #44.
 - **NEXT — Local Model Manager (DESIGN-FIRST).** A separate feature for
   configuring/managing the local llama.cpp provider (discovery, base-URL/model
   config, health). **Do not start building before a design doc + explicit slice
@@ -1496,6 +1498,63 @@ parked on the `hardening` branch — not merged, not deleted.
     - **NOT automated — needs manual click-through:** clicking a degraded card and
       seeing the confirm before launch, Continue anyway launching, Repair instead
       opening the Inspector repair UI, Cancel doing nothing, and the broken dialog.
+
+44. **Shortcut Edit modal generator-preset fix + opt-in "Save prompt with
+    shortcut" (FRONTEND + backend whitelist + tests + docs)** — branch
+    `shortcut-prompt-save-and-preset-fix`.
+    - **Part A — bugfix (root cause):** the Shortcut Edit modal's **Generator
+      Preset** dropdown was sourced from `getPresets()` → `/api/presets`, which is
+      the **Outline quick-template** registry (`pipeline/presets.py`: Exam Cram /
+      Academic Report / Presentation / Chapter Summary / Final Revision) — a
+      *different* registry from the real **generator presets**
+      (`pipeline/generator_presets.py`: `claude_exam` / `claude_review` /
+      `claude_cram`, exposed at `/api/options.generator_presets` and used by the
+      Builder Style tab). The modal therefore saved outline-template ids into
+      `payload.generator_preset`, which the Inspector then flagged
+      `generator_preset_missing`. **Fix:** the modal now loads
+      `options.generator_presets` (canonical source, same as Builder) and renders
+      via a new pure `generatorPresetOptions(presets, current)` helper in
+      `shortcutMeta.js` — leads with **None** (empty id → clears), shows the real
+      presets, and appends any **legacy/invalid stored id** (incl. a mis-saved
+      outline id) as a trailing **"… — unavailable"** option so old shortcuts load
+      without crashing and **without being rewritten on read** (only changes if the
+      user picks another option and saves). Builder Style preset cards and Builder
+      Outline quick-templates are **unchanged** (the Outline flow still uses
+      `getPresets()`).
+    - **Part B — opt-in saved prompt/source text:** a builder_setup shortcut may
+      now optionally carry the typed **source prompt/text** under a whitelisted
+      `saved_prompt` field. **Opt-in only, default OFF.** The Builder "Save as
+      shortcut" button opens a small dialog (name + checkbox *"Save prompt/source
+      text with this shortcut"*, with a live char count); the Home Customize edit
+      modal shows/edits/removes an existing saved prompt and badges rows + import
+      preview with **"Saved prompt"**. Only **typed source text** is saved — never
+      uploaded files / attachments / page selections / file paths. Size limit
+      **100 000 chars** (`MAX_SAVED_PROMPT_CHARS`, mirrored in front+back); oversized
+      is **rejected** (HTTP 400 on create/update, skipped on import), not truncated
+      silently. Backend (`pipeline/shortcut_store.py`): `_clean_saved_prompt` +
+      whitelist add (key **omitted** when empty so config-only shortcuts never grow
+      it), an **info-only** inspector finding `saved_prompt_included` (carries the
+      **length, never the text**; does **not** affect validity), and export/import/
+      repair round-trip (bridge copies the key, repair re-runs the same whitelist).
+      **Builder prefill is implemented:** applying a shortcut with `saved_prompt`
+      prefills the Builder source text.
+    - **Verified:** `python -m compileall api pipeline` OK; `test_shortcut_store.py`
+      **53/53** (extended: omit-when-absent, persist, export/import + preview
+      round-trip, oversized-reject, at-limit-accept, remove-on-update, info-marker
+      length-not-text), `test_shortcut_inspector.py` **19/19**,
+      `test_shortcut_repair.py` **29/29**; new node harness
+      `verify-shortcut-form.mjs` (wired into `test:shortcuts`) covers the preset
+      source/canonical-id/legacy-safe cases + saved-prompt opt-in/clamp/strip;
+      frontend build OK; `docker compose config/build/up` OK; `/api/health` ok;
+      `/api/options.generator_presets` = `['claude_exam','claude_review','claude_cram']`
+      (no outline ids); release smoke **28/28**; live API round-trip of a shortcut
+      with `saved_prompt` (valid:true, info marker, export carries it, inspect does
+      **not** echo the text). Secret scan (served bundle + `/api/options` +
+      `/api/provider-settings` + shortcut list/inspect + container logs) clean —
+      **0 API-key leaks**; saved prompt is **user content**, opt-in, never silent.
+    - **NOT automated — needs manual click-through:** the Builder save dialog
+      checkbox (off by default; export with/without prompt), the edit-modal
+      "Saved prompt" badge + remove, and the dropdown showing only real presets.
 
 ## NEXT (in order)
 

@@ -58,6 +58,67 @@ export const COLOR_CHOICES = [
   "#F472B6", "#F97316", "#F43F5E", "#C084FC", "#22D3EE",
 ];
 
+// Max chars of opt-in saved prompt/source text a builder_setup shortcut may
+// carry. Mirror of pipeline/shortcut_store.py MAX_SAVED_PROMPT_CHARS — keep in
+// sync; the backend re-checks and rejects oversized input regardless.
+export const MAX_SAVED_PROMPT_CHARS = 100000;
+
+// ── Generator preset options (Shortcut Edit modal) ──────────────────────────
+//
+// The CANONICAL source is /api/options.generator_presets — the SAME list the
+// Builder Style tab renders (None / Claude-Exam / Claude-Review / Claude-Cram).
+// It must NEVER be the outline quick-template registry (/api/presets: Exam Cram /
+// Academic Report / Presentation / …). Those are Outline templates, a separate
+// registry; mixing them was the bug that made shortcuts save outline-template ids
+// into payload.generator_preset and get flagged generator_preset_missing.
+//
+// Always leads with a "None" entry (empty id => clears generator_preset). A
+// non-empty `current` value not present in the live list — a legacy/invalid id, or
+// an outline-template id mis-saved by the old bug — is appended as a trailing,
+// visibly-deprecated option so the modal LOADS it without crashing and WITHOUT
+// rewriting it on read. The stored value only changes if the user picks another
+// option and explicitly saves.
+export function generatorPresetOptions(generatorPresets = [], current = "") {
+  const list = Array.isArray(generatorPresets) ? generatorPresets : [];
+  const options = [{ id: "", label: "None" }];
+  list.forEach((preset) => {
+    if (preset && preset.id) options.push({ id: preset.id, label: preset.name || preset.id });
+  });
+  const cur = (current || "").trim();
+  if (cur && !list.some((preset) => preset && preset.id === cur)) {
+    options.push({ id: cur, label: `${cur} — unavailable`, deprecated: true });
+  }
+  return options;
+}
+
+// ── Opt-in saved prompt/source text ─────────────────────────────────────────
+
+// Clamp opt-in saved prompt text to the shared size limit. Returns "" for
+// non-strings / blank so callers treat "nothing to save" uniformly.
+export function clampSavedPrompt(text) {
+  if (typeof text !== "string" || !text.trim()) return "";
+  return text.length > MAX_SAVED_PROMPT_CHARS ? text.slice(0, MAX_SAVED_PROMPT_CHARS) : text;
+}
+
+// Apply the opt-in saved-prompt decision to a builder_setup payload. `savePrompt`
+// off (the default) REMOVES the key entirely — prompt text is never saved
+// silently. On => the clamped, non-empty source text is attached under
+// `saved_prompt`. Returns a NEW object; never mutates the input.
+export function withSavedPrompt(payload, { savePrompt = false, sourceText = "" } = {}) {
+  const next = { ...(payload || {}) };
+  delete next.saved_prompt;
+  if (savePrompt) {
+    const clamped = clampSavedPrompt(sourceText);
+    if (clamped) next.saved_prompt = clamped;
+  }
+  return next;
+}
+
+// True when a payload carries non-empty opt-in saved prompt text.
+export function payloadHasSavedPrompt(payload) {
+  return Boolean(payload && typeof payload.saved_prompt === "string" && payload.saved_prompt.trim());
+}
+
 // ── Builder <-> shortcut payload mapping ────────────────────────────────────
 
 export const SOURCE_TO_INPUT = {
