@@ -5,7 +5,7 @@
 
 ---
 
-## NEXT — Shortcut Inspector / Repair Loop (Slices 1+2 DONE; Slice 3 next)
+## NEXT — Shortcut Inspector / Repair Loop (Slices 1+2+3A DONE; Slice 3B next)
 
 - **Design doc:** `docs/SHORTCUT_INSPECTOR_REPAIR_DESIGN.md`. Safe UX + backend
   contract for inspecting and repairing shortcuts whose saved references
@@ -29,16 +29,25 @@
   **unchanged** (still gated on legacy `valid`; broken never auto-routed). Backend
   untouched. node harness `verify-shortcut-status.mjs` 25/25; live Chromium UI
   proof; secret scan clean.
-- **NEXT is Slice 3 — repair preview + apply flow.** Add `POST …/repair/preview`
-  (pure) + `POST …/repair/apply` (in place via `update_shortcut`, or `clone` via
-  `create_shortcut`) and wire the Inspector's live preview/diff + Apply /
-  Save-as-copy + the degraded-activation confirm. Unless manual UI validation of
-  Slice 2 surfaces problems first.
-- **Slice 3 (later):** `POST …/repair/preview` (pure) + `POST …/repair/apply`
-  (in place via `update_shortcut`, or `clone` via `create_shortcut`). **No
-  migration-on-read, no silent overwrite, no auto-switch of provider/model, no
-  raw keys, no shortcut-store refactor.** See design doc §7–§10 and the
-  `DECISIONS.md` entries on additive `validity` / the legacy-`valid` divergence.
+- **Slice 3A (backend repair preview + apply endpoints, BACKEND ONLY) is DONE**
+  (DONE #41, branch `shortcut-inspector-repair-backend`). Added a shared,
+  read-only repair normalizer (`_prepare_repair`) + `preview_repair` (pure) +
+  `apply_repair` (the only write) to `pipeline/shortcut_store.py`, plus the two
+  routes `POST /api/shortcuts/{id}/repair/preview` and `…/repair/apply`. Repair
+  is an **explicit whitelisted patch** (`mode` + `changes{provider, model, style,
+  generator_preset, output_depth, difficulty, include_sections{remove,set},
+  remove_fields}` + `clone_name`) — **no arbitrary merge-patch**. Apply reuses the
+  existing `update_shortcut` (in place) / `create_shortcut` (clone) CRUD, so the
+  whitelist + atomic write hold automatically. **No auto-repair, no
+  migration-on-read, no silent overwrite, no provider/model auto-switch, no raw
+  keys.** `test_scripts/test_shortcut_repair.py` 29/29; existing
+  `test_shortcut_store.py` 39/39 + `test_shortcut_inspector.py` 19/19 unchanged.
+- **NEXT is Slice 3B — frontend repair UI wiring.** Wire the existing read-only
+  `ShortcutInspector` drawer to the live `…/repair/preview` (diff + resulting
+  status as the user makes choices) + `…/repair/apply` (Apply in place /
+  Save-as-repaired-copy) + the degraded-activation confirm + "Repair instead" on
+  Home. The backend contract is now stable; **frontend repair UI is still
+  deferred** until 3B. See design doc §5/§7 and the `DECISIONS.md` repair entry.
 
 ---
 
@@ -1316,6 +1325,50 @@ parked on the `hardening` branch — not merged, not deleted.
       secret scan (served bundle + inspect/list/options/provider-settings + logs)
       **clean**. **NOT automated — operator judgment:** badge/drawer visual
       polish, spacing, colour legibility.
+
+41. **Shortcut Inspector Slice 3A — backend repair preview + apply endpoints
+    (BACKEND ONLY)** — branch `shortcut-inspector-repair-backend`. Adds the safe
+    mutation surface the read-only Inspector (Slices 1+2) was built against. **No
+    frontend repair UI in this slice — that is Slice 3B.**
+    - **Store logic (`pipeline/shortcut_store.py`):** one shared, read-only
+      normalizer `_prepare_repair(id, body)` feeds both `preview_repair` (pure —
+      returns original + proposed summaries, a field-level `diff`, and the
+      resulting `validity`, writing nothing) and `apply_repair` (the **only**
+      write). Apply reuses the existing CRUD: `update_shortcut` for `in_place`,
+      `create_shortcut` for `clone` — so the whitelist + atomic write + id
+      generation all come for free; **no new raw write to `shortcuts.json`**.
+    - **Explicit whitelisted patch (NOT arbitrary merge-patch):** body is
+      `{mode: in_place|clone, changes{…}, clone_name?}`. `changes` whitelist:
+      `provider`, `model`, `style`, `generator_preset`, `output_depth`,
+      `difficulty`, `include_sections{remove:[…], set:{k:bool}}`, and
+      `remove_fields:[…]` (removable = `model`/`style`/`generator_preset`/
+      `output_depth`/`difficulty` — **provider is not removable**). Any unknown
+      top-level or change key is **rejected (HTTP 400)** — a mutation boundary, not
+      silently ignored. The proposed payload runs through the same
+      `_normalize_payload`, so preview == apply and unknown fields never persist.
+    - **Validation against LIVE config:** replacement provider must resolve **and**
+      be configured; a replacement model is validated against the **repaired**
+      provider (provider-in-same-repair wins, else the existing provider; a
+      model-only repair with no provider context → 400); style/preset checked for
+      existence; axes validated by the store enum; `include_sections.set` keys must
+      be canonical/alias keys. All invalid → 400, nothing written.
+    - **Routes (`api/server.py`):** `POST /api/shortcuts/{id}/repair/preview` +
+      `POST /api/shortcuts/{id}/repair/apply`, registered with the other
+      `/api/shortcuts/*` routes (before the static catch-all). Unknown id → 404;
+      bad request → 400, both via the existing `_shortcut_error` mapper. Repair
+      currently supports `builder_setup` shortcuts only; others → safe 400.
+    - **Safety guarantees:** read-only preview (sha256 unchanged), no auto-repair,
+      no migration-on-read, no silent overwrite, no provider/model auto-switch
+      (preset `model_hint` stays advisory — a model only changes when the caller
+      explicitly asks), clone never overwrites (new id; original untouched), and
+      **no raw key** read or returned.
+    - **Tests:** `test_scripts/test_shortcut_repair.py` **29/29** (preview
+      read-only; in-place provider/model repair; clone new-id + original-unchanged;
+      unknown-field / invalid provider/style/preset/model/axis/section → error;
+      model-provider context; model-only-no-provider → error; remove optional
+      field; unknown-section removal; validity recompute; no migration-on-read;
+      no key leak). `test_shortcut_store.py` **39/39** + `test_shortcut_inspector.py`
+      **19/19** + `test_provider_settings_store.py` **26/26** unchanged.
 
 ## NEXT (in order)
 

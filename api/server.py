@@ -985,6 +985,30 @@ def inspect_shortcut_route(shortcut_id: str) -> dict[str, Any]:
         raise _shortcut_error(exc) from exc
 
 
+@app.post("/api/shortcuts/{shortcut_id}/repair/preview")
+def repair_preview_shortcut_route(shortcut_id: str, body: dict[str, Any]) -> dict[str, Any]:
+    # Repair preview (Slice 3A) — READ-ONLY. Returns the proposed shortcut +
+    # diff + resulting validity without writing shortcuts.json. Unknown id ->
+    # 404; bad/invalid repair request -> 400 (both via _shortcut_error).
+    _guard_shortcut_id(shortcut_id)
+    try:
+        return shortcut_store.preview_repair(shortcut_id, body)
+    except shortcut_store.ShortcutStoreError as exc:
+        raise _shortcut_error(exc) from exc
+
+
+@app.post("/api/shortcuts/{shortcut_id}/repair/apply")
+def repair_apply_shortcut_route(shortcut_id: str, body: dict[str, Any]) -> dict[str, Any]:
+    # Repair apply (Slice 3A) — the ONLY write. in_place updates via the existing
+    # update_shortcut; clone creates a new shortcut via create_shortcut (original
+    # untouched). Reuses the store's whitelist + atomic write. No raw keys.
+    _guard_shortcut_id(shortcut_id)
+    try:
+        return shortcut_store.apply_repair(shortcut_id, body)
+    except shortcut_store.ShortcutStoreError as exc:
+        raise _shortcut_error(exc) from exc
+
+
 @app.get("/api/exports")
 def get_exports(
     q: str | None = None,

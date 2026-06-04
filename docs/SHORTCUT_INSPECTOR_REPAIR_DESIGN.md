@@ -544,6 +544,62 @@ smoke), one branch per slice, surgical edits.
 - Wire the Inspector's live preview + diff + Apply / Save-as-copy. Add the
   degraded-activation confirm + "Repair instead" path on Home.
 
+> **IMPLEMENTED — Slice 3A: backend repair endpoints (branch
+> `shortcut-inspector-repair-backend`, DONE #41 in `CURRENT_TASK.md`).**
+> Backend-only; **the frontend repair UI wiring is Slice 3B and remains
+> deferred.**
+>
+> - **One shared normalizer (`_prepare_repair`) in `pipeline/shortcut_store.py`**
+>   feeds both `preview_repair` (read-only) and `apply_repair` (the only write),
+>   so a preview is byte-for-byte the computation an apply would persist.
+> - **Request schema (the brief's explicit patch, slightly tightened):**
+>   ```jsonc
+>   {
+>     "mode": "in_place" | "clone",
+>     "changes": {
+>       "provider": "qwen", "model": "qwen3.7-plus",
+>       "style": "baby_steps", "generator_preset": "claude_cram",
+>       "output_depth": "balanced", "difficulty": "exam_level",
+>       "include_sections": { "remove": ["unknown_key"], "set": {"glossary": true} },
+>       "remove_fields": ["generator_preset", "model"]
+>     },
+>     "clone_name": "Repaired shortcut name"   // clone only; derived if omitted
+>   }
+>   ```
+>   This is an **explicit whitelist** — unknown top-level keys (outside
+>   `mode`/`changes`/`clone_name`) and unknown `changes` keys are **rejected
+>   (HTTP 400)**, not silently ignored (the mutation-boundary rule). `remove_fields`
+>   may only drop **optional** builder fields (`model`/`style`/`generator_preset`/
+>   `output_depth`/`difficulty`); **`provider` is not removable**. The proposed
+>   payload is run through the same `_normalize_payload` as create/update, so
+>   nothing outside the schema ever persists. **No arbitrary JSON merge-patch.**
+> - **Validation against live config:** a replacement provider must resolve **and**
+>   be configured; a replacement model is validated against the **repaired** provider
+>   (provider supplied in the same repair wins, else the existing provider; a
+>   model-only repair with no provider context → 400); style/preset checked for
+>   existence; axes validated by the store enum; `include_sections.set` keys must be
+>   canonical/alias keys. All invalid values → 400, nothing written.
+> - **Responses** follow the brief's suggested shapes. Preview returns
+>   `{ok, mode, shortcut_id, original{…validity}, proposed{name, type, payload,
+>   …validity}, diff[], warnings[]}`; apply returns `{ok, mode, shortcut{public
+>   payload}, diff[], warnings[]}`. `diff` is per-field
+>   (`{field: "payload.<k>", from, to}`); `warnings` flags a still-degraded/broken
+>   result.
+> - **Apply reuses existing CRUD** — `update_shortcut` (in place, id + other fields
+>   preserved, `updated_at` bumped) or `create_shortcut` (clone: new id, original
+>   untouched, name = `clone_name` or `"<name> (repaired copy)"`). No new raw write
+>   path, so the store's whitelist + atomic write hold automatically.
+> - **Routes:** `POST /api/shortcuts/{id}/repair/preview` + `…/repair/apply`,
+>   registered with the other `/api/shortcuts/*` routes (before the static
+>   catch-all). Unknown id → 404; bad request → 400. Repair currently supports
+>   `builder_setup` only (others → safe 400).
+> - **Invariants honoured:** read-only preview (`shortcuts.json` sha256 unchanged),
+>   no auto-repair, no migration-on-read, no silent overwrite, no provider/model
+>   auto-switch (preset `model_hint` stays advisory), no raw key read or returned.
+> - **Tests:** `test_scripts/test_shortcut_repair.py` (29/29) +
+>   `test_shortcut_store.py` (39/39) + `test_shortcut_inspector.py` (19/19) +
+>   `test_provider_settings_store.py` (26/26), all unchanged/green.
+
 ### Optional later polish
 - "Repair all" batch action across multiple broken shortcuts (loops apply).
 - A Home banner summarising "N shortcuts need attention".

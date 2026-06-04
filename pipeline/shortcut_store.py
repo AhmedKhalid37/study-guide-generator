@@ -730,6 +730,301 @@ def inspect_shortcut(shortcut_id: str) -> dict[str, Any]:
 
 
 # ---------------------------------------------------------------------------
+# Repair (Slice 3A) — explicit, whitelisted, opt-in repair of one shortcut
+#
+# Two public entry points share ONE normalizer (`_prepare_repair`), so a
+# `preview` is byte-for-byte the same computation an `apply` would persist:
+#   - `preview_repair`  — READ-ONLY. Builds the proposed record + diff + the
+#     resulting validity, writes nothing.
+#   - `apply_repair`    — the ONLY write. Persists through the existing CRUD
+#     (`update_shortcut` in place, or `create_shortcut` for a clone), so the
+#     store's whitelist + atomic-write invariants hold automatically.
+#
+# Design constraints honoured here (see SHORTCUT_INSPECTOR_REPAIR_DESIGN.md §7
+# + DECISIONS.md): explicit whitelisted operations only (NO arbitrary merge-
+# patch), no unknown-field persistence, no auto-repair, no migration-on-read, no
+# silent overwrite, no provider/model auto-switching (a model is only changed
+# when the caller explicitly asks), and no raw key ever read or returned. Repair
+# currently supports `builder_setup` shortcuts only (the type whose references
+# rot against live config); other types raise a safe error.
+# ---------------------------------------------------------------------------
+
+REPAIR_MODE_IN_PLACE = "in_place"
+REPAIR_MODE_CLONE = "clone"
+REPAIR_MODES = (REPAIR_MODE_IN_PLACE, REPAIR_MODE_CLONE)
+
+# Top-level repair request keys and the per-field change keys. Anything outside
+# these sets is REJECTED (a mutation boundary — unknown ops are an error, not
+# silently ignored).
+REPAIR_BODY_KEYS = {"mode", "changes", "clone_name"}
+REPAIR_CHANGE_KEYS = {
+    "provider", "model", "style", "generator_preset",
+    "output_depth", "difficulty", "include_sections", "remove_fields",
+}
+# Optional builder fields a repair may DROP (reset to provider/default behaviour).
+# `provider` is intentionally NOT removable — a generation shortcut needs one.
+REPAIR_REMOVABLE_FIELDS = {"model", "style", "generator_preset", "output_depth", "difficulty"}
+# Scalar fields a repair may REPLACE with a value (None clears them).
+REPAIR_SCALAR_FIELDS = ("provider", "model", "style", "generator_preset", "output_depth", "difficulty")
+
+CLONE_NAME_SUFFIX = "(repaired copy)"
+
+
+def _raw_record(shortcut_id: str) -> dict[str, Any]:
+    """Return the stored (un-`_public`) record for an id or raise NotFound."""
+    if not is_valid_shortcut_id(shortcut_id):
+        raise ShortcutNotFoundError(f"Unknown shortcut: {shortcut_id}")
+    for record in _valid_records():
+        if record["id"] == shortcut_id:
+            return record
+    raise ShortcutNotFoundError(f"Unknown shortcut: {shortcut_id}")
+
+
+def _validate_repair_provider(provider: str) -> str:
+    """Resolve + require a known, configured provider. Raises on failure."""
+    provider_id = provider_config.resolve_provider_id(provider)
+    if not provider_id:
+        raise ShortcutStoreError(f"Unknown provider for repair: {provider!r}.")
+    if not _provider_is_configured(provider_id):
+        raise ShortcutStoreError(
+            f"Provider {provider_id!r} is not configured (no API key on the server)."
+        )
+    return provider_id
+
+
+def _apply_repair_changes(record: dict[str, Any], changes: dict[str, Any]) -> dict[str, Any]:
+    """Build a fresh, fully-normalized payload from the stored payload + an
+    explicit change set. Validates every replacement against live config and
+    re-runs the store whitelist (`_normalize_payload`) at the end, so the result
+    is exactly what create/update would persist. Pure: never writes."""
+    payload = dict(record.get("payload") or {})
+
+    # --- remove_fields: drop whitelisted optional fields (reset to default) ---
+    remove_fields = changes.get("remove_fields", [])
+    if not isinstance(remove_fields, list):
+        raise ShortcutStoreError("remove_fields must be a list of field names.")
+    for field in remove_fields:
+        if field not in REPAIR_REMOVABLE_FIELDS:
+            raise ShortcutStoreError(
+                f"Field {field!r} is not removable by repair; "
+                f"removable: {sorted(REPAIR_REMOVABLE_FIELDS)}."
+            )
+        payload[field] = None
+
+    # --- scalar replacements (None = clear) ----------------------------------
+    for field in REPAIR_SCALAR_FIELDS:
+        if field in changes:
+            payload[field] = changes[field]
+
+    # --- include_sections: explicit remove / set (canonical keys only) -------
+    if "include_sections" in changes:
+        sec = changes["include_sections"]
+        if not isinstance(sec, dict):
+            raise ShortcutStoreError("include_sections repair must be an object.")
+        extra = set(sec) - {"remove", "set"}
+        if extra:
+            raise ShortcutStoreError(
+                f"Unknown include_sections repair ops: {sorted(extra)}; allowed: ['remove', 'set']."
+            )
+        current = dict(payload.get("include_sections") or {})
+        remove = sec.get("remove", [])
+        if not isinstance(remove, list):
+            raise ShortcutStoreError("include_sections.remove must be a list of keys.")
+        for key in remove:
+            current.pop(key, None)
+        set_map = sec.get("set", {})
+        if not isinstance(set_map, dict):
+            raise ShortcutStoreError("include_sections.set must be an object of {key: bool}.")
+        for key, value in set_map.items():
+            if key not in INCLUDE_SECTION_FRAGMENTS and key not in INCLUDE_SECTION_ALIASES:
+                raise ShortcutStoreError(f"Unknown include_sections key: {key!r}.")
+            current[key] = bool(value)
+        payload["include_sections"] = current
+
+    # --- validate replacements against LIVE config ---------------------------
+    effective_provider = payload.get("provider")
+    if changes.get("provider"):
+        # An explicit provider replacement must resolve + be configured.
+        _validate_repair_provider(changes["provider"])
+
+    model_value = changes.get("model")
+    if model_value:
+        # Model needs provider context (requirement #4): validate against the
+        # repaired provider when one was supplied, else the existing provider.
+        if not effective_provider:
+            raise ShortcutStoreError(
+                "Cannot set a model without a provider; include a provider in the "
+                "same repair or repair the provider first."
+            )
+        provider_id = provider_config.resolve_provider_id(effective_provider)
+        if not provider_id:
+            raise ShortcutStoreError(
+                f"Cannot validate model against unknown provider {effective_provider!r}."
+            )
+        models = _provider_models(provider_id)
+        if models and model_value not in models:
+            raise ShortcutStoreError(
+                f"Model {model_value!r} is not available for provider {provider_id!r}."
+            )
+
+    if changes.get("style") and not _safe_style_exists(changes["style"]):
+        raise ShortcutStoreError(f"Unknown style for repair: {changes['style']!r}.")
+    if changes.get("generator_preset") and not _safe_preset_exists(changes["generator_preset"]):
+        raise ShortcutStoreError(
+            f"Unknown generator preset for repair: {changes['generator_preset']!r}."
+        )
+
+    # Final pass through the store whitelist: canonicalizes include_sections,
+    # validates axes (raises ShortcutStoreError on a bad enum), cleans strings,
+    # and discards anything not in the schema. This is the SAME normalizer
+    # create/update use, so preview == apply.
+    return _normalize_payload(TYPE_BUILDER, payload)
+
+
+_REPAIR_DIFF_FIELDS = (
+    "provider", "model", "style", "generator_preset",
+    "output_depth", "difficulty", "include_sections",
+)
+
+
+def _repair_diff(old_payload: dict[str, Any], new_payload: dict[str, Any]) -> list[dict[str, Any]]:
+    """Field-level diff (only changed fields) between two builder payloads."""
+    diff: list[dict[str, Any]] = []
+    for field in _REPAIR_DIFF_FIELDS:
+        before = old_payload.get(field)
+        after = new_payload.get(field)
+        if before != after:
+            diff.append({"field": f"payload.{field}", "from": before, "to": after})
+    return diff
+
+
+def _clone_name(record: dict[str, Any], requested: Any) -> str:
+    """Clone name: the cleaned requested name, else a safe derived suffix."""
+    if requested is not None and str(requested).strip():
+        return _clean_name(requested)
+    base = str(record.get("name") or "Shortcut")
+    return _clean_name(f"{base} {CLONE_NAME_SUFFIX}")
+
+
+def _prepare_repair(shortcut_id: str, body: Any) -> dict[str, Any]:
+    """Shared, READ-ONLY normalizer for preview + apply. Validates the request,
+    builds the proposed record, and computes the diff. Raises
+    ``ShortcutNotFoundError`` (unknown id) / ``ShortcutStoreError`` (bad request)."""
+    if not isinstance(body, dict):
+        raise ShortcutStoreError("Repair request must be a JSON object.")
+    extra = set(body) - REPAIR_BODY_KEYS
+    if extra:
+        raise ShortcutStoreError(f"Unknown repair fields: {sorted(extra)}.")
+
+    mode = body.get("mode", REPAIR_MODE_IN_PLACE)
+    if mode not in REPAIR_MODES:
+        raise ShortcutStoreError(f"mode must be one of {sorted(REPAIR_MODES)}; got {mode!r}.")
+
+    changes = body.get("changes", {})
+    if not isinstance(changes, dict):
+        raise ShortcutStoreError("changes must be an object.")
+    extra_changes = set(changes) - REPAIR_CHANGE_KEYS
+    if extra_changes:
+        raise ShortcutStoreError(f"Unknown repair change fields: {sorted(extra_changes)}.")
+
+    record = _raw_record(shortcut_id)  # raises NotFound
+    if record.get("type") != TYPE_BUILDER:
+        raise ShortcutStoreError(
+            "Repair currently supports builder_setup shortcuts only."
+        )
+
+    proposed_payload = _apply_repair_changes(record, changes)
+    proposed_record = dict(record)
+    proposed_record["payload"] = proposed_payload
+
+    clone_name = _clone_name(record, body.get("clone_name")) if mode == REPAIR_MODE_CLONE else None
+    if mode == REPAIR_MODE_CLONE:
+        proposed_record["name"] = clone_name
+
+    diff = _repair_diff(record.get("payload") or {}, proposed_payload)
+    return {
+        "record": record,
+        "proposed_record": proposed_record,
+        "proposed_payload": proposed_payload,
+        "mode": mode,
+        "clone_name": clone_name,
+        "diff": diff,
+    }
+
+
+def _repair_warnings(proposed_view: dict[str, Any]) -> list[str]:
+    status = proposed_view.get("validity", {}).get("status")
+    if status == STATUS_BROKEN:
+        return ["The repaired shortcut is still broken; further repair is needed."]
+    if status == STATUS_DEGRADED:
+        return ["The repaired shortcut is usable but still degraded."]
+    return []
+
+
+def preview_repair(shortcut_id: str, body: Any) -> dict[str, Any]:
+    """READ-ONLY: return the original + proposed summaries, the diff, and the
+    resulting validity, WITHOUT saving. ``shortcuts.json`` is untouched."""
+    prepared = _prepare_repair(shortcut_id, body)
+    original_view = _public(prepared["record"])
+    proposed_view = _public(prepared["proposed_record"])
+    return {
+        "ok": True,
+        "mode": prepared["mode"],
+        "shortcut_id": shortcut_id,
+        "original": {
+            "id": original_view["id"],
+            "name": original_view["name"],
+            "type": original_view["type"],
+            "valid": original_view["valid"],
+            "reason": original_view["reason"],
+            "validity": original_view["validity"],
+        },
+        "proposed": {
+            "name": proposed_view["name"],
+            "type": proposed_view["type"],
+            "payload": proposed_view["payload"],
+            "valid": proposed_view["valid"],
+            "reason": proposed_view["reason"],
+            "validity": proposed_view["validity"],
+        },
+        "diff": prepared["diff"],
+        "warnings": _repair_warnings(proposed_view),
+    }
+
+
+def apply_repair(shortcut_id: str, body: Any) -> dict[str, Any]:
+    """The ONLY write: persist a repair. ``in_place`` updates the existing
+    shortcut via ``update_shortcut``; ``clone`` creates a NEW shortcut via
+    ``create_shortcut`` (original untouched). Both reuse the existing CRUD +
+    atomic write + whitelist; nothing is overwritten silently."""
+    prepared = _prepare_repair(shortcut_id, body)
+    proposed_payload = prepared["proposed_payload"]
+    mode = prepared["mode"]
+    record = prepared["record"]
+
+    if mode == REPAIR_MODE_CLONE:
+        view = create_shortcut({
+            "name": prepared["clone_name"],
+            "description": record.get("description"),
+            "type": TYPE_BUILDER,
+            "icon": record.get("icon"),
+            "color": record.get("color"),
+            "pinned": False,
+            "payload": proposed_payload,
+        })
+    else:
+        view = update_shortcut(shortcut_id, {"payload": proposed_payload})
+
+    return {
+        "ok": True,
+        "mode": mode,
+        "shortcut": view,
+        "diff": prepared["diff"],
+        "warnings": _repair_warnings(view),
+    }
+
+
+# ---------------------------------------------------------------------------
 # Translate-on-read bridge: legacy ``modules`` -> canonical ``include_sections``
 # ---------------------------------------------------------------------------
 

@@ -630,3 +630,47 @@ React) so a plain-node harness can unit-test them without a test runner, matchin
 the existing `verify-assets.mjs` pattern — and they include an explicit fallback
 (`shortcutStatus`) for old shortcut payloads that predate the `validity` field, so
 the UI never crashes on a shortcut that only carries the legacy boolean.
+
+## Shortcut repair Slice 3A: explicit whitelisted patch, one normalizer, apply is the only write (2026-06-04)
+The backend repair endpoints (`POST /api/shortcuts/{id}/repair/preview` +
+`…/repair/apply`, `pipeline/shortcut_store.py`) make three non-obvious choices.
+**Repair is an explicit, whitelisted patch — NOT an arbitrary JSON merge-patch.**
+The request is `{mode, changes{provider, model, style, generator_preset,
+output_depth, difficulty, include_sections{remove,set}, remove_fields}, clone_name}`.
+Every top-level and `changes` key is whitelisted; an **unknown key is rejected with
+HTTP 400**, not silently dropped, because repair is a mutation boundary where an
+unrecognized instruction means the caller and server disagree about what will
+happen — failing loud is safer than guessing. `remove_fields` may only drop the
+*optional* builder fields (`model`/`style`/`generator_preset`/`output_depth`/
+`difficulty`); **`provider` is deliberately not removable** (a generation shortcut
+needs one). The proposed payload is always re-run through the existing
+`_normalize_payload`, so anything outside the schema can never persist — the same
+whitelist guarantee create/import already give. **Why not merge-patch:** a generic
+deep-merge would let an arbitrary/unknown field ride into a saved shortcut (the
+exact thing the store's whitelist exists to prevent) and would make "what does this
+repair change?" unanswerable without reading the whole payload.
+**Preview and apply share ONE read-only normalizer (`_prepare_repair`), and apply
+is the only write.** Preview returns the proposed payload + a per-field `diff` +
+the recomputed `validity` and writes nothing (`shortcuts.json` sha256 unchanged —
+the same no-migration-on-read guarantee as inspect); apply persists by reusing the
+**existing** `update_shortcut` (in place) or `create_shortcut` (clone) CRUD, so the
+atomic write + whitelist + id generation come for free and there is **no new raw
+write path**. Because both sides build the proposed record through the same code, a
+preview is byte-for-byte what an apply would save. **Clone never overwrites:** it
+mints a new id and leaves the original untouched, with `clone_name` (or a derived
+`"<name> (repaired copy)"` suffix).
+**Validation is against live config and never auto-switches provider/model.** A
+replacement provider must resolve **and** be configured; a replacement model is
+validated against the *repaired* provider (provider supplied in the same repair
+wins, else the existing provider — and a model-only repair with no provider context
+is a 400, since a model is meaningless without one); style/preset must exist; axes
+must be in the store enum; `include_sections.set` keys must be canonical/alias keys.
+All invalid values → 400 with a safe message, nothing written. Consistent with the
+existing "Soft `model_hint`, not a hard pin" decision, a preset's `model_hint`
+stays advisory — repair changes a model **only** when the caller explicitly asks,
+never as a side effect. All provider data flows through the already-redacted
+`provider_config` surface, so **no raw key** is ever read or returned. Repair is
+scoped to `builder_setup` shortcuts (the type whose references rot against live
+config); other types return a safe 400. **The frontend repair UI is Slice 3B and
+deliberately not in 3A** — the read-only Inspector drawer (Slice 2) still shows a
+disabled "Repair (coming next)" until 3B wires preview/apply.
