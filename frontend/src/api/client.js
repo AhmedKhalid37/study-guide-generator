@@ -557,6 +557,37 @@ export function inspectShortcut(shortcutId) {
   return requestJson(`/api/shortcuts/${encodeURIComponent(shortcutId)}/inspect`);
 }
 
+// ── Shortcut repair (Slice 3B wiring of the Slice 3A backend) ────────────────
+// previewShortcutRepair is READ-ONLY: it returns the proposed shortcut + a
+// field-level diff + the resulting validity WITHOUT writing anything (the
+// shortcut on disk is byte-identical after a preview). applyShortcutRepair is the
+// ONLY write — it persists the repair (in_place updates the saved shortcut;
+// clone creates a NEW shortcut and leaves the original untouched). Both take the
+// explicit, whitelisted patch the backend validates:
+//   { mode: "in_place"|"clone",
+//     changes: { provider, model, style, generator_preset, output_depth,
+//                difficulty, include_sections: {remove:[…], set:{k:bool}},
+//                remove_fields:[…] },
+//     clone_name? }
+// Unknown fields / invalid provider/style/preset/model/axis/section reject via
+// requestJson with the server's `detail` (HTTP 400); an unknown id rejects 404.
+// Responses are already redacted server-side — no raw API key is ever returned.
+export function previewShortcutRepair(shortcutId, payload) {
+  return requestJson(`/api/shortcuts/${encodeURIComponent(shortcutId)}/repair/preview`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload ?? {}),
+  });
+}
+
+export function applyShortcutRepair(shortcutId, payload) {
+  return requestJson(`/api/shortcuts/${encodeURIComponent(shortcutId)}/repair/apply`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload ?? {}),
+  });
+}
+
 export function createShortcut(shortcut) {
   return requestJson("/api/shortcuts", {
     method: "POST",

@@ -8,7 +8,9 @@
     "build": "vite build",
     "preview": "vite preview",
     "test": "node scripts/verify-assets.mjs",
-    "test:shortcut-status": "node scripts/verify-shortcut-status.mjs"
+    "test:shortcut-status": "node scripts/verify-shortcut-status.mjs",
+    "test:shortcut-repair": "node scripts/verify-shortcut-repair.mjs",
+    "test:shortcuts": "node scripts/verify-shortcut-status.mjs && node scripts/verify-shortcut-repair.mjs"
   },
   "dependencies": {
     "@vitejs/plugin-react": "^4.3.4",

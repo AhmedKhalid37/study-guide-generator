@@ -674,3 +674,26 @@ scoped to `builder_setup` shortcuts (the type whose references rot against live
 config); other types return a safe 400. **The frontend repair UI is Slice 3B and
 deliberately not in 3A** — the read-only Inspector drawer (Slice 2) still shows a
 disabled "Repair (coming next)" until 3B wires preview/apply.
+
+## Shortcut repair Slice 3B: Apply requires a fresh preview; the draft starts empty (2026-06-04)
+The frontend repair UI (`ShortcutInspector.jsx` + `frontend/src/shortcutRepair.js`,
+branch `shortcut-inspector-repair-ui`) makes two non-obvious safety choices on top
+of the 3A backend. **Apply is gated on a *fresh* preview of the *current* draft.**
+After a successful `…/repair/preview` we remember a stable `draftSignature` (the
+exact request that would be sent); the Apply button is disabled unless a preview
+exists **and** its signature still equals the current draft's. Editing any
+choice/value/mode/clone-name after previewing changes the signature, marks the
+preview stale, and re-disables Apply with a "preview again" note — so a user can
+never apply a repair they did not just see previewed. This mirrors the Builder's
+existing `settingsSignature` dirty-state idea and the backend's "preview == apply"
+guarantee, closing the gap where a stale preview could mislead. **The repair draft
+also starts empty** (every field "keep") and `buildRepairPayload` drops empty
+`replace` values, so opening the drawer or half-finishing a choice sends nothing —
+combined with the explicit confirm step, there is no path from "open inspector" to
+"shortcut mutated" without an explicit Preview → Apply → confirm. The frontend
+never widens the backend vocabulary: only the 3A whitelisted fields/ops are
+buildable, `provider` is never offered as removable (the backend rejects it), and
+all candidates come from the already-redacted inspect response — **no raw key**.
+Home **activation stays byte-for-byte unchanged** (still gated on legacy `valid`);
+the degraded-activation confirm + "Repair instead" path from design §5.5 is
+deliberately **deferred**, not silently changed.

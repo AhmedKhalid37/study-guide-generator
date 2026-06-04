@@ -5,7 +5,7 @@
 
 ---
 
-## NEXT — Shortcut Inspector / Repair Loop (Slices 1+2+3A DONE; Slice 3B next)
+## NEXT — Shortcut Inspector / Repair Loop (Slices 1+2+3A+3B DONE; wrap-up next)
 
 - **Design doc:** `docs/SHORTCUT_INSPECTOR_REPAIR_DESIGN.md`. Safe UX + backend
   contract for inspecting and repairing shortcuts whose saved references
@@ -42,12 +42,25 @@
   migration-on-read, no silent overwrite, no provider/model auto-switch, no raw
   keys.** `test_scripts/test_shortcut_repair.py` 29/29; existing
   `test_shortcut_store.py` 39/39 + `test_shortcut_inspector.py` 19/19 unchanged.
-- **NEXT is Slice 3B — frontend repair UI wiring.** Wire the existing read-only
-  `ShortcutInspector` drawer to the live `…/repair/preview` (diff + resulting
-  status as the user makes choices) + `…/repair/apply` (Apply in place /
-  Save-as-repaired-copy) + the degraded-activation confirm + "Repair instead" on
-  Home. The backend contract is now stable; **frontend repair UI is still
-  deferred** until 3B. See design doc §5/§7 and the `DECISIONS.md` repair entry.
+- **Slice 3B (frontend repair UI wiring) is DONE** (DONE #42, branch
+  `shortcut-inspector-repair-ui`). The read-only drawer is now a safe repair
+  surface: `previewShortcutRepair`/`applyShortcutRepair` API helpers + pure
+  `frontend/src/shortcutRepair.js` draft/payload/staleness helpers + an enabled
+  repair panel (provider/model/style/preset/depth/difficulty Keep/Replace/Remove,
+  unknown-section removal, in-place/clone mode, live Preview diff, confirm-gated
+  Apply). **Apply requires a fresh preview** (editing the draft marks it stale);
+  no repair-on-open, no auto-switch, no raw keys. `verify-shortcut-repair.mjs`
+  green; backend tests unchanged; live in-container repair flow + secret scan
+  clean. Card activation behaviour is **unchanged**.
+- **NEXT — Shortcut Inspector wrap-up / deferred polish.** The core inspect→
+  repair loop is complete. Remaining (deferred, not started — pick one as an
+  explicit slice): (a) the **degraded-activation confirm + "Repair instead"** Home
+  path from design §5.5 (this slice kept Home activation byte-for-byte unchanged);
+  (b) manual browser click-through of the live Preview→Apply UX + drawer layout
+  polish; (c) the design §"Optional later polish" — "Repair all" batch, a Home
+  "N shortcuts need attention" banner, model auto-suggest (preselect-only). Then
+  the next major option. See design doc §5/§7 and the `DECISIONS.md` repair
+  entries (incl. "Apply requires a fresh preview").
 
 ---
 
@@ -1369,6 +1382,51 @@ parked on the `hardening` branch — not merged, not deleted.
       field; unknown-section removal; validity recompute; no migration-on-read;
       no key leak). `test_shortcut_store.py` **39/39** + `test_shortcut_inspector.py`
       **19/19** + `test_provider_settings_store.py` **26/26** unchanged.
+
+42. **Shortcut Inspector Slice 3B — frontend repair UI wiring (FRONTEND + API
+    client + harness + docs)** — branch `shortcut-inspector-repair-ui`. Wires the
+    read-only Slice 2 Inspector drawer to the Slice 3A repair endpoints. **No
+    backend change** (the 3A contract was correct as-is).
+    - **API client (`frontend/src/api/client.js`):** `previewShortcutRepair`
+      (READ-ONLY) + `applyShortcutRepair` (the only write), shared `requestJson`
+      conventions, sending the 3A whitelisted patch `{mode, changes, clone_name?}`.
+    - **Pure helpers (`frontend/src/shortcutRepair.js`):** `emptyRepairDraft`,
+      `buildRepairPayload` (drops empty `replace` values so a half-finished choice
+      never mutates), `draftSignature` (preview-staleness), `draftHasChanges`,
+      `modelCandidatesForProvider`, `effectiveProvider`, `defaultCloneName`,
+      `repairFieldKey`. The frontend never widens the backend field/op vocabulary.
+    - **Inspector (`ShortcutInspector.jsx`):** the disabled "Repair (coming next)"
+      footer becomes an enabled repair panel **only** for a repairable
+      `builder_setup` with a supported action — else "No repair needed." / "No
+      supported repair action for these findings." (no Apply). Per repairable
+      finding: provider/model/style/preset/depth/difficulty Keep / Replace /
+      Remove selects (model filtered by the selected/repaired provider; **provider
+      not removable**) + per-key Remove toggles for unknown `include_sections`
+      keys. Mode selector (in-place / clone) + clone-name input (default `"{name}
+      (repaired copy)"`). **Preview** shows the proposed mode, field diff, resulting
+      status, warnings, and "original unchanged until apply". **Apply** is disabled
+      until a **fresh** preview exists for the current draft (editing the draft
+      marks the preview stale → Apply re-disabled) and requires an explicit confirm
+      whose copy differs in-place vs clone. On success: refresh the parent list
+      (`onRepaired` → `reload`/`refresh`) + re-inspect in place.
+    - **Safety held:** no repair call on open; draft starts empty; no apply without
+      a fresh preview + explicit confirm; no provider/model auto-switch; tolerant
+      of missing candidates / unknown codes / old payloads. **Activation behaviour
+      unchanged** (still gated on legacy `valid`; broken never auto-routed; degraded
+      still launchable).
+    - **Verified:** `python -m compileall api pipeline` OK; backend
+      `test_shortcut_repair.py` **29/29** + `test_shortcut_inspector.py` **19/19** +
+      `test_shortcut_store.py` **39/39** (unchanged); `verify-shortcut-repair.mjs`
+      (new) + `verify-shortcut-status.mjs` green (`npm --prefix frontend run
+      test:shortcuts`); frontend build OK; Docker healthy. Live repair flow proven
+      via the API in-container (broken → inspect broken/repairable → preview leaves
+      the list byte-identical → apply in-place keeps id + flips to valid → clone
+      makes a new id and leaves the original broken → invalid provider → 400).
+      Release smoke **28/28**. Secret scan (served bundle + inspect/preview/apply/
+      list/options/provider-settings + container logs) clean — 0 API-key leaks.
+    - **NOT automated — needs manual click-through:** the drawer's visual layout,
+      the live Preview→Apply UX in a browser, and the degraded-activation
+      confirm/"Repair instead" Home path (deferred — see below).
 
 ## NEXT (in order)
 

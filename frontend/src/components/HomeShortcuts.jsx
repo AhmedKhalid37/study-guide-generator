@@ -196,7 +196,11 @@ export default function HomeShortcuts({
       )}
 
       {inspecting && (
-        <ShortcutInspector shortcut={inspecting} onClose={() => setInspecting(null)} />
+        <ShortcutInspector
+          shortcut={inspecting}
+          onClose={() => setInspecting(null)}
+          onRepaired={reload}
+        />
       )}
     </div>
   );
@@ -535,7 +539,11 @@ function CustomizeShortcutsModal({ shortcuts, currentBuilderSetup, onClose, onCh
         />
       )}
       {inspecting && (
-        <ShortcutInspector shortcut={inspecting} onClose={() => setInspecting(null)} />
+        <ShortcutInspector
+          shortcut={inspecting}
+          onClose={() => setInspecting(null)}
+          onRepaired={refresh}
+        />
       )}
     </div>
   );

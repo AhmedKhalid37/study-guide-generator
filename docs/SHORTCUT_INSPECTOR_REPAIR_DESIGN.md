@@ -600,6 +600,59 @@ smoke), one branch per slice, surgical edits.
 >   `test_shortcut_store.py` (39/39) + `test_shortcut_inspector.py` (19/19) +
 >   `test_provider_settings_store.py` (26/26), all unchanged/green.
 
+> **IMPLEMENTED — Slice 3B: frontend repair UI wiring (branch
+> `shortcut-inspector-repair-ui`, DONE #42 in `CURRENT_TASK.md`).** Frontend +
+> API client + a node harness + docs; **no backend behaviour changed** (the Slice
+> 3A contract was correct as-is). Turns the read-only Slice 2 drawer into a safe
+> repair surface.
+>
+> - **API client (`frontend/src/api/client.js`):** `previewShortcutRepair(id,
+>   payload)` (READ-ONLY) + `applyShortcutRepair(id, payload)` (the only write),
+>   using the shared `requestJson` helper, so 400/404 surface the server `detail`
+>   like every other call. Both send the Slice 3A whitelisted patch
+>   (`{mode, changes{…}, clone_name?}`); responses are already redacted.
+> - **Pure helpers (`frontend/src/shortcutRepair.js`, no React):**
+>   `emptyRepairDraft` (starts empty), `buildRepairPayload` (draft → request;
+>   drops empty `replace` values so a half-finished choice never mutates),
+>   `draftHasChanges`, `draftSignature` (stable signature for preview staleness),
+>   `modelCandidatesForProvider` (filters models by the effective provider),
+>   `effectiveProvider` (a chosen replacement provider wins over the saved one),
+>   `defaultCloneName` (`"{name} (repaired copy)"`), `repairFieldKey`
+>   (finding.field → supported repair key, or null). The frontend never widens the
+>   backend's field/op vocabulary.
+> - **Inspector drawer (`ShortcutInspector.jsx`):** the disabled "Repair (coming
+>   next)" footer is replaced with an enabled repair panel **only** when the
+>   shortcut is a repairable `builder_setup` with a supported action; otherwise a
+>   calm "No repair needed." / "No supported repair action for these findings."
+>   note (no Apply). Per repairable finding it renders a control: provider/model/
+>   style/preset/output_depth/difficulty as Keep / Replace-with / Remove selects
+>   (model filtered by the selected/repaired provider; provider is **not**
+>   removable), and a per-key Remove toggle for unknown `include_sections` keys.
+>   A mode selector (in-place / clone) with a clone-name input (default
+>   `"{name} (repaired copy)"`). **Preview repair** calls the read-only endpoint
+>   and shows the proposed mode, the field diff, the resulting status, warnings,
+>   and an "original is unchanged until you apply" note. **Apply** is disabled
+>   until a *fresh* preview exists for the current draft (editing the draft marks
+>   the preview stale and re-disables Apply), and requires an explicit confirm
+>   step whose copy differs for in-place ("update the saved shortcut") vs clone
+>   ("create a repaired copy and leave the original unchanged"). On success it
+>   refreshes the parent list (`onRepaired`) and re-inspects in place.
+> - **Safety:** no repair API call on open; draft starts empty; no apply without a
+>   fresh preview + explicit confirm; no provider/model auto-switch (suggestions
+>   are never auto-applied); tolerant of missing candidates / unknown finding codes
+>   / old shortcut payloads. Card **activation behaviour is unchanged** (still
+>   gated on legacy `valid`; broken never auto-routed).
+> - **Tests:** node harness `frontend/scripts/verify-shortcut-repair.mjs`
+>   (`npm --prefix frontend run test:shortcut-repair`) covering payload shape,
+>   empty-draft no-op, clone name/default, model filtering, effective-provider,
+>   and the staleness signature. Backend `test_shortcut_*` unchanged (29/29 +
+>   19/19 + 39/39). Live Docker: real repair flow proven end-to-end (broken →
+>   inspect → preview is byte-identical to the list before/after → apply in-place
+>   keeps the id and flips to valid → clone makes a new id and leaves the original
+>   broken → invalid provider → 400). Release smoke 28/28; full secret scan
+>   (served bundle + inspect/preview/apply/list/options/provider-settings + logs)
+>   clean.
+
 ### Optional later polish
 - "Repair all" batch action across multiple broken shortcuts (loops apply).
 - A Home banner summarising "N shortcuts need attention".
