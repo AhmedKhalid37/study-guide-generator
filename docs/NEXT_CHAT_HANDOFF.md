@@ -127,10 +127,18 @@ load-bearing — do not rewrite casually.
 
 ## Next recommended slice
 **Pick ONE safe option:**
-- **Local Model Manager — DESIGN-FIRST (recommended).** Separate feature from
-  provider settings; the backend spawns/kills a host `llama-server`, which
-  **crosses the container boundary** (non-root uid 10001 managing a host process)
-  — write a design doc + get sign-off **before** any code.
+- **Local Model Manager — LMM Slice 2: detection-only backend status endpoint
+  (recommended).** The **design is DONE** (LMM Slice 1, docs-only —
+  `docs/LOCAL_MODEL_MANAGER_DESIGN.md`): a staged, **detection-first** plan. The
+  next implementation slice is the **detection-only** backend: read-only
+  `GET /api/local-model/status` + `POST /api/local-model/check` returning safe
+  fields only (base-URL host, reachable, latency, model count/list, default model,
+  classified `local_offline` error, start instructions). **No process control, no
+  raw key, no full URL.** Reuse `_effective_base_url`/`_discover_openai_models`/the
+  redaction helpers; provider config WRITES stay on
+  `PATCH /api/provider-settings/local`. **Direct Docker→host process spawn is
+  REJECTED** — host process control is deferred to an optional host companion
+  (Phase 2, design-only). See design §4 + §11 + §13.
 - **Focused manual validation / polish of the Shortcut Inspector UI.** The
   inspect→repair loop + degraded-activation confirm are complete and validated at
   the API + harness level; the remaining gap is a human click-through of the live
@@ -143,8 +151,9 @@ load-bearing — do not rewrite casually.
 - **Large-PDF preflight size-limit polish — optional, later.** Raising the upload
   ceiling + preflight size thresholds is a possible later slice; **not part of any
   current slice** and not started.
-- **Local Model Manager (DESIGN-FIRST).** Separate feature from provider settings;
-  crosses the container boundary — get sign-off before any code.
+- **Local Model Manager — Phase 2 host companion launcher (DESIGN-FIRST, later).**
+  Process control crosses the container boundary and is deferred to an optional
+  host companion (direct Docker→host spawn rejected). Design + sign-off first.
 
 (The previously-recommended **in-app provider settings** (COMPLETE through
 **Slice 5** — fetch-models endpoint + Refresh Models UI), the **shortcut inspector
@@ -185,8 +194,14 @@ is the optional **font-size rationalization** (cause C, CSS-only).)
   draft `custom_models` → explicit Save). Keys stay server-side only; presets never
   hard-pin provider/model. **Still deferred:** encrypted-at-rest / OS keyring; `.env`
   import; optional Builder "Provider default" thinking UI polish.
-- **Local Model Manager** — DESIGN-FIRST (crosses the container boundary; get sign-off).
-  Remains a **separate** feature from the now-complete in-app provider settings.
+- **Local Model Manager** — **design DONE** (LMM Slice 1, docs-only —
+  `docs/LOCAL_MODEL_MANAGER_DESIGN.md`): staged detection-first plan (Phase 1
+  detection-only; Phase 2 optional host companion; direct Docker→host spawn
+  **rejected**). **Next implementation slice = LMM Slice 2: detection-only backend
+  status endpoint** (`GET /api/local-model/status` + `POST /api/local-model/check`,
+  safe fields only, no process control). Remains a **separate** feature from the
+  now-complete in-app provider settings; provider config writes stay on
+  `PATCH /api/provider-settings/local`.
 - **Library archive / tag model** — DESIGN-FIRST (bulk archive needs an archive state +
   `DECISIONS.md` entry; bulk tag needs a tag model; neither started).
 - **GHCR publish workflow / prebuilt image** — deferred distribution decision (parked on `hardening`).

@@ -762,3 +762,39 @@ files, attachments, page selections, or file paths), capped at **100 000 chars**
 (`MAX_SAVED_PROMPT_CHARS`), oversized **rejected** not truncated, no encryption this
 slice. The backend whitelist (`_clean_saved_prompt`) is the boundary; export/import and
 repair round-trip it by re-running the same normalizer.
+
+## Local Model Manager is detection-first; direct Docker→host process spawn is rejected (2026-06-04)
+The Local Model Manager (LMM) — a feature to run/use a local OpenAI-compatible model
+server (llama.cpp / `llama-server`) from inside the app — is designed as a **staged,
+detection-first** feature (`docs/LOCAL_MODEL_MANAGER_DESIGN.md`). **Phase 1 is
+detection-only**: it checks the configured base URL, shows server status + latency,
+fetches `/v1/models`, and shows a copy-able "how to start llama-server" command the
+operator runs **themselves on the host** — it **never** starts/stops a process, browses
+files, or takes a GGUF path. **Why detection-first:** the backend runs **inside a
+non-root Docker container** (`appuser` uid 10001, `no-new-privileges:true`); Phase 1
+crosses **no** container boundary and reuses primitives that already exist — the `local`
+provider's base-URL resolver (`_effective_base_url`), `/models` discovery
+(`_discover_openai_models`), the redaction helpers, and the `local_offline` error
+category — so it is low-risk, needs no new dependency/GPU packaging, and delivers
+immediate UX (is-it-up / what-models / how-to-start) at once.
+**Option D — a backend-in-Docker spawning a host `llama-server` — is REJECTED.** A
+container process cannot launch a process in the host PID namespace without escape
+mechanisms (mounting the Docker socket, `--privileged`, host PID namespace), each of
+which **destroys the security model** (Docker-socket access ≈ host root) and directly
+contradicts the shipped `no-new-privileges` + non-root hardening; it is also unreliable
+(PIDs/paths/GPU all live in the host namespace the container can't see) and a shell-
+injection hazard. If process control is ever wanted it goes through an **optional host
+companion** (Option B, Phase 2, **design-only** until sign-off) that **must** bind only
+to localhost, require a token/same-user auth, accept **only** a typed/whitelisted
+`llama-server` flag profile (never a free-form command, argv-array spawn only), and
+restrict model files to a single user-approved, traversal-checked directory.
+In-container `llama-server` (Option C) is **not** the default (GPU passthrough / image
+size / model mounts / a 2 GB-limited container). **No second writer for provider
+config** — base URL / default model edits stay on the existing
+`PATCH /api/provider-settings/local`; the LMM status endpoints (`GET
+/api/local-model/status`, `POST /api/local-model/check`) are **read-only** and return
+**safe fields only** (base-URL host, reachable, latency, model count/list, default
+model, a classified error, start instructions) — **no raw key, no full URL, no
+userinfo** (URLs collapsed to host via `urlparse`, messages redacted + length-capped).
+The next implementation slice after the design is **LMM Slice 2** (the detection-only
+backend status endpoint).

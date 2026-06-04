@@ -5,18 +5,30 @@
 
 ---
 
-## NEXT — Local Model Manager — DESIGN-FIRST (Shortcut Inspector loop COMPLETE)
+## NEXT — Local Model Manager — DESIGN DONE (LMM Slice 1); NEXT = LMM Slice 2 (detection-only backend)
 
+- **Local Model Manager design is DONE (LMM Slice 1, docs-only)** — see
+  `docs/LOCAL_MODEL_MANAGER_DESIGN.md` and DONE #45 below. The design investigates
+  the current `local` provider behavior, compares architectures A–D, and recommends
+  a **staged, detection-first** approach: **Phase 1 = detection-only** Local Model
+  Manager (status/health + `/v1/models` discovery + a copy-able "how to start
+  llama-server" command, reusing the existing local provider + fetch-models),
+  Phase 2 = an **optional host companion launcher** (design-only), Phase 3 = an
+  optional packaged desktop/native flow. **Direct Docker→host process spawn
+  (Option D) is REJECTED**; in-container llama-server (Option C) is not the default.
+- **NEXT — LMM Slice 2: detection-only backend status endpoint.** Add read-only
+  `GET /api/local-model/status` + `POST /api/local-model/check` returning safe
+  fields only (base-URL host, reachable, latency, model count/list, default model,
+  classified `local_offline` error, start instructions) — **no process control, no
+  raw key, no full URL**. Reuse `_effective_base_url`/`_discover_openai_models`/the
+  redaction helpers. Provider config WRITES still go through the existing
+  `PATCH /api/provider-settings/local` (LMM adds no second writer). See the design
+  doc §4 + §11 for the full slice plan and acceptance criteria.
 - **The Shortcut Inspector / Repair loop is COMPLETE** (Slices 1+2+3A+3B + the
   degraded-activation confirm polish, DONE #39→#43). See the block just below and
   DONE #43 for the latest slice. **A follow-up shortcut slice (DONE #44) then
   fixed the Edit-modal generator-preset source bug and added opt-in
   `saved_prompt`** — see DONE #44.
-- **NEXT — Local Model Manager (DESIGN-FIRST).** A separate feature for
-  configuring/managing the local llama.cpp provider (discovery, base-URL/model
-  config, health). **Do not start building before a design doc + explicit slice
-  sign-off** — same design-first discipline as provider settings. Out of scope for
-  the shortcut work; do not begin without an explicit slice.
 
 ---
 
@@ -1556,6 +1568,56 @@ parked on the `hardening` branch — not merged, not deleted.
       checkbox (off by default; export with/without prompt), the edit-modal
       "Saved prompt" badge + remove, and the dropdown showing only real presets.
 
+45. **Local Model Manager — DESIGN (LMM Slice 1, DOCS-ONLY)** — branch
+    `local-model-manager-design`. A design-first slice for a *Local Model Manager*
+    (LMM) that helps the operator run and use a local OpenAI-compatible model server
+    (llama.cpp / `llama-server`) from inside the app. **No code written** — design
+    doc + doc reconciliation only.
+    - **New `docs/LOCAL_MODEL_MANAGER_DESIGN.md`** covering: (§1) the **current
+      `local` provider behavior** read from live code — base-URL resolution chain
+      (`_effective_base_url("local")` = store → `LOCAL_LLM_BASE_URL`/`LLM_BASE_URL`,
+      **no built-in fallback** so an unset base URL ⇒ not-configured), how
+      `/api/options` discovers local models (`_discover_openai_models` GET
+      `{base}/models`, 1.5 s), how `fetch-models` reuses the same discovery (10 s,
+      read-only, no persist), the offline behavior (discovery returns `([], str(exc))`;
+      the `host.docker.internal`-outside-Docker guard), and the **`local_offline`**
+      error category (generation path via `classify_exception`; fetch-models via
+      `_classify_fetch_error`). (§2) **Architecture options A–D**: A detection-only,
+      B host companion launcher, C in-container llama-server, D direct Docker→host
+      spawn. (§3) **Recommended staged approach** — Phase 1 detection-only, Phase 2
+      optional host companion, Phase 3 optional packaged desktop. (§4) **Phase 1
+      backend API** — read-only `GET /api/local-model/status` + `POST
+      /api/local-model/check` with a safe DTO (base-URL host, reachable, latency,
+      model count/list, default model, classified error, start instructions). (§5)
+      **Phase 1 frontend** — a Local Models view (status card, host display + link to
+      Providers, Refresh, discovered models, "how to start llama-server" copy
+      command, offline/troubleshooting states, Start/Stop omitted or disabled
+      "Planned"). (§6) model-file management deferred (no GGUF browsing in Phase 1).
+      (§7) security model. (§8) process lifecycle for Phase 2/3. (§9) a llama.cpp
+      **command-profile schema** (not a hardcoded command). (§10) future Ask Your
+      Guide local-only chat dependency. (§11) the LMM Slice 1→6+ plan. (§12) risks.
+      (§13) recommendation.
+    - **Recommendation: detection-first.** Phase 1 (Option A) reuses the existing
+      local provider + fetch-models and crosses **no** container boundary;
+      **Option D (direct Docker→host process spawn) is REJECTED** (a non-root,
+      `no-new-privileges` container cannot safely/reliably manage host processes —
+      it would need the Docker socket / `--privileged` / host PID namespace, which
+      destroys the security model); process control, if ever wanted, goes through a
+      host companion (Option B). Option C (in-container llama-server) is not the
+      default (GPU passthrough / image size / mounts). **No second writer for
+      provider config** — config edits stay on `PATCH /api/provider-settings/local`.
+    - **Scope held:** no backend process spawning, no frontend UI, no provider-
+      settings change, no generation-pipeline change, no Docker-config change, no
+      llama.cpp integration code touched (read-only investigation), no dependencies,
+      no raw key / full URL anywhere. Diff is **docs-only**.
+    - **Doc reconciliation:** `CURRENT_TASK.md` (this entry + the NEXT block →
+      LMM Slice 2), `NEXT_CHAT_HANDOFF.md` (LMM is design-only; next slice is
+      detection-only backend status), `PROJECT_CONTEXT.md` (LMM is planned/design-
+      first, not implemented), `DECISIONS.md` (detection-first + Option D rejection).
+    - **Verified:** docs-only diff (`git diff --name-only` lists only the five docs);
+      `python -m compileall api pipeline` OK (code opened read-only for the §1
+      investigation; **none changed**). No Docker run required (no code touched).
+
 ## NEXT (in order)
 
 > **Provider settings feature group is DONE through Slice 5** (DONE #32→#36):
@@ -1591,29 +1653,33 @@ parked on the `hardening` branch — not merged, not deleted.
 > Shortcut Inspector itself was validated in
 > `docs/VALIDATION_SHORTCUT_INSPECTOR_REPAIR.md` (docs-only; no code changed).
 
-1. **Focused manual validation / polish of the Shortcut Inspector UI.** The
+1. **Local Model Manager — LMM Slice 2: detection-only backend status endpoint
+   (RECOMMENDED next).** The LMM **design is DONE** (DONE #45,
+   `docs/LOCAL_MODEL_MANAGER_DESIGN.md`). The next implementation slice is the
+   **detection-only** backend: read-only `GET /api/local-model/status` + `POST
+   /api/local-model/check` returning safe fields only (base-URL host, reachable,
+   latency, model count/list, default model, classified `local_offline` error,
+   start instructions). **No process control, no raw key, no full URL.** Reuse
+   `_effective_base_url`/`_discover_openai_models`/the redaction helpers; provider
+   config WRITES stay on `PATCH /api/provider-settings/local`. See design §4 + §11.
+2. **Focused manual validation / polish of the Shortcut Inspector UI.** The
    inspect→repair loop is complete and validated at the API + served-bundle level
    (`docs/VALIDATION_SHORTCUT_INSPECTOR_REPAIR.md`); the remaining gap is a human
    click-through of the live Home/Customize 3-tier badges, the Inspector drawer
    layout, and the Preview→Apply / clone flow (incl. the stale-preview re-disable).
    Validation / polish only — no feature work unless a concrete UI bug surfaces.
-2. **Local Model Manager — DESIGN-FIRST.** The recommended next major feature.
-   Configure/manage the local llama.cpp provider (discovery, base-URL/model,
-   health). The backend spawns/kills a host `llama-server`, which **crosses the
-   container boundary** (non-root uid 10001 managing a host process) — write a
-   design doc + get sign-off **before** coding. Separate from the now-complete
-   in-app provider settings. (The degraded-activation confirm + "Repair instead"
-   path from design §5.5 is now **DONE** — DONE #43.)
 3. **Math/PDF font-size rationalization (cause C) — optional CSS-only
    investigation.** The remaining math/PDF fidelity slice; investigate the
    CSS-only font sizing before any change.
 4. **Large-PDF preflight size-limit polish — optional, later.** Raising/uniting
    the upload ceiling + preflight size thresholds is a possible later slice. It is
    **explicitly not part of this slice** and not started.
-5. **Local Model Manager — DESIGN-FIRST only.** Backend spawns/kills a host
-   `llama-server`. This **crosses the container boundary** (non-root uid 10001
-   container managing a host process) — design and get sign-off before coding. It
-   stays a **separate** feature from the now-complete in-app provider settings.
+5. **Local Model Manager — Phase 2 (host companion launcher) DESIGN-FIRST, later.**
+   Process control (start/stop a host `llama-server`) **crosses the container
+   boundary** (non-root uid 10001 container managing a host process) and is
+   **deferred to a host companion** designed in LMM Slice 5 — **direct Docker→host
+   spawn is REJECTED** (design §2 Option D / §13). Get sign-off before any companion
+   code. Stays a **separate** feature from the now-complete in-app provider settings.
 
 (**Also still on the books, design-first:** Library archive / tag model — bulk
 **archive** needs a new archive state designed + a `DECISIONS.md` entry first;
