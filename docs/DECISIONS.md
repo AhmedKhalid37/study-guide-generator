@@ -581,3 +581,28 @@ semantics are untouched (still whitelist-normalized with an `errors` batch); the
 inspector only makes the *post-import* "needs repair" state visible and
 actionable. Recommended build order: Slice 1 backend inspector (read-only),
 Slice 2 frontend badges + Inspector drawer, Slice 3 repair preview + apply.
+
+## Shortcut inspector Slice 1: legacy `valid` stays true for new degraded findings
+When implementing the Slice 1 backend inspector, the legacy `valid`/`reason`
+pair is computed from the **untouched** `_evaluate_validity`, and the new
+`validity` object is computed independently from `_collect_findings`. This
+deliberately departs from the design sketch's "`valid == (status == "valid")`":
+the inspector adds checks the old code never had (`model_unavailable`,
+`section_unknown`, invalid `output_depth`/`difficulty`), all of which are
+**degraded**. If `valid` tracked the new status, those would flip a shortcut from
+the `valid:true` it reports **today** to `valid:false` — and the activation guard
+(`DesktopDashboard.handleActivateShortcut`) treats `valid:false` as "do NOT load,
+redirect", so a shortcut that currently launches fine would suddenly be blocked.
+**Why:** the brief's hard requirement is "`valid=true` should remain true only
+where current behavior would have allowed use" and "the existing activation guard
+should not break". Keeping `valid`/`reason` byte-identical satisfies both, and the
+new `validity.status` is what Slice 2's UI reads to distinguish "usable but warn"
+from "blocked". Net effect: a degraded-only shortcut may now show `valid:true` +
+`validity.status:"degraded"` simultaneously (model/section/axis cases), while the
+pre-existing broken cases (unconfigured provider, missing preset/style, bad
+tool/view) keep `valid:false` exactly as before. Also decided here: an **invalid
+stored axis** is reported as **degraded** (the orchestrator ignores/defaults an
+out-of-enum axis at load), not broken; and `tool_route_missing` is reused for both
+an unavailable tool and an unavailable library view (the `field` distinguishes
+them). Inspection is fail-soft — a registry read that throws yields an
+`inspection_error` *degraded* finding, never a crash or a false `broken`.

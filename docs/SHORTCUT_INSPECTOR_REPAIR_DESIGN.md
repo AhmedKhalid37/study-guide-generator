@@ -446,6 +446,46 @@ smoke), one branch per slice, surgical edits.
   live registries). **No write paths, no frontend.**
 - Model check uses `provider_config` `available_models`; everything redacted.
 
+> **IMPLEMENTED — Slice 1 (branch `shortcut-inspector-backend`, DONE #39 in
+> `CURRENT_TASK.md`).** Shipped exactly as scoped, read-only, additive:
+>
+> - **Engine in `pipeline/shortcut_store.py`:** `_collect_findings(record)` (a
+>   fail-soft wrapper around `_collect_findings_inner`; on any unexpected error it
+>   returns a single `inspection_error` *degraded* finding rather than crashing a
+>   list/read), `_status_from_findings` (`error`⇒`broken`, `warning`⇒`degraded`,
+>   else `valid`), and `_validity(record)` → `{status, findings[], repairable}`.
+>   Candidate lists come from live **redacted** registries
+>   (`_provider_candidates`/`_provider_models`/`_style_candidates`/
+>   `_preset_candidates`/section + axis vocab) — provider/model/style/preset
+>   ids + labels only, never a key.
+> - **Finding shape** matches the brief: `{code, severity, field, message,
+>   current_value, repairable, candidates?}`. Severity uses `error`/`warning`/
+>   `info` (mapping to the `broken`/`degraded`/`valid` tiers). Codes implemented:
+>   `provider_missing`, `provider_unconfigured`, `model_unavailable`,
+>   `style_missing`, `generator_preset_missing`, `section_unknown`,
+>   `output_depth_invalid`, `difficulty_invalid`, `tool_route_missing` (used for
+>   both unavailable tool **and** view), `legacy_field_ignored`,
+>   `payload_shape_invalid`, `inspection_error`.
+> - **Additive `validity`** is attached in `_public`, so it rides `GET
+>   /api/shortcuts`, `GET /api/shortcuts/{id}`, and import-preview. Export
+>   (`_exportable`) is untouched (still no computed fields).
+> - **Route:** `GET /api/shortcuts/{id}/inspect` returns the flat
+>   `{id, name, type, valid, reason, validity, repair_candidates}` shape from the
+>   brief (not the nested `{shortcut, repairs}` sketch in §4.2). `repair_candidates`
+>   carries `providers`, `models_by_provider`, `styles`, `generator_presets`,
+>   plus `sections`/`output_depth`/`difficulty`. Unknown id → 404.
+> - **Legacy-`valid` divergence (intentional):** see §9 below and the
+>   `DECISIONS.md` entry. Unlike the §3 sketch, the implementation does **not**
+>   force `valid == (status == "valid")`; `valid`/`reason` come from the untouched
+>   `_evaluate_validity`, so a *newly-detected* degraded case (`model_unavailable`,
+>   `section_unknown`, invalid axis) keeps the legacy `valid:true` it has today
+>   while `validity.status` becomes `degraded`. This preserves the activation
+>   guard byte-for-byte. Invalid axes are treated as **degraded** (ignored/
+>   defaulted at load), not broken.
+> - **Tests:** `test_scripts/test_shortcut_inspector.py` (19/19) +
+>   `test_shortcut_store.py` (39/39, unchanged) + live Docker proof; read-only
+>   `shortcuts.json` sha256 unchanged; sentinel-key leak scan clean.
+
 ### Slice 2 — frontend badges + Inspector UI (read-only)
 - Drive Home card badge + customize-row chip off `validity.status` (3 tiers).
 - Add the Inspector drawer that calls `…/inspect` and renders findings + repair

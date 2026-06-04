@@ -973,6 +973,18 @@ def export_shortcut_route(shortcut_id: str) -> dict[str, Any]:
         raise _shortcut_error(exc) from exc
 
 
+@app.get("/api/shortcuts/{shortcut_id}/inspect")
+def inspect_shortcut_route(shortcut_id: str) -> dict[str, Any]:
+    # Read-only shortcut inspector (Slice 1): legacy valid/reason + the richer
+    # validity object + live, redacted repair candidates. No mutation, no repair
+    # apply. Unknown id -> 404 via _shortcut_error.
+    _guard_shortcut_id(shortcut_id)
+    try:
+        return shortcut_store.inspect_shortcut(shortcut_id)
+    except shortcut_store.ShortcutStoreError as exc:
+        raise _shortcut_error(exc) from exc
+
+
 @app.get("/api/exports")
 def get_exports(
     q: str | None = None,

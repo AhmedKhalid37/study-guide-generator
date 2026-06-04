@@ -39,6 +39,7 @@ from typing import Any
 from pipeline import generator_presets, provider_config, style_store
 from pipeline.orchestrator import (
     DIFFICULTY_VALUES,
+    INCLUDE_SECTION_ALIASES,
     INCLUDE_SECTION_FRAGMENTS,
     OUTPUT_DEPTH_VALUES,
     normalize_include_sections,
@@ -375,6 +376,360 @@ def _evaluate_validity(record: dict[str, Any]) -> tuple[bool, str | None]:
 
 
 # ---------------------------------------------------------------------------
+# Inspection (Slice 1) — richer, additive read-only validity
+#
+# This is ADDITIVE. ``_evaluate_validity`` above (and therefore the public
+# ``valid``/``reason`` fields) is left EXACTLY as-is for backward compatibility
+# with the existing activation guard. The inspector adds a parallel ``validity``
+# object that (a) distinguishes ``valid``/``degraded``/``broken`` instead of a
+# single boolean, (b) returns the FULL list of findings rather than first-failure-
+# only, and (c) validates the saved ``model`` reference (which ``_evaluate_validity``
+# never did). It is read-only: it reads live, redacted registries and never mutates
+# ``shortcuts.json``, never exposes a raw key.
+#
+# Deliberate divergence (see DECISIONS.md): a degraded-only shortcut keeps
+# ``valid:false`` (unchanged), but a NEW degraded case such as ``model_unavailable``
+# / ``section_unknown`` leaves the legacy ``valid:true`` it has today while
+# ``validity.status`` becomes ``degraded`` — so the new model check does not flip
+# the activation guard's decision for shortcuts it currently allows.
+# ---------------------------------------------------------------------------
+
+# Stable, frontend-friendly finding codes.
+FINDING_PROVIDER_MISSING = "provider_missing"
+FINDING_PROVIDER_UNCONFIGURED = "provider_unconfigured"
+FINDING_MODEL_UNAVAILABLE = "model_unavailable"
+FINDING_STYLE_MISSING = "style_missing"
+FINDING_GENERATOR_PRESET_MISSING = "generator_preset_missing"
+FINDING_SECTION_UNKNOWN = "section_unknown"
+FINDING_OUTPUT_DEPTH_INVALID = "output_depth_invalid"
+FINDING_DIFFICULTY_INVALID = "difficulty_invalid"
+FINDING_TOOL_ROUTE_MISSING = "tool_route_missing"
+FINDING_LEGACY_FIELD_IGNORED = "legacy_field_ignored"
+FINDING_PAYLOAD_SHAPE_INVALID = "payload_shape_invalid"
+FINDING_INSPECTION_ERROR = "inspection_error"
+
+# Severity → status tier. error ⇒ broken, warning ⇒ degraded, info ⇒ valid.
+SEVERITY_ERROR = "error"
+SEVERITY_WARNING = "warning"
+SEVERITY_INFO = "info"
+
+STATUS_VALID = "valid"
+STATUS_DEGRADED = "degraded"
+STATUS_BROKEN = "broken"
+
+
+def _finding(
+    code: str,
+    severity: str,
+    field: str,
+    message: str,
+    *,
+    current_value: Any = None,
+    repairable: bool = False,
+    candidates: list[dict[str, Any]] | None = None,
+) -> dict[str, Any]:
+    """Build a stable finding object. ``current_value``/``candidates`` carry only
+    non-secret ids/labels (provider/model/style/preset/section/axis) — never a key,
+    Authorization header, secret URL, or upstream error body."""
+    finding: dict[str, Any] = {
+        "code": code,
+        "severity": severity,
+        "field": field,
+        "message": message,
+        "current_value": current_value,
+        "repairable": bool(repairable),
+    }
+    if candidates is not None:
+        finding["candidates"] = candidates
+    return finding
+
+
+# -- Safe, redacted candidate sources (live registries; never a secret) -------
+
+def _provider_candidates() -> list[dict[str, Any]]:
+    """Public provider dicts reduced to ``{id, label, configured}`` — redacted."""
+    try:
+        registry = provider_config.get_provider_registry(discover_local=False)
+    except Exception:
+        return []
+    out: list[dict[str, Any]] = []
+    for item in registry:
+        pid = item.get("id")
+        if not pid:
+            continue
+        out.append({
+            "id": pid,
+            "label": item.get("display_name") or pid,
+            "configured": bool(item.get("configured")),
+        })
+    return out
+
+
+def _provider_models(provider_id: str | None) -> list[str]:
+    if not provider_id:
+        return []
+    try:
+        entry = provider_config.get_provider_entry(provider_id, discover_local=False)
+    except Exception:
+        return []
+    return list(entry.available_models) if entry and entry.available_models else []
+
+
+def _style_candidates() -> list[dict[str, Any]]:
+    try:
+        styles = style_store.list_styles().get("styles", [])
+    except Exception:
+        return []
+    return [
+        {"id": s.get("id"), "label": s.get("name") or s.get("id")}
+        for s in styles if s.get("id")
+    ]
+
+
+def _preset_candidates() -> list[dict[str, Any]]:
+    try:
+        presets = generator_presets.list_generator_presets()
+    except Exception:
+        return []
+    return [
+        {"id": p.get("id"), "label": p.get("name") or p.get("id")}
+        for p in presets if p.get("id")
+    ]
+
+
+def _section_candidates() -> list[dict[str, Any]]:
+    return [{"id": key, "label": key} for key in INCLUDE_SECTION_FRAGMENTS]
+
+
+def _axis_candidates(values: tuple[str, ...]) -> list[dict[str, Any]]:
+    return [{"id": value, "label": value} for value in values]
+
+
+def _safe_style_exists(style_id: str) -> bool:
+    try:
+        return style_store.style_exists(style_id)
+    except Exception:
+        # Fail-soft: a flaky read must not falsely flag a style as missing.
+        return True
+
+
+def _safe_preset_exists(preset_id: str) -> bool:
+    try:
+        return generator_presets.generator_preset_exists(preset_id)
+    except Exception:
+        return True
+
+
+def _collect_findings_inner(record: dict[str, Any]) -> list[dict[str, Any]]:
+    """Full list of findings for a record (no first-failure short-circuit)."""
+    findings: list[dict[str, Any]] = []
+    shortcut_type = record.get("type")
+    payload = record.get("payload")
+
+    if shortcut_type == TYPE_TOOL:
+        tool = payload.get("tool") if isinstance(payload, dict) else None
+        if tool not in KNOWN_TOOL_KEYS:
+            findings.append(_finding(
+                FINDING_TOOL_ROUTE_MISSING, SEVERITY_ERROR, "payload.tool",
+                "References a tool that is no longer available.",
+                current_value=tool or None, repairable=True,
+                candidates=[{"id": k, "label": k} for k in sorted(KNOWN_TOOL_KEYS)],
+            ))
+        return findings
+
+    if shortcut_type == TYPE_LIBRARY_VIEW:
+        view = str(payload.get("view") or "") if isinstance(payload, dict) else ""
+        if not (view in KNOWN_VIEW_BASES or any(view.startswith(p) for p in VIEW_PREFIXES)):
+            findings.append(_finding(
+                FINDING_TOOL_ROUTE_MISSING, SEVERITY_ERROR, "payload.view",
+                "References a library view that is no longer available.",
+                current_value=view or None, repairable=True,
+                candidates=[{"id": v, "label": v} for v in sorted(KNOWN_VIEW_BASES)],
+            ))
+        return findings
+
+    if shortcut_type != TYPE_BUILDER:
+        findings.append(_finding(
+            FINDING_PAYLOAD_SHAPE_INVALID, SEVERITY_ERROR, "type",
+            "Unknown shortcut type; cannot be applied.",
+            current_value=shortcut_type, repairable=False,
+        ))
+        return findings
+
+    if not isinstance(payload, dict):
+        findings.append(_finding(
+            FINDING_PAYLOAD_SHAPE_INVALID, SEVERITY_ERROR, "payload",
+            "Shortcut payload is missing or malformed and cannot be applied.",
+            repairable=False,
+        ))
+        return findings
+
+    # --- provider (required for a generation shortcut) -> broken on failure ---
+    providers = _provider_candidates()
+    configured_ids = {p["id"] for p in providers if p["configured"]}
+    configured_only = [p for p in providers if p["configured"]]
+    provider = payload.get("provider")
+    provider_id = provider_config.resolve_provider_id(provider) if provider else None
+    provider_ok = bool(provider_id) and provider_id in configured_ids
+
+    if not provider:
+        findings.append(_finding(
+            FINDING_PROVIDER_MISSING, SEVERITY_ERROR, "payload.provider",
+            "No provider is set for this generation shortcut.",
+            current_value=None, repairable=True, candidates=configured_only,
+        ))
+    elif not provider_id:
+        findings.append(_finding(
+            FINDING_PROVIDER_MISSING, SEVERITY_ERROR, "payload.provider",
+            "References a provider that is not known to this server.",
+            current_value=provider, repairable=True, candidates=configured_only,
+        ))
+    elif provider_id not in configured_ids:
+        findings.append(_finding(
+            FINDING_PROVIDER_UNCONFIGURED, SEVERITY_ERROR, "payload.provider",
+            "The selected provider is not configured (no API key on the server).",
+            current_value=provider, repairable=True, candidates=configured_only,
+        ))
+
+    # --- model (optional reference) -> degraded; provider default can serve ---
+    model = payload.get("model")
+    if model and provider_ok:
+        models = _provider_models(provider_id)
+        if models and model not in models:
+            findings.append(_finding(
+                FINDING_MODEL_UNAVAILABLE, SEVERITY_WARNING, "payload.model",
+                "Saved model is no longer available for the selected provider; "
+                "Builder will fall back to the provider default.",
+                current_value=model, repairable=True,
+                candidates=[{"id": m, "label": m} for m in models],
+            ))
+
+    # --- style (optional) -> degraded; a default style can be used -----------
+    style = payload.get("style")
+    if style and not _safe_style_exists(style):
+        findings.append(_finding(
+            FINDING_STYLE_MISSING, SEVERITY_WARNING, "payload.style",
+            "Saved style is no longer available; a default style can be used.",
+            current_value=style, repairable=True, candidates=_style_candidates(),
+        ))
+
+    # --- generator preset (optional) -> degraded; generation can proceed -----
+    preset = payload.get("generator_preset")
+    if preset and not _safe_preset_exists(preset):
+        findings.append(_finding(
+            FINDING_GENERATOR_PRESET_MISSING, SEVERITY_WARNING, "payload.generator_preset",
+            "Saved generator preset is no longer available; generation can proceed without it.",
+            current_value=preset, repairable=True, candidates=_preset_candidates(),
+        ))
+
+    # --- include_sections: unknown canonical keys -> degraded (dropped) ------
+    sections = payload.get("include_sections")
+    if isinstance(sections, dict):
+        for key in sections:
+            if key not in INCLUDE_SECTION_FRAGMENTS and key not in INCLUDE_SECTION_ALIASES:
+                findings.append(_finding(
+                    FINDING_SECTION_UNKNOWN, SEVERITY_WARNING, "payload.include_sections",
+                    "An included section is not recognized and will be ignored.",
+                    current_value=key, repairable=True, candidates=_section_candidates(),
+                ))
+
+    # --- axes: invalid stored value -> degraded (ignored/defaulted) ----------
+    output_depth = payload.get("output_depth")
+    if output_depth and output_depth not in OUTPUT_DEPTH_VALUES:
+        findings.append(_finding(
+            FINDING_OUTPUT_DEPTH_INVALID, SEVERITY_WARNING, "payload.output_depth",
+            "Saved output depth is not a valid option and will be ignored.",
+            current_value=output_depth, repairable=True,
+            candidates=_axis_candidates(OUTPUT_DEPTH_VALUES),
+        ))
+    difficulty = payload.get("difficulty")
+    if difficulty and difficulty not in DIFFICULTY_VALUES:
+        findings.append(_finding(
+            FINDING_DIFFICULTY_INVALID, SEVERITY_WARNING, "payload.difficulty",
+            "Saved difficulty is not a valid option and will be ignored.",
+            current_value=difficulty, repairable=True,
+            candidates=_axis_candidates(DIFFICULTY_VALUES),
+        ))
+
+    # --- legacy modules: unknown keys -> info (inert; known keys bridged) -----
+    modules = payload.get("modules")
+    if isinstance(modules, dict):
+        for key in modules:
+            if key not in KNOWN_MODULE_KEYS:
+                findings.append(_finding(
+                    FINDING_LEGACY_FIELD_IGNORED, SEVERITY_INFO, "payload.modules",
+                    "A legacy module key is not recognized and is ignored on read.",
+                    current_value=key, repairable=True,
+                ))
+
+    return findings
+
+
+def _collect_findings(record: dict[str, Any]) -> list[dict[str, Any]]:
+    """Fail-soft wrapper: inspection must never crash a list/read. On an
+    unexpected error, return a single ``inspection_error`` (degraded) finding."""
+    try:
+        return _collect_findings_inner(record)
+    except Exception:
+        return [_finding(
+            FINDING_INSPECTION_ERROR, SEVERITY_WARNING, "",
+            "This shortcut could not be fully inspected; treat as needs-review.",
+            repairable=False,
+        )]
+
+
+def _status_from_findings(findings: list[dict[str, Any]]) -> str:
+    if any(f.get("severity") == SEVERITY_ERROR for f in findings):
+        return STATUS_BROKEN
+    if any(f.get("severity") == SEVERITY_WARNING for f in findings):
+        return STATUS_DEGRADED
+    return STATUS_VALID
+
+
+def _validity(record: dict[str, Any]) -> dict[str, Any]:
+    """The additive richer validity object: status + full findings + repairable."""
+    findings = _collect_findings(record)
+    return {
+        "status": _status_from_findings(findings),
+        "findings": findings,
+        "repairable": any(f.get("repairable") for f in findings),
+    }
+
+
+def _repair_candidates() -> dict[str, Any]:
+    """Live, redacted candidate registries for the inspect endpoint. No secrets."""
+    providers = _provider_candidates()
+    models_by_provider = {
+        p["id"]: _provider_models(p["id"]) for p in providers if p["configured"]
+    }
+    return {
+        "providers": providers,
+        "models_by_provider": models_by_provider,
+        "styles": _style_candidates(),
+        "generator_presets": _preset_candidates(),
+        "sections": _section_candidates(),
+        "output_depth": _axis_candidates(OUTPUT_DEPTH_VALUES),
+        "difficulty": _axis_candidates(DIFFICULTY_VALUES),
+    }
+
+
+def inspect_shortcut(shortcut_id: str) -> dict[str, Any]:
+    """Read-only inspection of one shortcut: the legacy ``valid``/``reason`` plus
+    the richer ``validity`` object and live repair candidates. Raises
+    ``ShortcutNotFoundError`` for an unknown id. Never mutates ``shortcuts.json``."""
+    view = get_shortcut(shortcut_id)  # raises ShortcutNotFoundError if unknown
+    return {
+        "id": view["id"],
+        "name": view["name"],
+        "type": view["type"],
+        "valid": view["valid"],
+        "reason": view["reason"],
+        "validity": view["validity"],
+        "repair_candidates": _repair_candidates(),
+    }
+
+
+# ---------------------------------------------------------------------------
 # Translate-on-read bridge: legacy ``modules`` -> canonical ``include_sections``
 # ---------------------------------------------------------------------------
 
@@ -420,6 +775,9 @@ def _public(record: dict[str, Any]) -> dict[str, Any]:
         view["payload"] = _bridge_payload(record)
     view["valid"] = valid
     view["reason"] = reason
+    # Additive richer inspection (Slice 1). Legacy ``valid``/``reason`` above stay
+    # exactly as before; this never mutates the stored record.
+    view["validity"] = _validity(record)
     return view
 
 

@@ -5,29 +5,28 @@
 
 ---
 
-## NEXT / DESIGN — Shortcut Inspector / Repair Loop (DESIGN ONLY, not started)
+## NEXT — Shortcut Inspector / Repair Loop (Slice 1 backend DONE; Slice 2 next)
 
-- **Design doc:** `docs/SHORTCUT_INSPECTOR_REPAIR_DESIGN.md` (branch
-  `shortcut-inspector-repair-design`, docs-only). Designs a safe UX + backend
+- **Design doc:** `docs/SHORTCUT_INSPECTOR_REPAIR_DESIGN.md`. Safe UX + backend
   contract for inspecting and repairing shortcuts whose saved references
   (provider/model/style/preset/section/axis/tool/view) have gone invalid.
-- **Key design points:** keep the legacy `valid`/`reason` byte-compatible and
-  **add** a richer `validity` object with a **3-tier status**
-  (`valid`/`degraded`/`broken`) + full `findings[]`; fixes three real gaps in
-  today's check — it is binary, first-failure-only, and never validates the saved
-  `model`. New read-only endpoints `GET /api/shortcuts/{id}/inspect` +
-  `POST …/repair/preview`; the **only** write is `POST …/repair/apply` (in place
-  via `update_shortcut`, or `clone` via `create_shortcut`). **No
+- **Slice 1 (backend inspector, read-only) is DONE** (DONE #39, branch
+  `shortcut-inspector-backend`). Added a findings engine in
+  `pipeline/shortcut_store.py` (`_collect_findings` / `_validity`) + the additive
+  `validity` object on every `_public` view (list/get/import-preview) + the
+  read-only `GET /api/shortcuts/{id}/inspect` route. Legacy `valid`/`reason` are
+  **unchanged**. Fixes all three gaps: 3-tier status (binary→`valid`/`degraded`/
+  `broken`), **full** findings list (not first-failure), and the previously-missing
+  **saved-model** check. No writes, no frontend, no store refactor.
+- **NEXT is Slice 2 — frontend badges + read-only Inspector UI.** Drive the Home
+  card badge + customize-row chip off `validity.status` (3 tiers) and add the
+  Inspector drawer that calls `…/inspect` and renders findings + repair-candidate
+  controls (Apply still disabled / deferred to Slice 3). No apply yet.
+- **Slice 3 (later):** `POST …/repair/preview` (pure) + `POST …/repair/apply`
+  (in place via `update_shortcut`, or `clone` via `create_shortcut`). **No
   migration-on-read, no silent overwrite, no auto-switch of provider/model, no
-  raw keys, no shortcut-store refactor.**
-- **Slices:** (1) backend inspector only (read-only findings + `validity` +
-  `…/inspect`); (2) frontend badges (3-tier) + Inspector drawer; (3) repair
-  preview + apply flow. Optional later: "Repair all", Home "N need attention"
-  banner, token-match model suggestion.
-- **Status:** DESIGN ONLY — no backend/frontend code implemented this slice.
-  Recommendation: start with Slice 1 (low-risk, additive). See the design doc
-  §7–§10 and the `DECISIONS.md` entry "Shortcut inspector: additive `validity`,
-  no migration-on-read, preview-before-apply".
+  raw keys, no shortcut-store refactor.** See design doc §7–§10 and the
+  `DECISIONS.md` entries on additive `validity` / the legacy-`valid` divergence.
 
 ---
 
@@ -1217,6 +1216,48 @@ parked on the `hardening` branch — not merged, not deleted.
       **28/28**, `test_provider_fetch_models.py` **16/16**. See `DECISIONS.md` →
       "Stored default_provider is a default only".
 
+39. **Shortcut Inspector Slice 1 — backend inspector (BACKEND ONLY, read-only)** —
+    branch `shortcut-inspector-backend`. Adds a richer, additive read-only
+    validity layer for shortcuts that fixes the three known gaps without changing
+    any existing behavior.
+    - **Engine (`pipeline/shortcut_store.py`):** `_collect_findings(record)` →
+      the **full** list of findings (provider/model/style/preset/section/axis/
+      tool/view/legacy/payload-shape), `_status_from_findings` → 3-tier status
+      (`error`⇒`broken`, `warning`⇒`degraded`, else `valid`), and `_validity` →
+      `{status, findings[], repairable}`. Each finding is
+      `{code, severity, field, message, current_value, repairable, candidates?}`
+      with stable codes (`provider_missing`, `provider_unconfigured`,
+      `model_unavailable`, `style_missing`, `generator_preset_missing`,
+      `section_unknown`, `output_depth_invalid`, `difficulty_invalid`,
+      `tool_route_missing`, `legacy_field_ignored`, `payload_shape_invalid`,
+      `inspection_error`). Candidates come from live **redacted** registries only
+      (provider ids/labels/`configured`, provider `available_models`, style ids,
+      preset ids, canonical section keys, axis enums) — never a raw key.
+    - **Additive field:** `validity` is attached in `_public`, so it rides on
+      `GET /api/shortcuts`, `GET /api/shortcuts/{id}`, and import-preview. Legacy
+      `valid`/`reason` (from the untouched `_evaluate_validity`) stay byte-compatible.
+    - **New route:** `GET /api/shortcuts/{id}/inspect` (read-only) returns
+      `{id,name,type,valid,reason,validity,repair_candidates}`; unknown id → 404.
+    - **Deliberate divergence (documented):** the new model/section/axis checks
+      raise `validity.status` to `degraded` but **do not** flip the legacy
+      `valid:true` those shortcuts have today, so the existing activation guard is
+      unchanged (see `DECISIONS.md` → "Shortcut inspector Slice 1: legacy `valid`
+      stays true for new degraded findings"). Invalid axes are treated as
+      **degraded** (ignored/defaulted at load), not broken.
+    - **Verified:** `compileall api pipeline` OK; new
+      `test_scripts/test_shortcut_inspector.py` **19/19** (valid/degraded/broken
+      tiers, model-unavailable degraded with legacy `valid` still true, missing
+      style/preset, unknown section, invalid axes, tool/view broken, multiple
+      simultaneous findings, `…/inspect` 404, read-only sha256 unchanged, sentinel
+      no-key-leak); existing `test_shortcut_store.py` **39/39**,
+      `test_provider_settings_store.py` **26/26**. Live in Docker (healthy):
+      `…/inspect` on a valid shortcut → `valid`/empty findings; on an injected
+      broken+degraded shortcut → `broken` + `[provider_missing, style_missing,
+      section_unknown]` with `shortcuts.json` sha256 unchanged; unknown id → 404;
+      `smoke_release.py` **28/28**; secret scan clean across
+      inspect/list/options/provider-settings + container logs. **No frontend, no
+      repair preview/apply, no store refactor in this slice.**
+
 ## NEXT (in order)
 
 > **Provider settings feature group is DONE through Slice 5** (DONE #32→#36):
@@ -1250,9 +1291,13 @@ parked on the `hardening` branch — not merged, not deleted.
    handful of real big/scanned decks (preflight verdicts, first-N + manual range,
    original `## Page N` anchors, OCR only on selected pages, rendered PDF). Pure
    validation / manual click-through — no code unless a concrete bug surfaces.
-2. **Shortcut inspector / repair loop — DESIGN/POLISH.** Surface the store's
-   `valid`/`reason` "references unavailable …" state and a repair UX for broken
-   provider/preset/style references. Design first.
+2. **Shortcut inspector / repair loop — Slice 2 (frontend badges + Inspector UI).**
+   Slice 1 backend inspector is DONE (DONE #39): `validity` rides every shortcut
+   view + `GET …/shortcuts/{id}/inspect` exists. **Slice 2** drives the Home card
+   badge + customize-row chip off `validity.status` (3 tiers) and adds the
+   read-only Inspector drawer (calls `…/inspect`, renders findings + repair
+   candidates, Apply deferred). **Slice 3** adds `…/repair/preview` + `…/repair/
+   apply`. See `docs/SHORTCUT_INSPECTOR_REPAIR_DESIGN.md` §7.
 3. **Local Model Manager — DESIGN-FIRST only.** Backend spawns/kills a host
    `llama-server`. This **crosses the container boundary** (non-root uid 10001
    container managing a host process) — design and get sign-off before coding. It
