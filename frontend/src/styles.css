@@ -1739,6 +1739,18 @@ img {
   100% { transform: translateX(220%); }
 }
 
+/* Brief highlight when the Local Models panel sends the user to the Local
+   provider card (LMM Slice 3). Cosmetic only — fades on its own. */
+.sg-card-flash {
+  animation: sg-card-flash 1.6s ease-out;
+}
+
+@keyframes sg-card-flash {
+  0% { box-shadow: 0 0 0 0 rgba(245, 158, 11, 0); }
+  18% { box-shadow: 0 0 0 2px rgba(245, 158, 11, 0.55); }
+  100% { box-shadow: 0 0 0 0 rgba(245, 158, 11, 0); }
+}
+
 @keyframes sg-fade-rise {
   from { opacity: 0; transform: translateY(8px); }
   to { opacity: 1; transform: translateY(0); }

@@ -143,6 +143,23 @@ export function fetchProviderModels(provider) {
   });
 }
 
+// ── Local Models status (detection-only — LMM Slice 2/3) ─────────────────────
+// Read-only status of the configured `local` OpenAI-compatible server: whether a
+// base URL is configured, whether it is reachable, what models it exposes, and at
+// what latency. The response is already SAFE — no raw API key (no key field by
+// construction), `base_url_host` is host-only (never scheme/port/path/userinfo),
+// and any error is a redacted, length-capped { category, message }. Neither call
+// writes anything, mutates provider settings, or starts/stops a process.
+// getLocalModelStatus is the page-open read; checkLocalModelStatus is the
+// explicit "Refresh" verb (same backend probe, distinct intent). No request body.
+export function getLocalModelStatus() {
+  return requestJson("/api/local-model/status");
+}
+
+export function checkLocalModelStatus() {
+  return requestJson("/api/local-model/check", { method: "POST" });
+}
+
 export function getStyles() {
   return requestJson("/api/styles");
 }

@@ -71,24 +71,34 @@ flashcards with CSV / Anki / Quizlet export.
   `base_url_host`. The public DTO has **no key field by construction**; the API key
   is write-only over the API (set/cleared, never read back). **Raw keys never reach
   the frontend.**
-- **Local Model Manager — DETECTION-ONLY BACKEND IMPLEMENTED (Slice 2); FRONTEND
-  PLANNED.** A *separate* feature from Provider Settings, designed in
-  `docs/LOCAL_MODEL_MANAGER_DESIGN.md`. The chosen approach is **staged +
-  detection-first**: Phase 1 = **detection-only**. **Slice 2 is DONE** (branch
-  `local-model-status-api`): a read-only **`GET /api/local-model/status`** (+ thin
-  `POST /api/local-model/check` alias), backed by `get_local_model_status()` in
-  `pipeline/provider_config.py`, reports whether the configured local server is
+- **Local Model Manager — DETECTION-ONLY, BACKEND + FRONTEND STATUS PANEL
+  IMPLEMENTED (Slices 2 + 3).** A *separate* feature from Provider Settings, designed
+  in `docs/LOCAL_MODEL_MANAGER_DESIGN.md`. The chosen approach is **staged +
+  detection-first**: Phase 1 = **detection-only**. **Slice 2 (backend) is DONE**
+  (branch `local-model-status-api`): a read-only **`GET /api/local-model/status`**
+  (+ thin `POST /api/local-model/check` alias), backed by `get_local_model_status()`
+  in `pipeline/provider_config.py`, reports whether the configured local server is
   reachable and what models it exposes — reusing the existing `local` base-URL
   resolution + `_discover_openai_models` + the redaction helpers. It returns safe
   fields only (host-only URL, reachable, latency, model list/count, default/selected
   model, normalized `local_offline` error, `actions`, `notes`); **`ok` means the
   status request succeeded, not that the server is up**. It **spawns nothing, writes
-  nothing, browses no files, and never exposes a raw key or full URL.** Still ahead:
-  **LMM Slice 3** (frontend Local Models status panel), then Slice 4 (command-helper
-  copy), then an optional **host companion launcher** (Phase 2, design-only). **Direct
-  Docker→host process spawn is rejected** — a non-root (uid 10001),
-  `no-new-privileges` container cannot safely manage host processes. Provider config
-  edits stay on Provider Settings (no second writer). See `DECISIONS.md`.
+  nothing, browses no files, and never exposes a raw key or full URL.** **Slice 3
+  (frontend) is DONE** (branch `local-model-status-ui`): a read-only **Local Models
+  status panel** mounted inside the Providers (Models) page
+  (`LocalModelsPanel.jsx` + pure `localModelStatus.js` helpers + the
+  `getLocalModelStatus`/`checkLocalModelStatus` API client calls). It shows the live
+  status pill (reachable/offline/not-configured/error), host-only base URL,
+  in-Docker flag, latency, model count + bounded chips, default/selected model, a
+  first-class offline/troubleshooting state (incl. the `--host 0.0.0.0` note), a
+  **Refresh status** button, an "Edit local provider settings" link to the Local
+  provider card (the single config writer), and a **disabled** "Copy start command —
+  Planned" chip. **No process control, no inline editing, no raw key/URL.** Still
+  ahead: **LMM Slice 4** (enable the command-helper Copy), then an optional **host
+  companion launcher** (Phase 2, design-only). **Direct Docker→host process spawn is
+  rejected** — a non-root (uid 10001), `no-new-privileges` container cannot safely
+  manage host processes. Provider config edits stay on Provider Settings (no second
+  writer). See `DECISIONS.md`.
 
 ## 4. Architecture facts a new session MUST know
 

@@ -5,25 +5,30 @@
 
 ---
 
-## NEXT — Local Model Manager — Slice 2 DONE (detection-only backend); NEXT = LMM Slice 3 (frontend status panel)
+## NEXT — Local Model Manager — Slice 3 DONE (frontend status panel); NEXT = LMM Slice 4 (command-helper / copy start command)
 
+- **LMM Slice 3 is DONE (Local Models status panel, FRONTEND)** — branch
+  `local-model-status-ui`, see DONE #47 below. Consumes the Slice 2 endpoints
+  (`getLocalModelStatus`/`checkLocalModelStatus` API helpers) and renders a
+  read-only **Local Models** panel inside the Providers page: live status pill
+  (reachable green / offline amber / not-configured grey / error red), host-only
+  base URL, in-Docker flag, latency, model count + bounded model chips,
+  default/selected model, redacted offline message + first-class troubleshooting
+  (with the `--host 0.0.0.0` gotcha), backend `notes`, a **Refresh status** button
+  (calls `/check`, never saves/starts anything), an "Edit local provider settings"
+  link that scrolls to the Local provider card (single writer), and the disabled
+  **Copy start command — Planned** affordance. Pure `localModelStatus.js` helpers
+  unit-tested by `verify-local-model-status.mjs` (47/47). **No process control, no
+  inline base-URL editing, no raw key/URL.**
 - **LMM Slice 2 is DONE (detection-only backend status endpoint)** — branch
-  `local-model-status-api`, see DONE #46 below. Added read-only
-  `GET /api/local-model/status` (+ a thin `POST /api/local-model/check` alias) that
-  resolves the effective `local` base URL, probes `/v1/models` with a fail-fast
-  10 s timeout reusing `_discover_openai_models`, and returns a safe DTO
-  (`reachable`, `latency_ms`, model list/count, `default`/`selected_model`,
-  host-only `base_url_host`, normalized `local_offline` error, `actions`, `notes`).
-  `ok` means the **status request** succeeded, never that the server is up.
-  **No process spawn, no writes, no file browsing, no raw key, no full URL.**
+  `local-model-status-api`, DONE #46. Read-only `GET /api/local-model/status`
+  (+ thin `POST /api/local-model/check` alias), `get_local_model_status()`.
 - **LMM Slice 1 design is DONE** (DONE #45) — `docs/LOCAL_MODEL_MANAGER_DESIGN.md`:
   detection-first, Option D (Docker→host spawn) REJECTED, Option C not the default.
-- **NEXT — LMM Slice 3: Local Models status panel (FRONTEND).** Consume Slice 2 +
-  the existing local fetch-models: status card (reachable/amber/grey dot), base-URL
-  host display + link to Providers, Refresh (calls `/status` or `/check`), discovered
-  models, first-class offline/troubleshooting state, Start/Stop omitted or
-  disabled-"Planned". No process control, no inline base-URL editing (links to
-  Providers). See design §5 + §11.
+- **NEXT — LMM Slice 4: command-helper profiles / Copy start command.** Render the
+  §9 `llama_server_default` command profile + enable the **Copy command** button
+  (still a display template the app never executes; keep `--host 0.0.0.0`
+  guidance). See design §9 + §11.
 - **The Shortcut Inspector / Repair loop is COMPLETE** (Slices 1+2+3A+3B + the
   degraded-activation confirm polish, DONE #39→#43). See the block just below and
   DONE #43 for the latest slice. **A follow-up shortcut slice (DONE #44) then
@@ -1673,6 +1678,62 @@ parked on the `hardening` branch — not merged, not deleted.
       tokens. **No live local server required for the automated tests** (urllib
       `urlopen` is monkeypatched; `/.dockerenv` faked).
 
+47. **Local Model Manager — Slice 3: Local Models status panel (FRONTEND)** —
+    branch `local-model-status-ui`. The §5 read-only operational view over the
+    Slice 2 endpoints. Frontend + API client + docs/tests only; **no backend,
+    Docker, pipeline, renderer, prompt, or provider-write changes.**
+    - **API client helpers** (`frontend/src/api/client.js`): `getLocalModelStatus()`
+      (`GET /api/local-model/status`, page-open read) and `checkLocalModelStatus()`
+      (`POST /api/local-model/check`, the "Refresh" verb). Both go through the
+      existing `requestJson`; neither sends a body, writes, or mutates settings.
+    - **Pure status helpers** (`frontend/src/localModelStatus.js`, mirrors
+      `shortcutStatus.js`): `localServerState` normalizes the DTO into
+      `reachable | offline | not_configured | error | unknown` (reachable wins;
+      `base_url_configured:false` or `provider_config` → not_configured;
+      `local_offline` → offline; other classified error → error; not-reachable with
+      no info → calm offline; missing/garbage status → unknown). Plus `stateBadge`
+      (label + CSS-agnostic `tone`), `statusModels`/`statusModelCount`,
+      `modelChips(limit=12)` (bounded list + overflow count), `statusLatencyMs`,
+      `statusErrorMessage`, `statusNotes`, `statusActions` (enabled **only** when
+      explicitly `true`), `findAction`, and `hasEnabledProcessControl` (the
+      invariant guard). **Tolerates missing fields and an old backend.**
+    - **Panel** (`frontend/src/components/LocalModelsPanel.jsx`): a rounded card
+      with a live status pill, host-only base URL + in-Docker flag, a 4-up metrics
+      strip (latency / models / default / selected), bounded model chips
+      (selected highlighted, `+N more` overflow), a redacted offline/error message,
+      a **first-class** offline/not-configured troubleshooting block (start the
+      server, confirm `…/v1/models`, the `--host 0.0.0.0` Docker-host note, then
+      Refresh), backend `notes`, a **Refresh status** button (loading state, calls
+      `/check`, never saves/starts), an "Edit local provider settings" link, and the
+      disabled **Copy start command — Planned** chip from the backend `actions`. If
+      the status **request** itself fails (e.g. an old backend with no endpoint) it
+      shows a calm "status unavailable" state instead of crashing.
+    - **Providers integration** (`ProviderSettingsWorkspace.jsx`): the panel mounts
+      under the provider cards; the edit link scrolls the `#provider-card-local`
+      card into view with a brief `sg-card-flash` highlight (cosmetic CSS only).
+      Providers stays the **single writer** — the panel never edits the base URL or
+      model inline. No second nav item; lives on the existing **Models** page.
+    - **Safety:** read-only; no start/stop/restart/process control anywhere
+      (`hasEnabledProcessControl` is asserted false); no raw key or full URL (only
+      the backend's host-only `base_url_host`); no stack traces; status never stored
+      in shortcuts/jobs; selected provider/model never auto-changed. No new deps.
+    - **Tests:** new `frontend/scripts/verify-local-model-status.mjs` (**47/47**,
+      wired as `npm run test:local-model-status`) — state normalization (incl.
+      missing-fields fallbacks), badge label/tone, model count + 12-chip display
+      limit/overflow, latency/error/notes accessors, action enabled/disabled
+      mapping, and the no-enabled-process-control invariant. Backend suites
+      unchanged: `test_local_model_status.py` (17/17),
+      `test_provider_fetch_models.py` (16/16), `test_provider_settings_store.py`
+      (26/26).
+    - **Verified:** `compileall` OK; `npm run build` OK (1601 modules); harness
+      47/47; `docker compose config` exit 0; image built; container **healthy**.
+      Live with **no** local server: `GET /api/local-model/status` returns HTTP 200
+      `reachable:false`, `error.category:"local_offline"`, `latency_ms:null`,
+      host-only `host.docker.internal`, and the `--host 0.0.0.0` note (panel renders
+      the calm offline state). `/api/options` 200; release smoke **28/28**. Secret
+      scan **clean** — no `.env` key value in the served JS bundle, `/status`,
+      `/options`, or `/provider-settings`; container logs carry 0 key tokens.
+
 ## NEXT (in order)
 
 > **Provider settings feature group is DONE through Slice 5** (DONE #32→#36):
@@ -1708,19 +1769,16 @@ parked on the `hardening` branch — not merged, not deleted.
 > Shortcut Inspector itself was validated in
 > `docs/VALIDATION_SHORTCUT_INSPECTOR_REPAIR.md` (docs-only; no code changed).
 
-1. **Local Model Manager — LMM Slice 3: Local Models status panel (FRONTEND,
-   RECOMMENDED next).** The backend **is DONE** (DONE #46, `GET
-   /api/local-model/status` + `POST /api/local-model/check`). Build the §5 Local
-   Models view: status card (reachable green / configured-but-unreachable amber /
-   not-configured grey dot, latency, model count), base-URL **host** display + a
-   "Configure base URL" link to **Providers ▸ Local** (the single config writer —
-   no inline editing), **Refresh** (calls `/status` or `/check`), discovered model
-   list (reuse the existing local fetch-models), and a **first-class** offline/
-   troubleshooting state (surface the `--host 0.0.0.0` note). Start/Stop omitted or
-   disabled-"Planned" — no enabled control that does nothing. New
-   `LocalModelsWorkspace.jsx` (or a Providers sub-panel) + `client.js` status/check
-   helpers + nav wiring. **No process control; no raw key/URL in the bundle or
-   network tab.** See design §5 + §11.
+1. **Local Model Manager — LMM Slice 4: command-helper profiles / Copy start
+   command (RECOMMENDED next).** Slices 2 (backend, DONE #46) and 3 (frontend
+   panel, DONE #47) are **DONE**. The panel already shows a **disabled** "Copy
+   start command — Planned" affordance fed by the backend `actions`; Slice 4
+   renders the §9 `llama_server_default` command profile (placeholder-substituted,
+   bounded ints) and **enables** the Copy button. The command stays a **display
+   template the app never executes**; keep the `--host 0.0.0.0` guidance. Likely a
+   static `localModelProfiles.js` table (or a server-owned profile constant) +
+   harness over the command-rendering function. **No execution; no host file/path
+   resolution.** See design §9 + §11.
 2. **Focused manual validation / polish of the Shortcut Inspector UI.** The
    inspect→repair loop is complete and validated at the API + served-bundle level
    (`docs/VALIDATION_SHORTCUT_INSPECTOR_REPAIR.md`); the remaining gap is a human

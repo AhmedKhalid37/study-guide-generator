@@ -8,6 +8,7 @@ import {
   testProviderSettings,
   updateProviderSettings
 } from "../api/client";
+import LocalModelsPanel from "./LocalModelsPanel";
 
 // Providers / Settings workspace. Consumes the safe, server-side provider
 // settings endpoints (Slice 1). The frontend only ever sees redacted status —
@@ -91,6 +92,18 @@ export default function ProviderSettingsWorkspace() {
   }, []);
 
   const configuredCount = providers.filter((p) => p.configured).length;
+  const hasLocalProvider = providers.some((p) => p.id === "local");
+
+  // The Local Models panel is operational/read-only and links back here for any
+  // config edit (Providers is the single writer). Scroll the Local provider card
+  // into view and flash a brief highlight so the user lands on the right editor.
+  const focusLocalProvider = useCallback(() => {
+    const el = document.getElementById("provider-card-local");
+    if (!el) return;
+    el.scrollIntoView({ behavior: "smooth", block: "center" });
+    el.classList.add("sg-card-flash");
+    window.setTimeout(() => el.classList.remove("sg-card-flash"), 1600);
+  }, []);
 
   return (
     <div className="sg-page">
@@ -160,6 +173,10 @@ export default function ProviderSettingsWorkspace() {
               />
             ))}
           </div>
+
+          <LocalModelsPanel
+            onEditLocalProvider={hasLocalProvider ? focusLocalProvider : undefined}
+          />
         </>
       )}
     </div>
@@ -375,7 +392,7 @@ function ProviderSettingsCard({ provider, isDefault, onSaved }) {
         : "No key set — paste to add";
 
   return (
-    <div className="sg-provider-card sg-recent-row">
+    <div id={`provider-card-${provider.id}`} className="sg-provider-card sg-recent-row">
       <div className="sg-provider-top">
         <span>{provider.display_name.slice(0, 1)}</span>
         <div className="min-w-0 flex-1">

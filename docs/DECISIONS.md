@@ -823,3 +823,25 @@ bare host (via `urlparse().hostname`, which drops userinfo) is the smaller leak 
 `actions` ships `copy_start_command` as **disabled** ("planned for a later slice") rather
 than omitted — the roadmap is visible without an enabled control that does nothing
 (design §5.2). The next slice is **LMM Slice 3** (the frontend Local Models panel).
+
+## LMM Slice 3: Local Models panel is a Providers sub-panel + an in-page scroll link, not a nav item (2026-06-04)
+The design (§5) left the panel's home open — "a sub-panel of the Providers page **or** a
+sibling nav item." The implementation (branch `local-model-status-ui`,
+`LocalModelsPanel.jsx` mounted at the bottom of `ProviderSettingsWorkspace.jsx`) chose the
+**sub-panel inside the existing Models page**, adding **no** sixth sidebar destination.
+**Why:** the panel is operational/read-only and explicitly links back to the Local
+provider card for every config edit (Providers is the single writer, §5.3); putting the
+status *next to* the thing it links to keeps one mental model and avoids a nav item that
+exists only to show one card. The **"Edit local provider settings" action** is wired as an
+**in-page scroll-to-card** (`document.getElementById("provider-card-local")` +
+`scrollIntoView` + a brief cosmetic `sg-card-flash` ring) rather than a route or anchor —
+this SPA has **no client-side routing/anchor support** (sections are React state in
+`DesktopDashboard`), so a scroll+highlight is the lowest-risk way to honor the design's
+"link to Providers ▸ Local" without inventing a router. A second non-obvious call: the
+pure `localServerState` maps **not-reachable-with-no-error-info to a calm `offline`**, not
+`error` — a server that simply did not answer is the expected idle state, not a fault, so
+the panel stays calm; only a *classified* non-offline error (auth/model) shows the red
+`error` tier. Missing/garbage status (e.g. an **old backend** with no endpoint) maps to
+`unknown` + a "status unavailable" card instead of a crash. The **Copy start command** chip
+stays disabled here (enabling it with the §9 profile is **Slice 4**). No new dependency —
+the helpers are pure ESM unit-tested by a node harness, mirroring `shortcutStatus.js`.

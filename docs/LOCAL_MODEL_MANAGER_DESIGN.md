@@ -578,6 +578,44 @@ Each slice: **scope / files likely touched / tests / acceptance / non-goals.**
   no enabled control that does nothing; no raw key/URL in the bundle or network tab.
 - **Non-goals:** any process control; inline base-URL editing (links to Providers).
 
+> **Slice 3 implementation note (DONE — branch `local-model-status-ui`).** Built
+> the read-only Local Models panel as a **sub-panel of the existing Providers
+> (Models) page**, not a separate nav item — the §5.3 "operational view that links
+> back to the single config writer" without a second top-level destination.
+> - **API client:** `getLocalModelStatus()` (`GET /status`, page-open) +
+>   `checkLocalModelStatus()` (`POST /check`, the "Refresh" verb) in
+>   `frontend/src/api/client.js`, both via the existing `requestJson` — no body, no
+>   write, no settings mutation.
+> - **Pure helpers** in `frontend/src/localModelStatus.js` (mirrors
+>   `shortcutStatus.js`): `localServerState` → `reachable | offline |
+>   not_configured | error | unknown` (reachable wins; `base_url_configured:false`
+>   or a `provider_config` category → not_configured; `local_offline` → offline;
+>   any other classified error → error; not-reachable-with-no-info → a **calm
+>   offline** default; missing/garbage status → unknown so an **old backend** with
+>   no endpoint degrades gracefully). Plus `stateBadge` (label + CSS-agnostic
+>   `tone`), `modelChips(limit=12)` (bounded list + overflow), latency/error/notes
+>   accessors, `statusActions` (enabled **only** when explicitly `true`), and
+>   `hasEnabledProcessControl` — the asserted invariant that no start/stop control
+>   is ever enabled. All tolerate missing fields.
+> - **Panel** (`LocalModelsPanel.jsx`): status pill, host-only base URL + in-Docker
+>   flag, a 4-up metrics strip, selected-highlighted model chips with `+N more`
+>   overflow, the redacted offline/error message, a first-class
+>   offline/not-configured troubleshooting block (start server → confirm
+>   `…/v1/models` → the `--host 0.0.0.0` Docker-host note → Refresh), backend
+>   `notes`, the **Refresh status** button, an **Edit local provider settings** link
+>   that scrolls the `#provider-card-local` card into view with a brief
+>   `sg-card-flash` highlight (cosmetic CSS only), and the **disabled** "Copy start
+>   command — Planned" chip from the backend `actions`. A failed status *request*
+>   shows a calm "status unavailable" state, never a crash.
+> - **Single writer preserved:** the panel never edits the base URL/model inline;
+>   all config edits route to the Providers ▸ Local card.
+> - **Tests:** `frontend/scripts/verify-local-model-status.mjs` (**47/47**, wired as
+>   `npm run test:local-model-status`); `npm run build` OK; release smoke 28/28;
+>   live offline proof + clean secret scan (no key in the served bundle, `/status`,
+>   `/options`, `/provider-settings`, or container logs). **No** process control,
+>   inline editing, raw key/URL, or new deps. The **Copy start command** stays
+>   disabled — enabling it (with the §9 profile) is **Slice 4**.
+
 ### LMM Slice 4 — command-helper profiles / copy start command
 - **Scope:** the §9 command-profile rendering + **Copy command** button (likely
   folded into Slice 3, or a thin follow-up). A small profile registry (backend or
