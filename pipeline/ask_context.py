@@ -65,6 +65,9 @@ _PAGE_ANCHOR_RE = re.compile(r"^##[ \t]+Page[ \t]+(\d+)\b", re.IGNORECASE)
 _TERM_RE = re.compile(r"[a-z0-9]{2,}")
 # Paragraph boundary: one or more blank (whitespace-only) lines.
 _PARA_SPLIT_RE = re.compile(r"\n[ \t]*\n")
+_SK_RE = re.compile(r"\bsk-[A-Za-z0-9_\-]{8,}\b")
+_AUTH_RE = re.compile(r"(?i)\bAuthorization\s*:\s*Bearer\s+[A-Za-z0-9._\-]+")
+_URL_RE = re.compile(r"https?://[^\s<>\]\)\"']+")
 
 
 def _read_text(path: Path) -> str | None:
@@ -87,6 +90,13 @@ def _approx_tokens(char_count: int) -> int:
 def _term_freqs(text: str) -> dict[str, int]:
     """Term-frequency map of lowercased alphanumeric terms for one chunk."""
     return dict(Counter(_TERM_RE.findall(text.lower())))
+
+
+def _redact_chunk_text(text: str) -> str:
+    """Mask obvious secrets/provider URLs before writing retrieval cache text."""
+    text = _SK_RE.sub("[redacted-key]", text)
+    text = _AUTH_RE.sub("[redacted-authorization]", text)
+    return _URL_RE.sub("[redacted-url]", text)
 
 
 def compute_content_hash(guide_text: str | None, source_text: str | None) -> str:
@@ -197,7 +207,7 @@ def _build_chunks(guide_text: str | None, source_text: str | None) -> list[dict]
         seq = 0
         for label, page, body in _segments(text, kind):
             for piece in _split_body(body):
-                piece = piece.strip()
+                piece = _redact_chunk_text(piece.strip())
                 if not piece:
                     continue
                 seq += 1

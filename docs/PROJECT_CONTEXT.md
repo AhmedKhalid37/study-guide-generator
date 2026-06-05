@@ -113,7 +113,7 @@ flashcards with CSV / Anki / Quizlet export.
   Settings (no second writer). See `DECISIONS.md`.
 - **Ask Your Guide — IN PROGRESS (Slice 1 design DONE; Slice 2 backend context
   inventory DONE; Slice 3 backend context preparation / chunking DONE; inserted
-  workspace shell DONE).** A
+  workspace shell DONE; backend local chat API DONE).** A
   dedicated **`AskGuideWorkspace`** (first-class page/tab alongside
   Builder/Library/Styles/Providers) where the user selects a generated guide/job and
   chats with it using a **local model only**. Designed in
@@ -148,11 +148,17 @@ flashcards with CSV / Anki / Quizlet export.
   inserted frontend/product slice then shipped the visible **Ask Guide** workspace
   shell: top-level nav, guide picker, disabled chat/readiness panel, context sources
   rail, prepare-context button, and LMM offline/reachable status with the manual
-  command helper. It consumes only the existing summary endpoints and still has **no
-  backend chat route, no sessions, no model/local-model call, no cloud fallback, no
-  extra uploads, no chat persistence, and no artifact mutation.**
-  **NEXT = backend local chat endpoint** (`POST /api/ask/sessions/{id}/message`:
-  status-gate → retrieve over the Slice 3 index → local-only generation → cited answer).
+  command helper. The backend local chat API then shipped session creation/load plus
+  `POST /api/ask/sessions/{id}/message`: status-gate on LMM/local availability,
+  synchronously prepare/reuse the Slice 3 cache, retrieve a bounded lexical chunk set,
+  assemble citation-labelled context + hard answer rules + a small recent-history
+  window, and call only the existing `local` OpenAI-compatible provider. Sessions live
+  under `jobs/<job_id>/ask/sessions/<session_id>/`; history is JSONL; responses expose
+  safe citation metadata only (no prompts or chunk text). **No cloud fallback, no
+  DeepSeek/Qwen fallback, no extra uploads, no streaming, no rolling summary, no
+  generation jobs, and no artifact mutation.**
+  **NEXT = frontend chat UI wiring**: enable the existing Ask workspace composer and
+  render history/answers/citation chips against these backend endpoints.
   See `DECISIONS.md`.
 
 ## 4. Architecture facts a new session MUST know

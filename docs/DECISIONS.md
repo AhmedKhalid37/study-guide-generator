@@ -1010,3 +1010,31 @@ The security posture also becomes visible early: the UI only renders summary fie
 defensively basenames attachment/page-selection names, and never displays raw guide/source
 text, chunk text, keys, full URLs, or host paths. After this inserted slice, NEXT returns
 to the backend local chat endpoint.
+
+## Ask backend chat synchronously prepares context and stores sessions under the job (2026-06-05)
+The backend local chat API uses `jobs/<job_id>/ask/sessions/<session_id>/` with
+`session.json` (atomic write) and `history.jsonl` (append-only) for v1 chat sessions.
+Session ids are opaque `ask_<uuidhex>` values, lookup scans only the job-local Ask
+session areas, and path checks fence every resolved session under its parent job.
+**Why:** co-locating chat with the parent job means trash/purge lifecycle remains simple,
+no global session index is needed for a single-operator tool, and existing exports do not
+include chat files unless a future explicit export-chat feature is built.
+
+For `POST /api/ask/sessions/{id}/message`, the backend synchronously calls
+`ask_context.prepare_context(job)` before loading the index. **Why:** this keeps the
+message endpoint self-contained and resilient to a missing/stale/corrupt cache while only
+writing the already-designed Ask cache area; it never rewrites `clean.md`,
+`extracted.txt`, or `job.json`. Returning `not_prepared` instead would require extra UI
+state handling for the common "first message after opening a prepared-looking guide"
+case. If preparation becomes slow for very large guides, a later slice can move this to
+an explicit async preparation state without changing the session storage contract.
+
+The chat slice also masks obvious `sk-*` keys, Authorization bearer headers, and full
+`http(s)://` URLs before Ask cache/session persistence and Ask responses. **Why:** Slice
+3 intentionally stored chunk text for retrieval, but the stronger project-wide rule is
+that raw keys and provider base URLs must not appear in cache/index/history files. This is
+a defensive boundary mask, not semantic source editing; citation labels, counts, and term
+frequencies still come from the redacted text. Full emitted-citation validation is
+deferred: v1 returns the machine-readable list of citation labels actually provided to the
+model and never fabricates labels server-side, while a later accuracy/polish slice can
+parse model-emitted citations and flag or strip labels outside that allowed set.

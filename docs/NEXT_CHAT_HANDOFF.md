@@ -8,13 +8,34 @@
 ## Current position
 - **Branch (trunk / PR target):** `chrome-renderer-v1`
 - **Trunk includes:** `af0ec0e` (Ask Slice 1 design), `2634f63` (Ask Slice 2 context
-  inventory), and `a29a405` (Ask Slice 3 context preparation), on top of the validated
-  LMM group and prior feature groups.
-- **Active work branch:** `ask-workspace-shell` — inserted **Ask Your Guide workspace
-  shell** slice ran here; see "What just landed". **Not committed/pushed** unless the
-  operator asks. **NEXT = Ask backend local chat endpoint.**
+  inventory), `a29a405` (Ask Slice 3 context preparation), and the inserted Ask
+  workspace shell, on top of the validated LMM group and prior feature groups.
+- **Active work branch:** `ask-local-chat-api` — backend local chat API slice ran
+  here; see "What just landed". **Not committed/pushed** unless the operator asks.
+  **NEXT = Ask frontend chat UI wiring.**
 
 ## What just landed
+- **Ask Your Guide — backend local chat API (BACKEND ONLY)** (branch
+  `ask-local-chat-api`). Adds `POST /api/ask/jobs/{job_id}/sessions`,
+  `GET /api/ask/sessions/{session_id}`, and
+  `POST /api/ask/sessions/{session_id}/message`. Sessions live under
+  `jobs/<job_id>/ask/sessions/<session_id>/` with `session.json` (atomic) and
+  `history.jsonl` (append-only). Unknown job → 404; guide-less job → safe
+  `not_ready`; load returns safe metadata + bounded history. Message validates
+  non-empty/max-length input, checks LMM/local status first, and if local is offline
+  returns structured `local_offline` without model/config calls. If local is ready,
+  it synchronously prepares/reuses the Slice 3 context cache, performs pure lexical
+  retrieval over cached term frequencies + `doc_freq` (top 8, approx 3k-token pool,
+  `chars/4`), assembles hard answer rules + citation-labelled chunks + small recent
+  history, and calls only `build_provider_config("local", selected_model, ...)` +
+  `generate_chat_completion`. Responses include answer text, allowed citation labels,
+  safe retrieved-chunk metadata (no chunk text), session id, and safe local model
+  status. **No frontend/UI changes, no extra uploads, no cloud fallback, no
+  DeepSeek/Qwen fallback, no streaming, no rolling summary, no generation jobs, no
+  dependency, no artifact mutation.** Obvious raw keys/Authorization bearer headers/
+  full URLs are masked before Ask cache/session persistence and responses. Verified:
+  `test_ask_local_chat.py` 40/40, inventory 50/50, prepare 58/58, compileall pass,
+  compose config exit 0, release smoke 28/28.
 - **Ask Your Guide — inserted workspace shell slice (FRONTEND ONLY)** (branch
   `ask-workspace-shell`). Adds a first-class `Ask Guide` sidebar workspace with the
   design-doc three-region shape: guide picker (left), disabled chat/readiness panel
@@ -54,7 +75,8 @@
   `test_scripts/test_ask_context_prepare.py` **58/58 in Docker**, Slice 2
   `test_ask_context_inventory.py` **50/50** unchanged, live prepare→hit on a real job +
   clean response/cache secret scan, read-only sha256 of `clean.md`/`extracted.txt`/
-  `job.json` unchanged. See `CURRENT_TASK.md` #52. **NEXT = Ask Slice 4 (local chat).**
+  `job.json` unchanged. See `CURRENT_TASK.md` #52. Historical NEXT here is superseded:
+  backend local chat API is now done; current NEXT is Ask frontend chat UI wiring.
 - **Ask Your Guide — Slice 2: backend context inventory endpoint (BACKEND ONLY)**
   (branch `ask-context-inventory`). Two **read-only** endpoints over generated-guide
   artifacts: `GET /api/ask/jobs` lists **only Ask-eligible jobs** (those with a
@@ -257,12 +279,12 @@ commit before moving on. Surgical edits, not rewrites. The PDF/Chromium pipeline
 load-bearing — do not rewrite casually.
 
 ## Next recommended slice
-**Ask Your Guide — backend local chat endpoint (BACKEND ONLY).** Add sessions
-(create/load) and `POST /api/ask/sessions/{id}/message`: status-gate on LMM, retrieve
-over the Slice 3 lexical index (`ask_context.load_index`), budget-assemble context, call
-the **local** provider only, and return a grounded/cited answer. Offline returns a
-structured unavailable response with no model call. **No cloud key read, no extra uploads,
-no UI redesign, no host process control, no rolling summary yet.**
+**Ask Your Guide — frontend chat UI wiring.** The backend local chat API is now
+available. Wire the existing `Ask Guide` workspace to create/load sessions and post
+messages; render safe history, answer text, citation chips, retrieved citation
+metadata, and the existing LMM offline state. Keep the UI slice local-only: no extra
+uploads, no streaming, no hosted-provider selector, no host process control, and no
+rolling summary yet.
 - **Focused manual validation / polish of the Shortcut Inspector UI.** The
   inspect→repair loop + degraded-activation confirm are complete and validated at
   the API + harness level; the remaining gap is a human click-through of the live

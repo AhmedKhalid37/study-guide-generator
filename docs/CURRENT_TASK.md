@@ -5,27 +5,26 @@
 
 ---
 
-## NEXT — Ask inserted workspace shell DONE; NEXT = Ask backend local chat endpoint. (LMM Phase 1 COMPLETE + VALIDATED below.)
+## NEXT — Ask backend local chat API DONE; NEXT = Ask frontend chat UI wiring. (LMM Phase 1 COMPLETE + VALIDATED below.)
 
-- **Ask Your Guide — inserted UI/product shell slice is DONE** — branch
-  `ask-workspace-shell`, see DONE #53 below. A first-class `Ask Guide` workspace now
-  sits alongside Builder/Library/Styles/Models/Exports. It consumes the existing
-  summary-only endpoints (`GET /api/ask/jobs`, `GET /api/ask/jobs/{id}/context`,
-  `POST /api/ask/jobs/{id}/prepare`) plus LMM status/command-helper endpoints, with a
-  three-region shell: guide picker, disabled chat/readiness panel, and context/local
-  model rail. It shows eligible guides, safe inventory counts, attachment/page
-  summaries, prepare cache status/chunk counts/citation samples, and local model
-  offline/reachable state. **No backend chat route, no sessions, no model/local-model
-  call, no cloud fallback, no extra uploads, no chat persistence, no artifact mutation,
-  no new dependency.** The chat input is explicitly disabled until the backend local
-  chat endpoint lands. Defensive frontend helpers strip attachment/page-selection
-  basenames and render only safe summaries — no raw guide/source text or chunk text.
-- **NEXT — Ask backend local chat endpoint (BACKEND ONLY).** Sessions (create/load) +
-  `POST /api/ask/sessions/{id}/message`: status-gate on LMM → retrieve over the Slice 3
-  lexical index (`ask_context.load_index`) → budget-assemble → **local-only**
-  `generate_chat_completion` → grounded, cited answer; offline → structured offline
-  response (no model call). **No cloud key read, no UI, no extra uploads, no rolling
-  summary yet.** See `docs/ASK_YOUR_GUIDE_DESIGN.md` §8 + §11.
+- **Ask Your Guide — backend local chat API is DONE** — branch
+  `ask-local-chat-api`, see DONE #54 below. Backend-only session creation/load +
+  non-streaming local-only message endpoint now exist:
+  `POST /api/ask/jobs/{id}/sessions`, `GET /api/ask/sessions/{session_id}`, and
+  `POST /api/ask/sessions/{session_id}/message`. The message path status-gates on
+  LMM/local provider availability, prepares or reuses the Slice 3 lexical index,
+  retrieves a bounded top-K chunk set, assembles citation-labelled prompt context +
+  recent history, and calls only the existing `local` OpenAI-compatible provider.
+  Offline/unconfigured local returns a structured safe response with **no model call**.
+  Sessions live under `jobs/<job_id>/ask/sessions/<session_id>/`; original artifacts
+  are untouched. **No frontend/UI changes, no extra uploads, no cloud fallback, no
+  DeepSeek/Qwen fallback, no streaming, no rolling summary, no generation jobs, no
+  new dependency.**
+- **NEXT — Ask frontend chat UI wiring.** Enable the existing `Ask Guide` workspace
+  composer against the new backend session/message endpoints; render message history,
+  local-offline state, answer text, citation chips, and retrieved citation metadata.
+  Keep it local-only; no extra uploads, no streaming, and no hosted-provider selector
+  unless separately requested.
 - **Ask Your Guide — Slice 3 is DONE (backend context preparation / chunking)** —
   branch `ask-context-prepare`, see DONE #52 below. New stdlib-only helper
   `pipeline/ask_context.py` chunks `clean.md` (guide) + optional `extracted.txt`
@@ -2095,6 +2094,49 @@ parked on the `hardening` branch — not merged, not deleted.
       not touched, so `compileall` was not required for this slice. Ask backend
       regression tests are still expected before merge handoff (inventory + prepare).
 
+54. **Ask Your Guide — backend local chat API (BACKEND ONLY)** — branch
+    `ask-local-chat-api`. Adds minimal Ask chat session storage and local-only chat
+    generation:
+    - **Endpoints:** `POST /api/ask/jobs/{job_id}/sessions` creates
+      `jobs/<job_id>/ask/sessions/<session_id>/session.json` + `history.jsonl` for
+      jobs with generated `clean.md` (unknown job → 404; guide-less job →
+      safe `not_ready` 409); `GET /api/ask/sessions/{session_id}` returns safe
+      metadata + bounded history; `POST /api/ask/sessions/{session_id}/message`
+      validates input, status-gates on LMM/local availability, retrieves, calls the
+      local provider, persists JSONL history, and updates session metadata.
+    - **Retrieval/prompting:** reuses/refreshes the Slice 3 prepared cache
+      synchronously via `ask_context.prepare_context()` (writes only the Ask cache,
+      never original artifacts), then dependency-free lexical scores over cached
+      chunk term frequencies + `doc_freq`. Query = current question plus a tiny recent
+      user-history window. Retrieval is bounded to top 8 chunks and an approximate
+      3k-token pool (`chars/4`) with room reserved for system rules, recent chat, and
+      answer. Responses return answer text, allowed citation labels, safe chunk
+      metadata only (no chunk text), session id, and safe local model status.
+    - **Local-only proof:** message calls `get_local_model_status()` first; offline /
+      unconfigured / unreachable returns structured `local_offline` without building
+      provider config or calling the model. The generation call uses
+      `build_provider_config("local", selected_model, max_tokens=...)` and
+      `generate_chat_completion`; focused tests assert no DeepSeek/Qwen/cloud fallback
+      path is used.
+    - **Security/storage:** session ids are opaque `ask_<uuidhex>` values and session
+      lookup is fenced under each parent job. `session.json` is atomic; history appends
+      JSONL. Raw prompts are never stored or returned. Obvious `sk-*` keys,
+      Authorization bearer headers, and full `http(s)://` URLs are masked before Ask
+      cache/session persistence and responses. `session.json`/`history.jsonl` are not
+      exported by existing export endpoints.
+    - **Artifact immutability:** tests sha256 `clean.md`, `extracted.txt`, and
+      `job.json` before/after session creation and message calls; all unchanged. The
+      slice never calls `JobManager.save_clean_md`, never creates generation jobs, and
+      never rewrites guide/source/manifest artifacts.
+    - **Verified:** `test_scripts/test_ask_local_chat.py` **40/40** in the Docker
+      image with the repo mounted; Ask inventory regression
+      `test_ask_context_inventory.py` **50/50**; Ask prepare regression
+      `test_ask_context_prepare.py` **58/58**; `python -m compileall api pipeline`
+      pass; `docker compose config >/tmp/compose-check.txt` exit 0; release smoke
+      **28/28** against the live container. Docker image rebuilt + app container
+      healthy. **Frontend build not required by the slice** because no frontend/shared
+      files were touched (the Docker rebuild reused the existing frontend build layer).
+
 ## NEXT (in order)
 
 > **Provider settings feature group is DONE through Slice 5** (DONE #32→#36):
@@ -2135,12 +2177,12 @@ parked on the `hardening` branch — not merged, not deleted.
 > `docs/VALIDATION_LOCAL_MODEL_MANAGER_PHASE1.md`). The earlier "Phase-1 validation /
 > docs reconciliation" recommendation is **done and removed** from this list.
 
-1. **Ask Your Guide — local-only chat (RECOMMENDED next).** A local-only chat over a
-   generated guide that **consumes** the LMM detection status (first-class offline
-   empty state, no hosted fallback in local-only mode) and the existing `local`
-   provider. **No process control** — it reads status, it does not start/stop
-   `llama-server`. Design-first; see `LOCAL_MODEL_MANAGER_DESIGN.md` §10 + "Later —
-   Ask Your Guide local-only chat integration" (§11).
+1. **Ask Your Guide — frontend chat UI wiring (RECOMMENDED next).** The backend
+   local chat API is now present; wire the existing `Ask Guide` workspace composer
+   to create/load sessions and post messages. Render safe history, answer text,
+   citation chips, retrieved citation metadata, and the existing LMM offline state.
+   Keep this UI slice local-only: no extra uploads, no streaming, no hosted-provider
+   selector, and no process control.
 2. **Local Model Manager — Phase 2 (host companion launcher) DESIGN-FIRST, optional.**
    Only if the user wants **app-managed start/stop** later. Process control (start/stop
    a host `llama-server`) **crosses the container boundary** (non-root uid 10001

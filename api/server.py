@@ -19,6 +19,7 @@ from starlette.concurrency import run_in_threadpool
 from pipeline import (
     ask_context,
     ask_inventory,
+    ask_sessions,
     generator_presets,
     library_store,
     presets as preset_store,
@@ -217,6 +218,14 @@ class OutlineGenerateRequest(BaseModel):
     title: str = ""
     provider: str | None = None
     model: str | None = None
+
+
+class AskSessionCreateRequest(BaseModel):
+    title: str | None = None
+
+
+class AskMessageRequest(BaseModel):
+    message: str
 
 
 class StyleCreateRequest(BaseModel):
@@ -943,6 +952,43 @@ def prepare_ask_job_context(job_id: str) -> dict[str, Any]:
         "citation_summary": result["citation_summary"],
         "cache_relpath": result["cache_relpath"],
     }
+
+
+@app.post("/api/ask/jobs/{job_id}/sessions")
+def create_ask_session(job_id: str, payload: AskSessionCreateRequest | None = None) -> dict[str, Any]:
+    """Create a persisted Ask chat session for an eligible generated guide.
+
+    Writes only under ``jobs/<job_id>/ask/sessions/<session_id>/``. Existing
+    guide/source/manifest artifacts are read-only and are never mutated.
+    """
+    job = _get_job(job_id)
+    try:
+        return ask_sessions.create_session(job, title=payload.title if payload else None)
+    except ask_sessions.AskSessionError as exc:
+        raise HTTPException(status_code=exc.status_code, detail=exc.detail) from exc
+
+
+@app.get("/api/ask/sessions/{session_id}")
+def get_ask_session(session_id: str) -> dict[str, Any]:
+    """Load safe session metadata plus bounded history for one Ask session."""
+    try:
+        return ask_sessions.load_session(session_id)
+    except ask_sessions.AskSessionError as exc:
+        raise HTTPException(status_code=exc.status_code, detail=exc.detail) from exc
+
+
+@app.post("/api/ask/sessions/{session_id}/message")
+def post_ask_session_message(session_id: str, payload: AskMessageRequest) -> dict[str, Any]:
+    """Ask one local-only, non-streaming question against a session's guide.
+
+    The implementation status-gates on the Local Model Manager path, prepares or
+    reuses the existing lexical context index, retrieves a bounded chunk set, and
+    calls only the existing ``local`` provider via ``generate_chat_completion``.
+    """
+    try:
+        return ask_sessions.answer_message(session_id, payload.message)
+    except ask_sessions.AskSessionError as exc:
+        raise HTTPException(status_code=exc.status_code, detail=exc.detail) from exc
 
 
 @app.get("/api/library")
