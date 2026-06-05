@@ -112,6 +112,22 @@ export function sessionStatusLabel(session) {
   return suffix ? `Local chat session active · ${suffix}` : "Local chat session active";
 }
 
+export function sessionShortLabel(session) {
+  if (!session?.sessionId) return "No active chat";
+  const id = String(session.sessionId);
+  const suffix = id.startsWith("ask_") ? id.slice(-6) : id.slice(0, 8);
+  return suffix ? `Chat ${suffix}` : "Active chat";
+}
+
+export function sessionMetaLabel(session) {
+  if (!session) return "No session selected";
+  const count = Number.isFinite(session.messageCount) ? session.messageCount : null;
+  const parts = [];
+  if (count !== null) parts.push(`${formatCount(count)} message${count === 1 ? "" : "s"}`);
+  if (session.updatedAt) parts.push(`Updated ${formatDate(session.updatedAt)}`);
+  return parts.join(" · ") || sessionStatusLabel(session);
+}
+
 export function readinessState(context) {
   const readiness = context?.readiness;
   if (readiness?.ready === true || readiness?.status === READINESS_READY) return READINESS_READY;
@@ -382,6 +398,7 @@ export function normalizeAskSessionPayload(value) {
           title: safeDisplayText(session.title || "", ""),
           createdAt: typeof session.created_at === "string" ? session.created_at : null,
           updatedAt: typeof session.updated_at === "string" ? session.updated_at : null,
+          messageCount: Number.isFinite(session.message_count) ? session.message_count : null,
           provider: "local",
           retrieval: {
             maxChunks: Number.isFinite(session.settings?.retrieval?.max_chunks)
@@ -395,6 +412,46 @@ export function normalizeAskSessionPayload(value) {
       : null,
     history: normalizeAskHistory(value?.history),
   };
+}
+
+export function normalizeAskSessionSummary(value) {
+  if (!value || typeof value !== "object") return null;
+  const sessionId = typeof value.session_id === "string" ? value.session_id : null;
+  if (!sessionId) return null;
+  const last = value.last_message && typeof value.last_message === "object" ? value.last_message : null;
+  return {
+    sessionId,
+    jobId: typeof value.job_id === "string" ? value.job_id : null,
+    title: safeDisplayText(value.title || "", ""),
+    createdAt: typeof value.created_at === "string" ? value.created_at : null,
+    updatedAt: typeof value.updated_at === "string" ? value.updated_at : null,
+    messageCount: Number.isFinite(value.message_count) ? value.message_count : 0,
+    lastMessage:
+      last && (last.role === "user" || last.role === "assistant")
+        ? {
+            role: last.role,
+            snippet: safeDisplayText(last.snippet || "", ""),
+          }
+        : null,
+  };
+}
+
+export function normalizeAskSessionList(value) {
+  const rows = Array.isArray(value?.sessions) ? value.sessions : [];
+  return rows
+    .map(normalizeAskSessionSummary)
+    .filter(Boolean)
+    .sort((a, b) => {
+      const aKey = a.updatedAt || a.createdAt || a.sessionId;
+      const bKey = b.updatedAt || b.createdAt || b.sessionId;
+      return String(bKey).localeCompare(String(aKey));
+    });
+}
+
+export function nextSessionAfterDelete(sessions, deletedSessionId) {
+  if (!Array.isArray(sessions)) return null;
+  const remaining = sessions.filter((item) => item?.sessionId && item.sessionId !== deletedSessionId);
+  return remaining[0] || null;
 }
 
 export function normalizeAskMessageResponse(value, fallbackUserMessage = "", keySeed = "current") {

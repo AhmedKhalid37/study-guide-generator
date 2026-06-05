@@ -968,6 +968,16 @@ def create_ask_session(job_id: str, payload: AskSessionCreateRequest | None = No
         raise HTTPException(status_code=exc.status_code, detail=exc.detail) from exc
 
 
+@app.get("/api/ask/jobs/{job_id}/sessions")
+def list_ask_sessions(job_id: str) -> dict[str, Any]:
+    """List safe summaries for Ask sessions under one generated guide."""
+    job = _get_job(job_id)
+    try:
+        return ask_sessions.list_sessions(job)
+    except ask_sessions.AskSessionError as exc:
+        raise HTTPException(status_code=exc.status_code, detail=exc.detail) from exc
+
+
 @app.get("/api/ask/sessions/{session_id}")
 def get_ask_session(session_id: str) -> dict[str, Any]:
     """Load safe session metadata plus bounded history for one Ask session."""
@@ -987,6 +997,24 @@ def post_ask_session_message(session_id: str, payload: AskMessageRequest) -> dic
     """
     try:
         return ask_sessions.answer_message(session_id, payload.message)
+    except ask_sessions.AskSessionError as exc:
+        raise HTTPException(status_code=exc.status_code, detail=exc.detail) from exc
+
+
+@app.delete("/api/ask/sessions/{session_id}/history")
+def clear_ask_session_history(session_id: str) -> dict[str, Any]:
+    """Clear one Ask session's history while keeping its metadata/session id."""
+    try:
+        return ask_sessions.clear_history(session_id)
+    except ask_sessions.AskSessionError as exc:
+        raise HTTPException(status_code=exc.status_code, detail=exc.detail) from exc
+
+
+@app.delete("/api/ask/sessions/{session_id}")
+def delete_ask_session(session_id: str) -> dict[str, Any]:
+    """Delete one Ask session directory, fenced under its parent job."""
+    try:
+        return ask_sessions.delete_session(session_id)
     except ask_sessions.AskSessionError as exc:
         raise HTTPException(status_code=exc.status_code, detail=exc.detail) from exc
 

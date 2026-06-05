@@ -1074,3 +1074,21 @@ commonly emits: headings, bold, lists, line breaks, and fenced blocks. It return
 text nodes from normalized helper data, never `dangerouslySetInnerHTML`, and adds no
 markdown dependency. **Why:** the Ask UI needs readable answers now, but a full markdown
 pipeline would widen dependency/security surface for a narrow chat-polish slice.
+
+## Ask session clear/delete semantics are conservative and job-local (2026-06-05)
+Ask session management keeps the same job-local storage model:
+`jobs/<job_id>/ask/sessions/<session_id>/`. Listing sessions is scoped to one selected
+guide and sorted by `updated_at` / `created_at` newest first, with only safe summaries
+(ids, timestamps, message count, and a redacted bounded last-message snippet). **Why:**
+this gives the UI enough context to switch chats without returning full answers, prompts,
+chunk text, paths, provider URLs, or secrets.
+
+`DELETE /api/ask/sessions/{id}/history` clears only `history.jsonl`, keeps
+`session.json` and the same session id, updates `updated_at`, and leaves
+`jobs/<job_id>/ask/cache/context_index.json` untouched. `DELETE /api/ask/sessions/{id}`
+removes only the fenced session directory under that job's `ask/sessions` root; it never
+deletes guide/source artifacts, the shared context cache, other sessions, or anything
+outside the job tree. **Why:** clear history is a reversible-feeling reset of the chat
+conversation, while delete is the explicit removal of one chat container. Keeping the
+prepared context cache avoids making session cleanup unexpectedly expensive and preserves
+the existing "prepare once, reuse" workflow.

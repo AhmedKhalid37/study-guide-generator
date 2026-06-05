@@ -203,8 +203,24 @@ export function createAskSession(jobId, payload = {}) {
   });
 }
 
+export function getAskSessions(jobId) {
+  return requestJson(`/api/ask/jobs/${encodeURIComponent(jobId)}/sessions`);
+}
+
 export function getAskSession(sessionId) {
   return requestJson(`/api/ask/sessions/${encodeURIComponent(sessionId)}`);
+}
+
+export function clearAskSessionHistory(sessionId) {
+  return requestJson(`/api/ask/sessions/${encodeURIComponent(sessionId)}/history`, {
+    method: "DELETE"
+  });
+}
+
+export function deleteAskSession(sessionId) {
+  return requestJson(`/api/ask/sessions/${encodeURIComponent(sessionId)}`, {
+    method: "DELETE"
+  });
 }
 
 export function sendAskSessionMessage(sessionId, message) {

@@ -14,6 +14,7 @@ import json
 import math
 import os
 import re
+import shutil
 import tempfile
 import uuid
 from collections import Counter
@@ -32,6 +33,7 @@ MAX_QUESTION_CHARS = 4000
 MAX_HISTORY_MESSAGES = 40
 RECENT_HISTORY_MESSAGES = 6
 MAX_RETRIEVED_CHUNKS = 8
+MAX_SESSION_SNIPPET_CHARS = 180
 TOTAL_CONTEXT_TOKENS = 6000
 RESERVE_ANSWER_TOKENS = 1500
 RESERVE_SYSTEM_TOKENS = 850
@@ -157,7 +159,37 @@ def _read_history(session_path: Path, *, limit: int = MAX_HISTORY_MESSAGES) -> l
         }
         if role == "assistant":
             safe["citations"] = _safe_citation_list(item.get("citations"))
+            safe["citations_unsupported"] = _safe_citation_list(item.get("citations_unsupported"))
+            if isinstance(item.get("citation_validation"), dict):
+                validation = item["citation_validation"]
+                safe["citation_validation"] = {
+                    "ok": validation.get("ok") is not False,
+                    "unsupported_count": int(validation.get("unsupported_count") or 0),
+                }
         records.append(safe)
+    return records
+
+
+def _read_history_records(session_path: Path) -> list[dict[str, Any]]:
+    path = _history_path(session_path)
+    if not path.exists() or not path.is_file():
+        return []
+    records: list[dict[str, Any]] = []
+    try:
+        lines = path.read_text(encoding="utf-8").splitlines()
+    except OSError:
+        return []
+    for line in lines:
+        try:
+            item = json.loads(line)
+        except ValueError:
+            continue
+        if not isinstance(item, dict):
+            continue
+        role = item.get("role")
+        content = item.get("content")
+        if role in {"user", "assistant"} and isinstance(content, str):
+            records.append(item)
     return records
 
 
@@ -284,6 +316,59 @@ def _public_session(metadata: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def _session_summary(metadata: dict[str, Any], session_path: Path) -> dict[str, Any]:
+    session = _public_session(metadata)
+    records = _read_history_records(session_path)
+    summary = {
+        "session_id": session.get("session_id"),
+        "job_id": session.get("job_id"),
+        "title": session.get("title"),
+        "created_at": session.get("created_at"),
+        "updated_at": session.get("updated_at"),
+        "message_count": len(records),
+    }
+    for item in reversed(records):
+        role = item.get("role")
+        content = item.get("content")
+        if role in {"user", "assistant"} and isinstance(content, str) and content.strip():
+            snippet = _redact_text(" ".join(content.split()))[:MAX_SESSION_SNIPPET_CHARS]
+            if snippet:
+                summary["last_message"] = {"role": role, "snippet": snippet}
+            break
+    return summary
+
+
+def list_sessions(job: Job) -> dict[str, Any]:
+    if not job.manifest.exists():
+        raise AskSessionError(404, "Job not found.")
+    if not ask_inventory.has_generated_guide(job):
+        raise AskSessionError(
+            409,
+            {
+                "status": "not_ready",
+                "ready": False,
+                "reason": "No generated guide (clean.md) is available for this job yet.",
+            },
+        )
+    sessions_root = _sessions_dir(job)
+    _ensure_fenced(job.dir, sessions_root)
+    summaries: list[dict[str, Any]] = []
+    if sessions_root.exists() and sessions_root.is_dir():
+        for session_path in sessions_root.iterdir():
+            if not session_path.is_dir() or not _SESSION_ID_RE.match(session_path.name):
+                continue
+            _ensure_fenced(sessions_root, session_path)
+            metadata = _read_json(session_path / "session.json")
+            if not metadata or metadata.get("job_id") != job.id:
+                continue
+            summaries.append(_session_summary(metadata, session_path))
+    summaries.sort(
+        key=lambda item: str(item.get("updated_at") or item.get("created_at") or item.get("session_id") or ""),
+        reverse=True,
+    )
+    return {"job_id": job.id, "sessions": summaries}
+
+
 def find_session(session_id: str) -> tuple[Job, Path, dict[str, Any]]:
     if not isinstance(session_id, str) or not _SESSION_ID_RE.match(session_id):
         raise AskSessionError(404, "Ask session not found.")
@@ -299,7 +384,7 @@ def find_session(session_id: str) -> tuple[Job, Path, dict[str, Any]]:
         job_id = metadata.get("job_id")
         if not isinstance(job_id, str) or not job_id:
             continue
-        job = Job(job_id)
+        job = Job(job_id, root=JOBS_DIR)
         _ensure_fenced(job.dir, job_dir)
         if not job.manifest.exists():
             raise AskSessionError(404, "Parent job not found.")
@@ -313,6 +398,25 @@ def load_session(session_id: str, *, history_limit: int = MAX_HISTORY_MESSAGES) 
         "session": _public_session(metadata),
         "history": _read_history(session_path, limit=history_limit),
     }
+
+
+def clear_history(session_id: str) -> dict[str, Any]:
+    _job, session_path, metadata = find_session(session_id)
+    now = _now()
+    _history_path(session_path).write_text("", encoding="utf-8")
+    metadata["updated_at"] = now
+    _atomic_write_json(session_path / "session.json", metadata)
+    return {"session": _session_summary(metadata, session_path), "history": []}
+
+
+def delete_session(session_id: str) -> dict[str, Any]:
+    job, session_path, _metadata = find_session(session_id)
+    sessions_root = _sessions_dir(job)
+    _ensure_fenced(sessions_root, session_path)
+    if session_path == sessions_root:
+        raise AskSessionError(404, "Ask session not found.")
+    shutil.rmtree(session_path)
+    return {"deleted": True, "session_id": session_id}
 
 
 def _score_chunks(index: dict[str, Any], query: str) -> list[tuple[float, dict[str, Any]]]:
@@ -589,6 +693,7 @@ def answer_message(
                 "content": answer,
                 "created_at": now,
                 "citations": citation_info["citations_used"],
+                "citations_unsupported": citation_info["citations_unsupported"],
                 "citation_validation": citation_info["citation_validation"],
             },
         ],

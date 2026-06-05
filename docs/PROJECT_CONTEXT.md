@@ -114,7 +114,7 @@ flashcards with CSV / Anki / Quizlet export.
 - **Ask Your Guide — IN PROGRESS (Slice 1 design DONE; Slice 2 backend context
   inventory DONE; Slice 3 backend context preparation / chunking DONE; inserted
   workspace shell DONE; backend local chat API DONE; frontend chat UI wiring DONE;
-  chat polish + emitted-citation validation DONE).** A
+  chat polish + emitted-citation validation DONE; session management UI/API DONE).** A
   dedicated **`AskGuideWorkspace`** (first-class page/tab alongside
   Builder/Library/Styles/Providers) where the user selects a generated guide/job and
   chats with it using a **local model only**. Designed in
@@ -168,8 +168,12 @@ flashcards with CSV / Anki / Quizlet export.
   `citations_unsupported`, `citation_validation`), strips unsupported Ask-looking
   citations, preserves normal bracketed prose, formats assistant markdown-ish text
   safely without `dangerouslySetInnerHTML`, fixes guide metadata/session-id display,
-  and collapses retrieved chunk metadata by default. **NEXT = Ask session management
-  UI**: list/new/clear/delete sessions, still no extra uploads.
+  and collapses retrieved chunk metadata by default. The session-management slice
+  then added safe session listing, switching, new chat, clear-history, and delete
+  controls/endpoints; clear keeps the session/context cache, delete removes only the
+  fenced session directory, and lazy session creation on first send remains intact.
+  **NEXT = Ask chat math/source visual polish**, still no extra uploads unless chosen
+  as a later explicit slice.
   See `DECISIONS.md`.
 
 ## 4. Architecture facts a new session MUST know

@@ -138,6 +138,74 @@ def test_pure_retrieval_and_prompt(tmp: Path) -> None:
     check("pure: citation validation fields present", info_bad["citation_validation"] == {"ok": False, "unsupported_count": 1})
 
 
+def test_pure_session_management(tmp: Path) -> None:
+    original_jobs_dir = ask_sessions.JOBS_DIR
+    ask_sessions.JOBS_DIR = tmp
+    try:
+        job = Job("pure-session-manage", root=tmp)
+        job.dir.mkdir(parents=True, exist_ok=True)
+        job.input_dir.mkdir(parents=True, exist_ok=True)
+        job._write_manifest({"id": job.id, "status": "done", "title": "Pure sessions"})
+        job.clean_md.write_text(CLEAN_MD, encoding="utf-8")
+        job.extracted_txt.write_text(EXTRACTED_TXT, encoding="utf-8")
+        ask_context.prepare_context(job)
+        before = {
+            "clean": _digest(job.clean_md),
+            "extracted": _digest(job.extracted_txt),
+            "manifest": _digest(job.manifest),
+        }
+
+        first = ask_sessions.create_session(job, title=f"First {SECRET_KEY} {SECRET_URL}")["session"]
+        second = ask_sessions.create_session(job, title="Second")["session"]
+        first_id = first["session_id"]
+        second_id = second["session_id"]
+        first_dir = job.dir / "ask" / "sessions" / first_id
+        second_dir = job.dir / "ask" / "sessions" / second_id
+        ask_sessions._append_history(
+            first_dir,
+            [
+                {"role": "user", "content": f"Explain alpha {SECRET_KEY} {SECRET_URL}", "created_at": "2026-06-05T10:01:00Z"},
+                {"role": "assistant", "content": "Alpha answer", "created_at": "2026-06-05T10:02:00Z"},
+            ],
+        )
+
+        listed = ask_sessions.list_sessions(job)["sessions"]
+        check("pure sessions: list returns two", len(listed) == 2)
+        check("pure sessions: summaries clean", _clean(_blob(listed)))
+        first_summary = next((item for item in listed if item["session_id"] == first_id), {})
+        check("pure sessions: message count", first_summary.get("message_count") == 2)
+        check("pure sessions: last snippet redacted", _clean(_blob(first_summary.get("last_message"))))
+
+        cleared = ask_sessions.clear_history(first_id)
+        check("pure sessions: clear keeps same session", cleared.get("session", {}).get("session_id") == first_id)
+        check("pure sessions: clear removes history", ask_sessions.load_session(first_id)["history"] == [])
+        check("pure sessions: clear keeps metadata", (first_dir / "session.json").exists())
+        check("pure sessions: clear leaves cache", (job.dir / "ask" / "cache" / "context_index.json").exists())
+
+        deleted = ask_sessions.delete_session(first_id)
+        check("pure sessions: delete result", deleted == {"deleted": True, "session_id": first_id})
+        check("pure sessions: deleted only target", not first_dir.exists() and second_dir.exists())
+        check("pure sessions: bogus id rejected", _raises_ask_404(lambda: ask_sessions.delete_session("../escape")))
+        check("pure sessions: cache still exists after delete", (job.dir / "ask" / "cache" / "context_index.json").exists())
+
+        after = {
+            "clean": _digest(job.clean_md),
+            "extracted": _digest(job.extracted_txt),
+            "manifest": _digest(job.manifest),
+        }
+        check("pure sessions: original artifacts unchanged", before == after)
+    finally:
+        ask_sessions.JOBS_DIR = original_jobs_dir
+
+
+def _raises_ask_404(fn) -> bool:
+    try:
+        fn()
+    except ask_sessions.AskSessionError as exc:
+        return exc.status_code == 404
+    return False
+
+
 def test_endpoints() -> None:
     try:
         from fastapi.testclient import TestClient
@@ -206,6 +274,13 @@ def test_endpoints() -> None:
         check("ep: load session 200", rl.status_code == 200)
         check("ep: load history initially empty", rl.json().get("history") == [])
         check("ep: load response clean", _clean(rl.text))
+
+        rlist0 = client.get(f"/api/ask/jobs/{eligible_id}/sessions")
+        check("ep: list sessions 200", rlist0.status_code == 200)
+        check("ep: list has created session", any(item.get("session_id") == session_id for item in rlist0.json().get("sessions", [])))
+        check("ep: list response clean", _clean(rlist0.text))
+        rlist_missing = client.get("/api/ask/jobs/zzaskchat-missing/sessions")
+        check("ep: list unknown job 404", rlist_missing.status_code == 404)
 
         # 5. reject empty/oversized.
         re = client.post(f"/api/ask/sessions/{session_id}/message", json={"message": "   "})
@@ -318,6 +393,30 @@ def test_endpoints() -> None:
         check("ep: cache exists", cache_path.exists())
         check("ep: cache clean", _clean(cache_path.read_text(encoding="utf-8")))
 
+        # 10. create another session; listing is newest/updated first.
+        r2 = client.post(f"/api/ask/jobs/{eligible_id}/sessions", json={"title": "Second chat"})
+        second_id = r2.json().get("session", {}).get("session_id")
+        rlist = client.get(f"/api/ask/jobs/{eligible_id}/sessions")
+        ids = [item.get("session_id") for item in rlist.json().get("sessions", [])]
+        check("ep: list multiple sessions", session_id in ids and second_id in ids)
+        check("ep: newest session sorted first", ids[0] == second_id)
+
+        # 11. clear history keeps session/cache/artifacts.
+        rclear = client.delete(f"/api/ask/sessions/{session_id}/history")
+        check("ep: clear history 200", rclear.status_code == 200)
+        check("ep: clear response clean", _clean(rclear.text))
+        check("ep: clear keeps session", (eligible.dir / "ask" / "sessions" / session_id / "session.json").exists())
+        check("ep: clear removes messages", client.get(f"/api/ask/sessions/{session_id}").json().get("history") == [])
+        check("ep: clear keeps cache", cache_path.exists())
+
+        # 12. delete one session only; bogus/traversal ids reject.
+        rbad = client.delete("/api/ask/sessions/../escape")
+        check("ep: traversal delete rejected", rbad.status_code in {404, 405})
+        rdel = client.delete(f"/api/ask/sessions/{session_id}")
+        check("ep: delete session 200", rdel.status_code == 200 and rdel.json().get("deleted") is True)
+        check("ep: delete only target", not (eligible.dir / "ask" / "sessions" / session_id).exists() and (eligible.dir / "ask" / "sessions" / second_id).exists())
+        check("ep: delete keeps cache", cache_path.exists())
+
         after = {
             "clean": _digest(eligible.clean_md),
             "extracted": _digest(eligible.extracted_txt),
@@ -334,6 +433,7 @@ def main() -> int:
     tmp.mkdir(parents=True, exist_ok=True)
     try:
         test_pure_retrieval_and_prompt(tmp)
+        test_pure_session_management(tmp)
         test_endpoints()
     finally:
         shutil.rmtree(tmp, ignore_errors=True)

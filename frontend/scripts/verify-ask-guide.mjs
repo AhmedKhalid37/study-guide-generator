@@ -19,7 +19,10 @@ import {
   formatCount,
   guideSourceSummary,
   normalizeAskMessageResponse,
+  normalizeAskSessionList,
   normalizeAskSessionPayload,
+  normalizeAskSessionSummary,
+  nextSessionAfterDelete,
   pageSelectionRows,
   prepareBadge,
   readinessReasons,
@@ -28,6 +31,8 @@ import {
   safeDisplayText,
   safeFilename,
   safeInputText,
+  sessionMetaLabel,
+  sessionShortLabel,
   sessionStatusLabel,
 } from "../src/askGuide.js";
 
@@ -93,6 +98,7 @@ check(
   "sessionStatusLabel hides technical id",
   sessionStatusLabel({ sessionId: "ask_1234567890abcdef" }) === "Local chat session active · abcdef"
 );
+check("sessionShortLabel uses suffix", sessionShortLabel({ sessionId: "ask_1234567890abcdef" }) === "Chat abcdef");
 
 const built = {
   ready: true,
@@ -146,6 +152,38 @@ check("normalizeAskSessionPayload bounds roles", normalizedSession.history.lengt
 check("normalizeAskSessionPayload redacts assistant URL", !normalizedSession.history[1].content.includes("https://"));
 check("normalizeAskSessionPayload normalizes citations", normalizedSession.history[1].citations.includes("Guide Alpha"));
 check("normalizeAskSessionPayload redacts citation URL", normalizedSession.history[1].citations.includes("[redacted-url]"));
+
+const sessionList = normalizeAskSessionList({
+  sessions: [
+    {
+      session_id: "ask_old",
+      job_id: "job-a",
+      title: "Old https://secret.example/v1",
+      created_at: "2026-06-05T09:00:00Z",
+      updated_at: "2026-06-05T09:01:00Z",
+      message_count: 2,
+      last_message: { role: "assistant", snippet: "Use /home/user/source.txt" },
+    },
+    {
+      session_id: "ask_new",
+      job_id: "job-a",
+      created_at: "2026-06-05T10:00:00Z",
+      updated_at: "2026-06-05T10:05:00Z",
+      message_count: 4,
+      last_message: { role: "user", snippet: "Authorization: Bearer abc https://secret.example" },
+      raw_prompt: "MUST NOT SURVIVE",
+      text: "RAW CHUNK TEXT MUST NOT SURVIVE",
+    },
+  ],
+});
+check("normalizeAskSessionList sorts newest first", sessionList[0].sessionId === "ask_new");
+check("normalizeAskSessionList redacts last snippet", !JSON.stringify(sessionList).includes("Authorization"));
+check("normalizeAskSessionList omits raw prompt", !JSON.stringify(sessionList).includes("MUST NOT SURVIVE"));
+check("normalizeAskSessionList omits chunk text", !JSON.stringify(sessionList).includes("RAW CHUNK TEXT"));
+check("normalizeAskSessionSummary redacts title", normalizeAskSessionSummary({ session_id: "ask_x", title: "A https://x.test" }).title === "A [redacted-url]");
+check("sessionMetaLabel includes count", sessionMetaLabel(sessionList[0]).includes("4 messages"));
+check("nextSessionAfterDelete selects next", nextSessionAfterDelete(sessionList, "ask_new").sessionId === "ask_old");
+check("nextSessionAfterDelete returns null when empty", nextSessionAfterDelete(sessionList, "ask_new")?.sessionId === "ask_old" && nextSessionAfterDelete([], "ask_new") === null);
 
 const messageResponse = {
   session_id: "ask_123",

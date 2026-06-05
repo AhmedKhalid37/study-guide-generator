@@ -10,11 +10,32 @@
 - **Trunk includes:** `af0ec0e` (Ask Slice 1 design), `2634f63` (Ask Slice 2 context
   inventory), `a29a405` (Ask Slice 3 context preparation), and the inserted Ask
   workspace shell, on top of the validated LMM group and prior feature groups.
-- **Active work branch:** `ask-chat-polish-citations` — Ask chat polish + emitted
-  citation validation ran here; see "What just landed". **Not committed/pushed**
-  unless the operator asks. **NEXT = Ask session management UI.**
+- **Active work branch:** `ask-session-management` — Ask session management UI/API
+  ran here; see "What just landed". **Not committed/pushed** unless the operator
+  asks. **NEXT = Ask chat math/source visual polish.**
 
 ## What just landed
+- **Ask Your Guide — session management UI/API** (branch `ask-session-management`).
+  Adds `GET /api/ask/jobs/{job_id}/sessions`,
+  `DELETE /api/ask/sessions/{session_id}/history`, and
+  `DELETE /api/ask/sessions/{session_id}`. Session listing returns safe summaries
+  only: id/job/title, created/updated times, cheap message count, and a redacted
+  bounded last-message snippet. Clear history empties `history.jsonl`, keeps the
+  session id/metadata and prepared context cache, and updates metadata. Delete removes
+  only the fenced session directory under the parent job and never touches guide,
+  source, manifest, other sessions, or `ask/cache`. The Ask workspace now lists chats
+  for the selected guide in a compact rail panel, can switch sessions, start a new
+  chat without re-preparing context, clear the active chat, and delete the active
+  session while selecting the next newest session when available. Lazy session creation
+  on first send still works. **No extra uploads, chat export, streaming, cloud
+  fallback, hosted selector, DeepSeek/Qwen fallback, rolling summary, multimodal,
+  process control, provider settings writes, browser storage, or new dependency.**
+  Verified: `npm run test:ask-guide`, `npm run build`, `python
+  test_scripts/test_ask_local_chat.py` pure checks, Ask inventory/prepare pure checks,
+  `python -m compileall api pipeline`, local-model frontend checks, release smoke
+  28/28, and compose config exit 0. Host endpoint portions skipped because FastAPI is
+  not installed; the running Docker image was healthy but did not include
+  `test_scripts/`.
 - **Ask Your Guide — chat polish + emitted-citation validation** (branch
   `ask-chat-polish-citations`). The local-only Ask message endpoint now validates
   bracket-style citations emitted by the model against the exact citation labels
@@ -122,8 +143,8 @@
   `test_ask_context_inventory.py` **50/50** unchanged, live prepare→hit on a real job +
   clean response/cache secret scan, read-only sha256 of `clean.md`/`extracted.txt`/
   `job.json` unchanged. See `CURRENT_TASK.md` #52. Historical NEXT here is superseded:
-  backend local chat API, frontend chat UI wiring, and chat/citation polish are now
-  done; current NEXT is Ask session management UI.
+  backend local chat API, frontend chat UI wiring, chat/citation polish, and session
+  management are now done; current NEXT is Ask chat math/source visual polish.
 - **Ask Your Guide — Slice 2: backend context inventory endpoint (BACKEND ONLY)**
   (branch `ask-context-inventory`). Two **read-only** endpoints over generated-guide
   artifacts: `GET /api/ask/jobs` lists **only Ask-eligible jobs** (those with a
@@ -326,11 +347,11 @@ commit before moving on. Surgical edits, not rewrites. The PDF/Chromium pipeline
 load-bearing — do not rewrite casually.
 
 ## Next recommended slice
-**Ask Your Guide — session management UI.** Add first-class controls for existing
-Ask chats: list sessions for the selected guide, start a new chat, clear a session's
-history, and delete a session. Keep the slice local-only and narrow: no extra
-uploads, no streaming, no hosted-provider selector, no host process control, and no
-rolling summary UI yet.
+**Ask Your Guide — chat math/source visual polish.** Improve how math-ish answer
+text and source/citation affordances read inside the existing Ask chat, without
+changing retrieval/model behavior or adding upload surfaces. Keep the slice
+local-only and narrow: no extra uploads, no streaming, no hosted-provider selector,
+no host process control, and no rolling summary UI yet.
 - **Focused manual validation / polish of the Shortcut Inspector UI.** The
   inspect→repair loop + degraded-activation confirm are complete and validated at
   the API + harness level; the remaining gap is a human click-through of the live

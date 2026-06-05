@@ -5,23 +5,29 @@ import {
   Check,
   ChevronRight,
   CircleSlash,
+  Eraser,
   FileText,
   Loader2,
   MessageSquareText,
+  Plus,
   RefreshCw,
   Search,
   Send,
   Server,
   Sparkles,
   Terminal,
+  Trash2,
   WifiOff,
 } from "lucide-react";
 import {
   checkLocalModelStatus,
+  clearAskSessionHistory,
   createAskSession,
+  deleteAskSession,
   getAskJobContext,
   getAskJobs,
   getAskSession,
+  getAskSessions,
   getLocalModelCommandProfile,
   getLocalModelStatus,
   prepareAskJobContext,
@@ -37,7 +43,9 @@ import {
   formatDate,
   guideSourceSummary,
   normalizeAskMessageResponse,
+  normalizeAskSessionList,
   normalizeAskSessionPayload,
+  nextSessionAfterDelete,
   pageSelectionRows,
   prepareBadge,
   readinessReasons,
@@ -46,6 +54,8 @@ import {
   safeDisplayText,
   safeInputText,
   safeText,
+  sessionMetaLabel,
+  sessionShortLabel,
   sessionStatusLabel,
 } from "../askGuide";
 import {
@@ -100,6 +110,10 @@ export default function AskGuideWorkspace() {
   const [selectedProfileId, setSelectedProfileId] = useState(null);
   const [copyState, setCopyState] = useState(COPY_IDLE);
   const [session, setSession] = useState(null);
+  const [sessionSummaries, setSessionSummaries] = useState([]);
+  const [sessionsLoading, setSessionsLoading] = useState(false);
+  const [sessionsError, setSessionsError] = useState(null);
+  const [sessionAction, setSessionAction] = useState(null);
   const [messages, setMessages] = useState([]);
   const [draftMessage, setDraftMessage] = useState("");
   const [sending, setSending] = useState(false);
@@ -135,6 +149,29 @@ export default function AskGuideWorkspace() {
       .finally(() => setLocalLoading(false));
   }, []);
 
+  const loadSessions = useCallback((jobId = selectedJobId) => {
+    if (!jobId) {
+      setSessionSummaries([]);
+      setSessionsLoading(false);
+      setSessionsError(null);
+      return Promise.resolve([]);
+    }
+    setSessionsLoading(true);
+    setSessionsError(null);
+    return getAskSessions(jobId)
+      .then((data) => {
+        const list = normalizeAskSessionList(data);
+        setSessionSummaries(list);
+        return list;
+      })
+      .catch((err) => {
+        setSessionsError(err?.message || "Chat sessions unavailable.");
+        setSessionSummaries([]);
+        return [];
+      })
+      .finally(() => setSessionsLoading(false));
+  }, [selectedJobId]);
+
   useEffect(() => {
     loadJobs();
     loadLocalStatus();
@@ -158,6 +195,18 @@ export default function AskGuideWorkspace() {
     if (!selectedJobId) {
       setContext(null);
       setPrepareResult(null);
+      setPrepareError(null);
+      setSession(null);
+      setSessionSummaries([]);
+      setSessionsError(null);
+      setSessionsLoading(false);
+      setSessionAction(null);
+      setMessages([]);
+      setDraftMessage("");
+      setSending(false);
+      setChatError(null);
+      setLastRetrievedChunks([]);
+      setLastLocalModel(null);
       return;
     }
     let cancelled = false;
@@ -166,6 +215,10 @@ export default function AskGuideWorkspace() {
     setPrepareResult(null);
     setPrepareError(null);
     setSession(null);
+    setSessionSummaries([]);
+    setSessionsError(null);
+    setSessionsLoading(false);
+    setSessionAction(null);
     setMessages([]);
     setDraftMessage("");
     setSending(false);
@@ -182,10 +235,11 @@ export default function AskGuideWorkspace() {
       .finally(() => {
         if (!cancelled) setContextLoading(false);
       });
+    loadSessions(selectedJobId);
     return () => {
       cancelled = true;
     };
-  }, [selectedJobId]);
+  }, [loadSessions, selectedJobId]);
 
   const onPrepare = useCallback(() => {
     if (!selectedJobId) return;
@@ -196,6 +250,94 @@ export default function AskGuideWorkspace() {
       .catch((err) => setPrepareError(err?.message || "Context preparation failed."))
       .finally(() => setPrepareLoading(false));
   }, [selectedJobId]);
+
+  const loadSessionById = useCallback(async (sessionId) => {
+    if (!sessionId) return null;
+    setSessionAction("load");
+    setChatError(null);
+    try {
+      const loaded = await getAskSession(sessionId);
+      const normalized = normalizeAskSessionPayload(loaded);
+      if (!normalized.session?.sessionId) throw new Error("Session loading failed.");
+      setSession(normalized.session);
+      setMessages(normalized.history);
+      setDraftMessage("");
+      setLastRetrievedChunks([]);
+      setLastLocalModel(null);
+      return normalized.session;
+    } catch (err) {
+      setChatError({ category: "ask_error", message: safeDisplayText(err?.message || "", "Session loading failed.") });
+      return null;
+    } finally {
+      setSessionAction(null);
+    }
+  }, []);
+
+  const onNewSession = useCallback(async () => {
+    if (!selectedJobId) return;
+    setSessionAction("new");
+    setChatError(null);
+    try {
+      const created = await createAskSession(selectedJobId, { title: selectedJob?.title || null });
+      const createdSessionId = created?.session?.session_id;
+      if (!createdSessionId) throw new Error("Session creation failed.");
+      const active = await loadSessionById(createdSessionId);
+      if (active) await loadSessions(selectedJobId);
+    } catch (err) {
+      setChatError({ category: "ask_error", message: safeDisplayText(err?.message || "", "Session creation failed.") });
+    } finally {
+      setSessionAction(null);
+    }
+  }, [loadSessionById, loadSessions, selectedJob?.title, selectedJobId]);
+
+  const onClearSession = useCallback(async () => {
+    if (!session?.sessionId) return;
+    if (!window.confirm("Clear this chat history? The session will stay available.")) return;
+    setSessionAction("clear");
+    setChatError(null);
+    try {
+      const cleared = await clearAskSessionHistory(session.sessionId);
+      const normalized = normalizeAskSessionPayload(cleared);
+      setSession((current) => normalized.session || current);
+      setMessages([]);
+      setDraftMessage("");
+      setLastRetrievedChunks([]);
+      setLastLocalModel(null);
+      await loadSessions(selectedJobId);
+    } catch (err) {
+      setChatError({ category: "ask_error", message: safeDisplayText(err?.message || "", "Clear chat failed.") });
+    } finally {
+      setSessionAction(null);
+    }
+  }, [loadSessions, selectedJobId, session?.sessionId]);
+
+  const onDeleteSession = useCallback(async () => {
+    if (!session?.sessionId) return;
+    if (!window.confirm("Delete this chat session? This will not delete the guide or prepared context.")) return;
+    const deletedId = session.sessionId;
+    setSessionAction("delete");
+    setChatError(null);
+    try {
+      await deleteAskSession(deletedId);
+      const next = nextSessionAfterDelete(sessionSummaries, deletedId);
+      const updated = await loadSessions(selectedJobId);
+      const nextFromUpdated = nextSessionAfterDelete(updated.length ? updated : sessionSummaries, deletedId);
+      const target = nextFromUpdated || next;
+      if (target?.sessionId) {
+        await loadSessionById(target.sessionId);
+      } else {
+        setSession(null);
+        setMessages([]);
+        setDraftMessage("");
+        setLastRetrievedChunks([]);
+        setLastLocalModel(null);
+      }
+    } catch (err) {
+      setChatError({ category: "ask_error", message: safeDisplayText(err?.message || "", "Delete session failed.") });
+    } finally {
+      setSessionAction(null);
+    }
+  }, [loadSessionById, loadSessions, selectedJobId, session?.sessionId, sessionSummaries]);
 
   const ensureSession = useCallback(async () => {
     if (session?.sessionId) return session;
@@ -208,8 +350,9 @@ export default function AskGuideWorkspace() {
     if (!normalized.session?.sessionId) throw new Error("Session loading failed.");
     setSession(normalized.session);
     setMessages(normalized.history);
+    loadSessions(selectedJobId);
     return normalized.session;
-  }, [selectedJobId, selectedJob?.title, session]);
+  }, [loadSessions, selectedJobId, selectedJob?.title, session]);
 
   const onSendMessage = useCallback(async () => {
     const message = safeDisplayText(draftMessage);
@@ -226,6 +369,7 @@ export default function AskGuideWorkspace() {
       if (normalized.status === "answered") {
         setMessages((current) => [...current, ...normalized.messages]);
         setDraftMessage("");
+        loadSessions(selectedJobId);
       } else {
         setChatError({
           category: normalized.error?.category || normalized.status || "ask_error",
@@ -248,7 +392,7 @@ export default function AskGuideWorkspace() {
     } finally {
       setSending(false);
     }
-  }, [draftMessage, ensureSession, loadLocalStatus, messages.length, sending]);
+  }, [draftMessage, ensureSession, loadLocalStatus, loadSessions, messages.length, selectedJobId, sending]);
 
   const activeProfile = profileById(commandData, selectedProfileId);
   const profiles = commandProfiles(commandData);
@@ -330,6 +474,10 @@ export default function AskGuideWorkspace() {
             chat={chat}
             messages={messages}
             session={session}
+            sessionAction={sessionAction}
+            onNewSession={onNewSession}
+            onClearSession={onClearSession}
+            onDeleteSession={onDeleteSession}
             draftMessage={draftMessage}
             setDraftMessage={setDraftMessage}
             sending={sending}
@@ -354,6 +502,16 @@ export default function AskGuideWorkspace() {
             reloadLocal={loadLocalStatus}
             lastRetrievedChunks={lastRetrievedChunks}
             lastLocalModel={lastLocalModel}
+            sessions={sessionSummaries}
+            sessionsLoading={sessionsLoading}
+            sessionsError={sessionsError}
+            sessionAction={sessionAction}
+            activeSessionId={session?.sessionId || null}
+            onSelectSession={(sessionId) => {
+              if (sessionId && sessionId !== session?.sessionId) loadSessionById(sessionId);
+            }}
+            onNewSession={onNewSession}
+            onRefreshSessions={() => loadSessions(selectedJobId)}
             commandProps={
               canCopy
                 ? {
@@ -456,6 +614,10 @@ function ChatReadinessPanel({
   chat,
   messages,
   session,
+  sessionAction,
+  onNewSession,
+  onClearSession,
+  onDeleteSession,
   draftMessage,
   setDraftMessage,
   sending,
@@ -480,7 +642,19 @@ function ChatReadinessPanel({
             <p className="mt-2 text-[12.5px] leading-5 text-[#A8AEBC]">
               Prepare this guide once, then ask grounded questions through the local model. Sessions are created lazily on first send.
             </p>
-            {session?.sessionId && <p className="mt-1 text-[11px] text-[#6B7185]">{sessionStatusLabel(session)}</p>}
+            {session?.sessionId && (
+              <div className="mt-2 flex flex-wrap items-center gap-2">
+                <p className="text-[11px] text-[#6B7185]">{sessionStatusLabel(session)}</p>
+                <button type="button" className="sg-ghost-button h-7 px-2 text-[11px]" onClick={onClearSession} disabled={sessionAction !== null || messages.length === 0}>
+                  <Eraser size={12} />
+                  <span className="ml-1">Clear chat</span>
+                </button>
+                <button type="button" className="sg-ghost-button h-7 px-2 text-[11px] text-[#FCA5A5]" onClick={onDeleteSession} disabled={sessionAction !== null}>
+                  <Trash2 size={12} />
+                  <span className="ml-1">Delete</span>
+                </button>
+              </div>
+            )}
           </div>
         </div>
 
@@ -525,6 +699,15 @@ function ChatReadinessPanel({
           <span className="text-[11.5px] text-[#6B7185]">
             {prepReady ? "Context index is ready for local chat." : "Builds guide/source chunks without exposing text."}
           </span>
+          <button
+            type="button"
+            onClick={onNewSession}
+            disabled={!job || sessionAction !== null}
+            className="sg-ghost-button h-8 px-2 text-[11px] disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            {sessionAction === "new" ? <Loader2 size={13} className="animate-spin" /> : <Plus size={13} />}
+            <span className="ml-1">New chat</span>
+          </button>
         </div>
       </section>
 
@@ -758,6 +941,14 @@ function ContextRail({
   reloadLocal,
   lastRetrievedChunks,
   lastLocalModel,
+  sessions,
+  sessionsLoading,
+  sessionsError,
+  sessionAction,
+  activeSessionId,
+  onSelectSession,
+  onNewSession,
+  onRefreshSessions,
   commandProps,
 }) {
   return (
@@ -783,6 +974,20 @@ function ContextRail({
             </p>
           </div>
         )}
+      </Panel>
+
+      <Panel title="Chat sessions" icon={MessageSquareText}>
+        <SessionManager
+          job={job}
+          sessions={sessions}
+          loading={sessionsLoading}
+          error={sessionsError}
+          action={sessionAction}
+          activeSessionId={activeSessionId}
+          onSelect={onSelectSession}
+          onNew={onNewSession}
+          onRefresh={onRefreshSessions}
+        />
       </Panel>
 
       <Panel title="Context sources" icon={FileText}>
@@ -841,6 +1046,63 @@ function ContextRail({
           />
         )}
       </Panel>
+    </div>
+  );
+}
+
+function SessionManager({ job, sessions, loading, error, action, activeSessionId, onSelect, onNew, onRefresh }) {
+  if (!job) {
+    return <p className="text-[12px] leading-5 text-[#9098A8]">Select a generated guide to see its chats.</p>;
+  }
+  return (
+    <div className="space-y-3">
+      <div className="flex items-center gap-2">
+        <button type="button" className="sg-cta sg-press-btn h-8 px-3 text-[11.5px]" onClick={onNew} disabled={action !== null}>
+          {action === "new" ? <Loader2 size={13} className="animate-spin" /> : <Plus size={13} />}
+          <span className="ml-1">New chat</span>
+        </button>
+        <button type="button" className="sg-ghost-button h-8 px-2 text-[11px]" onClick={onRefresh} disabled={loading}>
+          {loading ? <Loader2 size={12} className="animate-spin" /> : <RefreshCw size={12} />}
+          <span className="ml-1">Refresh</span>
+        </button>
+      </div>
+      {error && <p className="break-words text-[11.5px] leading-5 text-[#FCA5A5]">{error}</p>}
+      {loading && <InlineLoading label="Loading sessions" />}
+      {!loading && !error && sessions.length === 0 && (
+        <p className="text-[11.5px] leading-5 text-[#9098A8]">No saved chats for this guide yet. Sending a message will create one.</p>
+      )}
+      {!loading && sessions.length > 0 && (
+        <div className="space-y-2">
+          {sessions.map((item) => {
+            const active = item.sessionId === activeSessionId;
+            return (
+              <button
+                key={item.sessionId}
+                type="button"
+                onClick={() => onSelect(item.sessionId)}
+                disabled={action !== null || active}
+                className={`w-full rounded-lg border p-2 text-left transition ${
+                  active
+                    ? "border-[#F97316]/40 bg-[#F97316]/10"
+                    : "border-white/10 bg-white/[0.02] hover:border-white/20 hover:bg-white/[0.04]"
+                } disabled:cursor-default`}
+              >
+                <div className="flex items-center justify-between gap-2">
+                  <strong className="min-w-0 truncate text-[11.5px] text-[#E8EAF0]">{sessionShortLabel(item)}</strong>
+                  {active && <MiniChip>Active</MiniChip>}
+                </div>
+                <p className="mt-1 truncate text-[10.5px] text-[#6B7185]">{sessionMetaLabel(item)}</p>
+                {item.lastMessage?.snippet && (
+                  <p className="mt-1 max-h-8 overflow-hidden text-[11px] leading-4 text-[#9098A8]">
+                    {item.lastMessage.role === "user" ? "You: " : "Guide: "}
+                    {item.lastMessage.snippet}
+                  </p>
+                )}
+              </button>
+            );
+          })}
+        </div>
+      )}
     </div>
   );
 }

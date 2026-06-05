@@ -5,8 +5,24 @@
 
 ---
 
-## NEXT — Ask chat polish + emitted-citation validation DONE; NEXT = Ask session management UI. (LMM Phase 1 COMPLETE + VALIDATED below.)
+## NEXT — Ask session management UI/API DONE; NEXT = Ask chat math/source visual polish. (LMM Phase 1 COMPLETE + VALIDATED below.)
 
+- **Ask Your Guide — session management UI/API is DONE** — branch
+  `ask-session-management`, see DONE #57 below. Added safe session listing,
+  switching, new chat, clear-history, and delete-session behavior. Backend routes:
+  `GET /api/ask/jobs/{job_id}/sessions`,
+  `DELETE /api/ask/sessions/{session_id}/history`, and
+  `DELETE /api/ask/sessions/{session_id}`. Clear keeps the session id and prepared
+  context cache; delete removes only the fenced session directory. The Ask workspace
+  now has a compact Chat sessions rail panel plus active-session clear/delete
+  controls, preserves lazy session creation on first send, and keeps explicit prepare
+  + local-only chat behavior unchanged. No extra uploads, no export, no streaming,
+  no cloud/DeepSeek/Qwen fallback, no process control, no provider settings writes,
+  and no new dependencies.
+- **NEXT — Ask chat math/source visual polish.** Tight UI polish only: improve how
+  math-ish text and source/citation affordances read in the existing chat view. Keep
+  backend behavior, local-only enforcement, and session management unchanged. No
+  extra uploads unless explicitly chosen as a later slice.
 - **Ask Your Guide — chat polish + emitted-citation validation is DONE** — branch
   `ask-chat-polish-citations`, see DONE #56 below. The local-only Ask message
   endpoint now validates bracket-style model citations against the turn's retrieved
@@ -22,11 +38,6 @@
   citations, and keeps retrieved chunk metadata collapsed by default. No chunk text,
   raw prompts, keys, full URLs, provider settings writes, cloud fallback, streaming,
   extra uploads, process control, or new dependencies.
-- **NEXT — Ask session management UI.** Add list/new/clear/delete session controls
-  for existing Ask sessions, still local-only and still no extra uploads. Keep it
-  tight: session picker/reset/delete UX plus backend endpoints only if missing; no
-  hosted provider selector, no streaming, no rolling summary, no multimodal, no local
-  model process control, and no provider-settings writes.
 - **Ask Your Guide — frontend chat UI wiring is DONE** — branch
   `ask-chat-ui`, see DONE #55 below. The existing Ask workspace now creates chat
   sessions lazily on first send, loads the session with `GET /api/ask/sessions/{id}`,
@@ -2249,6 +2260,51 @@ parked on the `hardening` branch — not merged, not deleted.
       not include `test_scripts/`, so in-container endpoint reruns were unavailable
       without copying files into the container.
 
+57. **Ask Your Guide — session management UI/API** — branch
+    `ask-session-management`.
+    Adds safe controls for managing persisted Ask sessions without changing local chat
+    generation:
+    - **Backend endpoints:** `GET /api/ask/jobs/{job_id}/sessions` lists safe
+      summaries for one eligible guide (session id, job id, title, created/updated,
+      cheap message count, and a redacted bounded last-message snippet). Unknown job
+      returns 404; an eligible job with no sessions returns an empty list. `DELETE
+      /api/ask/sessions/{session_id}/history` clears `history.jsonl`, keeps
+      `session.json` and the same session id, updates metadata, and does not touch
+      the context cache. `DELETE /api/ask/sessions/{session_id}` deletes only that
+      fenced session directory and returns `{deleted:true, session_id}`.
+    - **Existing behavior preserved:** `POST /api/ask/jobs/{id}/sessions`, `GET
+      /api/ask/sessions/{id}`, and `POST /api/ask/sessions/{id}/message` keep their
+      prior contracts. Local-only status gating, retrieval, prompt assembly, citation
+      validation, and model-call behavior are unchanged.
+    - **Frontend UX:** the Ask workspace now lists sessions for the selected guide in
+      a compact right-rail panel, can switch to any listed session, starts a new chat
+      without re-preparing context, keeps lazy session creation for first send when
+      no session is active, and adds confirm-gated **Clear chat** / **Delete** controls
+      for the active session. Clear keeps the guide, prepared context, selected
+      session, and draft flow intact; delete removes the session from the list and
+      loads the next newest session when available, otherwise returns to no active
+      chat for that guide.
+    - **Security/non-goals:** summaries and UI helpers render only bounded redacted
+      metadata/snippets. No raw prompts, full answers in list summaries, chunk text,
+      guide/source bodies, keys, Authorization headers, full URLs, or filesystem paths
+      are returned/rendered by the new surfaces. No browser storage is used. No extra
+      uploads, chat export, streaming, cloud fallback, hosted selector, DeepSeek/Qwen
+      fallback, long-chat rolling summary, multimodal, local model process control,
+      provider settings writes, or new dependencies.
+    - **Verified:** `npm run test:ask-guide` pass (67/67 helper checks),
+      `npm run build` pass (existing Vite chunk-size warning only), `python
+      test_scripts/test_ask_local_chat.py` pass for pure checks (27/27; endpoint
+      portion skipped on the host because FastAPI is not installed), `python
+      test_scripts/test_ask_context_inventory.py` pass for pure checks (11/11;
+      endpoint portion skipped for missing host FastAPI), `python
+      test_scripts/test_ask_context_prepare.py` pass for pure checks (28/28; endpoint
+      portion skipped for missing host FastAPI), `python -m compileall api pipeline`
+      pass, `npm run test:local-model-command` pass, `npm run test:local-model-status`
+      pass, release smoke **28/28**, and `docker compose config
+      >/tmp/compose-check.txt` exit 0. The running Docker image was healthy but did
+      not include `test_scripts/`, so in-container endpoint-script reruns were not
+      available without copying test files into the container.
+
 ## NEXT (in order)
 
 > **Provider settings feature group is DONE through Slice 5** (DONE #32→#36):
@@ -2289,11 +2345,11 @@ parked on the `hardening` branch — not merged, not deleted.
 > `docs/VALIDATION_LOCAL_MODEL_MANAGER_PHASE1.md`). The earlier "Phase-1 validation /
 > docs reconciliation" recommendation is **done and removed** from this list.
 
-1. **Ask Your Guide — session management UI (RECOMMENDED next).**
-   Add a clear session picker/control slice for existing Ask chats: list sessions for
-   the selected guide, start a new chat, clear a session's history, and delete a
-   session. Keep local-only and tight; no extra uploads, no streaming, no hosted
-   provider selector, no rolling summary, and no process control.
+1. **Ask Your Guide — chat math/source visual polish (RECOMMENDED next).**
+   Tight UI polish for the existing Ask chat: make math-ish text/source affordances
+   read more cleanly, without changing retrieval/model behavior or adding new upload
+   surfaces. Keep local-only; no streaming, no hosted provider selector, no rolling
+   summary, and no process control.
 2. **Local Model Manager — Phase 2 (host companion launcher) DESIGN-FIRST, optional.**
    Only if the user wants **app-managed start/stop** later. Process control (start/stop
    a host `llama-server`) **crosses the container boundary** (non-root uid 10001
