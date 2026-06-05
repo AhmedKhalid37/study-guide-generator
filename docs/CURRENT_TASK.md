@@ -5,8 +5,28 @@
 
 ---
 
-## NEXT — Ask frontend chat UI wiring DONE; NEXT = emitted-citation validation + chat UX polish. (LMM Phase 1 COMPLETE + VALIDATED below.)
+## NEXT — Ask chat polish + emitted-citation validation DONE; NEXT = Ask session management UI. (LMM Phase 1 COMPLETE + VALIDATED below.)
 
+- **Ask Your Guide — chat polish + emitted-citation validation is DONE** — branch
+  `ask-chat-polish-citations`, see DONE #56 below. The local-only Ask message
+  endpoint now validates bracket-style model citations against the turn's retrieved
+  citation labels, strips unsupported Ask-looking citations from the returned/stored
+  answer, and returns `citations_allowed`, `citations_used`,
+  `citations_unsupported`, plus `citation_validation{ok, unsupported_count}`.
+  Normal bracketed prose that does not look like an Ask citation is left alone. The
+  prompt now asks for fewer, clearer citations at paragraph ends or a short sources
+  line without weakening grounding. The Ask UI renders safe answer blocks for
+  headings/bold/lists without `dangerouslySetInnerHTML`, fixes the
+  `Guide only · [object Object]` metadata bug, hides full technical session ids,
+  shows trusted citation chips from backend-used citations, warns on unsupported
+  citations, and keeps retrieved chunk metadata collapsed by default. No chunk text,
+  raw prompts, keys, full URLs, provider settings writes, cloud fallback, streaming,
+  extra uploads, process control, or new dependencies.
+- **NEXT — Ask session management UI.** Add list/new/clear/delete session controls
+  for existing Ask sessions, still local-only and still no extra uploads. Keep it
+  tight: session picker/reset/delete UX plus backend endpoints only if missing; no
+  hosted provider selector, no streaming, no rolling summary, no multimodal, no local
+  model process control, and no provider-settings writes.
 - **Ask Your Guide — frontend chat UI wiring is DONE** — branch
   `ask-chat-ui`, see DONE #55 below. The existing Ask workspace now creates chat
   sessions lazily on first send, loads the session with `GET /api/ask/sessions/{id}`,
@@ -18,11 +38,6 @@
   helper. No localStorage/sessionStorage persistence, no raw HTML rendering, no
   chunk/source/guide text rendering, no process control, no provider writes, no extra
   uploads, no exports, no streaming, and no cloud fallback.
-- **NEXT — Ask emitted-citation validation + chat UX polish.** Add a tight accuracy
-  slice that validates/flags model-emitted citations against the backend allowed
-  citation labels and polishes the chat UX around missing/stale context and long
-  answers. Keep it local-only; no hosted-provider selector, no extra uploads, no
-  rolling-summary UI, no streaming unless separately designed.
 - **Ask Your Guide — backend local chat API is DONE** — branch
   `ask-local-chat-api`, see DONE #54 below. Backend-only session creation/load +
   non-streaming local-only message endpoint now exist:
@@ -2186,6 +2201,54 @@ parked on the `hardening` branch — not merged, not deleted.
       Backend/shared Python was not touched, so `python -m compileall api pipeline` was
       not required.
 
+56. **Ask Your Guide — chat polish + emitted-citation validation** — branch
+    `ask-chat-polish-citations`.
+    Tight backend + frontend polish over the already-working local Ask chat flow:
+    - **Backend citation validation:** `POST /api/ask/sessions/{session_id}/message`
+      now post-validates bracket-style citations emitted by the local model against
+      the exact allowed citation labels retrieved for that turn. Ask-looking
+      unsupported citations (for example `[Guide Fake Topic]`) are stripped from the
+      answer and reported; normal bracketed prose that does not look like an Ask
+      citation is preserved. Responses include `citations_allowed`,
+      `citations_used`, `citations_unsupported`, and
+      `citation_validation: {ok, unsupported_count}`. Trusted `citations` now mirror
+      used/validated citations, not unsupported labels.
+    - **Prompt cleanup:** the answer rules still require grounding and exact allowed
+      labels, but now prefer citations at paragraph ends or a short sources line
+      instead of noisy citations after nearly every sentence.
+    - **Frontend polish:** guide cards format attachment summaries as safe human text
+      instead of `Guide only · [object Object]`; the workspace shows a friendly
+      session-active label with only a short suffix instead of the full technical
+      `ask_...` id; assistant answers render through a tiny inert subset renderer for
+      headings, bold, numbered/bulleted lists, line breaks, and fenced blocks (no
+      `dangerouslySetInnerHTML`, no markdown dependency); escaped math dollars are
+      cleaned for readability.
+    - **Sources/citations UX:** citation chips come from backend machine-readable
+      used citations; unsupported citations show a subtle warning and are not rendered
+      as trusted chips. Retrieved chunk metadata remains available but is collapsed
+      behind `Sources used` / `Show retrieved chunks` disclosures by default. Chunk
+      text is still never rendered.
+    - **Security/non-goals:** no raw prompts/messages are logged by the new code, raw
+      prompts are not returned, full chunk text is not returned to the UI, and the
+      existing redaction of obvious `sk-*` keys, Authorization bearer headers, full
+      URLs, and host paths remains in place. Local-only enforcement is unchanged. No
+      extra uploads, no streaming, no cloud fallback, no hosted provider selector, no
+      DeepSeek/Qwen fallback, no rolling summary, no multimodal, no local model
+      process control, no provider settings writes, and no new dependencies.
+    - **Verified:** `npm run test:ask-guide` pass (58/58 helper checks),
+      `npm run build` pass (existing Vite chunk-size warning only),
+      `npm run test:local-model-command` pass, `npm run test:local-model-status`
+      pass, `python test_scripts/test_ask_local_chat.py` pass for pure checks
+      (14/14; endpoint portion skipped on the host because FastAPI is not installed),
+      `python test_scripts/test_ask_context_inventory.py` pass for pure checks
+      (11/11; endpoint portion skipped for missing host FastAPI),
+      `python test_scripts/test_ask_context_prepare.py` pass for pure checks (28/28;
+      endpoint portion skipped for missing host FastAPI), and
+      `python -m compileall api pipeline` pass. `docker compose config
+      >/tmp/compose-check.txt` exit 0. A running Docker image was healthy, but it did
+      not include `test_scripts/`, so in-container endpoint reruns were unavailable
+      without copying files into the container.
+
 ## NEXT (in order)
 
 > **Provider settings feature group is DONE through Slice 5** (DONE #32→#36):
@@ -2226,11 +2289,11 @@ parked on the `hardening` branch — not merged, not deleted.
 > `docs/VALIDATION_LOCAL_MODEL_MANAGER_PHASE1.md`). The earlier "Phase-1 validation /
 > docs reconciliation" recommendation is **done and removed** from this list.
 
-1. **Ask Your Guide — emitted-citation validation + chat UX polish (RECOMMENDED next).**
-   Tight accuracy/polish slice: validate or flag model-emitted citations against the
-   backend allowed labels for the turn, and polish chat edge states for missing/stale
-   context and long answers. Keep local-only; no extra uploads, no streaming unless
-   separately designed, no hosted-provider selector, and no process control.
+1. **Ask Your Guide — session management UI (RECOMMENDED next).**
+   Add a clear session picker/control slice for existing Ask chats: list sessions for
+   the selected guide, start a new chat, clear a session's history, and delete a
+   session. Keep local-only and tight; no extra uploads, no streaming, no hosted
+   provider selector, no rolling summary, and no process control.
 2. **Local Model Manager — Phase 2 (host companion launcher) DESIGN-FIRST, optional.**
    Only if the user wants **app-managed start/stop** later. Process control (start/stop
    a host `llama-server`) **crosses the container boundary** (non-root uid 10001

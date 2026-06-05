@@ -29,10 +29,13 @@ import {
 } from "../api/client";
 import {
   attachmentRows,
+  answerBlocks,
   chatReadiness,
+  citationWarningText,
   citationSummary,
   formatCount,
   formatDate,
+  guideSourceSummary,
   normalizeAskMessageResponse,
   normalizeAskSessionPayload,
   pageSelectionRows,
@@ -43,6 +46,7 @@ import {
   safeDisplayText,
   safeInputText,
   safeText,
+  sessionStatusLabel,
 } from "../askGuide";
 import {
   COPY_COPIED,
@@ -426,10 +430,7 @@ function GuidePicker({ jobs, loading, error, selectedJobId, onSelect }) {
                     {job.model && <MiniChip>{job.model}</MiniChip>}
                     {job.generator_preset && <MiniChip>{job.generator_preset}</MiniChip>}
                   </div>
-                  <p className="mt-2 text-[11px] leading-4 text-[#9098A8]">
-                    {job.source_available ? "Guide + extracted source" : "Guide only"}
-                    {job.attachment_summary ? ` · ${job.attachment_summary}` : ""}
-                  </p>
+                  <p className="mt-2 text-[11px] leading-4 text-[#9098A8]">{guideSourceSummary(job)}</p>
                 </button>
               );
             })}
@@ -479,9 +480,7 @@ function ChatReadinessPanel({
             <p className="mt-2 text-[12.5px] leading-5 text-[#A8AEBC]">
               Prepare this guide once, then ask grounded questions through the local model. Sessions are created lazily on first send.
             </p>
-            {session?.sessionId && (
-              <p className="mt-1 text-[11px] text-[#6B7185]">Session {session.sessionId}</p>
-            )}
+            {session?.sessionId && <p className="mt-1 text-[11px] text-[#6B7185]">{sessionStatusLabel(session)}</p>}
           </div>
         </div>
 
@@ -640,7 +639,12 @@ function ChatBubble({ message }) {
         <div className="mb-1 text-[10.5px] font-semibold uppercase text-[#6B7185]">
           {assistant ? "Ask Your Guide" : "You"}
         </div>
-        <p className="whitespace-pre-wrap break-words text-[13px] leading-6">{message.content}</p>
+        {assistant ? <AnswerText content={message.content} /> : <p className="whitespace-pre-wrap break-words text-[13px] leading-6">{message.content}</p>}
+        {assistant && citationWarningText(message) && (
+          <p className="mt-3 rounded-md border border-[#FCD34D]/20 bg-[#FCD34D]/[0.05] px-2 py-1.5 text-[11px] leading-4 text-[#FCD34D]">
+            {citationWarningText(message)}
+          </p>
+        )}
         {assistant && message.citations?.length > 0 && (
           <div className="mt-3 flex flex-wrap gap-1.5">
             {message.citations.map((label) => (
@@ -649,12 +653,72 @@ function ChatBubble({ message }) {
           </div>
         )}
         {assistant && message.retrievedChunks?.length > 0 && (
-          <div className="mt-3 border-t border-white/5 pt-2">
-            <RetrievedChunkList rows={message.retrievedChunks} compact />
-          </div>
+          <details className="mt-3 border-t border-white/5 pt-2">
+            <summary className="cursor-pointer text-[11px] font-medium text-[#A8AEBC]">Sources used</summary>
+            <div className="mt-2">
+              <RetrievedChunkList rows={message.retrievedChunks} compact />
+            </div>
+          </details>
         )}
       </div>
     </article>
+  );
+}
+
+function AnswerText({ content }) {
+  const blocks = answerBlocks(content);
+  if (blocks.length === 0) return <p className="text-[13px] leading-6 text-[#9098A8]">No answer text.</p>;
+  return (
+    <div className="space-y-2 break-words text-[13px] leading-6">
+      {blocks.map((block, index) => {
+        if (block.type === "heading") {
+          return (
+            <h3 key={index} className="pt-1 text-[14px] font-semibold leading-6 text-[#F4F4F5]">
+              <InlineSegments segments={block.segments} />
+            </h3>
+          );
+        }
+        if (block.type === "list") {
+          return (
+            <ol key={index} className="list-decimal space-y-1 pl-5">
+              {block.items.map((item, itemIndex) => (
+                <li key={itemIndex}>
+                  <InlineSegments segments={item} />
+                </li>
+              ))}
+            </ol>
+          );
+        }
+        if (block.type === "pre") {
+          return (
+            <pre key={index} className="overflow-x-auto whitespace-pre-wrap rounded-md border border-white/10 bg-black/30 p-2 text-[12px] leading-5 text-[#D4D4D8]">
+              {block.text}
+            </pre>
+          );
+        }
+        return (
+          <p key={index}>
+            <InlineSegments segments={block.segments} />
+          </p>
+        );
+      })}
+    </div>
+  );
+}
+
+function InlineSegments({ segments }) {
+  return (
+    <>
+      {segments.map((segment, index) =>
+        segment.type === "strong" ? (
+          <strong key={index} className="font-semibold text-[#F4F4F5]">
+            {segment.text}
+          </strong>
+        ) : (
+          <React.Fragment key={index}>{segment.text}</React.Fragment>
+        )
+      )}
+    </>
   );
 }
 
@@ -745,7 +809,14 @@ function ContextRail({
               Local model: <span className="text-[#D4D4D8]">{lastLocalModel.model}</span>
             </p>
           )}
-          <RetrievedChunkList rows={lastRetrievedChunks} />
+          {lastRetrievedChunks.length > 0 && (
+            <details>
+              <summary className="cursor-pointer text-[11.5px] font-medium text-[#A8AEBC]">Show retrieved chunks</summary>
+              <div className="mt-2">
+                <RetrievedChunkList rows={lastRetrievedChunks} />
+              </div>
+            </details>
+          )}
         </Panel>
       )}
 

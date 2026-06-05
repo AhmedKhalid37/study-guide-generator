@@ -10,10 +10,14 @@ import {
   PREP_HIT,
   READINESS_NOT_READY,
   READINESS_READY,
+  answerBlocks,
   attachmentRows,
   chatReadiness,
+  citationWarningText,
   citationSummary,
+  formatAttachmentSummary,
   formatCount,
+  guideSourceSummary,
   normalizeAskMessageResponse,
   normalizeAskSessionPayload,
   pageSelectionRows,
@@ -24,6 +28,7 @@ import {
   safeDisplayText,
   safeFilename,
   safeInputText,
+  sessionStatusLabel,
 } from "../src/askGuide.js";
 
 let failed = 0;
@@ -74,6 +79,20 @@ check("pageSelectionRows formats ranges", selections[0].ranges.join(",") === "1-
 
 check("formatCount formats finite counts", formatCount(12345) === "12,345");
 check("formatCount rejects garbage", formatCount("123") === "0");
+check(
+  "formatAttachmentSummary avoids object string",
+  formatAttachmentSummary({ count: 2, warning_count: 1, total_extracted_chars: 1234 }) ===
+    "2 attachments · 1,234 extracted chars · 1 warning"
+);
+check(
+  "guideSourceSummary formats object metadata",
+  guideSourceSummary({ source_available: false, attachment_summary: { count: 1 } }) === "Guide only · 1 attachment"
+);
+check("guideSourceSummary never renders object blob", !guideSourceSummary({ attachment_summary: { count: 1 } }).includes("[object Object]"));
+check(
+  "sessionStatusLabel hides technical id",
+  sessionStatusLabel({ sessionId: "ask_1234567890abcdef" }) === "Local chat session active · abcdef"
+);
 
 const built = {
   ready: true,
@@ -153,6 +172,31 @@ check("normalizeAskMessageResponse redacts answer path", !normalizedMessage.answ
 check("normalizeAskMessageResponse keeps citations", normalizedMessage.citations.join(",") === "Source Page 4,Guide Alpha");
 check("normalizeAskMessageResponse omits chunk text", !JSON.stringify(normalizedMessage).includes("RAW CHUNK TEXT"));
 check("retrievedChunkRows normalizes metadata", retrievedChunkRows(messageResponse.retrieved_chunks)[0].label === "Source Page 4");
+
+const citationChecked = normalizeAskMessageResponse(
+  {
+    session_id: "ask_123",
+    status: "answered",
+    answer: "Alpha [Source Page 4]",
+    citations_allowed: ["Source Page 4", "Guide Alpha"],
+    citations_used: ["Source Page 4"],
+    citations_unsupported: ["Guide Fake"],
+    citation_validation: { ok: false, unsupported_count: 1 },
+    retrieved_chunks: messageResponse.retrieved_chunks,
+  },
+  "Explain alpha"
+);
+check("normalizeAskMessageResponse uses citations_used chips", citationChecked.citations.join(",") === "Source Page 4");
+check("unsupported citation warning handled", citationWarningText(citationChecked).includes("removed"));
+check("unsupported citations not trusted chips", !citationChecked.citations.includes("Guide Fake"));
+
+const blocks = answerBlocks("### Title\n\n**Bold** text\n\n1. First\n2. Second\n\n\\$c\\$");
+check("answerBlocks converts heading", blocks[0].type === "heading" && blocks[0].segments[0].text === "Title");
+check("answerBlocks converts bold segment", blocks[1].segments.some((segment) => segment.type === "strong" && segment.text === "Bold"));
+check("answerBlocks converts numbered lists", blocks[2].type === "list" && blocks[2].items.length === 2);
+check("answerBlocks cleans escaped math dollars", JSON.stringify(blocks).includes("$c$"));
+check("answerBlocks returns inert data only", !JSON.stringify(blocks).includes("dangerouslySetInnerHTML"));
+check("retrieved chunk disclosure helper omits text", !JSON.stringify(retrievedChunkRows(messageResponse.retrieved_chunks)).includes("RAW CHUNK TEXT"));
 
 const offline = normalizeAskMessageResponse({
   status: "local_offline",

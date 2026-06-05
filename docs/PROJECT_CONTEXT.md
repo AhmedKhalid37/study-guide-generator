@@ -113,7 +113,8 @@ flashcards with CSV / Anki / Quizlet export.
   Settings (no second writer). See `DECISIONS.md`.
 - **Ask Your Guide — IN PROGRESS (Slice 1 design DONE; Slice 2 backend context
   inventory DONE; Slice 3 backend context preparation / chunking DONE; inserted
-  workspace shell DONE; backend local chat API DONE; frontend chat UI wiring DONE).** A
+  workspace shell DONE; backend local chat API DONE; frontend chat UI wiring DONE;
+  chat polish + emitted-citation validation DONE).** A
   dedicated **`AskGuideWorkspace`** (first-class page/tab alongside
   Builder/Library/Styles/Providers) where the user selects a generated guide/job and
   chats with it using a **local model only**. Designed in
@@ -162,9 +163,13 @@ flashcards with CSV / Anki / Quizlet export.
   plain-text answers, backend-returned citation chips, safe retrieved chunk metadata,
   and the existing LMM offline command helper. The UI stores only safe session
   metadata/history in React state and does not persist messages to browser storage.
-  **NEXT = emitted-citation validation + chat UX polish**: validate/flag model-emitted
-  citations against backend allowed labels and polish missing/stale context + long
-  answer states.
+  The chat polish/citation slice then added backend validation for model-emitted
+  bracket citations against retrieved labels (`citations_allowed`, `citations_used`,
+  `citations_unsupported`, `citation_validation`), strips unsupported Ask-looking
+  citations, preserves normal bracketed prose, formats assistant markdown-ish text
+  safely without `dangerouslySetInnerHTML`, fixes guide metadata/session-id display,
+  and collapses retrieved chunk metadata by default. **NEXT = Ask session management
+  UI**: list/new/clear/delete sessions, still no extra uploads.
   See `DECISIONS.md`.
 
 ## 4. Architecture facts a new session MUST know

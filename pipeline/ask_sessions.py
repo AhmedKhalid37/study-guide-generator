@@ -46,6 +46,8 @@ _SESSION_ID_RE = re.compile(r"^ask_[a-f0-9]{32}$")
 _SK_RE = re.compile(r"\bsk-[A-Za-z0-9_\-]{8,}\b")
 _AUTH_RE = re.compile(r"(?i)\bAuthorization\s*:\s*Bearer\s+[A-Za-z0-9._\-]+")
 _URL_RE = re.compile(r"https?://[^\s<>\]\)\"']+")
+_BRACKET_RE = re.compile(r"\[([^\[\]\n]{1,180})\]")
+_CITATION_LIKE_RE = re.compile(r"^(?:Guide\s+\S|Source\s+(?:Page\s+\d+|p\.\s*\d+|\S))", re.IGNORECASE)
 
 
 class AskSessionError(Exception):
@@ -173,6 +175,58 @@ def _safe_citation_list(value: Any) -> list[str]:
         seen.add(label)
         labels.append(label[:180])
     return labels[:MAX_RETRIEVED_CHUNKS]
+
+
+def validate_answer_citations(answer: str, allowed_labels: list[str]) -> tuple[str, dict[str, Any]]:
+    """Validate bracket-style citations emitted by the model.
+
+    Only bracket contents that look like Ask citation labels are checked. Other
+    bracketed prose, such as ``[optional note]``, is left untouched to avoid false
+    failures. Unsupported Ask-looking citations are stripped from the answer and
+    reported in machine-readable metadata; they are never converted into trusted
+    source chips.
+    """
+    allowed: list[str] = []
+    allowed_set: set[str] = set()
+    for label in allowed_labels:
+        if not isinstance(label, str):
+            continue
+        safe = label.strip()
+        if not safe or safe in allowed_set:
+            continue
+        allowed_set.add(safe)
+        allowed.append(safe)
+
+    used: list[str] = []
+    unsupported: list[str] = []
+    unsupported_set: set[str] = set()
+
+    def replace(match: re.Match[str]) -> str:
+        raw_label = match.group(1).strip()
+        if not _CITATION_LIKE_RE.match(raw_label):
+            return match.group(0)
+        if raw_label in allowed_set:
+            if raw_label not in used:
+                used.append(raw_label)
+            return match.group(0)
+        if raw_label not in unsupported_set:
+            unsupported_set.add(raw_label)
+            unsupported.append(raw_label)
+        return ""
+
+    sanitized = _BRACKET_RE.sub(replace, answer)
+    sanitized = re.sub(r"[ \t]{2,}", " ", sanitized)
+    sanitized = re.sub(r" *\n", "\n", sanitized).strip()
+    validation = {
+        "ok": not unsupported,
+        "unsupported_count": len(unsupported),
+    }
+    return sanitized, {
+        "citations_allowed": allowed,
+        "citations_used": used,
+        "citations_unsupported": unsupported,
+        "citation_validation": validation,
+    }
 
 
 def create_session(job: Job, *, title: str | None = None) -> dict[str, Any]:
@@ -345,6 +399,7 @@ def _chunk_metadata(chunk: dict[str, Any], label: str) -> dict[str, Any]:
 ANSWER_RULES = """You are Ask Your Guide, a local-only study assistant.
 Use only the provided guide/source chunks for factual claims about the user's material.
 Cite only the citation labels listed in the context, exactly as written.
+Prefer one citation at the end of a paragraph or a short final "Sources used" line; do not cite every sentence.
 If the answer is not covered by the provided chunks, say that it is not covered in the guide/source.
 Do not invent facts, formulas, page numbers, dates, requirements, or citations.
 Clearly distinguish "from your guide/source" from any general knowledge.
@@ -448,6 +503,10 @@ def answer_message(
             "status": "local_offline",
             "answer": "",
             "citations": [],
+            "citations_allowed": [],
+            "citations_used": [],
+            "citations_unsupported": [],
+            "citation_validation": {"ok": True, "unsupported_count": 0},
             "retrieved_chunks": [],
             "local_model": safe_status,
             "error": {
@@ -495,6 +554,10 @@ def answer_message(
             "status": "local_offline",
             "answer": "",
             "citations": citation_labels,
+            "citations_allowed": citation_labels,
+            "citations_used": [],
+            "citations_unsupported": [],
+            "citation_validation": {"ok": True, "unsupported_count": 0},
             "retrieved_chunks": chunk_meta,
             "local_model": safe_status,
             "error": {"category": "provider_config", "message": _redact_text(str(exc))},
@@ -505,12 +568,17 @@ def answer_message(
             "status": "local_offline" if exc.category == "local_offline" else "provider_error",
             "answer": "",
             "citations": citation_labels,
+            "citations_allowed": citation_labels,
+            "citations_used": [],
+            "citations_unsupported": [],
+            "citation_validation": {"ok": True, "unsupported_count": 0},
             "retrieved_chunks": chunk_meta,
             "local_model": safe_status,
             "error": {"category": exc.category, "message": _redact_text(str(exc))},
         }
 
     answer = _redact_text(answer)
+    answer, citation_info = validate_answer_citations(answer, citation_labels)
     now = _now()
     _append_history(
         session_path,
@@ -520,7 +588,8 @@ def answer_message(
                 "role": "assistant",
                 "content": answer,
                 "created_at": now,
-                "citations": citation_labels,
+                "citations": citation_info["citations_used"],
+                "citation_validation": citation_info["citation_validation"],
             },
         ],
     )
@@ -531,7 +600,8 @@ def answer_message(
         "session_id": session_id,
         "status": "answered",
         "answer": answer,
-        "citations": citation_labels,
+        "citations": citation_info["citations_used"],
+        **citation_info,
         "retrieved_chunks": chunk_meta,
         "local_model": safe_status,
     }

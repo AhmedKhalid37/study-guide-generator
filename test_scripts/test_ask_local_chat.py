@@ -122,6 +122,21 @@ def test_pure_retrieval_and_prompt(tmp: Path) -> None:
     cache_blob = ask_context._index_path(job).read_text(encoding="utf-8")
     check("pure: cache redacts planted key/url", _clean(cache_blob))
 
+    clean, info = ask_sessions.validate_answer_citations(
+        "Alpha is covered [Guide Alpha Topic] and source-backed [Source Page 4].",
+        ["Guide Alpha Topic", "Source Page 4"],
+    )
+    check("pure: allowed emitted citations kept", "[Guide Alpha Topic]" in clean and "[Source Page 4]" in clean)
+    check("pure: allowed emitted citations reported", info["citations_used"] == ["Guide Alpha Topic", "Source Page 4"])
+    clean_bad, info_bad = ask_sessions.validate_answer_citations(
+        "Alpha is covered [Guide Fake Topic]. Normal bracket [optional note] stays.",
+        ["Guide Alpha Topic"],
+    )
+    check("pure: unsupported emitted citation stripped", "[Guide Fake Topic]" not in clean_bad)
+    check("pure: normal bracketed prose preserved", "[optional note]" in clean_bad)
+    check("pure: unsupported emitted citation reported", info_bad["citations_unsupported"] == ["Guide Fake Topic"])
+    check("pure: citation validation fields present", info_bad["citation_validation"] == {"ok": False, "unsupported_count": 1})
+
 
 def test_endpoints() -> None:
     try:
@@ -251,7 +266,12 @@ def test_endpoints() -> None:
         def fake_generate(messages, config):
             captured["messages"] = messages
             captured["config_provider"] = getattr(config, "provider", None)
-            return "From your guide/source: Alpha regulation is inhibited by citrate. (Source Page 4)"
+            return (
+                "### Alpha regulation\n\n"
+                "**From your guide/source:** Alpha regulation is inhibited by citrate [Source Page 4]. "
+                "This unsupported citation should be removed [Guide Fake Topic]. "
+                "Normal bracketed prose [optional note] should stay."
+            )
 
         ask_sessions.get_local_model_status = online_status
         ask_sessions.build_provider_config = local_config
@@ -262,7 +282,12 @@ def test_endpoints() -> None:
         check("ep: message answered", rm.status_code == 200 and rm.json().get("status") == "answered")
         data = rm.json()
         check("ep: answer returned", "Alpha regulation" in data.get("answer", ""))
-        check("ep: citations returned", "Source Page 4" in data.get("citations", []) or "Guide Alpha Topic" in data.get("citations", []))
+        check("ep: allowed emitted citation returned", "Source Page 4" in data.get("citations_used", []))
+        check("ep: unsupported citation reported", data.get("citations_unsupported") == ["Guide Fake Topic"])
+        check("ep: unsupported citation stripped from answer", "Guide Fake Topic" not in data.get("answer", ""))
+        check("ep: normal bracketed prose not treated as citation", "[optional note]" in data.get("answer", ""))
+        check("ep: validation fields returned", data.get("citation_validation") == {"ok": False, "unsupported_count": 1})
+        check("ep: allowed labels returned", "Source Page 4" in data.get("citations_allowed", []))
         check("ep: retrieved chunks bounded", 1 <= len(data.get("retrieved_chunks", [])) <= ask_sessions.MAX_RETRIEVED_CHUNKS)
         check("ep: no retrieved chunk text in response", all("text" not in row for row in data.get("retrieved_chunks", [])))
         check("ep: no raw prompt in response", "Available citation labels" not in rm.text and "Retrieved guide/source chunks" not in rm.text)

@@ -10,11 +10,34 @@
 - **Trunk includes:** `af0ec0e` (Ask Slice 1 design), `2634f63` (Ask Slice 2 context
   inventory), `a29a405` (Ask Slice 3 context preparation), and the inserted Ask
   workspace shell, on top of the validated LMM group and prior feature groups.
-- **Active work branch:** `ask-chat-ui` — frontend Ask chat UI wiring ran here; see
-  "What just landed". **Not committed/pushed** unless the operator asks.
-  **NEXT = emitted-citation validation + chat UX polish.**
+- **Active work branch:** `ask-chat-polish-citations` — Ask chat polish + emitted
+  citation validation ran here; see "What just landed". **Not committed/pushed**
+  unless the operator asks. **NEXT = Ask session management UI.**
 
 ## What just landed
+- **Ask Your Guide — chat polish + emitted-citation validation** (branch
+  `ask-chat-polish-citations`). The local-only Ask message endpoint now validates
+  bracket-style citations emitted by the model against the exact citation labels
+  retrieved for the turn. Unsupported Ask-looking citations are stripped from the
+  returned/stored answer and reported via `citations_unsupported` +
+  `citation_validation`; normal bracketed prose is preserved. Responses also include
+  `citations_allowed` and `citations_used`, with trusted `citations` mirroring used
+  citations. The prompt still requires grounding/exact labels but now asks for fewer,
+  clearer citations at paragraph ends or in a short sources line. Frontend polish:
+  safe attachment-summary formatting fixes `Guide only · [object Object]`, full
+  `ask_...` session ids are hidden behind a friendly status label, assistant answers
+  render through a tiny inert heading/bold/list/preformatted subset renderer (no
+  `dangerouslySetInnerHTML`, no markdown dependency), unsupported citations show a
+  subtle warning and are not trusted chips, and retrieved chunk metadata is collapsed
+  by default behind `Sources used` / `Show retrieved chunks`. **No chunk text, raw
+  prompts, keys, full URLs, browser storage, extra uploads, streaming, cloud fallback,
+  hosted selector, DeepSeek/Qwen fallback, local model process control, provider
+  settings writes, or new dependency.** Verified: `npm run test:ask-guide`,
+  `npm run build`, `npm run test:local-model-command`,
+  `npm run test:local-model-status`, pure portions of the three Ask Python scripts on
+  the host, `python -m compileall api pipeline`, and compose config exit 0. Host
+  endpoint portions skipped because FastAPI is not installed; the running Docker image
+  was healthy but did not include `test_scripts/`.
 - **Ask Your Guide — frontend chat UI wiring (FRONTEND)** (branch `ask-chat-ui`).
   The existing `Ask Guide` workspace now consumes the backend local chat API:
   guide/context inventory and explicit prepare still use
@@ -99,8 +122,8 @@
   `test_ask_context_inventory.py` **50/50** unchanged, live prepare→hit on a real job +
   clean response/cache secret scan, read-only sha256 of `clean.md`/`extracted.txt`/
   `job.json` unchanged. See `CURRENT_TASK.md` #52. Historical NEXT here is superseded:
-  backend local chat API and frontend chat UI wiring are now done; current NEXT is
-  emitted-citation validation + chat UX polish.
+  backend local chat API, frontend chat UI wiring, and chat/citation polish are now
+  done; current NEXT is Ask session management UI.
 - **Ask Your Guide — Slice 2: backend context inventory endpoint (BACKEND ONLY)**
   (branch `ask-context-inventory`). Two **read-only** endpoints over generated-guide
   artifacts: `GET /api/ask/jobs` lists **only Ask-eligible jobs** (those with a
@@ -303,12 +326,11 @@ commit before moving on. Surgical edits, not rewrites. The PDF/Chromium pipeline
 load-bearing — do not rewrite casually.
 
 ## Next recommended slice
-**Ask Your Guide — emitted-citation validation + chat UX polish.** The local-only
-chat UI is now wired. Add a tight accuracy/polish slice that validates or flags
-model-emitted citations against the backend allowed citation labels for the turn,
-and polish chat edge states around missing/stale context and long answers. Keep it
-local-only: no extra uploads, no streaming unless separately designed, no
-hosted-provider selector, no host process control, and no rolling summary UI yet.
+**Ask Your Guide — session management UI.** Add first-class controls for existing
+Ask chats: list sessions for the selected guide, start a new chat, clear a session's
+history, and delete a session. Keep the slice local-only and narrow: no extra
+uploads, no streaming, no hosted-provider selector, no host process control, and no
+rolling summary UI yet.
 - **Focused manual validation / polish of the Shortcut Inspector UI.** The
   inspect→repair loop + degraded-activation confirm are complete and validated at
   the API + harness level; the remaining gap is a human click-through of the live

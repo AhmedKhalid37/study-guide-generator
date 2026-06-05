@@ -87,6 +87,31 @@ export function formatDate(value) {
   }).format(date);
 }
 
+export function formatAttachmentSummary(value) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return "";
+  const count = Number.isFinite(value.count) ? value.count : 0;
+  const chars = Number.isFinite(value.total_extracted_chars) ? value.total_extracted_chars : null;
+  const warnings = Number.isFinite(value.warning_count) ? value.warning_count : 0;
+  const parts = [];
+  if (count > 0) parts.push(`${formatCount(count)} attachment${count === 1 ? "" : "s"}`);
+  if (chars && chars > 0) parts.push(`${formatCount(chars)} extracted chars`);
+  if (warnings > 0 || value.has_warnings) parts.push(`${formatCount(warnings || 1)} warning${(warnings || 1) === 1 ? "" : "s"}`);
+  return parts.join(" · ");
+}
+
+export function guideSourceSummary(job) {
+  const prefix = job?.source_available ? "Guide + extracted source" : "Guide only";
+  const summary = formatAttachmentSummary(job?.attachment_summary);
+  return summary ? `${prefix} · ${summary}` : prefix;
+}
+
+export function sessionStatusLabel(session) {
+  if (!session?.sessionId) return "";
+  const id = String(session.sessionId);
+  const suffix = id.startsWith("ask_") ? id.slice(-6) : "";
+  return suffix ? `Local chat session active · ${suffix}` : "Local chat session active";
+}
+
 export function readinessState(context) {
   const readiness = context?.readiness;
   if (readiness?.ready === true || readiness?.status === READINESS_READY) return READINESS_READY;
@@ -213,6 +238,107 @@ export function retrievedChunkRows(value) {
     .slice(0, MAX_CHUNKS);
 }
 
+export function citationWarningText(value) {
+  const unsupported = Array.isArray(value?.citationsUnsupported)
+    ? value.citationsUnsupported
+    : Array.isArray(value?.citations_unsupported)
+      ? value.citations_unsupported
+      : [];
+  const count =
+    Number.isFinite(value?.citationValidation?.unsupportedCount)
+      ? value.citationValidation.unsupportedCount
+      : Number.isFinite(value?.citation_validation?.unsupported_count)
+        ? value.citation_validation.unsupported_count
+        : unsupported.length;
+  return count > 0
+    ? "Some model citations were not in the retrieved context and were removed."
+    : "";
+}
+
+export function answerBlocks(value) {
+  const text = safeDisplayText(value);
+  if (!text) return [];
+  const lines = text.replace(/\\\$/g, "$").split(/\r?\n/);
+  const blocks = [];
+  let paragraph = [];
+  let list = [];
+  let code = [];
+  let inFence = false;
+
+  const flushParagraph = () => {
+    const content = paragraph.join(" ").trim();
+    if (content) blocks.push({ type: "paragraph", segments: inlineSegments(content) });
+    paragraph = [];
+  };
+  const flushList = () => {
+    if (list.length) blocks.push({ type: "list", items: list });
+    list = [];
+  };
+  const flushCode = () => {
+    if (code.length) blocks.push({ type: "pre", text: code.join("\n") });
+    code = [];
+  };
+
+  lines.forEach((rawLine) => {
+    const line = rawLine.trimEnd();
+    if (/^```/.test(line.trim())) {
+      if (inFence) {
+        flushCode();
+        inFence = false;
+      } else {
+        flushParagraph();
+        flushList();
+        inFence = true;
+      }
+      return;
+    }
+    if (inFence) {
+      code.push(line);
+      return;
+    }
+    if (!line.trim()) {
+      flushParagraph();
+      flushList();
+      return;
+    }
+    const heading = /^(#{1,4})\s+(.+)$/.exec(line.trim());
+    if (heading) {
+      flushParagraph();
+      flushList();
+      blocks.push({ type: "heading", level: Math.min(3, heading[1].length), segments: inlineSegments(heading[2]) });
+      return;
+    }
+    const listItem = /^(\d+\.|[-*])\s+(.+)$/.exec(line.trim());
+    if (listItem) {
+      flushParagraph();
+      list.push(inlineSegments(listItem[2]));
+      return;
+    }
+    flushList();
+    paragraph.push(line.trim());
+  });
+  if (inFence) flushCode();
+  flushParagraph();
+  flushList();
+  return blocks;
+}
+
+export function inlineSegments(value) {
+  const text = safeDisplayText(value);
+  if (!text) return [];
+  const segments = [];
+  const boldRe = /\*\*([^*\n]+)\*\*/g;
+  let last = 0;
+  let match;
+  while ((match = boldRe.exec(text))) {
+    if (match.index > last) segments.push({ type: "text", text: text.slice(last, match.index) });
+    segments.push({ type: "strong", text: match[1] });
+    last = match.index + match[0].length;
+  }
+  if (last < text.length) segments.push({ type: "text", text: text.slice(last) });
+  return segments.length ? segments : [{ type: "text", text }];
+}
+
 export function normalizeAskHistory(value) {
   if (!Array.isArray(value)) return [];
   return value
@@ -229,6 +355,16 @@ export function normalizeAskHistory(value) {
         createdAt: typeof item.created_at === "string" ? item.created_at : null,
         citations: role === "assistant" ? safeCitationLabels(item.citations) : [],
         retrievedChunks: role === "assistant" ? retrievedChunkRows(item.retrieved_chunks) : [],
+        citationsUnsupported: role === "assistant" ? safeCitationLabels(item.citations_unsupported) : [],
+        citationValidation:
+          role === "assistant" && item.citation_validation && typeof item.citation_validation === "object"
+            ? {
+                ok: item.citation_validation.ok !== false,
+                unsupportedCount: Number.isFinite(item.citation_validation.unsupported_count)
+                  ? item.citation_validation.unsupported_count
+                  : 0,
+              }
+            : { ok: true, unsupportedCount: 0 },
       };
     })
     .filter(Boolean);
@@ -265,11 +401,25 @@ export function normalizeAskMessageResponse(value, fallbackUserMessage = "", key
   const status = safeDisplayText(value?.status || "", "error");
   const error = value?.error && typeof value.error === "object" ? value.error : null;
   const answer = safeDisplayText(value?.answer || "");
+  const citationsUsed = safeCitationLabels(value?.citations_used || value?.citations);
+  const citationsUnsupported = safeCitationLabels(value?.citations_unsupported);
+  const citationValidation =
+    value?.citation_validation && typeof value.citation_validation === "object"
+      ? {
+          ok: value.citation_validation.ok !== false,
+          unsupportedCount: Number.isFinite(value.citation_validation.unsupported_count)
+            ? value.citation_validation.unsupported_count
+            : citationsUnsupported.length,
+        }
+      : { ok: citationsUnsupported.length === 0, unsupportedCount: citationsUnsupported.length };
   return {
     sessionId: typeof value?.session_id === "string" ? value.session_id : null,
     status,
     answer,
-    citations: safeCitationLabels(value?.citations),
+    citations: citationsUsed,
+    citationsAllowed: safeCitationLabels(value?.citations_allowed),
+    citationsUnsupported,
+    citationValidation,
     retrievedChunks: retrievedChunkRows(value?.retrieved_chunks),
     localModel:
       value?.local_model && typeof value.local_model === "object"
@@ -296,8 +446,10 @@ export function normalizeAskMessageResponse(value, fallbackUserMessage = "", key
               id: `assistant-${keySeed}`,
               role: "assistant",
               content: answer,
-              citations: safeCitationLabels(value?.citations),
+              citations: citationsUsed,
               retrievedChunks: retrievedChunkRows(value?.retrieved_chunks),
+              citationsUnsupported,
+              citationValidation,
             },
           ]
         : [],

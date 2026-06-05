@@ -1055,3 +1055,22 @@ bounded message history in React state. **Why:** guide selection remains a read-
 inspection action, switching guides does not create empty session directories, and the
 chat state starts only when the user actually asks a question. No chat is persisted to
 browser storage; session/history persistence remains server-side under the parent job.
+
+## Ask emitted citations are sanitized, not fabricated or rejected (2026-06-05)
+The Ask chat polish slice validates only bracket-style citations that look like the
+backend's Ask labels (`Guide ...` / `Source ...`) against the exact labels retrieved for
+that turn. If the model emits an unsupported Ask-looking label, the backend strips that
+citation from the returned/stored answer and reports it in `citations_unsupported` plus
+`citation_validation`; normal bracketed prose that does not look like an Ask citation is
+left untouched. **Why:** rejecting an otherwise useful local answer is too disruptive,
+but turning a hallucinated page/section into a trusted chip would violate the accuracy
+contract. Stripping + reporting keeps the answer readable, prevents fabricated source
+chips, and gives the UI a subtle warning without pretending the backend can repair the
+model's citation. This is intentionally a small deterministic matcher, not a broad
+citation parser.
+
+The frontend also uses a tiny inert answer renderer for the subset the local model
+commonly emits: headings, bold, lists, line breaks, and fenced blocks. It returns React
+text nodes from normalized helper data, never `dangerouslySetInnerHTML`, and adds no
+markdown dependency. **Why:** the Ask UI needs readable answers now, but a full markdown
+pipeline would widen dependency/security surface for a narrow chat-polish slice.
