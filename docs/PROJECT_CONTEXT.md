@@ -114,7 +114,8 @@ flashcards with CSV / Anki / Quizlet export.
 - **Ask Your Guide — IN PROGRESS (Slice 1 design DONE; Slice 2 backend context
   inventory DONE; Slice 3 backend context preparation / chunking DONE; inserted
   workspace shell DONE; backend local chat API DONE; frontend chat UI wiring DONE;
-  chat polish + emitted-citation validation DONE; session management UI/API DONE).** A
+  chat polish + emitted-citation validation DONE; session management UI/API DONE;
+  chat math/source visual polish DONE).** A
   dedicated **`AskGuideWorkspace`** (first-class page/tab alongside
   Builder/Library/Styles/Providers) where the user selects a generated guide/job and
   chats with it using a **local model only**. Designed in
@@ -172,8 +173,20 @@ flashcards with CSV / Anki / Quizlet export.
   then added safe session listing, switching, new chat, clear-history, and delete
   controls/endpoints; clear keeps the session/context cache, delete removes only the
   fenced session directory, and lazy session creation on first send remains intact.
-  **NEXT = Ask chat math/source visual polish**, still no extra uploads unless chosen
-  as a later explicit slice.
+  The math/source visual-polish slice then improved the existing frontend-only answer
+  renderer without adding markdown/KaTeX/MathJax dependencies: inert parsing handles
+  `$$...$$`, `\[...\]`, `\(...\)`, and escaped-dollar inline math; display math
+  renders as readable monospace blocks preserving line breaks; inline math renders as
+  small monospace chips. Trusted backend-used citations appear in a clearer **Sources
+  used** section, unsupported citations remain warning-only, retrieved chunk metadata
+  stays collapsed with label/type/page/score/token rows, and chunk text is still
+  never rendered. Local-only Ask behavior and session management are unchanged; no
+  backend retrieval, prompt assembly, model-call, citation-validation, session,
+  clear/delete, or lazy session creation logic changed. **NEXT = manual browser
+  validation/polish of the Ask chat math/source UI slice, or Ask extra session uploads
+  only as a separate explicit slice.** Still deferred: extra uploads unless explicitly
+  chosen, streaming, hosted/cloud Ask, rolling summary, multimodal, and process
+  control.
   See `DECISIONS.md`.
 
 ## 4. Architecture facts a new session MUST know

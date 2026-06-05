@@ -829,15 +829,23 @@ function ChatBubble({ message }) {
           </p>
         )}
         {assistant && message.citations?.length > 0 && (
-          <div className="mt-3 flex flex-wrap gap-1.5">
-            {message.citations.map((label) => (
-              <MiniChip key={label}>{label}</MiniChip>
-            ))}
+          <div className="mt-3 rounded-lg border border-[#86EFAC]/15 bg-[#86EFAC]/[0.04] p-2">
+            <div className="mb-1.5 flex items-center gap-1.5 text-[10.5px] font-semibold uppercase tracking-wide text-[#86EFAC]">
+              <Check size={12} />
+              Sources used
+            </div>
+            <div className="flex flex-wrap gap-1.5">
+              {message.citations.map((label) => (
+                <MiniChip key={label}>{label}</MiniChip>
+              ))}
+            </div>
           </div>
         )}
         {assistant && message.retrievedChunks?.length > 0 && (
           <details className="mt-3 border-t border-white/5 pt-2">
-            <summary className="cursor-pointer text-[11px] font-medium text-[#A8AEBC]">Sources used</summary>
+            <summary className="cursor-pointer text-[11px] font-medium text-[#A8AEBC]">
+              Retrieved chunk metadata ({formatCount(message.retrievedChunks.length)})
+            </summary>
             <div className="mt-2">
               <RetrievedChunkList rows={message.retrievedChunks} compact />
             </div>
@@ -879,6 +887,13 @@ function AnswerText({ content }) {
             </pre>
           );
         }
+        if (block.type === "math") {
+          return (
+            <div key={index} className="overflow-x-auto rounded-lg border border-[#60A5FA]/20 bg-[#60A5FA]/[0.06] px-3 py-2 font-mono text-[12.5px] leading-6 text-[#DBEAFE]">
+              <pre className="whitespace-pre-wrap">{block.text}</pre>
+            </div>
+          );
+        }
         return (
           <p key={index}>
             <InlineSegments segments={block.segments} />
@@ -897,6 +912,10 @@ function InlineSegments({ segments }) {
           <strong key={index} className="font-semibold text-[#F4F4F5]">
             {segment.text}
           </strong>
+        ) : segment.type === "math" ? (
+          <code key={index} className="mx-0.5 rounded border border-[#60A5FA]/20 bg-[#60A5FA]/[0.08] px-1.5 py-0.5 font-mono text-[12px] text-[#DBEAFE]">
+            {segment.text}
+          </code>
         ) : (
           <React.Fragment key={index}>{segment.text}</React.Fragment>
         )
@@ -913,17 +932,43 @@ function RetrievedChunkList({ rows, compact = false }) {
   return (
     <div className="space-y-1.5">
       {safeRows.map((row, index) => (
-        <div key={`${row.label}-${row.chunkId || index}`} className={compact ? "text-[11px] leading-5 text-[#9098A8]" : "rounded-lg border border-white/10 bg-white/[0.02] p-2 text-[11.5px] leading-5 text-[#D4D4D8]"}>
-          <span className="font-medium text-[#E8EAF0]">{row.label}</span>
-          <span className="text-[#6B7185]">
-            {row.sourceType ? ` · ${row.sourceType}` : ""}
-            {row.page !== null ? ` · p. ${row.page}` : ""}
-            {row.approxTokens !== null ? ` · ~${formatCount(row.approxTokens)} tokens` : ""}
-          </span>
+        <div
+          key={`${row.label}-${row.chunkId || index}`}
+          className={
+            compact
+              ? "rounded-md border border-white/10 bg-white/[0.025] px-2 py-1.5 text-[11px] leading-5"
+              : "rounded-lg border border-white/10 bg-white/[0.02] p-2 text-[11.5px] leading-5"
+          }
+        >
+          <div className="flex min-w-0 items-start justify-between gap-2">
+            <span className="min-w-0 truncate font-medium text-[#E8EAF0]">{row.label}</span>
+            {row.score !== null && (
+              <span className="shrink-0 rounded border border-white/10 bg-white/[0.04] px-1.5 py-0.5 font-mono text-[10px] text-[#A8AEBC]">
+                score {formatScore(row.score)}
+              </span>
+            )}
+          </div>
+          <div className="mt-1 flex flex-wrap gap-1.5 text-[10.5px] text-[#9098A8]">
+            {row.sourceType && <SourceMeta label="Type" value={row.sourceType} />}
+            {row.page !== null && <SourceMeta label="Page" value={formatCount(row.page)} />}
+            {row.approxTokens !== null && <SourceMeta label="Tokens" value={`~${formatCount(row.approxTokens)}`} />}
+          </div>
         </div>
       ))}
     </div>
   );
+}
+
+function SourceMeta({ label, value }) {
+  return (
+    <span className="rounded border border-white/10 bg-white/[0.03] px-1.5 py-0.5">
+      <span className="text-[#6B7185]">{label}</span> <span className="text-[#D4D4D8]">{value}</span>
+    </span>
+  );
+}
+
+function formatScore(value) {
+  return Number.isFinite(value) ? value.toFixed(value >= 10 ? 0 : 2) : "0";
 }
 
 function ContextRail({
@@ -1016,7 +1061,9 @@ function ContextRail({
           )}
           {lastRetrievedChunks.length > 0 && (
             <details>
-              <summary className="cursor-pointer text-[11.5px] font-medium text-[#A8AEBC]">Show retrieved chunks</summary>
+              <summary className="cursor-pointer text-[11.5px] font-medium text-[#A8AEBC]">
+                Show retrieved chunks ({formatCount(lastRetrievedChunks.length)})
+              </summary>
               <div className="mt-2">
                 <RetrievedChunkList rows={lastRetrievedChunks} />
               </div>

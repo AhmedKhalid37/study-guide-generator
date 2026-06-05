@@ -5,8 +5,26 @@
 
 ---
 
-## NEXT — Ask session management UI/API DONE; NEXT = Ask chat math/source visual polish. (LMM Phase 1 COMPLETE + VALIDATED below.)
+## NEXT — Ask chat math/source visual polish DONE; NEXT = manual UI validation or explicit extra-uploads slice. (LMM Phase 1 COMPLETE + VALIDATED below.)
 
+- **Ask Your Guide — chat math/source visual polish is DONE** — branch
+  `ask-chat-math-source-polish`, see DONE #58 below. Frontend-only Ask chat
+  readability polish in `frontend/src/askGuide.js`,
+  `frontend/src/components/AskGuideWorkspace.jsx`, and
+  `frontend/scripts/verify-ask-guide.mjs`. Added inert math-aware answer parsing for
+  `$$...$$`, `\[...\]`, `\(...\)`, and escaped-dollar inline math; display math
+  renders as readable monospace blocks preserving line breaks; inline math renders as
+  small monospace chips. No `dangerouslySetInnerHTML`, no markdown dependency, no
+  KaTeX/MathJax, and no new dependency. Trusted backend-used citations now appear in
+  a clearer **Sources used** section; unsupported citations remain warning-only and
+  are not trusted chips. Retrieved chunk metadata stays collapsed and shows cleaner
+  label/type/page/score/token rows; chunk text is still never rendered. Local-only
+  Ask behavior and session management are unchanged.
+- **NEXT — conservative choices only.** Do not start extra uploads automatically.
+  Recommended next is either (1) manual browser validation/polish of this Ask chat UI
+  slice, or (2) Ask Your Guide extra session uploads as a separate explicit slice if
+  the operator chooses to continue Ask features. Keep streaming, hosted/cloud Ask,
+  rolling summary, multimodal, and process control deferred.
 - **Ask Your Guide — session management UI/API is DONE** — branch
   `ask-session-management`, see DONE #57 below. Added safe session listing,
   switching, new chat, clear-history, and delete-session behavior. Backend routes:
@@ -19,10 +37,6 @@
   + local-only chat behavior unchanged. No extra uploads, no export, no streaming,
   no cloud/DeepSeek/Qwen fallback, no process control, no provider settings writes,
   and no new dependencies.
-- **NEXT — Ask chat math/source visual polish.** Tight UI polish only: improve how
-  math-ish text and source/citation affordances read in the existing chat view. Keep
-  backend behavior, local-only enforcement, and session management unchanged. No
-  extra uploads unless explicitly chosen as a later slice.
 - **Ask Your Guide — chat polish + emitted-citation validation is DONE** — branch
   `ask-chat-polish-citations`, see DONE #56 below. The local-only Ask message
   endpoint now validates bracket-style model citations against the turn's retrieved
@@ -2305,6 +2319,45 @@ parked on the `hardening` branch — not merged, not deleted.
       not include `test_scripts/`, so in-container endpoint-script reruns were not
       available without copying test files into the container.
 
+58. **Ask Your Guide — chat math/source visual polish** — branch
+    `ask-chat-math-source-polish`.
+    Frontend-only readability polish for the existing local Ask chat UI:
+    - **Code files changed:** `frontend/src/askGuide.js`,
+      `frontend/src/components/AskGuideWorkspace.jsx`, and
+      `frontend/scripts/verify-ask-guide.mjs`.
+    - **Math answer rendering:** added inert math-aware answer parsing for
+      `$$...$$`, `\[...\]`, `\(...\)`, and escaped-dollar inline math. Display math
+      renders as readable monospace blocks preserving line breaks; inline math renders
+      as small monospace chips. No `dangerouslySetInnerHTML`, no markdown dependency,
+      no KaTeX/MathJax, and no new dependency.
+    - **Source/citation affordances:** trusted backend-used citations now appear in a
+      clearer **Sources used** section. Unsupported citations remain warning-only and
+      are not trusted chips. Retrieved chunk metadata remains collapsed by default
+      and shows cleaner label/type/page/score/token rows. Chunk text is still never
+      rendered.
+    - **Behavior preserved:** local-only Ask behavior is unchanged. Session
+      management behavior is unchanged. No backend retrieval, prompt assembly,
+      model-call, citation-validation, session, clear/delete, or lazy session
+      creation logic changed. No extra uploads, streaming, hosted/cloud Ask mode,
+      DeepSeek/Qwen fallback, rolling summary, multimodal, local model process
+      control, provider settings writes, browser storage, or new dependencies.
+    - **Verified:** root `npm run test:ask-guide` failed because the root package has
+      no such script. `frontend` `npm run test:ask-guide` passed. `frontend`
+      `npm run build` passed with the existing Vite chunk-size warning. `frontend`
+      `npm run test:local-model-command` passed. `frontend`
+      `npm run test:local-model-status` passed. `python -m compileall api pipeline`
+      passed. `python test_scripts/test_ask_local_chat.py` passed pure checks;
+      endpoint section skipped because FastAPI is unavailable on the host. `python
+      test_scripts/test_ask_context_inventory.py` passed pure checks; endpoint
+      section skipped because FastAPI is unavailable on the host. `python
+      test_scripts/test_ask_context_prepare.py` passed pure checks; endpoint section
+      skipped because FastAPI is unavailable on the host. `python
+      test_scripts/smoke_release.py` passed **28/28**. `docker compose config
+      >/tmp/compose-check.txt` exit code 0.
+    - **Manual UI still needed:** browser visual check of Ask responses containing
+      inline math, display math, trusted citations, unsupported citations, and
+      retrieved-source metadata at desktop/mobile widths.
+
 ## NEXT (in order)
 
 > **Provider settings feature group is DONE through Slice 5** (DONE #32→#36):
@@ -2345,25 +2398,28 @@ parked on the `hardening` branch — not merged, not deleted.
 > `docs/VALIDATION_LOCAL_MODEL_MANAGER_PHASE1.md`). The earlier "Phase-1 validation /
 > docs reconciliation" recommendation is **done and removed** from this list.
 
-1. **Ask Your Guide — chat math/source visual polish (RECOMMENDED next).**
-   Tight UI polish for the existing Ask chat: make math-ish text/source affordances
-   read more cleanly, without changing retrieval/model behavior or adding new upload
-   surfaces. Keep local-only; no streaming, no hosted provider selector, no rolling
-   summary, and no process control.
-2. **Local Model Manager — Phase 2 (host companion launcher) DESIGN-FIRST, optional.**
+1. **Manual browser validation / polish of the Ask chat math/source UI slice
+   (RECOMMENDED next).** Check Ask responses containing inline math, display math,
+   trusted citations, unsupported citations, and retrieved-source metadata at
+   desktop/mobile widths. Validation / polish only unless a concrete UI bug surfaces.
+2. **Ask Your Guide — extra session uploads (optional, explicit separate slice).**
+   Do not start automatically. If the operator chooses to continue Ask features,
+   design/implement session-scoped extra uploads separately, keeping them out of job
+   artifacts and preserving local-only Ask behavior.
+3. **Local Model Manager — Phase 2 (host companion launcher) DESIGN-FIRST, optional.**
    Only if the user wants **app-managed start/stop** later. Process control (start/stop
    a host `llama-server`) **crosses the container boundary** (non-root uid 10001
    container managing a host process) and is **deferred to a host companion** designed
    in LMM Slice 5 — **direct Docker→host spawn is REJECTED** (design §2 Option D /
    §13). Get sign-off before any companion code. Separate from the complete in-app
    provider settings.
-3. **Math/PDF font-size rationalization (cause C) — optional CSS-only
+4. **Math/PDF font-size rationalization (cause C) — optional CSS-only
    investigation.** The remaining math/PDF fidelity slice; investigate the
    CSS-only font sizing before any change.
-4. **Large-PDF preflight size-limit polish — optional, later.** Raising/uniting
+5. **Large-PDF preflight size-limit polish — optional, later.** Raising/uniting
    the upload ceiling + preflight size thresholds is a possible later slice. It is
    **explicitly not part of this slice** and not started.
-5. **Focused manual validation / polish of the Shortcut Inspector UI.** The
+6. **Focused manual validation / polish of the Shortcut Inspector UI.** The
    inspect→repair loop is complete and validated at the API + served-bundle level
    (`docs/VALIDATION_SHORTCUT_INSPECTOR_REPAIR.md`); the remaining gap is a human
    click-through of the live Home/Customize 3-tier badges, the Inspector drawer

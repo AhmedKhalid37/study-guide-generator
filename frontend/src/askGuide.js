@@ -28,11 +28,14 @@ export const CHAT_SENDING = "sending";
 const MAX_MESSAGE_CHARS = 12000;
 const MAX_CITATIONS = 12;
 const MAX_CHUNKS = 12;
+const INLINE_MATH_MAX_CHARS = 240;
 const SECRET_RE = /\bsk-[A-Za-z0-9_-]{8,}\b/g;
 const AUTH_RE = /\bAuthorization\s*:\s*Bearer\s+[A-Za-z0-9._-]+/gi;
 const URL_RE = /https?:\/\/[^\s<>)"']+/g;
 const POSIX_PATH_RE = /(?:\/(?:home|Users|mnt|tmp|var|private|workspace|app|root)\/[^\s<>)"']+)/g;
 const WINDOWS_PATH_RE = /[A-Za-z]:\\[^\s<>)"']+/g;
+const DISPLAY_MATH_RE = /(\$\$[\s\S]+?\$\$|\\\[[\s\S]+?\\\])/g;
+const INLINE_TOKEN_RE = /(\*\*([^*\n]+)\*\*|\\\(([\s\S]{1,240}?)\\\)|\$([^$\n]{1,240}?)\$)/g;
 
 export function safeText(value, fallback = "Unavailable") {
   return typeof value === "string" && value.trim() ? value.trim() : fallback;
@@ -272,9 +275,9 @@ export function citationWarningText(value) {
 }
 
 export function answerBlocks(value) {
-  const text = safeDisplayText(value);
+  const text = normalizeMathText(safeDisplayText(value));
   if (!text) return [];
-  const lines = text.replace(/\\\$/g, "$").split(/\r?\n/);
+  const tokens = answerTextTokens(text);
   const blocks = [];
   let paragraph = [];
   let list = [];
@@ -295,7 +298,18 @@ export function answerBlocks(value) {
     code = [];
   };
 
-  lines.forEach((rawLine) => {
+  tokens.forEach((token) => {
+    if (token.type === "display_math") {
+      flushParagraph();
+      flushList();
+      if (inFence) {
+        code.push(token.text);
+      } else {
+        blocks.push({ type: "math", text: token.text });
+      }
+      return;
+    }
+    const rawLine = token.text;
     const line = rawLine.trimEnd();
     if (/^```/.test(line.trim())) {
       if (inFence) {
@@ -339,16 +353,50 @@ export function answerBlocks(value) {
   return blocks;
 }
 
-export function inlineSegments(value) {
-  const text = safeDisplayText(value);
+export function normalizeMathText(value) {
+  return safeDisplayText(value).replace(/\\\$/g, "$");
+}
+
+export function answerTextTokens(value) {
+  const text = normalizeMathText(value);
   if (!text) return [];
-  const segments = [];
-  const boldRe = /\*\*([^*\n]+)\*\*/g;
+  const tokens = [];
   let last = 0;
   let match;
-  while ((match = boldRe.exec(text))) {
+  while ((match = DISPLAY_MATH_RE.exec(text))) {
+    pushLineTokens(tokens, text.slice(last, match.index));
+    const raw = match[0];
+    const math = raw.startsWith("$$") ? raw.slice(2, -2) : raw.slice(2, -2);
+    tokens.push({ type: "display_math", text: math.trim() });
+    last = match.index + raw.length;
+  }
+  pushLineTokens(tokens, text.slice(last));
+  return tokens;
+}
+
+function pushLineTokens(tokens, value) {
+  if (!value) return;
+  value.split(/\r?\n/).forEach((line) => tokens.push({ type: "line", text: line }));
+}
+
+export function inlineSegments(value) {
+  const text = normalizeMathText(value);
+  if (!text) return [];
+  const segments = [];
+  let last = 0;
+  let match;
+  while ((match = INLINE_TOKEN_RE.exec(text))) {
     if (match.index > last) segments.push({ type: "text", text: text.slice(last, match.index) });
-    segments.push({ type: "strong", text: match[1] });
+    if (match[2]) {
+      segments.push({ type: "strong", text: match[2] });
+    } else {
+      const math = match[3] || match[4] || "";
+      if (math.trim() && math.length <= INLINE_MATH_MAX_CHARS) {
+        segments.push({ type: "math", text: math.trim() });
+      } else {
+        segments.push({ type: "text", text: match[0] });
+      }
+    }
     last = match.index + match[0].length;
   }
   if (last < text.length) segments.push({ type: "text", text: text.slice(last) });

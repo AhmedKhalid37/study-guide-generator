@@ -10,11 +10,37 @@
 - **Trunk includes:** `af0ec0e` (Ask Slice 1 design), `2634f63` (Ask Slice 2 context
   inventory), `a29a405` (Ask Slice 3 context preparation), and the inserted Ask
   workspace shell, on top of the validated LMM group and prior feature groups.
-- **Active work branch:** `ask-session-management` — Ask session management UI/API
-  ran here; see "What just landed". **Not committed/pushed** unless the operator
-  asks. **NEXT = Ask chat math/source visual polish.**
+- **Active work branch:** `ask-chat-math-source-polish` — Ask chat math/source
+  visual polish ran here; see "What just landed". **Not committed/pushed** unless
+  the operator asks. **NEXT = manual browser validation/polish of this Ask chat UI
+  slice, or Ask extra session uploads only as a separate explicit slice.**
 
 ## What just landed
+- **Ask Your Guide — chat math/source visual polish** (branch
+  `ask-chat-math-source-polish`). Frontend-only polish in
+  `frontend/src/askGuide.js`, `frontend/src/components/AskGuideWorkspace.jsx`, and
+  `frontend/scripts/verify-ask-guide.mjs`. Added inert math-aware answer parsing for
+  `$$...$$`, `\[...\]`, `\(...\)`, and escaped-dollar inline math. Display math now
+  renders as readable monospace blocks preserving line breaks; inline math renders as
+  small monospace chips. No `dangerouslySetInnerHTML`, no markdown dependency, no
+  KaTeX/MathJax, and no new dependency. Trusted backend-used citations now appear in
+  a clearer **Sources used** section; unsupported citations remain warning-only and
+  are not trusted chips. Retrieved chunk metadata stays collapsed and shows cleaner
+  label/type/page/score/token rows; chunk text is still never rendered. Local-only
+  Ask behavior and session management are unchanged: no backend retrieval, prompt
+  assembly, model-call, citation-validation, session, clear/delete, or lazy session
+  creation logic changed. **No extra uploads, streaming, hosted/cloud Ask mode,
+  DeepSeek/Qwen fallback, rolling summary, multimodal, local model process control,
+  provider settings writes, browser storage, or new dependency.** Validation: root
+  `npm run test:ask-guide` failed because the root package has no such script;
+  `frontend` `npm run test:ask-guide` passed; `frontend` `npm run build` passed with
+  the existing Vite chunk-size warning; `frontend` local-model command/status checks
+  passed; `python -m compileall api pipeline` passed; Ask local-chat, inventory, and
+  prepare scripts passed pure checks with host endpoint sections skipped because
+  FastAPI is unavailable; release smoke passed **28/28**; compose config exit 0.
+  Manual UI still needed: browser visual check of Ask responses containing inline
+  math, display math, trusted citations, unsupported citations, and retrieved-source
+  metadata at desktop/mobile widths.
 - **Ask Your Guide — session management UI/API** (branch `ask-session-management`).
   Adds `GET /api/ask/jobs/{job_id}/sessions`,
   `DELETE /api/ask/sessions/{session_id}/history`, and
@@ -144,7 +170,9 @@
   clean response/cache secret scan, read-only sha256 of `clean.md`/`extracted.txt`/
   `job.json` unchanged. See `CURRENT_TASK.md` #52. Historical NEXT here is superseded:
   backend local chat API, frontend chat UI wiring, chat/citation polish, and session
-  management are now done; current NEXT is Ask chat math/source visual polish.
+  management and math/source visual polish are now done; current NEXT is manual
+  browser validation/polish of the Ask chat UI slice, or extra session uploads only
+  as a separate explicit Ask slice.
 - **Ask Your Guide — Slice 2: backend context inventory endpoint (BACKEND ONLY)**
   (branch `ask-context-inventory`). Two **read-only** endpoints over generated-guide
   artifacts: `GET /api/ask/jobs` lists **only Ask-eligible jobs** (those with a
@@ -347,11 +375,15 @@ commit before moving on. Surgical edits, not rewrites. The PDF/Chromium pipeline
 load-bearing — do not rewrite casually.
 
 ## Next recommended slice
-**Ask Your Guide — chat math/source visual polish.** Improve how math-ish answer
-text and source/citation affordances read inside the existing Ask chat, without
-changing retrieval/model behavior or adding upload surfaces. Keep the slice
-local-only and narrow: no extra uploads, no streaming, no hosted-provider selector,
-no host process control, and no rolling summary UI yet.
+**Ask Your Guide — manual browser validation / polish of the completed math/source
+UI slice.** Check Ask responses containing inline math, display math, trusted
+citations, unsupported citations, and retrieved-source metadata at desktop/mobile
+widths. Validation / polish only unless a concrete UI bug surfaces.
+- **Ask Your Guide — extra session uploads** are a separate optional slice only if
+  the operator explicitly chooses to continue Ask features. Do not start extra
+  uploads automatically.
+- **Still deferred:** streaming, hosted/cloud Ask, rolling summary, multimodal, and
+  local model process control.
 - **Focused manual validation / polish of the Shortcut Inspector UI.** The
   inspect→repair loop + degraded-activation confirm are complete and validated at
   the API + harness level; the remaining gap is a human click-through of the live

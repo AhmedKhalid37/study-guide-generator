@@ -11,6 +11,7 @@ import {
   READINESS_NOT_READY,
   READINESS_READY,
   answerBlocks,
+  answerTextTokens,
   attachmentRows,
   chatReadiness,
   citationWarningText,
@@ -232,9 +233,16 @@ const blocks = answerBlocks("### Title\n\n**Bold** text\n\n1. First\n2. Second\n
 check("answerBlocks converts heading", blocks[0].type === "heading" && blocks[0].segments[0].text === "Title");
 check("answerBlocks converts bold segment", blocks[1].segments.some((segment) => segment.type === "strong" && segment.text === "Bold"));
 check("answerBlocks converts numbered lists", blocks[2].type === "list" && blocks[2].items.length === 2);
-check("answerBlocks cleans escaped math dollars", JSON.stringify(blocks).includes("$c$"));
+check("answerBlocks cleans escaped math dollars", JSON.stringify(blocks).includes('"type":"math","text":"c"'));
 check("answerBlocks returns inert data only", !JSON.stringify(blocks).includes("dangerouslySetInnerHTML"));
 check("retrieved chunk disclosure helper omits text", !JSON.stringify(retrievedChunkRows(messageResponse.retrieved_chunks)).includes("RAW CHUNK TEXT"));
+
+const mathBlocks = answerBlocks("Use \\(x^2 + y^2 = z^2\\).\n\n$$\na^2+b^2=c^2\n$$\n\nThen \\[E = mc^2\\].");
+check("answerBlocks converts inline paren math", mathBlocks[0].segments.some((segment) => segment.type === "math" && segment.text === "x^2 + y^2 = z^2"));
+check("answerBlocks preserves display dollar math block", mathBlocks.some((block) => block.type === "math" && block.text === "a^2+b^2=c^2"));
+check("answerBlocks preserves bracket display math block", mathBlocks.some((block) => block.type === "math" && block.text === "E = mc^2"));
+check("answerTextTokens separates display math", answerTextTokens("Before\n\\[x=1\\]\nAfter").filter((token) => token.type === "display_math").length === 1);
+check("retrievedChunkRows keeps score metadata", retrievedChunkRows(messageResponse.retrieved_chunks)[0].score === 9.5);
 
 const offline = normalizeAskMessageResponse({
   status: "local_offline",
