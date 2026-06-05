@@ -115,7 +115,7 @@ flashcards with CSV / Anki / Quizlet export.
   inventory DONE; Slice 3 backend context preparation / chunking DONE; inserted
   workspace shell DONE; backend local chat API DONE; frontend chat UI wiring DONE;
   chat polish + emitted-citation validation DONE; session management UI/API DONE;
-  chat math/source visual polish DONE).** A
+  chat math/source visual polish DONE; empty local-model response guard DONE).** A
   dedicated **`AskGuideWorkspace`** (first-class page/tab alongside
   Builder/Library/Styles/Providers) where the user selects a generated guide/job and
   chats with it using a **local model only**. Designed in
@@ -182,11 +182,19 @@ flashcards with CSV / Anki / Quizlet export.
   stays collapsed with label/type/page/score/token rows, and chunk text is still
   never rendered. Local-only Ask behavior and session management are unchanged; no
   backend retrieval, prompt assembly, model-call, citation-validation, session,
-  clear/delete, or lazy session creation logic changed. **NEXT = manual browser
-  validation/polish of the Ask chat math/source UI slice, or Ask extra session uploads
-  only as a separate explicit slice.** Still deferred: extra uploads unless explicitly
-  chosen, streaming, hosted/cloud Ask, rolling summary, multimodal, and process
-  control.
+  clear/delete, or lazy session creation logic changed. A follow-up bugfix discovered
+  during manual Ask UI validation guards empty local-model responses:
+  `pipeline/ask_sessions.py` catches the narrow
+  `RuntimeError("LLM returned an empty response.")` case from
+  `generate_chat_completion` and returns a structured `provider_error` with
+  `error.category: provider_empty_response` and a retryable user-safe message instead
+  of a raw FastAPI 500; the failed turn does not append a successful user/assistant
+  history pair. This did not change retrieval, prompt assembly, fallback behavior,
+  citation validation, session management, provider settings, streaming, uploads,
+  rolling summary, multimodal, or process control. **NEXT = Ask extra session uploads
+  only as a separate explicit slice, or narrow manual Ask polish if another concrete
+  issue surfaces.** Still deferred: extra uploads unless explicitly chosen,
+  streaming, hosted/cloud Ask, rolling summary, multimodal, and process control.
   See `DECISIONS.md`.
 
 ## 4. Architecture facts a new session MUST know

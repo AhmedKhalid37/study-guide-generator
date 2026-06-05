@@ -5,8 +5,24 @@
 
 ---
 
-## NEXT — Ask chat math/source visual polish DONE; NEXT = manual UI validation or explicit extra-uploads slice. (LMM Phase 1 COMPLETE + VALIDATED below.)
+## NEXT — Ask empty local-model response guard DONE; NEXT = explicit extra-uploads slice or broader manual Ask polish. (LMM Phase 1 COMPLETE + VALIDATED below.)
 
+- **Ask Your Guide — empty local-model response guard is DONE** — branch
+  `ask-empty-response-guard`, see DONE #59 below. During manual Ask UI validation
+  after the math/source polish slice, a browser Ask message returned
+  `POST /api/ask/sessions/{session_id}/message` → 500 because
+  `generate_chat_completion` raised `RuntimeError("LLM returned an empty response.")`
+  and Ask did not catch it. `pipeline/ask_sessions.py` now catches that narrow empty
+  local-model RuntimeError and returns a safe structured `provider_error` response
+  with `error.category: provider_empty_response` plus a retryable user-safe message.
+  The failed turn does not append a successful user/assistant message to history.
+  Local-only behavior is unchanged, and no retrieval, prompt assembly, model fallback,
+  citation validation, session management, clear/delete, provider settings,
+  streaming, uploads, rolling summary, multimodal, or process-control behavior
+  changed. Focused coverage was added in `test_scripts/test_ask_local_chat.py`;
+  validations are listed in DONE #59. The original empty local-model behavior was
+  not reproducible after the Docker app was rebuilt/restarted and healthy, but the
+  simulated regression is now covered.
 - **Ask Your Guide — chat math/source visual polish is DONE** — branch
   `ask-chat-math-source-polish`, see DONE #58 below. Frontend-only Ask chat
   readability polish in `frontend/src/askGuide.js`,
@@ -21,10 +37,10 @@
   label/type/page/score/token rows; chunk text is still never rendered. Local-only
   Ask behavior and session management are unchanged.
 - **NEXT — conservative choices only.** Do not start extra uploads automatically.
-  Recommended next is either (1) manual browser validation/polish of this Ask chat UI
-  slice, or (2) Ask Your Guide extra session uploads as a separate explicit slice if
-  the operator chooses to continue Ask features. Keep streaming, hosted/cloud Ask,
-  rolling summary, multimodal, and process control deferred.
+  Recommended next is either (1) broader/manual Ask UI polish only if another
+  concrete issue surfaces, or (2) Ask Your Guide extra session uploads as a separate
+  explicit slice if the operator chooses to continue Ask features. Keep streaming,
+  hosted/cloud Ask, rolling summary, multimodal, and process control deferred.
 - **Ask Your Guide — session management UI/API is DONE** — branch
   `ask-session-management`, see DONE #57 below. Added safe session listing,
   switching, new chat, clear-history, and delete-session behavior. Backend routes:
@@ -2354,9 +2370,41 @@ parked on the `hardening` branch — not merged, not deleted.
       skipped because FastAPI is unavailable on the host. `python
       test_scripts/smoke_release.py` passed **28/28**. `docker compose config
       >/tmp/compose-check.txt` exit code 0.
-    - **Manual UI still needed:** browser visual check of Ask responses containing
-      inline math, display math, trusted citations, unsupported citations, and
-      retrieved-source metadata at desktop/mobile widths.
+    - **Manual validation follow-up:** browser validation after this slice found the
+      empty local-model response guard bug recorded in DONE #59.
+
+59. **Bugfix — Ask empty local-model response guard** — branch
+    `ask-empty-response-guard`.
+    Discovered during manual Ask UI validation after the math/source polish slice.
+    - **Bug:** a browser Ask message returned
+      `POST /api/ask/sessions/{session_id}/message` → 500. The traceback showed
+      `generate_chat_completion` raised
+      `RuntimeError("LLM returned an empty response.")`; Ask did not catch that
+      exception, so FastAPI returned raw 500 text.
+    - **Fix:** `pipeline/ask_sessions.py` now catches the narrow empty local-model
+      RuntimeError response case and returns a safe structured `provider_error`
+      response with `error.category: provider_empty_response` and a retryable,
+      user-safe message.
+    - **History behavior:** the failed turn does not append a successful
+      user/assistant message to history.
+    - **Behavior preserved:** local-only behavior is unchanged. No retrieval, prompt
+      assembly, model fallback, citation validation, session management, clear/delete,
+      provider settings, streaming, uploads, rolling summary, multimodal, or
+      process-control behavior changed.
+    - **Tests/validation:** `test_scripts/test_ask_local_chat.py` updated with
+      focused coverage. `python test_scripts/test_ask_local_chat.py` passed 38/38;
+      endpoint section skipped because plain Python lacks FastAPI. `python
+      test_scripts/test_ask_context_inventory.py` passed 11/11; endpoint skipped for
+      missing FastAPI. `python test_scripts/test_ask_context_prepare.py` passed
+      28/28; endpoint skipped for missing FastAPI. `.venv/bin/python -m compileall
+      api pipeline` passed. `npm --prefix frontend run test:ask-guide` passed.
+      `npm --prefix frontend run build` passed. `docker compose config
+      >/tmp/compose-check.txt` exit code 0. `.venv/bin/python
+      test_scripts/smoke_release.py` ran 27/28 with one existing-looking non-Ask
+      outline-ordering failure.
+    - **Manual validation:** Docker app rebuilt/restarted and healthy. The original
+      empty local-model behavior was not reproducible, but the simulated regression
+      is now covered.
 
 ## NEXT (in order)
 
@@ -2398,14 +2446,13 @@ parked on the `hardening` branch — not merged, not deleted.
 > `docs/VALIDATION_LOCAL_MODEL_MANAGER_PHASE1.md`). The earlier "Phase-1 validation /
 > docs reconciliation" recommendation is **done and removed** from this list.
 
-1. **Manual browser validation / polish of the Ask chat math/source UI slice
-   (RECOMMENDED next).** Check Ask responses containing inline math, display math,
-   trusted citations, unsupported citations, and retrieved-source metadata at
-   desktop/mobile widths. Validation / polish only unless a concrete UI bug surfaces.
-2. **Ask Your Guide — extra session uploads (optional, explicit separate slice).**
+1. **Ask Your Guide — extra session uploads (optional, explicit separate slice).**
    Do not start automatically. If the operator chooses to continue Ask features,
    design/implement session-scoped extra uploads separately, keeping them out of job
    artifacts and preserving local-only Ask behavior.
+2. **Broader manual Ask UI validation / polish, only if a concrete issue surfaces.**
+   The empty local-model response regression found during manual validation is now
+   guarded and covered. Keep any follow-up narrow and bug-driven.
 3. **Local Model Manager — Phase 2 (host companion launcher) DESIGN-FIRST, optional.**
    Only if the user wants **app-managed start/stop** later. Process control (start/stop
    a host `llama-server`) **crosses the container boundary** (non-root uid 10001

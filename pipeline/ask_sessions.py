@@ -569,6 +569,40 @@ def _safe_local_status(status: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def _is_empty_provider_response_error(exc: Exception) -> bool:
+    message = str(exc).lower()
+    return (
+        isinstance(exc, RuntimeError)
+        and "empty" in message
+        and any(fragment in message for fragment in ("response", "output", "content"))
+    )
+
+
+def _provider_error_response(
+    *,
+    session_id: str,
+    status: str,
+    category: str,
+    message: str,
+    citation_labels: list[str],
+    chunk_meta: list[dict[str, Any]],
+    safe_status: dict[str, Any],
+) -> dict[str, Any]:
+    return {
+        "session_id": session_id,
+        "status": status,
+        "answer": "",
+        "citations": citation_labels,
+        "citations_allowed": citation_labels,
+        "citations_used": [],
+        "citations_unsupported": [],
+        "citation_validation": {"ok": True, "unsupported_count": 0},
+        "retrieved_chunks": chunk_meta,
+        "local_model": safe_status,
+        "error": {"category": category, "message": _redact_text(message)},
+    }
+
+
 def answer_message(
     session_id: str,
     question: str,
@@ -653,33 +687,40 @@ def answer_message(
         )
         answer = generate_fn(messages, config)
     except MissingLLMConfigError as exc:
-        return {
-            "session_id": session_id,
-            "status": "local_offline",
-            "answer": "",
-            "citations": citation_labels,
-            "citations_allowed": citation_labels,
-            "citations_used": [],
-            "citations_unsupported": [],
-            "citation_validation": {"ok": True, "unsupported_count": 0},
-            "retrieved_chunks": chunk_meta,
-            "local_model": safe_status,
-            "error": {"category": "provider_config", "message": _redact_text(str(exc))},
-        }
+        return _provider_error_response(
+            session_id=session_id,
+            status="local_offline",
+            category="provider_config",
+            message=str(exc),
+            citation_labels=citation_labels,
+            chunk_meta=chunk_meta,
+            safe_status=safe_status,
+        )
     except LLMProviderError as exc:
-        return {
-            "session_id": session_id,
-            "status": "local_offline" if exc.category == "local_offline" else "provider_error",
-            "answer": "",
-            "citations": citation_labels,
-            "citations_allowed": citation_labels,
-            "citations_used": [],
-            "citations_unsupported": [],
-            "citation_validation": {"ok": True, "unsupported_count": 0},
-            "retrieved_chunks": chunk_meta,
-            "local_model": safe_status,
-            "error": {"category": exc.category, "message": _redact_text(str(exc))},
-        }
+        return _provider_error_response(
+            session_id=session_id,
+            status="local_offline" if exc.category == "local_offline" else "provider_error",
+            category=exc.category,
+            message=str(exc),
+            citation_labels=citation_labels,
+            chunk_meta=chunk_meta,
+            safe_status=safe_status,
+        )
+    except RuntimeError as exc:
+        if not _is_empty_provider_response_error(exc):
+            raise
+        return _provider_error_response(
+            session_id=session_id,
+            status="provider_error",
+            category="provider_empty_response",
+            message=(
+                "The local model returned an empty response. Try again, ask a narrower question, "
+                "or restart the local model."
+            ),
+            citation_labels=citation_labels,
+            chunk_meta=chunk_meta,
+            safe_status=safe_status,
+        )
 
     answer = _redact_text(answer)
     answer, citation_info = validate_answer_citations(answer, citation_labels)

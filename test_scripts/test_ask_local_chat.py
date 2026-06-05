@@ -198,6 +198,91 @@ def test_pure_session_management(tmp: Path) -> None:
         ask_sessions.JOBS_DIR = original_jobs_dir
 
 
+def test_pure_empty_model_response(tmp: Path) -> None:
+    original_jobs_dir = ask_sessions.JOBS_DIR
+    ask_sessions.JOBS_DIR = tmp
+    try:
+        job = Job("pure-empty-response", root=tmp)
+        job.dir.mkdir(parents=True, exist_ok=True)
+        job.input_dir.mkdir(parents=True, exist_ok=True)
+        job._write_manifest(
+            {
+                "id": job.id,
+                "status": "done",
+                "title": "Pure empty response",
+                "input_path": "/home/secret/jobs/input/lecture.pdf",
+            }
+        )
+        job.clean_md.write_text(CLEAN_MD, encoding="utf-8")
+        job.extracted_txt.write_text(EXTRACTED_TXT, encoding="utf-8")
+        before = {
+            "clean": _digest(job.clean_md),
+            "extracted": _digest(job.extracted_txt),
+            "manifest": _digest(job.manifest),
+        }
+        session_id = ask_sessions.create_session(job, title="Empty response test")["session"]["session_id"]
+        captured: dict[str, object] = {}
+
+        def online_status() -> dict:
+            return {
+                "provider": "local",
+                "configured": True,
+                "reachable": True,
+                "selected_model": "local-test-model",
+                "default_model": "local-test-model",
+                "model_count": 1,
+                "base_url_host": "host.docker.internal",
+                "error": None,
+            }
+
+        class DummyConfig:
+            provider = "local"
+            model = "local-test-model"
+
+        def local_config(provider, model_choice, **kwargs):
+            captured["config"] = {"provider": provider, "model": model_choice, "kwargs": kwargs}
+            if provider != "local":
+                raise AssertionError("cloud provider fallback attempted")
+            return DummyConfig()
+
+        def empty_generate(messages, config):
+            captured["messages"] = messages
+            captured["config_provider"] = getattr(config, "provider", None)
+            raise RuntimeError("LLM returned an empty response.")
+
+        response = ask_sessions.answer_message(
+            session_id,
+            (
+                f"Explain alpha regulation from {SECRET_URL} using {SECRET_KEY} "
+                "Authorization: Bearer abcdefghi /home/secret/jobs/input/lecture.pdf"
+            ),
+            status_fn=online_status,
+            config_fn=local_config,
+            generate_fn=empty_generate,
+        )
+        response_blob = _blob(response)
+        check("pure empty: no exception and structured", response.get("status") == "provider_error")
+        check("pure empty: safe category", response.get("error", {}).get("category") == "provider_empty_response")
+        check("pure empty: safe retry message", "Try again" in response.get("error", {}).get("message", ""))
+        check("pure empty: no successful answer", response.get("answer") == "" and response.get("citations_used") == [])
+        check("pure empty: response clean", _clean(response_blob))
+        check("pure empty: no raw prompt", "Retrieved guide/source chunks" not in response_blob)
+        check("pure empty: no chunk text", GUIDE_MARKER not in response_blob and SOURCE_MARKER not in response_blob)
+        check("pure empty: local provider only", captured.get("config_provider") == "local")
+        check("pure empty: no DeepSeek/Qwen fallback", "deepseek" not in _blob(captured.get("config")).lower() and "qwen" not in _blob(captured.get("config")).lower())
+        history_path = job.dir / "ask" / "sessions" / session_id / "history.jsonl"
+        history_lines = history_path.read_text(encoding="utf-8").splitlines() if history_path.exists() else []
+        check("pure empty: no assistant success message appended", history_lines == [])
+        after = {
+            "clean": _digest(job.clean_md),
+            "extracted": _digest(job.extracted_txt),
+            "manifest": _digest(job.manifest),
+        }
+        check("pure empty: original artifacts unchanged", before == after)
+    finally:
+        ask_sessions.JOBS_DIR = original_jobs_dir
+
+
 def _raises_ask_404(fn) -> bool:
     try:
         fn()
@@ -350,6 +435,44 @@ def test_endpoints() -> None:
 
         ask_sessions.get_local_model_status = online_status
         ask_sessions.build_provider_config = local_config
+
+        def empty_generate(messages, config):
+            captured["empty_messages"] = messages
+            captured["empty_config_provider"] = getattr(config, "provider", None)
+            raise RuntimeError("LLM returned an empty response.")
+
+        ask_sessions.generate_chat_completion = empty_generate
+        empty_msg = (
+            f"Explain alpha regulation from {SECRET_URL} using {SECRET_KEY} "
+            "Authorization: Bearer abcdefghi /home/secret/jobs/input/lecture.pdf"
+        )
+        rm_empty = client.post(f"/api/ask/sessions/{session_id}/message", json={"message": empty_msg})
+        empty_data = rm_empty.json()
+        check("ep: empty model response returns 200", rm_empty.status_code == 200)
+        check("ep: empty model response structured", empty_data.get("status") == "provider_error")
+        check(
+            "ep: empty model response category safe",
+            empty_data.get("error", {}).get("category") == "provider_empty_response",
+        )
+        check(
+            "ep: empty model response message safe",
+            "local model returned an empty response" in empty_data.get("error", {}).get("message", "").lower(),
+        )
+        check("ep: empty model response has no answer", empty_data.get("answer") == "")
+        check("ep: empty model response response clean", _clean(rm_empty.text))
+        check("ep: empty model response no raw prompt", "Retrieved guide/source chunks" not in rm_empty.text)
+        check("ep: empty model response no chunk text", GUIDE_MARKER not in rm_empty.text and SOURCE_MARKER not in rm_empty.text)
+        check("ep: empty model response local provider only", captured.get("empty_config_provider") == "local")
+        empty_history = eligible.dir / "ask" / "sessions" / session_id / "history.jsonl"
+        empty_lines = empty_history.read_text(encoding="utf-8").splitlines() if empty_history.exists() else []
+        check("ep: empty model response appends no history", empty_lines == [])
+        after_empty = {
+            "clean": _digest(eligible.clean_md),
+            "extracted": _digest(eligible.extracted_txt),
+            "manifest": _digest(eligible.manifest),
+        }
+        check("ep: empty model response leaves artifacts unchanged", before == after_empty)
+
         ask_sessions.generate_chat_completion = fake_generate
 
         msg = f"Explain alpha regulation. {SECRET_KEY} Authorization: Bearer abcdefghi {SECRET_URL}"
@@ -434,6 +557,7 @@ def main() -> int:
     try:
         test_pure_retrieval_and_prompt(tmp)
         test_pure_session_management(tmp)
+        test_pure_empty_model_response(tmp)
         test_endpoints()
     finally:
         shutil.rmtree(tmp, ignore_errors=True)
