@@ -169,11 +169,11 @@ export function getLocalModelCommandProfile() {
   return requestJson("/api/local-model/command-profile");
 }
 
-// ── Ask Your Guide (workspace shell / context readiness only) ────────────────
-// These endpoints are summary-only contracts from Ask Slices 2/3. The frontend
-// receives eligible guide metadata, context inventory counts, and prepare counts
-// only — never raw guide/source text, chunk text, provider keys, full URLs, or
-// host filesystem paths. This shell does NOT call a model and has no sessions.
+// ── Ask Your Guide ──────────────────────────────────────────────────────────
+// These endpoints expose eligible guide metadata, context inventory/preparation
+// counts, and local-only chat sessions. Responses are server-redacted and the UI
+// normalizes them again before storing/rendering: no raw guide/source text, chunk
+// text, provider keys, full URLs, or host filesystem paths.
 export function getAskJobs(params = {}) {
   const query = new URLSearchParams();
   Object.entries(params).forEach(([key, value]) => {
@@ -192,6 +192,26 @@ export function getAskJobContext(jobId) {
 export function prepareAskJobContext(jobId) {
   return requestJson(`/api/ask/jobs/${encodeURIComponent(jobId)}/prepare`, {
     method: "POST"
+  });
+}
+
+export function createAskSession(jobId, payload = {}) {
+  return requestJson(`/api/ask/jobs/${encodeURIComponent(jobId)}/sessions`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload ?? {})
+  });
+}
+
+export function getAskSession(sessionId) {
+  return requestJson(`/api/ask/sessions/${encodeURIComponent(sessionId)}`);
+}
+
+export function sendAskSessionMessage(sessionId, message) {
+  return requestJson(`/api/ask/sessions/${encodeURIComponent(sessionId)}/message`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ message })
   });
 }
 

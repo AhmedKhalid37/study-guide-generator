@@ -17,21 +17,31 @@ import {
   WifiOff,
 } from "lucide-react";
 import {
+  checkLocalModelStatus,
+  createAskSession,
   getAskJobContext,
   getAskJobs,
+  getAskSession,
   getLocalModelCommandProfile,
   getLocalModelStatus,
   prepareAskJobContext,
+  sendAskSessionMessage,
 } from "../api/client";
 import {
   attachmentRows,
+  chatReadiness,
   citationSummary,
   formatCount,
   formatDate,
+  normalizeAskMessageResponse,
+  normalizeAskSessionPayload,
   pageSelectionRows,
   prepareBadge,
   readinessReasons,
   readinessState,
+  retrievedChunkRows,
+  safeDisplayText,
+  safeInputText,
   safeText,
 } from "../askGuide";
 import {
@@ -85,6 +95,13 @@ export default function AskGuideWorkspace() {
   const [commandData, setCommandData] = useState(null);
   const [selectedProfileId, setSelectedProfileId] = useState(null);
   const [copyState, setCopyState] = useState(COPY_IDLE);
+  const [session, setSession] = useState(null);
+  const [messages, setMessages] = useState([]);
+  const [draftMessage, setDraftMessage] = useState("");
+  const [sending, setSending] = useState(false);
+  const [chatError, setChatError] = useState(null);
+  const [lastRetrievedChunks, setLastRetrievedChunks] = useState([]);
+  const [lastLocalModel, setLastLocalModel] = useState(null);
 
   const selectedJob = useMemo(
     () => jobs.find((job) => job.id === selectedJobId) || null,
@@ -98,16 +115,17 @@ export default function AskGuideWorkspace() {
       .then((data) => {
         const list = Array.isArray(data.jobs) ? data.jobs : [];
         setJobs(list);
-        setSelectedJobId((current) => current || list[0]?.id || null);
+        setSelectedJobId((current) => (current && list.some((job) => job.id === current) ? current : list[0]?.id || null));
       })
       .catch((err) => setJobsError(err?.message || "Ask guides are unavailable."))
       .finally(() => setJobsLoading(false));
   }, []);
 
-  const loadLocalStatus = useCallback(() => {
+  const loadLocalStatus = useCallback((probe = false) => {
     setLocalLoading(true);
     setLocalError(null);
-    getLocalModelStatus()
+    const call = probe ? checkLocalModelStatus : getLocalModelStatus;
+    call()
       .then((data) => setLocalStatus(data))
       .catch((err) => setLocalError(err?.message || "Local model status unavailable."))
       .finally(() => setLocalLoading(false));
@@ -143,6 +161,13 @@ export default function AskGuideWorkspace() {
     setContextError(null);
     setPrepareResult(null);
     setPrepareError(null);
+    setSession(null);
+    setMessages([]);
+    setDraftMessage("");
+    setSending(false);
+    setChatError(null);
+    setLastRetrievedChunks([]);
+    setLastLocalModel(null);
     getAskJobContext(selectedJobId)
       .then((data) => {
         if (!cancelled) setContext(data);
@@ -168,6 +193,59 @@ export default function AskGuideWorkspace() {
       .finally(() => setPrepareLoading(false));
   }, [selectedJobId]);
 
+  const ensureSession = useCallback(async () => {
+    if (session?.sessionId) return session;
+    if (!selectedJobId) throw new Error("Select a generated guide first.");
+    const created = await createAskSession(selectedJobId, { title: selectedJob?.title || null });
+    const createdSessionId = created?.session?.session_id;
+    if (!createdSessionId) throw new Error("Session creation failed.");
+    const loaded = await getAskSession(createdSessionId);
+    const normalized = normalizeAskSessionPayload(loaded);
+    if (!normalized.session?.sessionId) throw new Error("Session loading failed.");
+    setSession(normalized.session);
+    setMessages(normalized.history);
+    return normalized.session;
+  }, [selectedJobId, selectedJob?.title, session]);
+
+  const onSendMessage = useCallback(async () => {
+    const message = safeDisplayText(draftMessage);
+    if (!message || sending) return;
+    setSending(true);
+    setChatError(null);
+    setLastRetrievedChunks([]);
+    try {
+      const activeSession = await ensureSession();
+      const response = await sendAskSessionMessage(activeSession.sessionId, message);
+      const normalized = normalizeAskMessageResponse(response, message, `${activeSession.sessionId}-${messages.length}`);
+      setLastRetrievedChunks(normalized.retrievedChunks);
+      setLastLocalModel(normalized.localModel);
+      if (normalized.status === "answered") {
+        setMessages((current) => [...current, ...normalized.messages]);
+        setDraftMessage("");
+      } else {
+        setChatError({
+          category: normalized.error?.category || normalized.status || "ask_error",
+          message: normalized.error?.message || "Ask message failed.",
+        });
+        if (normalized.status === "local_offline" || normalized.error?.category === "local_offline") {
+          loadLocalStatus(true);
+        }
+      }
+    } catch (err) {
+      const messageText = safeDisplayText(err?.message || "", "Ask message failed.");
+      const category =
+        /not.?prepared|context/i.test(messageText)
+          ? "not_prepared"
+          : /offline|local/i.test(messageText)
+            ? "local_offline"
+            : "ask_error";
+      setChatError({ category, message: messageText });
+      if (category === "local_offline") loadLocalStatus(true);
+    } finally {
+      setSending(false);
+    }
+  }, [draftMessage, ensureSession, loadLocalStatus, messages.length, sending]);
+
   const activeProfile = profileById(commandData, selectedProfileId);
   const profiles = commandProfiles(commandData);
   const helperNotes = commandNotes(commandData);
@@ -177,7 +255,15 @@ export default function AskGuideWorkspace() {
   const readyState = readinessState(context);
   const prep = prepareBadge(prepareResult, prepareLoading, prepareError);
   const prepReady = ["hit", "built", "rebuilt", "ready"].includes(prep.state);
-  const chatDisabled = true;
+  const chat = chatReadiness({
+    hasJob: Boolean(selectedJob),
+    contextLoading,
+    contextReady: readyState === "ready",
+    prepReady,
+    localLoading,
+    localReachable,
+    sending,
+  });
 
   const onCopyCommand = useCallback(async () => {
     if (!activeProfile?.command) return;
@@ -237,7 +323,14 @@ export default function AskGuideWorkspace() {
             localReachable={localReachable}
             localState={localState}
             onPrepare={onPrepare}
-            disabled={chatDisabled}
+            chat={chat}
+            messages={messages}
+            session={session}
+            draftMessage={draftMessage}
+            setDraftMessage={setDraftMessage}
+            sending={sending}
+            chatError={chatError}
+            onSendMessage={onSendMessage}
           />
         </main>
 
@@ -255,6 +348,8 @@ export default function AskGuideWorkspace() {
             localLoading={localLoading}
             localState={localState}
             reloadLocal={loadLocalStatus}
+            lastRetrievedChunks={lastRetrievedChunks}
+            lastLocalModel={lastLocalModel}
             commandProps={
               canCopy
                 ? {
@@ -357,10 +452,18 @@ function ChatReadinessPanel({
   localReachable,
   localState,
   onPrepare,
-  disabled,
+  chat,
+  messages,
+  session,
+  draftMessage,
+  setDraftMessage,
+  sending,
+  chatError,
+  onSendMessage,
 }) {
   const reasons = readinessReasons(context);
   const title = safeText(context?.title || job?.title, "Select a guide");
+  const canSend = chat.enabled && draftMessage.trim().length > 0;
   return (
     <div className="mx-auto flex min-h-full max-w-[860px] flex-col">
       <section className="rounded-xl border border-white/10 bg-white/[0.03] p-5">
@@ -374,8 +477,11 @@ function ChatReadinessPanel({
               <Pill tone={prep.tone}>{prep.label}</Pill>
             </div>
             <p className="mt-2 text-[12.5px] leading-5 text-[#A8AEBC]">
-              Chat will be enabled after the local chat endpoint lands. For now, select a guide and prepare its context.
+              Prepare this guide once, then ask grounded questions through the local model. Sessions are created lazily on first send.
             </p>
+            {session?.sessionId && (
+              <p className="mt-1 text-[11px] text-[#6B7185]">Session {session.sessionId}</p>
+            )}
           </div>
         </div>
 
@@ -418,38 +524,157 @@ function ChatReadinessPanel({
             {prepareLoading ? "Preparing…" : prepReady ? "Prepare again" : "Prepare context"}
           </button>
           <span className="text-[11.5px] text-[#6B7185]">
-            {prepReady ? "Context index is ready for the next backend slice." : "Builds guide/source chunks without exposing text."}
+            {prepReady ? "Context index is ready for local chat." : "Builds guide/source chunks without exposing text."}
           </span>
         </div>
       </section>
 
-      <section className="mt-4 flex flex-1 flex-col rounded-xl border border-white/10 bg-black/20">
-        <div className="flex-1 p-5">
-          <div className="rounded-lg border border-dashed border-white/10 bg-white/[0.02] p-5">
-            <div className="flex items-start gap-3">
-              <CircleSlash size={18} className="mt-0.5 shrink-0 text-[#6B7185]" />
-              <div className="min-w-0">
-                <strong className="block text-[13px] text-[#E8EAF0]">Chat is disabled in this slice</strong>
-                <p className="mt-1 max-w-[620px] text-[12px] leading-5 text-[#9098A8]">
-                  This workspace only proves the visible flow: choose a guide, inspect safe context summaries, prepare the context cache, and verify local model readiness.
-                </p>
-              </div>
+      <section className="mt-4 flex min-h-[520px] flex-1 flex-col overflow-hidden rounded-xl border border-white/10 bg-black/20">
+        <div className="min-h-0 flex-1 overflow-y-auto p-5">
+          {messages.length === 0 ? (
+            <EmptyChatState chat={chat} prepReady={prepReady} localReachable={localReachable} />
+          ) : (
+            <div className="space-y-4">
+              {messages.map((message, index) => (
+                <ChatBubble key={message.id || `${message.role}-${index}`} message={message} />
+              ))}
             </div>
-          </div>
-        </div>
-        <div className="border-t border-white/5 p-4">
-          <div className="flex items-center gap-2 rounded-lg border border-white/10 bg-white/[0.03] px-3 py-2 opacity-60">
-            <input
-              disabled={disabled}
-              className="min-w-0 flex-1 bg-transparent text-[13px] text-[#9098A8] outline-none"
-              placeholder="Chat will be enabled after the local chat endpoint lands."
+          )}
+          {sending && (
+            <div className="mt-4 flex items-center gap-2 text-[12px] text-[#9098A8]">
+              <Loader2 size={14} className="animate-spin" />
+              Asking the local model…
+            </div>
+          )}
+          {chatError && (
+            <Notice
+              tone={chatError.category === "local_offline" || chatError.category === "not_prepared" ? "warning" : "error"}
+              title={chatError.category === "local_offline" ? "Local model offline" : chatError.category === "not_prepared" ? "Prepare context first" : "Message failed"}
+              text={chatError.message}
             />
-            <button type="button" disabled className="grid h-8 w-8 place-items-center rounded-md bg-white/5 text-[#6B7185]">
-              <Send size={14} />
+          )}
+          {chatError?.category === "not_prepared" && (
+            <button
+              type="button"
+              onClick={onPrepare}
+              disabled={!job || contextLoading || prepareLoading || readyState !== "ready"}
+              className="sg-cta sg-press-btn mt-3 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              {prepareLoading ? <Loader2 size={15} className="animate-spin" /> : <Sparkles size={15} />}
+              {prepareLoading ? "Preparing…" : "Prepare context"}
+            </button>
+          )}
+        </div>
+        <form
+          className="border-t border-white/5 p-4"
+          onSubmit={(event) => {
+            event.preventDefault();
+            if (canSend) onSendMessage();
+          }}
+        >
+          <div className={`flex items-end gap-2 rounded-lg border px-3 py-2 ${chat.enabled ? "border-white/10 bg-white/[0.03]" : "border-white/10 bg-white/[0.02] opacity-70"}`}>
+            <textarea
+              disabled={!chat.enabled}
+              value={draftMessage}
+              onChange={(event) => setDraftMessage(safeInputText(event.target.value))}
+              rows={1}
+              className="max-h-32 min-h-[36px] min-w-0 flex-1 resize-none bg-transparent py-2 text-[13px] leading-5 text-[#E8EAF0] outline-none placeholder:text-[#6B7185]"
+              placeholder={chat.enabled ? "Ask a question about this guide…" : chat.label}
+            />
+            <button
+              type="submit"
+              disabled={!canSend}
+              className="grid h-9 w-9 shrink-0 place-items-center rounded-md bg-[#F97316] text-white transition hover:bg-[#FB923C] disabled:cursor-not-allowed disabled:bg-white/5 disabled:text-[#6B7185]"
+              title={chat.enabled ? "Send message" : chat.label}
+            >
+              {sending ? <Loader2 size={15} className="animate-spin" /> : <Send size={15} />}
             </button>
           </div>
-        </div>
+        </form>
       </section>
+    </div>
+  );
+}
+
+function EmptyChatState({ chat, prepReady, localReachable }) {
+  const title =
+    chat.state === "no_guide"
+      ? "Select a guide"
+      : !prepReady
+        ? "Prepare context first"
+        : !localReachable
+          ? "Local model offline"
+          : "Ready to ask";
+  const text =
+    chat.state === "no_guide"
+      ? "Choose an eligible generated guide from the list."
+      : !prepReady
+        ? "Build the guide/source chunk index before sending the first message."
+        : !localReachable
+          ? "Start the local OpenAI-compatible server, then refresh local status."
+          : "Ask a focused question. Answers and citations come from the backend response only.";
+  return (
+    <div className="rounded-lg border border-dashed border-white/10 bg-white/[0.02] p-5">
+      <div className="flex items-start gap-3">
+        <CircleSlash size={18} className="mt-0.5 shrink-0 text-[#6B7185]" />
+        <div className="min-w-0">
+          <strong className="block text-[13px] text-[#E8EAF0]">{title}</strong>
+          <p className="mt-1 max-w-[620px] text-[12px] leading-5 text-[#9098A8]">{text}</p>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function ChatBubble({ message }) {
+  const assistant = message.role === "assistant";
+  return (
+    <article className={`flex ${assistant ? "justify-start" : "justify-end"}`}>
+      <div
+        className={`max-w-[82%] rounded-xl border px-4 py-3 ${
+          assistant
+            ? "border-white/10 bg-white/[0.04] text-[#E8EAF0]"
+            : "border-[#F97316]/30 bg-[#F97316]/15 text-[#FFF7ED]"
+        }`}
+      >
+        <div className="mb-1 text-[10.5px] font-semibold uppercase text-[#6B7185]">
+          {assistant ? "Ask Your Guide" : "You"}
+        </div>
+        <p className="whitespace-pre-wrap break-words text-[13px] leading-6">{message.content}</p>
+        {assistant && message.citations?.length > 0 && (
+          <div className="mt-3 flex flex-wrap gap-1.5">
+            {message.citations.map((label) => (
+              <MiniChip key={label}>{label}</MiniChip>
+            ))}
+          </div>
+        )}
+        {assistant && message.retrievedChunks?.length > 0 && (
+          <div className="mt-3 border-t border-white/5 pt-2">
+            <RetrievedChunkList rows={message.retrievedChunks} compact />
+          </div>
+        )}
+      </div>
+    </article>
+  );
+}
+
+function RetrievedChunkList({ rows, compact = false }) {
+  const safeRows = retrievedChunkRows(rows);
+  if (safeRows.length === 0) {
+    return <p className="text-[11.5px] leading-5 text-[#9098A8]">No retrieved citation metadata.</p>;
+  }
+  return (
+    <div className="space-y-1.5">
+      {safeRows.map((row, index) => (
+        <div key={`${row.label}-${row.chunkId || index}`} className={compact ? "text-[11px] leading-5 text-[#9098A8]" : "rounded-lg border border-white/10 bg-white/[0.02] p-2 text-[11.5px] leading-5 text-[#D4D4D8]"}>
+          <span className="font-medium text-[#E8EAF0]">{row.label}</span>
+          <span className="text-[#6B7185]">
+            {row.sourceType ? ` · ${row.sourceType}` : ""}
+            {row.page !== null ? ` · p. ${row.page}` : ""}
+            {row.approxTokens !== null ? ` · ~${formatCount(row.approxTokens)} tokens` : ""}
+          </span>
+        </div>
+      ))}
     </div>
   );
 }
@@ -467,6 +692,8 @@ function ContextRail({
   localLoading,
   localState,
   reloadLocal,
+  lastRetrievedChunks,
+  lastLocalModel,
   commandProps,
 }) {
   return (
@@ -510,6 +737,17 @@ function ContextRail({
         {prepareError && <p className="mt-2 break-words text-[11.5px] leading-5 text-[#FCA5A5]">{prepareError}</p>}
         {prepareResult?.ready && <PrepareSummary result={prepareResult} />}
       </Panel>
+
+      {(lastRetrievedChunks.length > 0 || lastLocalModel?.model) && (
+        <Panel title="Latest answer context" icon={MessageSquareText}>
+          {lastLocalModel?.model && (
+            <p className="mb-2 text-[11.5px] leading-5 text-[#9098A8]">
+              Local model: <span className="text-[#D4D4D8]">{lastLocalModel.model}</span>
+            </p>
+          )}
+          <RetrievedChunkList rows={lastRetrievedChunks} />
+        </Panel>
+      )}
 
       <Panel title="Local model" icon={Server}>
         <LocalModelSummary
@@ -642,7 +880,7 @@ function LocalModelSummary({ status, error, loading, state, onRefresh }) {
           {loading ? <Loader2 size={12} className="animate-spin" /> : reachable ? <Check size={12} /> : <WifiOff size={12} />}
           {loading ? "Checking" : LOCAL_LABEL[state] || "Status unavailable"}
         </Pill>
-        <button type="button" className="sg-ghost-button h-8 px-2 text-[11px]" onClick={onRefresh} disabled={loading}>
+        <button type="button" className="sg-ghost-button h-8 px-2 text-[11px]" onClick={() => onRefresh(true)} disabled={loading}>
           {loading ? <Loader2 size={12} className="animate-spin" /> : <RefreshCw size={12} />}
           <span className="ml-1">Refresh</span>
         </button>

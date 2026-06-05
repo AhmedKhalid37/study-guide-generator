@@ -5,8 +5,24 @@
 
 ---
 
-## NEXT — Ask backend local chat API DONE; NEXT = Ask frontend chat UI wiring. (LMM Phase 1 COMPLETE + VALIDATED below.)
+## NEXT — Ask frontend chat UI wiring DONE; NEXT = emitted-citation validation + chat UX polish. (LMM Phase 1 COMPLETE + VALIDATED below.)
 
+- **Ask Your Guide — frontend chat UI wiring is DONE** — branch
+  `ask-chat-ui`, see DONE #55 below. The existing Ask workspace now creates chat
+  sessions lazily on first send, loads the session with `GET /api/ask/sessions/{id}`,
+  posts non-streaming messages to the backend local chat endpoint, renders bounded
+  history, answer text, backend-returned citation chips, safe retrieved citation
+  metadata, and safe local-model info. Chat stays gated on selected guide + ready
+  context + explicit prepare + reachable local model + no in-flight send. Local
+  offline/unconfigured keeps the composer disabled and shows the existing command
+  helper. No localStorage/sessionStorage persistence, no raw HTML rendering, no
+  chunk/source/guide text rendering, no process control, no provider writes, no extra
+  uploads, no exports, no streaming, and no cloud fallback.
+- **NEXT — Ask emitted-citation validation + chat UX polish.** Add a tight accuracy
+  slice that validates/flags model-emitted citations against the backend allowed
+  citation labels and polishes the chat UX around missing/stale context and long
+  answers. Keep it local-only; no hosted-provider selector, no extra uploads, no
+  rolling-summary UI, no streaming unless separately designed.
 - **Ask Your Guide — backend local chat API is DONE** — branch
   `ask-local-chat-api`, see DONE #54 below. Backend-only session creation/load +
   non-streaming local-only message endpoint now exist:
@@ -20,11 +36,6 @@
   are untouched. **No frontend/UI changes, no extra uploads, no cloud fallback, no
   DeepSeek/Qwen fallback, no streaming, no rolling summary, no generation jobs, no
   new dependency.**
-- **NEXT — Ask frontend chat UI wiring.** Enable the existing `Ask Guide` workspace
-  composer against the new backend session/message endpoints; render message history,
-  local-offline state, answer text, citation chips, and retrieved citation metadata.
-  Keep it local-only; no extra uploads, no streaming, and no hosted-provider selector
-  unless separately requested.
 - **Ask Your Guide — Slice 3 is DONE (backend context preparation / chunking)** —
   branch `ask-context-prepare`, see DONE #52 below. New stdlib-only helper
   `pipeline/ask_context.py` chunks `clean.md` (guide) + optional `extracted.txt`
@@ -2137,6 +2148,44 @@ parked on the `hardening` branch — not merged, not deleted.
       healthy. **Frontend build not required by the slice** because no frontend/shared
       files were touched (the Docker rebuild reused the existing frontend build layer).
 
+55. **Ask Your Guide — frontend chat UI wiring (FRONTEND)** — branch `ask-chat-ui`.
+    Wires the visible Ask workspace to the already-landed local-only chat API:
+    - **Endpoints consumed:** `GET /api/ask/jobs`, `GET /api/ask/jobs/{job_id}/context`,
+      `POST /api/ask/jobs/{job_id}/prepare`, `POST /api/ask/jobs/{job_id}/sessions`,
+      `GET /api/ask/sessions/{session_id}`, `POST /api/ask/sessions/{session_id}/message`,
+      `GET /api/local-model/status`, `POST /api/local-model/check`, and
+      `GET /api/local-model/command-profile`.
+    - **UX:** guide selection and context inventory remain visible; Prepare Context is
+      explicit and still works; chat sessions are created lazily on first send, then
+      loaded before messaging. The composer enables only when a guide is selected,
+      context is ready, prepare has succeeded, the local model is reachable, and no
+      send is in flight. Message success appends the user turn + assistant answer and
+      renders only backend-returned citation labels and safe retrieved chunk metadata.
+      Failures keep the draft available for retry; `local_offline` shows the existing
+      LMM command helper and keeps the composer disabled.
+    - **Security:** no `dangerouslySetInnerHTML`; answers render as plain text with
+      preserved whitespace. Frontend normalizers defensively redact obvious `sk-*`
+      keys, Authorization bearer headers, full `http(s)://` URLs, and POSIX/Windows
+      host paths before storing/rendering. The UI stores only safe `session_id`,
+      session metadata, bounded message history, citation labels, retrieved chunk
+      metadata (id/source/page/tokens/score), and safe local model fields. It never
+      renders guide/source bodies, chunk text, raw prompts/system prompts, raw keys,
+      full URLs, or filesystem paths, and it does not persist chat to browser storage.
+    - **Non-goals preserved:** no backend chat behavior change, no extra uploads, no
+      chat export, no backend citation-validation slice, no long-chat rolling-summary
+      UI, no streaming, no cloud fallback, no hosted provider selector, no DeepSeek/Qwen
+      fallback, no local model process control, no provider settings writes, and no new
+      dependencies.
+    - **Verified:** `npm run test:ask-guide` pass (45/45 helper checks),
+      `npm run build` pass (existing Vite chunk-size warning only),
+      `npm run test:local-model-command` pass, `npm run test:local-model-status` pass,
+      `test_scripts/test_ask_context_inventory.py` **50/50** in Docker with the repo
+      mounted, `test_scripts/test_ask_context_prepare.py` **58/58** in Docker,
+      `test_scripts/test_ask_local_chat.py` **40/40** in Docker, and
+      release smoke **28/28**. `docker compose config >/tmp/compose-check.txt` exit 0.
+      Backend/shared Python was not touched, so `python -m compileall api pipeline` was
+      not required.
+
 ## NEXT (in order)
 
 > **Provider settings feature group is DONE through Slice 5** (DONE #32→#36):
@@ -2177,12 +2226,11 @@ parked on the `hardening` branch — not merged, not deleted.
 > `docs/VALIDATION_LOCAL_MODEL_MANAGER_PHASE1.md`). The earlier "Phase-1 validation /
 > docs reconciliation" recommendation is **done and removed** from this list.
 
-1. **Ask Your Guide — frontend chat UI wiring (RECOMMENDED next).** The backend
-   local chat API is now present; wire the existing `Ask Guide` workspace composer
-   to create/load sessions and post messages. Render safe history, answer text,
-   citation chips, retrieved citation metadata, and the existing LMM offline state.
-   Keep this UI slice local-only: no extra uploads, no streaming, no hosted-provider
-   selector, and no process control.
+1. **Ask Your Guide — emitted-citation validation + chat UX polish (RECOMMENDED next).**
+   Tight accuracy/polish slice: validate or flag model-emitted citations against the
+   backend allowed labels for the turn, and polish chat edge states for missing/stale
+   context and long answers. Keep local-only; no extra uploads, no streaming unless
+   separately designed, no hosted-provider selector, and no process control.
 2. **Local Model Manager — Phase 2 (host companion launcher) DESIGN-FIRST, optional.**
    Only if the user wants **app-managed start/stop** later. Process control (start/stop
    a host `llama-server`) **crosses the container boundary** (non-root uid 10001

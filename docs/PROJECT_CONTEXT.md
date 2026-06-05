@@ -113,7 +113,7 @@ flashcards with CSV / Anki / Quizlet export.
   Settings (no second writer). See `DECISIONS.md`.
 - **Ask Your Guide — IN PROGRESS (Slice 1 design DONE; Slice 2 backend context
   inventory DONE; Slice 3 backend context preparation / chunking DONE; inserted
-  workspace shell DONE; backend local chat API DONE).** A
+  workspace shell DONE; backend local chat API DONE; frontend chat UI wiring DONE).** A
   dedicated **`AskGuideWorkspace`** (first-class page/tab alongside
   Builder/Library/Styles/Providers) where the user selects a generated guide/job and
   chats with it using a **local model only**. Designed in
@@ -156,9 +156,15 @@ flashcards with CSV / Anki / Quizlet export.
   under `jobs/<job_id>/ask/sessions/<session_id>/`; history is JSONL; responses expose
   safe citation metadata only (no prompts or chunk text). **No cloud fallback, no
   DeepSeek/Qwen fallback, no extra uploads, no streaming, no rolling summary, no
-  generation jobs, and no artifact mutation.**
-  **NEXT = frontend chat UI wiring**: enable the existing Ask workspace composer and
-  render history/answers/citation chips against these backend endpoints.
+  generation jobs, and no artifact mutation.** Frontend chat UI wiring then enabled
+  the visible Ask workspace composer against those endpoints: sessions are created
+  lazily on first send, loaded before messaging, and rendered as bounded history with
+  plain-text answers, backend-returned citation chips, safe retrieved chunk metadata,
+  and the existing LMM offline command helper. The UI stores only safe session
+  metadata/history in React state and does not persist messages to browser storage.
+  **NEXT = emitted-citation validation + chat UX polish**: validate/flag model-emitted
+  citations against backend allowed labels and polish missing/stale context + long
+  answer states.
   See `DECISIONS.md`.
 
 ## 4. Architecture facts a new session MUST know

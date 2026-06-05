@@ -11,13 +11,19 @@ import {
   READINESS_NOT_READY,
   READINESS_READY,
   attachmentRows,
+  chatReadiness,
   citationSummary,
   formatCount,
+  normalizeAskMessageResponse,
+  normalizeAskSessionPayload,
   pageSelectionRows,
   prepareBadge,
   readinessReasons,
   readinessState,
+  retrievedChunkRows,
+  safeDisplayText,
   safeFilename,
+  safeInputText,
 } from "../src/askGuide.js";
 
 let failed = 0;
@@ -89,6 +95,85 @@ const summary = citationSummary(built);
 check("citationSummary guide count", summary.guideHeadingCount === 3);
 check("citationSummary filters heading samples", summary.headings.join(",") === "Intro,Terms,Exam focus");
 check("citationSummary filters page samples", summary.pages.join(",") === "1,4");
+
+const unsafe = "Ask with sk-live-abc123456789 Authorization: Bearer abcdef https://secret.example/v1 /home/user/jobs/a C:\\Users\\Ahmed\\x.txt";
+const safe = safeDisplayText(unsafe);
+check("safeDisplayText redacts key", !safe.includes("sk-live"));
+check("safeDisplayText redacts auth", !safe.includes("Authorization"));
+check("safeDisplayText redacts URL", !safe.includes("https://"));
+check("safeDisplayText redacts POSIX path", !safe.includes("/home/user"));
+check("safeDisplayText redacts Windows path", !safe.includes("C:\\"));
+check("safeInputText preserves typing whitespace", safeInputText("  hello  ") === "  hello  ");
+
+const sessionPayload = {
+  session: {
+    session_id: "ask_123",
+    job_id: "job-a",
+    title: "Alpha https://secret.example/v1",
+    created_at: "2026-06-05T10:00:00Z",
+    updated_at: "2026-06-05T10:01:00Z",
+    settings: { provider: "local", retrieval: { max_chunks: 8, token_budget: 3100 } },
+  },
+  history: [
+    { role: "user", content: "What is alpha?", created_at: "2026-06-05T10:02:00Z" },
+    { role: "assistant", content: "Alpha is covered. https://secret.example", citations: ["Guide Alpha", "https://raw.example"] },
+    { role: "system", content: "raw prompt" },
+  ],
+};
+const normalizedSession = normalizeAskSessionPayload(sessionPayload);
+check("normalizeAskSessionPayload keeps session id", normalizedSession.session.sessionId === "ask_123");
+check("normalizeAskSessionPayload redacts title URL", normalizedSession.session.title === "Alpha [redacted-url]");
+check("normalizeAskSessionPayload bounds roles", normalizedSession.history.length === 2);
+check("normalizeAskSessionPayload redacts assistant URL", !normalizedSession.history[1].content.includes("https://"));
+check("normalizeAskSessionPayload normalizes citations", normalizedSession.history[1].citations.includes("Guide Alpha"));
+check("normalizeAskSessionPayload redacts citation URL", normalizedSession.history[1].citations.includes("[redacted-url]"));
+
+const messageResponse = {
+  session_id: "ask_123",
+  status: "answered",
+  answer: "Use citrate. /home/user/source.txt",
+  citations: ["Source Page 4", "Guide Alpha"],
+  retrieved_chunks: [
+    {
+      chunk_id: "source-1",
+      source_type: "source",
+      label: "Source Page 4",
+      page: 4,
+      approx_tokens: 120,
+      score: 9.5,
+      text: "RAW CHUNK TEXT MUST NOT SURVIVE",
+    },
+  ],
+  local_model: { configured: true, reachable: true, model: "local-model", model_count: 1, base_url_host: "host.docker.internal" },
+};
+const normalizedMessage = normalizeAskMessageResponse(messageResponse, "Explain alpha");
+check("normalizeAskMessageResponse answered", normalizedMessage.status === "answered");
+check("normalizeAskMessageResponse appends user+assistant", normalizedMessage.messages.length === 2);
+check("normalizeAskMessageResponse redacts answer path", !normalizedMessage.answer.includes("/home/user"));
+check("normalizeAskMessageResponse keeps citations", normalizedMessage.citations.join(",") === "Source Page 4,Guide Alpha");
+check("normalizeAskMessageResponse omits chunk text", !JSON.stringify(normalizedMessage).includes("RAW CHUNK TEXT"));
+check("retrievedChunkRows normalizes metadata", retrievedChunkRows(messageResponse.retrieved_chunks)[0].label === "Source Page 4");
+
+const offline = normalizeAskMessageResponse({
+  status: "local_offline",
+  error: { category: "local_offline", message: "Offline at https://secret.example/v1" },
+});
+check("local offline category preserved", offline.error.category === "local_offline");
+check("local offline message redacted", offline.error.message === "Offline at [redacted-url]");
+
+check("chat readiness no guide", chatReadiness({ hasJob: false }).enabled === false);
+check(
+  "chat readiness requires prepare",
+  chatReadiness({ hasJob: true, contextReady: true, prepReady: false, localReachable: true }).state === "prepare_required"
+);
+check(
+  "chat readiness blocks local offline",
+  chatReadiness({ hasJob: true, contextReady: true, prepReady: true, localReachable: false }).state === "local_offline"
+);
+check(
+  "chat readiness ready",
+  chatReadiness({ hasJob: true, contextReady: true, prepReady: true, localReachable: true }).enabled === true
+);
 
 if (failed) {
   console.error(`\n${failed} ask-guide check(s) failed.`);

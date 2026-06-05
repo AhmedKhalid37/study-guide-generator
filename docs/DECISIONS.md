@@ -1038,3 +1038,20 @@ frequencies still come from the redacted text. Full emitted-citation validation 
 deferred: v1 returns the machine-readable list of citation labels actually provided to the
 model and never fabricates labels server-side, while a later accuracy/polish slice can
 parse model-emitted citations and flag or strip labels outside that allowed set.
+
+## Ask chat UI uses explicit prepare and lazy session creation (2026-06-05)
+The frontend chat wiring keeps **Prepare Context** as an explicit prerequisite before the
+composer enables, even though the backend message endpoint can synchronously prepare/reuse
+the cache. **Why:** explicit preparation makes the readiness/cost boundary visible in the
+three-region Ask workspace, keeps the first chat send predictable, and preserves the
+existing context panel flow rather than hiding a potentially slow cache build behind a
+message submit. If a stale/missing cache still appears at send time, the backend remains
+self-healing and the UI shows a prepare action.
+
+Sessions are created **lazily on first send** instead of immediately when a guide is
+selected. After `POST /api/ask/jobs/{id}/sessions`, the UI immediately loads the session
+with `GET /api/ask/sessions/{session_id}` and stores only safe session metadata plus
+bounded message history in React state. **Why:** guide selection remains a read-only
+inspection action, switching guides does not create empty session directories, and the
+chat state starts only when the user actually asks a question. No chat is persisted to
+browser storage; session/history persistence remains server-side under the parent job.

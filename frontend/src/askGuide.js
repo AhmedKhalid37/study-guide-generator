@@ -16,8 +16,51 @@ export const PREP_REBUILT = "rebuilt";
 export const PREP_FAILED = "failed";
 export const PREP_IDLE = "idle";
 
+export const CHAT_READY = "ready";
+export const CHAT_NO_GUIDE = "no_guide";
+export const CHAT_CONTEXT_LOADING = "context_loading";
+export const CHAT_CONTEXT_NOT_READY = "context_not_ready";
+export const CHAT_PREPARE_REQUIRED = "prepare_required";
+export const CHAT_LOCAL_LOADING = "local_loading";
+export const CHAT_LOCAL_OFFLINE = "local_offline";
+export const CHAT_SENDING = "sending";
+
+const MAX_MESSAGE_CHARS = 12000;
+const MAX_CITATIONS = 12;
+const MAX_CHUNKS = 12;
+const SECRET_RE = /\bsk-[A-Za-z0-9_-]{8,}\b/g;
+const AUTH_RE = /\bAuthorization\s*:\s*Bearer\s+[A-Za-z0-9._-]+/gi;
+const URL_RE = /https?:\/\/[^\s<>)"']+/g;
+const POSIX_PATH_RE = /(?:\/(?:home|Users|mnt|tmp|var|private|workspace|app|root)\/[^\s<>)"']+)/g;
+const WINDOWS_PATH_RE = /[A-Za-z]:\\[^\s<>)"']+/g;
+
 export function safeText(value, fallback = "Unavailable") {
   return typeof value === "string" && value.trim() ? value.trim() : fallback;
+}
+
+export function safeDisplayText(value, fallback = "") {
+  if (typeof value !== "string") return fallback;
+  const text = value
+    .replace(SECRET_RE, "[redacted-key]")
+    .replace(AUTH_RE, "[redacted-authorization]")
+    .replace(URL_RE, "[redacted-url]")
+    .replace(WINDOWS_PATH_RE, "[redacted-path]")
+    .replace(POSIX_PATH_RE, "[redacted-path]")
+    .replace(/[\u0000-\u0008\u000b\u000c\u000e-\u001f]/g, "")
+    .trim();
+  return text ? text.slice(0, MAX_MESSAGE_CHARS) : fallback;
+}
+
+export function safeInputText(value) {
+  if (typeof value !== "string") return "";
+  return value
+    .replace(SECRET_RE, "[redacted-key]")
+    .replace(AUTH_RE, "[redacted-authorization]")
+    .replace(URL_RE, "[redacted-url]")
+    .replace(WINDOWS_PATH_RE, "[redacted-path]")
+    .replace(POSIX_PATH_RE, "[redacted-path]")
+    .replace(/[\u0000-\u0008\u000b\u000c\u000e-\u001f]/g, "")
+    .slice(0, MAX_MESSAGE_CHARS);
 }
 
 export function safeFilename(value) {
@@ -135,4 +178,147 @@ export function citationSummary(result) {
     headings,
     pages,
   };
+}
+
+export function safeCitationLabels(value, limit = MAX_CITATIONS) {
+  if (!Array.isArray(value)) return [];
+  const labels = [];
+  const seen = new Set();
+  value.forEach((item) => {
+    const label = safeDisplayText(item);
+    if (!label || seen.has(label)) return;
+    seen.add(label);
+    labels.push(label.slice(0, 180));
+  });
+  return labels.slice(0, limit);
+}
+
+export function retrievedChunkRows(value) {
+  if (!Array.isArray(value)) return [];
+  return value
+    .filter((item) => item && typeof item === "object")
+    .map((item) => ({
+      chunkId: safeDisplayText(item.chunk_id || item.chunkId || item.id || "", ""),
+      sourceType: safeDisplayText(item.source_type || item.sourceType || "", "source"),
+      label: safeDisplayText(item.label || "", "Citation"),
+      page: Number.isFinite(item.page) ? item.page : null,
+      approxTokens: Number.isFinite(item.approx_tokens)
+        ? item.approx_tokens
+        : Number.isFinite(item.approxTokens)
+          ? item.approxTokens
+          : null,
+      score: Number.isFinite(item.score) ? item.score : null,
+    }))
+    .filter((item) => item.label)
+    .slice(0, MAX_CHUNKS);
+}
+
+export function normalizeAskHistory(value) {
+  if (!Array.isArray(value)) return [];
+  return value
+    .filter((item) => item && typeof item === "object")
+    .map((item, index) => {
+      const role = item.role === "assistant" ? "assistant" : item.role === "user" ? "user" : null;
+      if (!role) return null;
+      const content = safeDisplayText(item.content);
+      if (!content) return null;
+      return {
+        id: safeDisplayText(item.id || `${role}-${item.created_at || index}`, `${role}-${index}`),
+        role,
+        content,
+        createdAt: typeof item.created_at === "string" ? item.created_at : null,
+        citations: role === "assistant" ? safeCitationLabels(item.citations) : [],
+        retrievedChunks: role === "assistant" ? retrievedChunkRows(item.retrieved_chunks) : [],
+      };
+    })
+    .filter(Boolean);
+}
+
+export function normalizeAskSessionPayload(value) {
+  const session = value?.session && typeof value.session === "object" ? value.session : {};
+  const sessionId = typeof session.session_id === "string" ? session.session_id : null;
+  const jobId = typeof session.job_id === "string" ? session.job_id : null;
+  return {
+    session: sessionId
+      ? {
+          sessionId,
+          jobId,
+          title: safeDisplayText(session.title || "", ""),
+          createdAt: typeof session.created_at === "string" ? session.created_at : null,
+          updatedAt: typeof session.updated_at === "string" ? session.updated_at : null,
+          provider: "local",
+          retrieval: {
+            maxChunks: Number.isFinite(session.settings?.retrieval?.max_chunks)
+              ? session.settings.retrieval.max_chunks
+              : null,
+            tokenBudget: Number.isFinite(session.settings?.retrieval?.token_budget)
+              ? session.settings.retrieval.token_budget
+              : null,
+          },
+        }
+      : null,
+    history: normalizeAskHistory(value?.history),
+  };
+}
+
+export function normalizeAskMessageResponse(value, fallbackUserMessage = "", keySeed = "current") {
+  const status = safeDisplayText(value?.status || "", "error");
+  const error = value?.error && typeof value.error === "object" ? value.error : null;
+  const answer = safeDisplayText(value?.answer || "");
+  return {
+    sessionId: typeof value?.session_id === "string" ? value.session_id : null,
+    status,
+    answer,
+    citations: safeCitationLabels(value?.citations),
+    retrievedChunks: retrievedChunkRows(value?.retrieved_chunks),
+    localModel:
+      value?.local_model && typeof value.local_model === "object"
+        ? {
+            provider: "local",
+            configured: Boolean(value.local_model.configured),
+            reachable: Boolean(value.local_model.reachable),
+            model: safeDisplayText(value.local_model.model || "", ""),
+            modelCount: Number.isFinite(value.local_model.model_count) ? value.local_model.model_count : null,
+            baseUrlHost: safeDisplayText(value.local_model.base_url_host || "", ""),
+          }
+        : null,
+    error: error
+      ? {
+          category: safeDisplayText(error.category || "", "ask_error"),
+          message: safeDisplayText(error.message || "", "Ask message failed."),
+        }
+      : null,
+    messages:
+      status === "answered" && answer
+        ? [
+            { id: `user-${keySeed}`, role: "user", content: safeDisplayText(fallbackUserMessage), citations: [], retrievedChunks: [] },
+            {
+              id: `assistant-${keySeed}`,
+              role: "assistant",
+              content: answer,
+              citations: safeCitationLabels(value?.citations),
+              retrievedChunks: retrievedChunkRows(value?.retrieved_chunks),
+            },
+          ]
+        : [],
+  };
+}
+
+export function chatReadiness({
+  hasJob,
+  contextLoading,
+  contextReady,
+  prepReady,
+  localLoading,
+  localReachable,
+  sending,
+}) {
+  if (!hasJob) return { state: CHAT_NO_GUIDE, enabled: false, label: "Select a guide" };
+  if (contextLoading) return { state: CHAT_CONTEXT_LOADING, enabled: false, label: "Loading context" };
+  if (!contextReady) return { state: CHAT_CONTEXT_NOT_READY, enabled: false, label: "Guide context unavailable" };
+  if (!prepReady) return { state: CHAT_PREPARE_REQUIRED, enabled: false, label: "Prepare context first" };
+  if (localLoading) return { state: CHAT_LOCAL_LOADING, enabled: false, label: "Checking local model" };
+  if (!localReachable) return { state: CHAT_LOCAL_OFFLINE, enabled: false, label: "Local model offline" };
+  if (sending) return { state: CHAT_SENDING, enabled: false, label: "Sending" };
+  return { state: CHAT_READY, enabled: true, label: "Ask your guide" };
 }

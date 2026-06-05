@@ -10,11 +10,34 @@
 - **Trunk includes:** `af0ec0e` (Ask Slice 1 design), `2634f63` (Ask Slice 2 context
   inventory), `a29a405` (Ask Slice 3 context preparation), and the inserted Ask
   workspace shell, on top of the validated LMM group and prior feature groups.
-- **Active work branch:** `ask-local-chat-api` — backend local chat API slice ran
-  here; see "What just landed". **Not committed/pushed** unless the operator asks.
-  **NEXT = Ask frontend chat UI wiring.**
+- **Active work branch:** `ask-chat-ui` — frontend Ask chat UI wiring ran here; see
+  "What just landed". **Not committed/pushed** unless the operator asks.
+  **NEXT = emitted-citation validation + chat UX polish.**
 
 ## What just landed
+- **Ask Your Guide — frontend chat UI wiring (FRONTEND)** (branch `ask-chat-ui`).
+  The existing `Ask Guide` workspace now consumes the backend local chat API:
+  guide/context inventory and explicit prepare still use
+  `GET /api/ask/jobs`, `GET /api/ask/jobs/{id}/context`, and
+  `POST /api/ask/jobs/{id}/prepare`; chat uses lazy
+  `POST /api/ask/jobs/{id}/sessions`, then `GET /api/ask/sessions/{session_id}`,
+  then non-streaming `POST /api/ask/sessions/{session_id}/message`. The composer is
+  enabled only when a guide is selected, context inventory is ready, prepare has
+  succeeded, local model status is reachable, and no message is sending. It renders
+  bounded history, answer text as plain text, backend-returned citation chips, safe
+  retrieved chunk metadata only (id/source/page/tokens/score, **no chunk text**),
+  and safe local model info. Offline/unconfigured local keeps the composer disabled
+  and reuses the LMM command helper; failures keep the draft available for retry.
+  Frontend normalizers redact obvious `sk-*` keys, Authorization bearer headers, full
+  URLs, and host paths before storing/rendering; there is no browser storage
+  persistence and no `dangerouslySetInnerHTML`. **No backend chat behavior change, no
+  extra uploads, no export, no citation-validation backend slice, no rolling-summary
+  UI, no streaming, no cloud fallback, no hosted selector, no DeepSeek/Qwen fallback,
+  no process control, no provider writes, no dependency.** Verified:
+  `npm run test:ask-guide`, `npm run build`, `npm run test:local-model-command`,
+  `npm run test:local-model-status`, Ask backend regressions in Docker
+  (`test_ask_context_inventory.py` 50/50, `test_ask_context_prepare.py` 58/58,
+  `test_ask_local_chat.py` 40/40), release smoke 28/28, and compose config exit 0.
 - **Ask Your Guide — backend local chat API (BACKEND ONLY)** (branch
   `ask-local-chat-api`). Adds `POST /api/ask/jobs/{job_id}/sessions`,
   `GET /api/ask/sessions/{session_id}`, and
@@ -76,7 +99,8 @@
   `test_ask_context_inventory.py` **50/50** unchanged, live prepare→hit on a real job +
   clean response/cache secret scan, read-only sha256 of `clean.md`/`extracted.txt`/
   `job.json` unchanged. See `CURRENT_TASK.md` #52. Historical NEXT here is superseded:
-  backend local chat API is now done; current NEXT is Ask frontend chat UI wiring.
+  backend local chat API and frontend chat UI wiring are now done; current NEXT is
+  emitted-citation validation + chat UX polish.
 - **Ask Your Guide — Slice 2: backend context inventory endpoint (BACKEND ONLY)**
   (branch `ask-context-inventory`). Two **read-only** endpoints over generated-guide
   artifacts: `GET /api/ask/jobs` lists **only Ask-eligible jobs** (those with a
@@ -279,12 +303,12 @@ commit before moving on. Surgical edits, not rewrites. The PDF/Chromium pipeline
 load-bearing — do not rewrite casually.
 
 ## Next recommended slice
-**Ask Your Guide — frontend chat UI wiring.** The backend local chat API is now
-available. Wire the existing `Ask Guide` workspace to create/load sessions and post
-messages; render safe history, answer text, citation chips, retrieved citation
-metadata, and the existing LMM offline state. Keep the UI slice local-only: no extra
-uploads, no streaming, no hosted-provider selector, no host process control, and no
-rolling summary yet.
+**Ask Your Guide — emitted-citation validation + chat UX polish.** The local-only
+chat UI is now wired. Add a tight accuracy/polish slice that validates or flags
+model-emitted citations against the backend allowed citation labels for the turn,
+and polish chat edge states around missing/stale context and long answers. Keep it
+local-only: no extra uploads, no streaming unless separately designed, no
+hosted-provider selector, no host process control, and no rolling summary UI yet.
 - **Focused manual validation / polish of the Shortcut Inspector UI.** The
   inspect→repair loop + degraded-activation confirm are complete and validated at
   the API + harness level; the remaining gap is a human click-through of the live
