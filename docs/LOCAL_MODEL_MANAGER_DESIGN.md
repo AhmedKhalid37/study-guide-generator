@@ -1,12 +1,17 @@
 # LOCAL_MODEL_MANAGER_DESIGN.md — Manage local OpenAI-compatible model servers
 
-> **Status: DESIGN-FIRST (LMM Slice 1). No code written.** This document is the
-> design for a *Local Model Manager* (LMM) — a feature that helps the operator run
-> and use a local OpenAI-compatible model server (llama.cpp / `llama-server`) from
-> inside the Study Guide Generator. It is a **separate feature** from in-app
-> Provider Settings (which is COMPLETE through Slice 5). For the live per-slice log
-> see `CURRENT_TASK.md`; for the "why" behind choices see `DECISIONS.md`; for the
-> stable overview see `PROJECT_CONTEXT.md`; the canonical brief is `../CLAUDE.md`.
+> **Status: PHASE 1 BUILT + VALIDATED (Slices 1→4 implemented; Slice 5 validation
+> PASSED).** This document began as the design (Slice 1) and now also carries the
+> per-slice implementation notes for the *Local Model Manager* (LMM) — a feature that
+> helps the operator run and use a local OpenAI-compatible model server (llama.cpp /
+> `llama-server`) from inside the Study Guide Generator. **Phase 1 (detection-only +
+> manual command helper) is on trunk (`94003bc`→`e399f09`) and validated** in
+> `docs/VALIDATION_LOCAL_MODEL_MANAGER_PHASE1.md` (see the Phase-1 validation note
+> below §11). Phase 2 (host companion) remains **design-only / sign-off-gated**. It is
+> a **separate feature** from in-app Provider Settings (which is COMPLETE through Slice
+> 5). For the live per-slice log see `CURRENT_TASK.md`; for the "why" behind choices
+> see `DECISIONS.md`; for the stable overview see `PROJECT_CONTEXT.md`; the canonical
+> brief is `../CLAUDE.md`.
 >
 > **Hard constraint that shapes the whole design:** the backend runs **inside a
 > non-root Docker container** as `appuser` (uid **10001**), behind
@@ -665,6 +670,38 @@ Each slice: **scope / files likely touched / tests / acceptance / non-goals.**
 >   no-write, no-spawn by source-inspection + a `subprocess.Popen` monkeypatch trip,
 >   status unchanged); `frontend/scripts/verify-local-model-command.mjs` (wired as
 >   `npm run test:local-model-command`); Slice 2/3 suites unchanged.
+
+> **Phase-1 validation note (LMM Slice 5 — DONE, branch
+> `docs-validate-local-model-manager-phase1`, DOCS-ONLY).** A verification +
+> docs-reconciliation pass over Slices 1→4 confirmed reality matches this design.
+> Full report: `docs/VALIDATION_LOCAL_MODEL_MANAGER_PHASE1.md`. **Result: PASS; no
+> code changed; no bugs found.** Highlights:
+> - **Static:** `compileall` OK; `test_local_model_status.py` 17/17,
+>   `test_local_model_command_profile.py` 13/13, `test_provider_fetch_models.py`
+>   16/16, `test_provider_settings_store.py` 26/26; `npm run build` +
+>   `test:local-model-status` + `test:local-model-command` green.
+> - **Docker/smoke:** container **healthy**; `/api/health`, `/status`,
+>   `/command-profile`, `/api/options` all 200; release smoke **28/28**.
+> - **Live API (offline):** `/status` → `ok:true`, `reachable:false`,
+>   `error.category:"local_offline"`, redacted message, host-only URL, no raw key.
+>   `/command-profile` → both whitelisted profiles, `/path/to/model.gguf` placeholder,
+>   `--host 0.0.0.0 --port 8080`, no real host paths, no secrets, no execution.
+> - **No-process-execution proof:** the only `subprocess`/`spawn`/`os.system` tokens
+>   in the LMM code are comments asserting absence; the command helper returns
+>   strings/argv only (`shlex.quote` = display-quoting). Confirms §4.3 / §7.
+> - **Secret scan CLEAN:** 0 real-key hits across `/status`, `/command-profile`,
+>   `/options`, `/provider-settings`, served JS, and container logs (the lone JS hit
+>   was an investigated false positive — `LOCAL_LLM_API_KEY` is a 4-char `none`
+>   placeholder coinciding with `display:"none"`).
+>
+> **Remaining LMM work — all DEFERRED / design-gated (none started):**
+> - **Host companion DESIGN** (Slice 5 design doc, Option B) — sign-off-gated.
+> - **Host companion implementation** (Slice 6+) — only on explicit approval.
+> - **Model directory (GGUF) browsing / scanning** (§6) — not in Phase 1.
+> - **Start / stop / restart** of `llama-server` — never in Phase 1; companion-only.
+> - **Log tailing** — companion-only (§8).
+> - **Ask Your Guide local-only chat integration** (§10) — separate feature; the
+>   recommended next slice, but not started and not part of LMM Phase 1.
 
 ### LMM Slice 5 — host companion launcher DESIGN (Option B)
 - **Scope:** a dedicated design doc (`docs/LOCAL_MODEL_COMPANION_DESIGN.md`) for the

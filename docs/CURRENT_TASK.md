@@ -5,10 +5,16 @@
 
 ---
 
-## NEXT — Local Model Manager — Slice 4 DONE (command-helper / copy start command); NEXT = LMM Phase-1 validation / docs reconciliation
+## NEXT — Local Model Manager — Phase 1 COMPLETE + VALIDATED (Slices 1→4 + Slice 5 validation); NEXT = Ask Your Guide local-only chat (recommended)
 
+- **LMM Phase 1 is COMPLETE and VALIDATED.** Slices 1→4 (design → detection-only
+  status endpoint → status panel → command helper) are on trunk (`94003bc`,
+  `e27c674`, `7429f24`, `e399f09`), and the **Slice 5 validation + docs-reconciliation
+  pass PASSED** — see DONE #49 below and
+  `docs/VALIDATION_LOCAL_MODEL_MANAGER_PHASE1.md`. All static, Docker, smoke,
+  live-API, no-process-execution, and secret-leak checks pass; **no code changed.**
 - **LMM Slice 4 is DONE (command-helper profiles / Copy start command)** — branch
-  `local-model-command-helper`, see DONE #48 below. Read-only
+  `local-model-command-helper`, on trunk `e399f09`, see DONE #48 below. Read-only
   `GET /api/local-model/command-profile` (`get_local_model_command_profiles()`)
   serves static, whitelisted `llama-server` start commands (default GPU + CPU-only
   profiles) with a `/path/to/model.gguf` **placeholder**, `--host 0.0.0.0 --port
@@ -18,11 +24,15 @@
   only — the app never executes it; no spawn/start/stop, no GGUF scan, no host
   companion.** Pure `localModelCommand.js` helpers; backend + frontend harnesses
   green; no provider-write or status-DTO behavior change.
-- **NEXT — LMM Phase-1 validation / docs reconciliation.** Phase 1 (detection-only
-  + command helper) is feature-complete (Slices 1→4). Next is a validation +
-  docs-reconciliation pass over the whole LMM Phase 1 (endpoints, panel, secret
-  scan, design ↔ reality) before any decision on Slice 5 (host-companion DESIGN,
-  Option B, sign-off-gated). See `LOCAL_MODEL_MANAGER_DESIGN.md` §11.
+- **NEXT — Ask Your Guide local-only chat (recommended), OR host-companion DESIGN
+  (optional, sign-off-gated).** Phase 1 is feature-complete + validated, so the next
+  major choices are: (1) **Ask Your Guide** local-only chat — consumes LMM status,
+  no process control — recommended; (2) **host companion DESIGN** (LMM Slice 5,
+  Option B) only if the user wants app-managed start/stop later; (3) Math/PDF
+  font-size rationalization; (4) Large-PDF preflight size-limit polish. **Still
+  deferred (do not begin without an explicit slice):** no host process control, no
+  start/stop, no GGUF browsing, no host companion implementation, no Ask Your Guide
+  chat yet. See `LOCAL_MODEL_MANAGER_DESIGN.md` §11.
 - **LMM Slice 3 is DONE (Local Models status panel, FRONTEND)** — branch
   `local-model-status-ui`, see DONE #47 below. Consumes the Slice 2 endpoints
   (`getLocalModelStatus`/`checkLocalModelStatus` API helpers) and renders a
@@ -43,8 +53,12 @@
   detection-first, Option D (Docker→host spawn) REJECTED, Option C not the default.
 - **LMM Slice 4 is DONE** (DONE #48) — the §9 command-profile helper +
   enabled **Copy command** button (a display template the app never executes;
-  `--host 0.0.0.0` guidance kept). NEXT is LMM Phase-1 validation / docs
-  reconciliation (see the header above + design §11).
+  `--host 0.0.0.0` guidance kept).
+- **LMM Slice 5 (Phase-1 validation / docs reconciliation) is DONE** (DONE #49) —
+  validation **PASSED**, `docs/VALIDATION_LOCAL_MODEL_MANAGER_PHASE1.md`, docs-only,
+  no code changed. Phase 1 is complete. NEXT is **Ask Your Guide local-only chat**
+  (recommended) or the sign-off-gated host-companion DESIGN (see the header above +
+  design §11).
 - **The Shortcut Inspector / Repair loop is COMPLETE** (Slices 1+2+3A+3B + the
   degraded-activation confirm polish, DONE #39→#43). See the block just below and
   DONE #43 for the latest slice. **A follow-up shortcut slice (DONE #44) then
@@ -124,18 +138,18 @@
 ## Where we are
 
 - **Branch:** `chrome-renderer-v1` (the live integrated trunk; PR target)
-- **Trunk tip:** `4458c9a` — "Wire shortcut repair UI to preview/apply (Slice 3B)".
-  The **Shortcut Inspector / Repair Loop** landed as five commits on top of the
-  provider-settings group and its follow-up fixes (`70544de` provider/large-PDF
-  validation report, `6a1499c` Test-Connection empty-content fix, `e524c79`
-  stored-`default_provider` precedence, `2ea4380` validation-doc pointer):
-  `a0f96d1` (design doc), `482c377` (Slice 1 backend inspector), `1f9034f`
-  (Slice 2 read-only inspector UI), `e148cc4` (Slice 3A repair preview/apply
-  endpoints), and `4458c9a` (Slice 3B repair UI wiring). The earlier **in-app
-  provider settings feature group** (`978516e`→`61fb423`) and the large-PDF core
-  (`60c3e78`) remain on trunk below it. Older `61fb423` / `60c3e78` / `901d44b` /
-  `65b9b8f` references further down are historical — trunk is now `4458c9a`.
-- **`origin/chrome-renderer-v1`:** `4458c9a` (local == origin; pushed)
+- **Trunk tip:** `e399f09` — "Add local-model command-helper (copy start command)
+  (LMM Slice 4)". The **Local Model Manager Phase 1** landed as four commits on top
+  of the Shortcut Inspector group + the Edit-preset follow-up (`adc2a7e`): `94003bc`
+  (Slice 1 design), `e27c674` (Slice 2 detection-only status endpoint), `7429f24`
+  (Slice 3 Local Models status panel), and `e399f09` (Slice 4 command helper). Phase
+  1 is now **validated** (Slice 5, DONE #49,
+  `docs/VALIDATION_LOCAL_MODEL_MANAGER_PHASE1.md`). Below the LMM group sit the
+  **Shortcut Inspector / Repair Loop** (`a0f96d1`→`4458c9a`), the **in-app provider
+  settings feature group** (`978516e`→`61fb423`), and the large-PDF core
+  (`60c3e78`). Older `4458c9a` / `61fb423` / `60c3e78` / `901d44b` / `65b9b8f`
+  references further down are historical — trunk is now `e399f09`.
+- **`origin/chrome-renderer-v1`:** `e399f09` (local == origin; pushed)
 - **Provider settings feature group is COMPLETE through Slice 5** (design →
   backend store/endpoints → Providers UI → runtime wiring → fetch-models endpoint
   → Refresh Models UI). See DONE #32 (backend store), #33 (Providers UI), #34
@@ -174,7 +188,7 @@
   pages → first-N/manual page-range UI). See DONE #27→#31. Automatic
   split/chunk processing and hybrid embedded-text + OCR dedup remain **deferred**.
 - **Group C is COMPLETE and INTEGRATED** (C1 → C5, incl. C4a–d) onto `chrome-renderer-v1`.
-- **For new sessions:** branch from `chrome-renderer-v1` @ `61fb423` (or later). Do **not**
+- **For new sessions:** branch from `chrome-renderer-v1` @ `e399f09` (or later). Do **not**
   re-merge any of the old stacked feature branches — they are consumed/archival (see
   `DECISIONS.md` → "Consumed feature branches must not be re-merged"). The short one-page
   start-here is `docs/NEXT_CHAT_HANDOFF.md`.
@@ -1795,6 +1809,48 @@ parked on the `hardening` branch — not merged, not deleted.
       release smoke green. Secret scan **clean** — no key in the endpoint, served JS,
       `/options`, `/provider-settings`, or container logs.
 
+49. **Local Model Manager — Slice 5: Phase-1 validation / docs reconciliation
+    (DOCS-ONLY)** — branch `docs-validate-local-model-manager-phase1` (cut from
+    `chrome-renderer-v1` @ `e399f09`). A verification + docs pass over the whole LMM
+    Phase 1 (Slices 1→4). **No feature work, no refactor, no process spawn, no
+    start/stop, no host companion, no GGUF browsing, no Docker config change, no
+    provider-settings write-behavior change. No code changed.**
+    - **Deliverable:** new `docs/VALIDATION_LOCAL_MODEL_MANAGER_PHASE1.md` +
+      reconciled `CURRENT_TASK.md`, `NEXT_CHAT_HANDOFF.md`, `PROJECT_CONTEXT.md`,
+      `LOCAL_MODEL_MANAGER_DESIGN.md`. No `DECISIONS.md` change — validation surfaced
+      no non-obvious rule not already recorded.
+    - **Static checks PASS:** `compileall` OK; `test_local_model_status.py` 17/17;
+      `test_local_model_command_profile.py` 13/13; `test_provider_fetch_models.py`
+      16/16; `test_provider_settings_store.py` 26/26; `npm run build` OK;
+      `npm run test:local-model-status` + `npm run test:local-model-command` green.
+    - **Docker/smoke PASS:** `compose config`/`build`/`up` OK (container **healthy**);
+      `/api/health` `{"ok":true}`; `/api/local-model/status`, `/command-profile`, and
+      `/api/options` all 200; release smoke **28/28**.
+    - **Live API PASS (no local server running):** `/status` → 200, `ok:true`,
+      `reachable:false`, `error.category:"local_offline"` (redacted message), no raw
+      key, host-only URL, `copy_start_command` disabled. `/command-profile` → 200 with
+      both whitelisted profiles, the `/path/to/model.gguf` placeholder, `--host
+      0.0.0.0 --port 8080`, no real host paths, no secrets, no execution.
+    - **No-process-execution PROOF:** the only `subprocess`/`spawn`/`os.system`
+      matches in the LMM code are **comments asserting absence**; the one real
+      `subprocess` reference is the pre-existing PDF/render pipeline, untouched. The
+      command helper returns strings/argv only (`shlex.quote` is display-quoting).
+    - **Secret-leak scan CLEAN:** real `.env` keys (never printed) + a generic `sk-`
+      pattern found **0** hits in `/local-model/status`, `/command-profile`,
+      `/options`, `/provider-settings`, container logs, and changed docs. The lone JS
+      match was an investigated **false positive** — `LOCAL_LLM_API_KEY` is a 4-char
+      placeholder (`none`) coinciding with minified React's `display:"none"`; the real
+      DeepSeek/Qwen keys appear nowhere.
+    - **UI (source + harness + smoke) PASS:** the panel mounts in Providers/Models;
+      offline state is safe/readable; Refresh works; Edit-settings scrolls/highlights
+      `#provider-card-local`; the command helper appears and is clearly manual; Copy
+      has a manual fallback; **no Start/Stop/Restart**, **no file/GGUF picker**;
+      existing provider settings unaffected. (Full pixel-level browser click-through
+      not run — proven structurally; optional human polish pass deferred.)
+    - **Outcome:** **Phase 1 COMPLETE + validated; no bugs found; no code changed.**
+      Recommended next: **Ask Your Guide local-only chat**, or host-companion DESIGN
+      (sign-off-gated). Safe to merge (docs-only).
+
 ## NEXT (in order)
 
 > **Provider settings feature group is DONE through Slice 5** (DONE #32→#36):
@@ -1830,33 +1886,36 @@ parked on the `hardening` branch — not merged, not deleted.
 > Shortcut Inspector itself was validated in
 > `docs/VALIDATION_SHORTCUT_INSPECTOR_REPAIR.md` (docs-only; no code changed).
 
-1. **Local Model Manager — Phase-1 validation / docs reconciliation (RECOMMENDED
-   next).** Slices 1→4 are **DONE** (#45→#48): design, detection-only status
-   endpoint, status panel, and the command-helper / Copy-command (DONE #48). Phase 1
-   (detection + manual command helper) is feature-complete. The recommended next
-   step is a validation + docs-reconciliation pass over all of Phase 1 (endpoints,
-   panel, command helper, secret scan, design ↔ reality) — likely a
-   `docs/VALIDATION_LOCAL_MODEL_MANAGER.md` — before any decision on the
-   sign-off-gated Slice 5. No new feature code expected unless a concrete bug
-   surfaces.
-2. **Focused manual validation / polish of the Shortcut Inspector UI.** The
-   inspect→repair loop is complete and validated at the API + served-bundle level
-   (`docs/VALIDATION_SHORTCUT_INSPECTOR_REPAIR.md`); the remaining gap is a human
-   click-through of the live Home/Customize 3-tier badges, the Inspector drawer
-   layout, and the Preview→Apply / clone flow (incl. the stale-preview re-disable).
-   Validation / polish only — no feature work unless a concrete UI bug surfaces.
+> **LMM Phase 1 is DONE through validation** (Slices 1→4 + Slice 5 validation,
+> #45→#49; `94003bc`→`e399f09`, validated in
+> `docs/VALIDATION_LOCAL_MODEL_MANAGER_PHASE1.md`). The earlier "Phase-1 validation /
+> docs reconciliation" recommendation is **done and removed** from this list.
+
+1. **Ask Your Guide — local-only chat (RECOMMENDED next).** A local-only chat over a
+   generated guide that **consumes** the LMM detection status (first-class offline
+   empty state, no hosted fallback in local-only mode) and the existing `local`
+   provider. **No process control** — it reads status, it does not start/stop
+   `llama-server`. Design-first; see `LOCAL_MODEL_MANAGER_DESIGN.md` §10 + "Later —
+   Ask Your Guide local-only chat integration" (§11).
+2. **Local Model Manager — Phase 2 (host companion launcher) DESIGN-FIRST, optional.**
+   Only if the user wants **app-managed start/stop** later. Process control (start/stop
+   a host `llama-server`) **crosses the container boundary** (non-root uid 10001
+   container managing a host process) and is **deferred to a host companion** designed
+   in LMM Slice 5 — **direct Docker→host spawn is REJECTED** (design §2 Option D /
+   §13). Get sign-off before any companion code. Separate from the complete in-app
+   provider settings.
 3. **Math/PDF font-size rationalization (cause C) — optional CSS-only
    investigation.** The remaining math/PDF fidelity slice; investigate the
    CSS-only font sizing before any change.
 4. **Large-PDF preflight size-limit polish — optional, later.** Raising/uniting
    the upload ceiling + preflight size thresholds is a possible later slice. It is
    **explicitly not part of this slice** and not started.
-5. **Local Model Manager — Phase 2 (host companion launcher) DESIGN-FIRST, later.**
-   Process control (start/stop a host `llama-server`) **crosses the container
-   boundary** (non-root uid 10001 container managing a host process) and is
-   **deferred to a host companion** designed in LMM Slice 5 — **direct Docker→host
-   spawn is REJECTED** (design §2 Option D / §13). Get sign-off before any companion
-   code. Stays a **separate** feature from the now-complete in-app provider settings.
+5. **Focused manual validation / polish of the Shortcut Inspector UI.** The
+   inspect→repair loop is complete and validated at the API + served-bundle level
+   (`docs/VALIDATION_SHORTCUT_INSPECTOR_REPAIR.md`); the remaining gap is a human
+   click-through of the live Home/Customize 3-tier badges, the Inspector drawer
+   layout, and the Preview→Apply / clone flow (incl. the stale-preview re-disable).
+   Validation / polish only — no feature work unless a concrete UI bug surfaces.
 
 (**Also still on the books, design-first:** Library archive / tag model — bulk
 **archive** needs a new archive state designed + a `DECISIONS.md` entry first;

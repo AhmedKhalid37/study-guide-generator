@@ -7,18 +7,32 @@
 
 ## Current position
 - **Branch (trunk / PR target):** `chrome-renderer-v1`
-- **Latest commit on trunk:** `7429f24` — "Add Local Models status panel (LMM Slice
-  3)", on top of the Slice 2 status endpoint (`e27c674`), the Slice 1 design
-  (`94003bc`), the **Shortcut Inspector / Repair Loop** (`a0f96d1`→`4458c9a`) + the
-  Edit-preset follow-up (`adc2a7e`). The **in-app provider settings feature group**
-  (`978516e`→`61fb423`) and the large-PDF core (`60c3e78`) remain on trunk below.
-- **Active work branch:** `local-model-command-helper` — **LMM Slice 4** (command-
-  helper profiles / Copy start command) is implemented + verified here; see "What
-  just landed".
-- **Remote:** `origin/chrome-renderer-v1` == `7429f24` (the Slice 4 branch is local,
-  not yet pushed/merged).
+- **Latest commit on trunk:** `e399f09` — "Add local-model command-helper (copy start
+  command) (LMM Slice 4)", on top of the Slice 3 status panel (`7429f24`), the Slice 2
+  status endpoint (`e27c674`), the Slice 1 design (`94003bc`), the **Shortcut Inspector
+  / Repair Loop** (`a0f96d1`→`4458c9a`) + the Edit-preset follow-up (`adc2a7e`). The
+  **in-app provider settings feature group** (`978516e`→`61fb423`) and the large-PDF
+  core (`60c3e78`) remain on trunk below.
+- **Active work branch:** `docs-validate-local-model-manager-phase1` — **LMM Slice 5**
+  (Phase-1 validation / docs reconciliation, **docs-only**) ran here and **PASSED**;
+  see "What just landed" + `docs/VALIDATION_LOCAL_MODEL_MANAGER_PHASE1.md`.
+- **Remote:** `origin/chrome-renderer-v1` == `e399f09` (the validation branch is local,
+  docs-only, not yet pushed/merged).
 
 ## What just landed
+- **Local Model Manager — Phase 1 COMPLETE + VALIDATED** (Slices 1→4 +
+  Slice 5 validation). Detection-only status (`GET /api/local-model/status` +
+  `POST /api/local-model/check`), the read-only **Local Models** panel, and the
+  manual **command helper** (`GET /api/local-model/command-profile`) are all on trunk
+  (`94003bc`→`e399f09`). The **Slice 5 validation pass** (branch
+  `docs-validate-local-model-manager-phase1`, docs-only, no code changed) confirmed
+  every Phase-1 guarantee: static suites green, Docker container healthy, smoke 28/28,
+  live `/status`+`/command-profile` 200 (offline → safe `local_offline`, placeholder
+  command, host-only URL), **no-process-execution proof** (only comments assert
+  absence; the command helper returns strings/argv via `shlex.quote`), and a **clean
+  secret scan** (the lone JS hit was a 4-char `LOCAL_LLM_API_KEY=none` placeholder
+  coinciding with `display:"none"`, not a real key). No bugs found. See
+  `docs/VALIDATION_LOCAL_MODEL_MANAGER_PHASE1.md` + `CURRENT_TASK.md` #49.
 - **Local Model Manager — Slice 4: command-helper profiles / Copy start command**
   (branch `local-model-command-helper`). Read-only
   `GET /api/local-model/command-profile` → `get_local_model_command_profiles()` in
@@ -167,22 +181,23 @@ Local-only `61c134c` and `863f5b7` stay **parked on the `hardening` branch** —
 pieces already salvaged; the rest is deferred (below).
 
 ## RULE for new work
-**Branch from `chrome-renderer-v1` @ `e27c674` (or later) — never from an old stacked
+**Branch from `chrome-renderer-v1` @ `e399f09` (or later) — never from an old stacked
 branch.** One small slice per branch; verify (build + compile + docker + smoke) and
 commit before moving on. Surgical edits, not rewrites. The PDF/Chromium pipeline is
 load-bearing — do not rewrite casually.
 
 ## Next recommended slice
 **Pick ONE safe option:**
-- **Local Model Manager — Phase-1 validation / docs reconciliation (recommended).**
-  Slices 1→4 are **DONE** (design, status endpoint, status panel, command helper).
-  Phase 1 (detection + manual command helper) is feature-complete. Do a validation
-  + docs-reconciliation pass over all of Phase 1 — endpoints
-  (`/api/local-model/status`, `/check`, `/command-profile`), the panel, the command
-  helper, a secret scan, and design ↔ reality — likely a new
-  `docs/VALIDATION_LOCAL_MODEL_MANAGER.md`. No new feature code expected unless a
-  concrete bug surfaces. Slice 5 (host-companion DESIGN, Option B) stays sign-off-
-  gated; do not begin without explicit approval.
+- **Ask Your Guide — local-only chat (recommended).** Now that LMM Phase 1 is
+  complete + validated, the natural next feature is a local-only chat over a generated
+  guide that **consumes** the LMM detection status (first-class offline empty state, no
+  hosted fallback in local-only mode) and the existing `local` provider. **It reads
+  status; it does not start/stop `llama-server`** (no process control). Design-first;
+  see `LOCAL_MODEL_MANAGER_DESIGN.md` §10 + §11 ("Later — Ask Your Guide").
+- **Local Model Manager — Phase 2 host companion launcher (DESIGN-FIRST, optional).**
+  Only if app-managed **start/stop** of a host `llama-server` is desired. Process
+  control crosses the container boundary and is deferred to an optional host companion
+  (direct Docker→host spawn rejected). Design + sign-off first (LMM Slice 5).
 - **Focused manual validation / polish of the Shortcut Inspector UI.** The
   inspect→repair loop + degraded-activation confirm are complete and validated at
   the API + harness level; the remaining gap is a human click-through of the live
@@ -195,9 +210,6 @@ load-bearing — do not rewrite casually.
 - **Large-PDF preflight size-limit polish — optional, later.** Raising the upload
   ceiling + preflight size thresholds is a possible later slice; **not part of any
   current slice** and not started.
-- **Local Model Manager — Phase 2 host companion launcher (DESIGN-FIRST, later).**
-  Process control crosses the container boundary and is deferred to an optional
-  host companion (direct Docker→host spawn rejected). Design + sign-off first.
 
 (The previously-recommended **in-app provider settings** (COMPLETE through
 **Slice 5** — fetch-models endpoint + Refresh Models UI), the **shortcut inspector
@@ -238,8 +250,9 @@ is the optional **font-size rationalization** (cause C, CSS-only).)
   draft `custom_models` → explicit Save). Keys stay server-side only; presets never
   hard-pin provider/model. **Still deferred:** encrypted-at-rest / OS keyring; `.env`
   import; optional Builder "Provider default" thinking UI polish.
-- **Local Model Manager** — **design DONE** (LMM Slice 1) + **Slice 2 DONE** (backend,
-  on trunk `e27c674`) + **Slice 3 DONE** (branch `local-model-status-ui`). Slice 2 =
+- **Local Model Manager** — **Phase 1 COMPLETE + VALIDATED** (Slices 1→4 on trunk
+  `94003bc`→`e399f09`; Slice 5 validation docs-only,
+  `docs/VALIDATION_LOCAL_MODEL_MANAGER_PHASE1.md`). Slice 2 =
   the detection-only backend status endpoint (`GET /api/local-model/status` + `POST
   /api/local-model/check`, `get_local_model_status()`) shipping safe fields only.
   Slice 3 = the read-only **Local Models status panel** in the Providers (Models)
@@ -251,10 +264,11 @@ is the optional **font-size rationalization** (cause C, CSS-only).)
   the **command helper** (`GET /api/local-model/command-profile` +
   `localModelCommand.js` + a `CommandHelper` block): a copyable, static, whitelisted
   `llama-server` start command (placeholder model path, `--host 0.0.0.0`) the
-  operator runs **manually** — the app never executes it. **Next implementation slice
-  = LMM Phase-1 validation / docs reconciliation** (Slice 5 host companion is
-  sign-off-gated). Remains a **separate** feature from the in-app provider settings;
-  provider config writes stay on `PATCH /api/provider-settings/local`.
+  operator runs **manually** — the app never executes it. **Phase 1 is feature-complete
+  and validated** (Slice 5, DONE #49). **Next major choice = Ask Your Guide local-only
+  chat (recommended)** or the sign-off-gated host-companion DESIGN (Phase 2). Remains a
+  **separate** feature from the in-app provider settings; provider config writes stay on
+  `PATCH /api/provider-settings/local`.
 - **Library archive / tag model** — DESIGN-FIRST (bulk archive needs an archive state +
   `DECISIONS.md` entry; bulk tag needs a tag model; neither started).
 - **GHCR publish workflow / prebuilt image** — deferred distribution decision (parked on `hardening`).

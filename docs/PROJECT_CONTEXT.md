@@ -102,9 +102,12 @@ flashcards with CSV / Anki / Quizlet export.
   operator runs **manually** — prominent when offline, collapsed when reachable.
   **Command-helper copy support is implemented as MANUAL ONLY: the app never
   executes, spawns, starts, or stops anything; no GGUF scan; no raw key/URL.** With
-  Slice 4, **Phase 1 (detection + manual command helper) is feature-complete.** Still
-  ahead: **LMM Phase-1 validation / docs reconciliation**, then an optional **host
-  companion launcher** (Phase 2, design-only, sign-off-gated). **Direct Docker→host
+  Slice 4, **Phase 1 (detection + manual command helper) is feature-complete and
+  VALIDATED** (Slice 5 validation pass, `docs/VALIDATION_LOCAL_MODEL_MANAGER_PHASE1.md`
+  — all static/Docker/smoke/live-API/no-execution/secret-scan checks pass, no code
+  changed). Still ahead: **Ask Your Guide local-only chat** (recommended; consumes LMM
+  status, no process control), then an optional **host companion launcher** (Phase 2,
+  design-only, sign-off-gated). **Direct Docker→host
   process spawn is rejected** — a non-root (uid 10001), `no-new-privileges` container
   cannot safely manage host processes. Provider config edits stay on Provider
   Settings (no second writer). See `DECISIONS.md`.
