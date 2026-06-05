@@ -160,6 +160,15 @@ export function checkLocalModelStatus() {
   return requestJson("/api/local-model/check", { method: "POST" });
 }
 
+// Local Models command helper (LMM Slice 4). Read-only, static `llama-server`
+// start-command templates the user copies and runs MANUALLY on their host. The
+// app never executes the command — this only fetches a display template. The
+// response is already SAFE: a model PLACEHOLDER path (never a real host path), no
+// raw key, and host-only URL info. No request body, no write, no process control.
+export function getLocalModelCommandProfile() {
+  return requestJson("/api/local-model/command-profile");
+}
+
 export function getStyles() {
   return requestJson("/api/styles");
 }

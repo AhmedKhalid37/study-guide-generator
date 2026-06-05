@@ -5,8 +5,24 @@
 
 ---
 
-## NEXT — Local Model Manager — Slice 3 DONE (frontend status panel); NEXT = LMM Slice 4 (command-helper / copy start command)
+## NEXT — Local Model Manager — Slice 4 DONE (command-helper / copy start command); NEXT = LMM Phase-1 validation / docs reconciliation
 
+- **LMM Slice 4 is DONE (command-helper profiles / Copy start command)** — branch
+  `local-model-command-helper`, see DONE #48 below. Read-only
+  `GET /api/local-model/command-profile` (`get_local_model_command_profiles()`)
+  serves static, whitelisted `llama-server` start commands (default GPU + CPU-only
+  profiles) with a `/path/to/model.gguf` **placeholder**, `--host 0.0.0.0 --port
+  8080`, and safety warnings. The Local Models panel renders a first-class **Copy
+  command** block (profile chips, selectable code block, clipboard + manual
+  fallback), prominent when offline and collapsed when reachable. **Command helper
+  only — the app never executes it; no spawn/start/stop, no GGUF scan, no host
+  companion.** Pure `localModelCommand.js` helpers; backend + frontend harnesses
+  green; no provider-write or status-DTO behavior change.
+- **NEXT — LMM Phase-1 validation / docs reconciliation.** Phase 1 (detection-only
+  + command helper) is feature-complete (Slices 1→4). Next is a validation +
+  docs-reconciliation pass over the whole LMM Phase 1 (endpoints, panel, secret
+  scan, design ↔ reality) before any decision on Slice 5 (host-companion DESIGN,
+  Option B, sign-off-gated). See `LOCAL_MODEL_MANAGER_DESIGN.md` §11.
 - **LMM Slice 3 is DONE (Local Models status panel, FRONTEND)** — branch
   `local-model-status-ui`, see DONE #47 below. Consumes the Slice 2 endpoints
   (`getLocalModelStatus`/`checkLocalModelStatus` API helpers) and renders a
@@ -25,10 +41,10 @@
   (+ thin `POST /api/local-model/check` alias), `get_local_model_status()`.
 - **LMM Slice 1 design is DONE** (DONE #45) — `docs/LOCAL_MODEL_MANAGER_DESIGN.md`:
   detection-first, Option D (Docker→host spawn) REJECTED, Option C not the default.
-- **NEXT — LMM Slice 4: command-helper profiles / Copy start command.** Render the
-  §9 `llama_server_default` command profile + enable the **Copy command** button
-  (still a display template the app never executes; keep `--host 0.0.0.0`
-  guidance). See design §9 + §11.
+- **LMM Slice 4 is DONE** (DONE #48) — the §9 command-profile helper +
+  enabled **Copy command** button (a display template the app never executes;
+  `--host 0.0.0.0` guidance kept). NEXT is LMM Phase-1 validation / docs
+  reconciliation (see the header above + design §11).
 - **The Shortcut Inspector / Repair loop is COMPLETE** (Slices 1+2+3A+3B + the
   degraded-activation confirm polish, DONE #39→#43). See the block just below and
   DONE #43 for the latest slice. **A follow-up shortcut slice (DONE #44) then
@@ -1734,6 +1750,51 @@ parked on the `hardening` branch — not merged, not deleted.
       scan **clean** — no `.env` key value in the served JS bundle, `/status`,
       `/options`, or `/provider-settings`; container logs carry 0 key tokens.
 
+48. **Local Model Manager — Slice 4: command-helper profiles / Copy start command**
+    — branch `local-model-command-helper`. The §9 command-profile helper: a safe,
+    copyable `llama-server` start command the operator runs **manually** outside the
+    app. **Command helper only — the app never executes it; no process spawn,
+    start/stop, host companion, GGUF scan, or arbitrary shell.** No Docker, pipeline,
+    renderer, prompt, large-PDF, or Shortcut Inspector changes; no provider-write
+    behavior change; no new deps.
+    - **Backend** (`pipeline/provider_config.py` + `api/server.py`): read-only
+      `GET /api/local-model/command-profile` → `get_local_model_command_profiles()`.
+      Response: `{ok, provider, in_docker, base_url_host, profile, profiles[],
+      notes[]}`; each profile `{id, label, description, command, argv[],
+      placeholders{model_path}, warnings[]}`. Two static profiles:
+      `llama_server_default` (GPU offload, `--n-gpu-layers 999`, `-c 8192`) and
+      `llama_server_cpu` (CPU only, `-c 4096`), both `--host 0.0.0.0 --port 8080`.
+      `argv` is built from a **fixed flag whitelist** with literal values; the only
+      substitution token is `{model_path}` → the placeholder `/path/to/model.gguf`
+      (no host filesystem read, no request input). The display `command` is rendered
+      from `argv` via `shlex.quote`. **No subprocess/spawn anywhere; no raw key;
+      host-only URL.** `--threads`/`--flash-attn` intentionally omitted from defaults.
+    - **Frontend**: `getLocalModelCommandProfile()` client helper + pure
+      `frontend/src/localModelCommand.js` (`normalizeProfile`, `commandProfiles`,
+      `defaultProfile`, `profileById`, `commandAvailable`, `copyButtonLabel`,
+      `commandNotes`) + a `CommandHelper` block in `LocalModelsPanel.jsx`: profile
+      chips (when >1), a selectable command code block, a **Copy command** button
+      (`navigator.clipboard` + manual "select & copy" fallback on failure), the
+      static warnings, and "run on your host… then Refresh status." **Prominent**
+      (expanded) when offline/not-configured, **secondary** (collapsed `<details>`)
+      when reachable. The deferred `copy_start_command` "Planned" chip is suppressed
+      (the real helper supersedes it); the Slice 2 status DTO is unchanged. **No
+      Start/Stop button; nothing executes.**
+    - **Tests:** new `test_scripts/test_local_model_command_profile.py` (**13/13**) —
+      shape, placeholder path, host/port, warnings, no-key + no-URL leak with a stored
+      key, no-write, no-spawn (source inspection + `subprocess.Popen` monkeypatch
+      trip), status unchanged. New `frontend/scripts/verify-local-model-command.mjs`
+      (wired as `npm run test:local-model-command`) — normalization/selection, copy
+      gating, deterministic command, warnings/notes, label states, no execute/start
+      export. Slice 2/3 suites unchanged: `test_local_model_status.py` (17/17),
+      `verify-local-model-status.mjs` (47/47), `test_provider_fetch_models.py`
+      (16/16), `test_provider_settings_store.py` (26/26).
+    - **Verified:** `compileall` OK; `npm run build` OK; harnesses green; Docker
+      build + container **healthy**; `GET /api/local-model/command-profile` 200 with
+      the placeholder command; `/api/local-model/status` + `/api/options` 200;
+      release smoke green. Secret scan **clean** — no key in the endpoint, served JS,
+      `/options`, `/provider-settings`, or container logs.
+
 ## NEXT (in order)
 
 > **Provider settings feature group is DONE through Slice 5** (DONE #32→#36):
@@ -1769,16 +1830,15 @@ parked on the `hardening` branch — not merged, not deleted.
 > Shortcut Inspector itself was validated in
 > `docs/VALIDATION_SHORTCUT_INSPECTOR_REPAIR.md` (docs-only; no code changed).
 
-1. **Local Model Manager — LMM Slice 4: command-helper profiles / Copy start
-   command (RECOMMENDED next).** Slices 2 (backend, DONE #46) and 3 (frontend
-   panel, DONE #47) are **DONE**. The panel already shows a **disabled** "Copy
-   start command — Planned" affordance fed by the backend `actions`; Slice 4
-   renders the §9 `llama_server_default` command profile (placeholder-substituted,
-   bounded ints) and **enables** the Copy button. The command stays a **display
-   template the app never executes**; keep the `--host 0.0.0.0` guidance. Likely a
-   static `localModelProfiles.js` table (or a server-owned profile constant) +
-   harness over the command-rendering function. **No execution; no host file/path
-   resolution.** See design §9 + §11.
+1. **Local Model Manager — Phase-1 validation / docs reconciliation (RECOMMENDED
+   next).** Slices 1→4 are **DONE** (#45→#48): design, detection-only status
+   endpoint, status panel, and the command-helper / Copy-command (DONE #48). Phase 1
+   (detection + manual command helper) is feature-complete. The recommended next
+   step is a validation + docs-reconciliation pass over all of Phase 1 (endpoints,
+   panel, command helper, secret scan, design ↔ reality) — likely a
+   `docs/VALIDATION_LOCAL_MODEL_MANAGER.md` — before any decision on the
+   sign-off-gated Slice 5. No new feature code expected unless a concrete bug
+   surfaces.
 2. **Focused manual validation / polish of the Shortcut Inspector UI.** The
    inspect→repair loop is complete and validated at the API + served-bundle level
    (`docs/VALIDATION_SHORTCUT_INSPECTOR_REPAIR.md`); the remaining gap is a human

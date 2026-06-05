@@ -71,8 +71,8 @@ flashcards with CSV / Anki / Quizlet export.
   `base_url_host`. The public DTO has **no key field by construction**; the API key
   is write-only over the API (set/cleared, never read back). **Raw keys never reach
   the frontend.**
-- **Local Model Manager — DETECTION-ONLY, BACKEND + FRONTEND STATUS PANEL
-  IMPLEMENTED (Slices 2 + 3).** A *separate* feature from Provider Settings, designed
+- **Local Model Manager — DETECTION-ONLY + MANUAL COMMAND HELPER, PHASE 1 COMPLETE
+  (Slices 2 + 3 + 4).** A *separate* feature from Provider Settings, designed
   in `docs/LOCAL_MODEL_MANAGER_DESIGN.md`. The chosen approach is **staged +
   detection-first**: Phase 1 = **detection-only**. **Slice 2 (backend) is DONE**
   (branch `local-model-status-api`): a read-only **`GET /api/local-model/status`**
@@ -92,13 +92,22 @@ flashcards with CSV / Anki / Quizlet export.
   in-Docker flag, latency, model count + bounded chips, default/selected model, a
   first-class offline/troubleshooting state (incl. the `--host 0.0.0.0` note), a
   **Refresh status** button, an "Edit local provider settings" link to the Local
-  provider card (the single config writer), and a **disabled** "Copy start command —
-  Planned" chip. **No process control, no inline editing, no raw key/URL.** Still
-  ahead: **LMM Slice 4** (enable the command-helper Copy), then an optional **host
-  companion launcher** (Phase 2, design-only). **Direct Docker→host process spawn is
-  rejected** — a non-root (uid 10001), `no-new-privileges` container cannot safely
-  manage host processes. Provider config edits stay on Provider Settings (no second
-  writer). See `DECISIONS.md`.
+  provider card (the single config writer). **Slice 4 (command helper) is DONE**
+  (branch `local-model-command-helper`): a read-only
+  **`GET /api/local-model/command-profile`** (`get_local_model_command_profiles()`)
+  serves static, whitelisted `llama-server` start commands (a default GPU profile +
+  a CPU-only profile) with a `/path/to/model.gguf` **placeholder**,
+  `--host 0.0.0.0 --port 8080`, and safety warnings; the panel renders a first-class
+  **Copy command** block (pure `localModelCommand.js` + a `CommandHelper`) the
+  operator runs **manually** — prominent when offline, collapsed when reachable.
+  **Command-helper copy support is implemented as MANUAL ONLY: the app never
+  executes, spawns, starts, or stops anything; no GGUF scan; no raw key/URL.** With
+  Slice 4, **Phase 1 (detection + manual command helper) is feature-complete.** Still
+  ahead: **LMM Phase-1 validation / docs reconciliation**, then an optional **host
+  companion launcher** (Phase 2, design-only, sign-off-gated). **Direct Docker→host
+  process spawn is rejected** — a non-root (uid 10001), `no-new-privileges` container
+  cannot safely manage host processes. Provider config edits stay on Provider
+  Settings (no second writer). See `DECISIONS.md`.
 
 ## 4. Architecture facts a new session MUST know
 

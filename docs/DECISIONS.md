@@ -845,3 +845,37 @@ the panel stays calm; only a *classified* non-offline error (auth/model) shows t
 `unknown` + a "status unavailable" card instead of a crash. The **Copy start command** chip
 stays disabled here (enabling it with the §9 profile is **Slice 4**). No new dependency —
 the helpers are pure ESM unit-tested by a node harness, mirroring `shortcutStatus.js`.
+
+## LMM Slice 4: the command helper emits static, whitelisted templates and NEVER executes (2026-06-05)
+The "Copy llama-server command" affordance deferred by Slice 3 is now real, but as a
+**display helper only** — it builds a command string the operator copies and runs
+themselves; the app **never** executes, spawns, starts, or stops anything. The command is
+served by a **read-only** `GET /api/local-model/command-profile`
+(`get_local_model_command_profiles()` in `pipeline/provider_config.py`) and assembled from
+a **fixed, hardcoded flag whitelist** (`_LOCAL_COMMAND_PROFILES`): each profile is an
+`argv` template of literal `llama-server` flags + bounded literal values; the **only**
+substitution token is `{model_path}`, which always resolves to the placeholder
+`/path/to/model.gguf`. **No request input is accepted** — there is no POST, no body, no
+model path from the frontend (only the placeholder string), no host filesystem read, and
+**no GGUF scan**. The display `command` is rendered from `argv` via `shlex.quote` (display-
+safe quoting only); `argv` is kept as the source of truth so a future host companion
+(Slice 5+) can validate it without re-parsing a string. **Why a separate endpoint instead
+of folding the command into `/status`:** the status DTO is a hot, frequently-probed path
+and its Slice 2 shape (and test) is a stable contract; the command profiles are static and
+cacheable, so a distinct read-only endpoint keeps the status response unchanged and lets
+the helper load once. **Why the Slice 2 `actions[copy_start_command]` stays `disabled`:**
+flipping it would break the Slice 2 status test + the Slice 3 frontend harness for no gain;
+instead the panel **suppresses** that now-superseded "Planned" chip and renders the
+first-class `CommandHelper` block (driven by the new endpoint), so there is exactly one
+copy affordance and **zero** behavior change to `/status`. Two profiles ship
+(`llama_server_default` GPU offload, `llama_server_cpu` CPU-only) to exercise the
+"profiles" plural and a UI picker; `--threads`/`--flash-attn` are **deliberately omitted**
+from the defaults (let llama.cpp auto-pick threads; flash-attn is version-sensitive) — the
+schema can carry them later without breaking the contract. `--host 0.0.0.0` is **kept and
+called out** because binding `127.0.0.1` makes the server unreachable from the container
+(the #1 local-setup gotcha). Safety is enforced + tested: no subprocess/spawn anywhere
+(asserted by source inspection **and** a `subprocess.Popen` monkeypatch that fails the test
+if called), no raw key, host-only URL (no userinfo/port/path/query). No new dependency —
+backend uses stdlib `shlex`; the frontend helpers are pure ESM unit-tested by a node
+harness. The next step is **LMM Phase-1 validation / docs reconciliation** (Slice 5, the
+host companion DESIGN, stays sign-off-gated).

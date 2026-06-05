@@ -3,13 +3,19 @@ import {
   AlertTriangle,
   Check,
   CircleSlash,
+  ClipboardCheck,
+  Copy,
   Loader2,
   RefreshCw,
   Server,
   Terminal,
   WifiOff,
 } from "lucide-react";
-import { checkLocalModelStatus, getLocalModelStatus } from "../api/client";
+import {
+  checkLocalModelStatus,
+  getLocalModelCommandProfile,
+  getLocalModelStatus,
+} from "../api/client";
 import {
   STATE_ERROR,
   STATE_NOT_CONFIGURED,
@@ -25,6 +31,16 @@ import {
   statusModelCount,
   statusNotes,
 } from "../localModelStatus";
+import {
+  COPY_COPIED,
+  COPY_FAILED,
+  COPY_IDLE,
+  commandAvailable,
+  commandNotes,
+  commandProfiles,
+  copyButtonLabel,
+  profileById,
+} from "../localModelCommand";
 
 // Read-only Local Models status panel (LMM Slice 3). Consumes the detection-only
 // Slice 2 endpoints (GET /api/local-model/status on open, POST
@@ -75,6 +91,11 @@ export default function LocalModelsPanel({ onEditLocalProvider }) {
   // local-model endpoint). A reachable:false server is NOT this — that is a
   // normal status the panel renders calmly.
   const [requestError, setRequestError] = useState(null);
+  // Static command-helper profiles (LMM Slice 4). Fetched once; null until loaded
+  // or if the endpoint is unavailable (old backend) — the helper then hides.
+  const [commandData, setCommandData] = useState(null);
+  const [selectedProfileId, setSelectedProfileId] = useState(null);
+  const [copyState, setCopyState] = useState(COPY_IDLE);
 
   const fetchStatus = useCallback((probe) => {
     const call = probe ? checkLocalModelStatus : getLocalModelStatus;
@@ -99,6 +120,23 @@ export default function LocalModelsPanel({ onEditLocalProvider }) {
     fetchStatus(false);
   }, [fetchStatus]);
 
+  // Load the static command-helper profiles once. A failure (e.g. an older backend
+  // without the endpoint) simply leaves commandData null → the helper hides; it is
+  // never an error the user has to act on.
+  useEffect(() => {
+    let cancelled = false;
+    getLocalModelCommandProfile()
+      .then((data) => {
+        if (!cancelled) setCommandData(data);
+      })
+      .catch(() => {
+        if (!cancelled) setCommandData(null);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
   const state = localServerState(status);
   const tone = STATE_TONE[state] || "neutral";
   const PillIcon = PILL_ICON[state] || CircleSlash;
@@ -112,10 +150,39 @@ export default function LocalModelsPanel({ onEditLocalProvider }) {
   const selectedModel = typeof status?.selected_model === "string" ? status.selected_model : null;
   const defaultModel = typeof status?.default_model === "string" ? status.default_model : null;
   const editAction = findAction(status, "open_provider_settings");
-  // Disabled, planned-only affordances (e.g. the deferred Copy start command).
-  // Anything the backend marks enabled:false is rendered as a clearly disabled
-  // chip — never an enabled control that does nothing.
-  const plannedActions = statusActions(status).filter((a) => !a.enabled);
+  // Disabled, planned-only affordances rendered as clearly disabled chips — never
+  // an enabled control that does nothing. `copy_start_command` is EXCLUDED: it is
+  // now superseded by the first-class command helper below (driven by the separate
+  // /command-profile endpoint), so we never show a leftover "Planned" chip for it.
+  const plannedActions = statusActions(status).filter(
+    (a) => !a.enabled && a.id !== "copy_start_command"
+  );
+
+  // Command helper (LMM Slice 4): the active profile + whether a copyable command
+  // exists. Offline/not-configured surfaces it prominently; reachable keeps it
+  // secondary (collapsed). This is COPY-ONLY — nothing here ever executes it.
+  const profiles = commandProfiles(commandData);
+  const activeProfile = profileById(commandData, selectedProfileId);
+  const canCopy = commandAvailable(activeProfile);
+  const helperNotes = commandNotes(commandData);
+  const helperProminent = state === STATE_OFFLINE || state === STATE_NOT_CONFIGURED;
+
+  const onCopyCommand = useCallback(async () => {
+    if (!activeProfile?.command) return;
+    try {
+      if (navigator?.clipboard?.writeText) {
+        await navigator.clipboard.writeText(activeProfile.command);
+        setCopyState(COPY_COPIED);
+      } else {
+        // No Clipboard API (insecure origin / old browser) → fall back to a manual
+        // "select and copy" instruction rather than failing silently.
+        setCopyState(COPY_FAILED);
+      }
+    } catch {
+      setCopyState(COPY_FAILED);
+    }
+    setTimeout(() => setCopyState(COPY_IDLE), 2600);
+  }, [activeProfile]);
 
   return (
     <div className="mt-8 max-w-[860px]">
@@ -231,6 +298,23 @@ export default function LocalModelsPanel({ onEditLocalProvider }) {
               </ul>
             )}
 
+            {/* Command helper (LMM Slice 4): copyable, manual-only start command */}
+            {canCopy && (
+              <CommandHelper
+                prominent={helperProminent}
+                profiles={profiles}
+                activeProfile={activeProfile}
+                selectedProfileId={selectedProfileId}
+                onSelectProfile={(id) => {
+                  setSelectedProfileId(id);
+                  setCopyState(COPY_IDLE);
+                }}
+                copyState={copyState}
+                onCopy={onCopyCommand}
+                notes={helperNotes}
+              />
+            )}
+
             {/* Actions: edit-link (single writer is Providers) + disabled planned */}
             <div className="mt-4 flex flex-wrap items-center gap-2 border-t border-white/5 pt-4">
               <button
@@ -327,6 +411,146 @@ function Troubleshooting({ state, host, inDocker, notes }) {
         </div>
       </div>
     </div>
+  );
+}
+
+// Copyable, MANUAL-ONLY llama-server start command (LMM Slice 4). This renders a
+// display template the operator runs themselves in a terminal — there is NO Start
+// button and nothing here executes. `prominent` expands it inline (offline /
+// not-configured); otherwise it is a collapsed, secondary <details> so a reachable
+// server keeps the helper out of the way.
+function CommandHelper({
+  prominent,
+  profiles,
+  activeProfile,
+  selectedProfileId,
+  onSelectProfile,
+  copyState,
+  onCopy,
+  notes,
+}) {
+  if (!activeProfile?.command) return null;
+  const failed = copyState === COPY_FAILED;
+  const copied = copyState === COPY_COPIED;
+  const CopyIcon = copied ? ClipboardCheck : Copy;
+
+  const body = (
+    <div className="space-y-3">
+      <p className="text-[11.5px] leading-5 text-[#9098A8]">
+        Run this in a terminal <strong className="text-[#D4D4D8]">on your host machine</strong>.
+        The app never runs it for you — copy it, edit the model path, run it, then click
+        Refresh status.
+      </p>
+
+      {/* Profile picker (only when more than one whitelisted profile exists) */}
+      {profiles.length > 1 && (
+        <div className="flex flex-wrap items-center gap-1.5">
+          {profiles.map((p) => {
+            const active = p.id === activeProfile.id;
+            return (
+              <button
+                key={p.id}
+                type="button"
+                onClick={() => onSelectProfile(p.id)}
+                aria-pressed={active}
+                className={`inline-flex h-[26px] items-center rounded-full border px-2.5 text-[11px] ${
+                  active
+                    ? "border-[#C4B5FD]/40 bg-[#7C3AED]/20 text-[#C4B5FD]"
+                    : "border-white/10 bg-white/[0.03] text-[#9098A8] hover:text-[#D4D4D8]"
+                }`}
+              >
+                {p.label}
+              </button>
+            );
+          })}
+        </div>
+      )}
+      {activeProfile.description && (
+        <p className="text-[11px] leading-5 text-[#6B7185]">{activeProfile.description}</p>
+      )}
+
+      {/* The command itself — selectable code block + copy button */}
+      <div className="rounded-lg border border-white/10 bg-black/30">
+        <div className="flex items-center justify-between gap-2 border-b border-white/5 px-3 py-1.5">
+          <span className="inline-flex items-center gap-1.5 text-[10.5px] uppercase tracking-wide text-[#6B7185]">
+            <Terminal size={12} /> Start command
+          </span>
+          <button
+            type="button"
+            onClick={onCopy}
+            className={`inline-flex h-7 items-center gap-1.5 rounded-md border px-2.5 text-[11px] ${
+              copied
+                ? "border-[#86EFAC]/30 bg-[#86EFAC]/10 text-[#86EFAC]"
+                : failed
+                ? "border-[#FCD34D]/30 bg-[#FCD34D]/10 text-[#FCD34D]"
+                : "border-white/10 bg-white/5 text-[#D4D4D8] hover:bg-white/10"
+            }`}
+            title="Copy the command to your clipboard (does not run it)"
+          >
+            <CopyIcon size={12} />
+            {copyButtonLabel(copyState)}
+          </button>
+        </div>
+        <pre className="overflow-x-auto px-3 py-2.5 text-[11.5px] leading-5 text-[#E8EAF0]">
+          <code className="whitespace-pre-wrap break-all font-mono">{activeProfile.command}</code>
+        </pre>
+      </div>
+
+      {failed && (
+        <p className="text-[11px] leading-4 text-[#FCD34D]">
+          Couldn’t access the clipboard. Select the command text above and copy it manually
+          (Ctrl/Cmd+C).
+        </p>
+      )}
+
+      {/* Static safety/usage warnings from the backend profile */}
+      {activeProfile.warnings.length > 0 && (
+        <ul className="space-y-1 text-[11px] leading-5 text-[#9098A8]">
+          {activeProfile.warnings.map((w, i) => (
+            <li key={i} className="flex gap-1.5">
+              <span className="text-[#6B7185]">•</span>
+              <span className="break-words">{w}</span>
+            </li>
+          ))}
+        </ul>
+      )}
+
+      {/* Top-level helper notes (e.g. the Docker base-URL hint) */}
+      {notes.length > 0 && (
+        <ul className="space-y-1 text-[11px] leading-5 text-[#6B7185]">
+          {notes.map((n, i) => (
+            <li key={i} className="flex gap-1.5">
+              <span>•</span>
+              <span className="break-words">{n}</span>
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  );
+
+  const heading = (
+    <span className="inline-flex items-center gap-2 text-[12px] font-medium text-[#E8EAF0]">
+      <Terminal size={14} className="text-[#C4B5FD]" />
+      How to start llama-server (manual)
+    </span>
+  );
+
+  // Prominent: expanded inline block (offline / not-configured). Secondary: a
+  // collapsed <details> so a reachable server keeps it tucked away.
+  if (prominent) {
+    return (
+      <div className="mt-4 rounded-lg border border-white/10 bg-white/[0.02] p-3">
+        <div className="mb-2">{heading}</div>
+        {body}
+      </div>
+    );
+  }
+  return (
+    <details className="mt-4 rounded-lg border border-white/10 bg-white/[0.02] p-3">
+      <summary className="cursor-pointer list-none">{heading}</summary>
+      <div className="mt-3">{body}</div>
+    </details>
   );
 }
 

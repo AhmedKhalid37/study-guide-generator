@@ -628,6 +628,44 @@ Each slice: **scope / files likely touched / tests / acceptance / non-goals.**
   guidance present; the app never executes it.
 - **Non-goals:** any execution; any host file/path resolution.
 
+> **Slice 4 implementation note (DONE — branch `local-model-command-helper`).**
+> Shipped the §9 command-profile helper as a **separate read-only endpoint** plus a
+> first-class **copy** block in the existing Local Models panel — a display template
+> only, never a launcher.
+> - **Backend:** `GET /api/local-model/command-profile` →
+>   `get_local_model_command_profiles()` in `pipeline/provider_config.py`. Returns
+>   `{ok, provider, in_docker, base_url_host, profile, profiles[], notes[]}` where each
+>   profile is `{id, label, description, command, argv[], placeholders{model_path},
+>   warnings[]}`. Two static profiles ship: `llama_server_default` (GPU offload,
+>   `--n-gpu-layers 999`, `-c 8192`) and `llama_server_cpu` (CPU only, `-c 4096`). The
+>   `argv` is built from a **fixed flag whitelist** with literal/bounded values; the
+>   ONLY substitution token is `{model_path}` → the placeholder
+>   `/path/to/model.gguf`. The display `command` is rendered from `argv` via
+>   `shlex.quote` (display-safe quoting only). **No** subprocess / spawn anywhere; no
+>   request input; no host filesystem read; no GGUF scan; no raw key; host-only URL.
+> - **`--flash-attn`/`--threads` deliberately omitted** from the defaults (design note
+>   §11): `--threads` is left for llama.cpp to auto-pick, and `--flash-attn` is kept
+>   out of the conservative default to avoid version-specific behavior. The profile
+>   schema can carry them later without breaking the contract.
+> - **Frontend:** `getLocalModelCommandProfile()` client helper + pure
+>   `frontend/src/localModelCommand.js` (`normalizeProfile`, `commandProfiles`,
+>   `defaultProfile`, `profileById`, `commandAvailable`, `copyButtonLabel`,
+>   `commandNotes`) + a `CommandHelper` block in `LocalModelsPanel.jsx`: profile
+>   chips (when >1), a selectable command code block, a **Copy command** button
+>   (`navigator.clipboard` with a manual "select & copy" fallback), the static
+>   warnings, and "run on your host… then Refresh status." It is **prominent**
+>   (expanded) when offline/not-configured and **secondary** (collapsed `<details>`)
+>   when reachable. There is **no Start/Stop button** and nothing executes.
+> - **Action descriptor compatibility:** the Slice 2 status DTO still advertises
+>   `copy_start_command` as a **disabled** action (the Slice 2 test is unchanged); the
+>   panel now **suppresses** that "Planned" chip because the dedicated command helper
+>   supersedes it — no duplicate affordance, no behavior change to `/status`.
+> - **Tests:** `test_scripts/test_local_model_command_profile.py` (13/13: shape,
+>   placeholder path, host/port, warnings, no-key/no-URL leak with a stored key,
+>   no-write, no-spawn by source-inspection + a `subprocess.Popen` monkeypatch trip,
+>   status unchanged); `frontend/scripts/verify-local-model-command.mjs` (wired as
+>   `npm run test:local-model-command`); Slice 2/3 suites unchanged.
+
 ### LMM Slice 5 — host companion launcher DESIGN (Option B)
 - **Scope:** a dedicated design doc (`docs/LOCAL_MODEL_COMPANION_DESIGN.md`) for the
   host companion: localhost+token control API, whitelisted profile launch, PID/log/

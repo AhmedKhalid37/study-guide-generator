@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import os
+import shlex
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -964,4 +965,138 @@ def get_local_model_status() -> dict[str, Any]:
         "error": None,
         "actions": actions,
         "notes": [],
+    }
+
+
+# ---------------------------------------------------------------------------
+# Local Model Manager — command-helper profiles (LMM Slice 4)
+#
+# Static, READ-ONLY llama.cpp `llama-server` start-command templates the operator
+# copies and runs MANUALLY in a terminal on their host. This is a DISPLAY HELPER
+# ONLY — it is NOT a launcher (design §9 / §3 Option A / §7):
+#   * No execution: there is NO subprocess / os.system / spawn anywhere here. The
+#     app never runs the command; the operator does, by hand, outside the app.
+#   * Fixed whitelist: the argv is assembled from a hardcoded list of `llama-server`
+#     flags with typed/bounded literal values. No user-supplied shell fragment is
+#     ever accepted from the API request or interpolated into the command.
+#   * Placeholder model path only: the model path is the literal placeholder string
+#     `/path/to/model.gguf`. The host filesystem is NEVER read, listed, or scanned;
+#     no GGUF discovery; the operator edits the path before running.
+#   * JSON-safe + redacted: no API key, no full/secret base URL, no userinfo — only
+#     the already-safe host (via `_base_url_host`) and the in-docker flag are echoed.
+#   * The displayed `command` is built from `argv` with `shlex.quote` (display-safe
+#     quoting only); `argv` is the source of truth so a future companion (Slice 6+)
+#     could validate it without re-parsing a string.
+# ---------------------------------------------------------------------------
+
+# The model path is ALWAYS this placeholder — never a real host path. The operator
+# substitutes their own .gguf before running the copied command.
+LOCAL_COMMAND_MODEL_PLACEHOLDER = "/path/to/model.gguf"
+
+# Profile registry. Each entry is a fixed whitelist of `llama-server` flags + literal
+# values mirroring design §9 (`host` 0.0.0.0 so Docker can reach it; bounded ints).
+# `{model_path}` is the ONLY substitution token and it resolves to the placeholder
+# above — there is no free-form input. To add a profile, add a static entry here.
+_LOCAL_COMMAND_PROFILES: tuple[dict[str, Any], ...] = (
+    {
+        "id": "llama_server_default",
+        "label": "llama-server default (GPU offload)",
+        "description": (
+            "OpenAI-compatible server with full GPU offload. Best when you have a "
+            "supported GPU; falls back gracefully if some layers don't fit."
+        ),
+        "binary": "llama-server",
+        "argv_template": [
+            "-m", "{model_path}",
+            "--host", "0.0.0.0",
+            "--port", "8080",
+            "-c", "8192",
+            "--n-gpu-layers", "999",
+        ],
+    },
+    {
+        "id": "llama_server_cpu",
+        "label": "llama-server (CPU only)",
+        "description": (
+            "OpenAI-compatible server with no GPU offload. Use when you have no "
+            "supported GPU; expect slower generation."
+        ),
+        "binary": "llama-server",
+        "argv_template": [
+            "-m", "{model_path}",
+            "--host", "0.0.0.0",
+            "--port", "8080",
+            "-c", "4096",
+        ],
+    },
+)
+
+
+def _render_command_profile(profile: dict[str, Any]) -> dict[str, Any]:
+    """Render one static profile into a safe, JSON-serializable DTO.
+
+    Substitutes ONLY the `{model_path}` token (→ the placeholder), builds the argv,
+    and renders a display command with `shlex.quote`. No host data, no key, no path
+    read. The warnings are static and reinforce that this is run manually and never
+    by the app.
+    """
+    argv = [str(profile["binary"])] + [
+        tok.replace("{model_path}", LOCAL_COMMAND_MODEL_PLACEHOLDER)
+        for tok in profile["argv_template"]
+    ]
+    command = " ".join(shlex.quote(tok) for tok in argv)
+    warnings = [
+        f"Edit the model path before running — replace {LOCAL_COMMAND_MODEL_PLACEHOLDER} "
+        "with the path to your .gguf file.",
+        "Run this in a terminal on your host machine, not inside the Docker container.",
+        "The app never runs this command — copy it and run it yourself, then click "
+        "Refresh status.",
+        "Keep --host 0.0.0.0: it lets the app reach llama-server from Docker via "
+        "host.docker.internal. Binding 127.0.0.1 makes it unreachable from the "
+        "container.",
+    ]
+    return {
+        "id": str(profile["id"]),
+        "label": str(profile["label"]),
+        "description": str(profile.get("description", "")),
+        "command": command,
+        "argv": argv,
+        "placeholders": {"model_path": LOCAL_COMMAND_MODEL_PLACEHOLDER},
+        "warnings": warnings,
+    }
+
+
+def get_local_model_command_profiles() -> dict[str, Any]:
+    """Static, read-only `llama-server` start-command helper profiles (LMM Slice 4).
+
+    Returns the §9 command profiles for the Local Models panel's "Copy command"
+    helper. The command is a DISPLAY TEMPLATE the operator runs manually — the app
+    never executes it (no subprocess anywhere in this module). The model path is a
+    placeholder; the host filesystem is never read. Safe to expose: no key, no full
+    URL (host only, for the Docker reachability hint).
+    """
+    load_env_file()
+    in_docker = Path("/.dockerenv").exists()
+    host = _base_url_host(_effective_base_url("local"))
+    profiles = [_render_command_profile(p) for p in _LOCAL_COMMAND_PROFILES]
+    notes = [
+        "These are suggestions you run yourself in a terminal — the app does not "
+        "start, stop, or run llama-server.",
+        "After the server is running, set the Local provider base URL to its "
+        "OpenAI-compatible endpoint (ending in /v1) on the Local provider card, "
+        "then Refresh status.",
+    ]
+    if in_docker:
+        notes.append(
+            "The app runs in Docker, so point the Local provider base URL at the "
+            "host, commonly http://host.docker.internal:8080/v1."
+        )
+    return {
+        "ok": True,
+        "provider": "local",
+        "in_docker": in_docker,
+        "base_url_host": host,
+        "profile": profiles[0],
+        "profiles": profiles,
+        "notes": notes,
     }

@@ -44,6 +44,7 @@ from pipeline.provider_config import (
     build_provider_config,
     clear_provider_key,
     fetch_provider_models,
+    get_local_model_command_profiles,
     get_local_model_status,
     get_provider_registry,
     get_provider_settings_view,
@@ -430,6 +431,17 @@ async def local_model_check() -> dict[str, Any]:
     # already does the live network round-trip). Kept as a thin POST alias so the
     # frontend "Refresh" verb is explicit; it adds no new behavior or writer.
     return await run_in_threadpool(get_local_model_status)
+
+
+@app.get("/api/local-model/command-profile")
+async def local_model_command_profile() -> dict[str, Any]:
+    # Local Model Manager — command-helper profiles (LMM Slice 4). Returns static,
+    # read-only `llama-server` start-command templates the OPERATOR copies and runs
+    # MANUALLY on the host. This is a display helper only: the app NEVER executes it
+    # (no subprocess / spawn anywhere). The command is built from a fixed flag
+    # whitelist with a model PLACEHOLDER — no request input, no host filesystem read,
+    # no GGUF scan, no raw key, no full URL. Read-only: writes nothing.
+    return await run_in_threadpool(get_local_model_command_profiles)
 
 
 @app.get("/api/styles")

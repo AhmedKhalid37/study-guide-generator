@@ -7,17 +7,37 @@
 
 ## Current position
 - **Branch (trunk / PR target):** `chrome-renderer-v1`
-- **Latest commit:** `e27c674` — "Add detection-only Local Model status endpoint
-  (LMM Slice 2)", on top of the LMM Slice 1 design (`94003bc`), the **Shortcut
-  Inspector / Repair Loop** five commits (`a0f96d1`→`4458c9a`) + the Edit-preset
-  follow-up (`adc2a7e`). The **in-app provider settings feature group**
+- **Latest commit on trunk:** `7429f24` — "Add Local Models status panel (LMM Slice
+  3)", on top of the Slice 2 status endpoint (`e27c674`), the Slice 1 design
+  (`94003bc`), the **Shortcut Inspector / Repair Loop** (`a0f96d1`→`4458c9a`) + the
+  Edit-preset follow-up (`adc2a7e`). The **in-app provider settings feature group**
   (`978516e`→`61fb423`) and the large-PDF core (`60c3e78`) remain on trunk below.
-- **Active work branch:** `local-model-status-ui` — **LMM Slice 3** (frontend Local
-  Models status panel) is implemented + verified here; see "What just landed".
-- **Remote:** `origin/chrome-renderer-v1` == `e27c674` (the Slice 3 branch is local,
+- **Active work branch:** `local-model-command-helper` — **LMM Slice 4** (command-
+  helper profiles / Copy start command) is implemented + verified here; see "What
+  just landed".
+- **Remote:** `origin/chrome-renderer-v1` == `7429f24` (the Slice 4 branch is local,
   not yet pushed/merged).
 
 ## What just landed
+- **Local Model Manager — Slice 4: command-helper profiles / Copy start command**
+  (branch `local-model-command-helper`). Read-only
+  `GET /api/local-model/command-profile` → `get_local_model_command_profiles()` in
+  `pipeline/provider_config.py`: static, whitelisted `llama-server` start commands
+  (`llama_server_default` GPU + `llama_server_cpu`) with a `/path/to/model.gguf`
+  **placeholder**, `--host 0.0.0.0 --port 8080`, and safety warnings. Command built
+  from a fixed flag whitelist + `argv` (rendered via `shlex.quote`); the only
+  substitution is the model placeholder. Frontend: `getLocalModelCommandProfile()`
+  client helper + pure `frontend/src/localModelCommand.js` + a `CommandHelper` block
+  in `LocalModelsPanel.jsx` (profile chips, selectable code block, **Copy command**
+  with clipboard + manual fallback, prominent when offline / collapsed when
+  reachable). The deferred `copy_start_command` "Planned" chip is suppressed; the
+  Slice 2 status DTO is unchanged. **Command helper only — the app NEVER executes
+  it: no subprocess/spawn, no start/stop, no host companion, no GGUF scan, no
+  arbitrary shell, no raw key, host-only URL.** Tests:
+  `test_scripts/test_local_model_command_profile.py` 13/13;
+  `frontend/scripts/verify-local-model-command.mjs` (`npm run
+  test:local-model-command`); Slice 2/3 + provider suites unchanged; `npm run build`
+  OK. See `CURRENT_TASK.md` #48 + `LOCAL_MODEL_MANAGER_DESIGN.md` §11 (Slice 4 note).
 - **Local Model Manager — Slice 3: Local Models status panel (FRONTEND)** (branch
   `local-model-status-ui`, frontend + API client + docs/tests only). A read-only
   **Local Models** panel mounted inside the Providers (Models) page, consuming the
@@ -154,15 +174,15 @@ load-bearing — do not rewrite casually.
 
 ## Next recommended slice
 **Pick ONE safe option:**
-- **Local Model Manager — LMM Slice 4: command-helper / Copy start command
-  (recommended).** Slices 2 (backend) and 3 (frontend panel) are **DONE**. The panel
-  already shows a **disabled** "Copy start command — Planned" chip from the backend
-  `actions`; Slice 4 renders the §9 `llama_server_default` command profile
-  (placeholder-substituted, bounded ints) and **enables** the Copy button. The
-  command stays a **display template the app never executes**; keep `--host 0.0.0.0`
-  guidance. Likely a static `localModelProfiles.js` table (or a server-owned profile
-  constant) + a harness over the command-rendering function. **No execution; no host
-  file/path resolution.** See design §9 + §11.
+- **Local Model Manager — Phase-1 validation / docs reconciliation (recommended).**
+  Slices 1→4 are **DONE** (design, status endpoint, status panel, command helper).
+  Phase 1 (detection + manual command helper) is feature-complete. Do a validation
+  + docs-reconciliation pass over all of Phase 1 — endpoints
+  (`/api/local-model/status`, `/check`, `/command-profile`), the panel, the command
+  helper, a secret scan, and design ↔ reality — likely a new
+  `docs/VALIDATION_LOCAL_MODEL_MANAGER.md`. No new feature code expected unless a
+  concrete bug surfaces. Slice 5 (host-companion DESIGN, Option B) stays sign-off-
+  gated; do not begin without explicit approval.
 - **Focused manual validation / polish of the Shortcut Inspector UI.** The
   inspect→repair loop + degraded-activation confirm are complete and validated at
   the API + harness level; the remaining gap is a human click-through of the live
@@ -226,12 +246,15 @@ is the optional **font-size rationalization** (cause C, CSS-only).)
   page (`LocalModelsPanel.jsx` + pure `localModelStatus.js` + the
   `getLocalModelStatus`/`checkLocalModelStatus` client helpers): status pill,
   host-only base URL, latency, model count + chips, first-class offline
-  troubleshooting, **Refresh status**, an "Edit local provider settings" link to the
-  Local card, and a **disabled** "Copy start command — Planned" chip — **no** process
-  control, inline editing, or raw key/URL. **Next implementation slice = LMM Slice 4:
-  command-helper / enable the Copy start command** (§9 profile). Remains a
-  **separate** feature from the now-complete in-app provider settings; provider config
-  writes stay on `PATCH /api/provider-settings/local`.
+  troubleshooting, **Refresh status**, and an "Edit local provider settings" link to
+  the Local card — **no** process control, inline editing, or raw key/URL. Slice 4 =
+  the **command helper** (`GET /api/local-model/command-profile` +
+  `localModelCommand.js` + a `CommandHelper` block): a copyable, static, whitelisted
+  `llama-server` start command (placeholder model path, `--host 0.0.0.0`) the
+  operator runs **manually** — the app never executes it. **Next implementation slice
+  = LMM Phase-1 validation / docs reconciliation** (Slice 5 host companion is
+  sign-off-gated). Remains a **separate** feature from the in-app provider settings;
+  provider config writes stay on `PATCH /api/provider-settings/local`.
 - **Library archive / tag model** — DESIGN-FIRST (bulk archive needs an archive state +
   `DECISIONS.md` entry; bulk tag needs a tag model; neither started).
 - **GHCR publish workflow / prebuilt image** — deferred distribution decision (parked on `hardening`).
