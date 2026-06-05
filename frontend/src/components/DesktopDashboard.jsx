@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
+  BookOpenCheck,
   Bot,
   ChevronRight,
   Download,
@@ -19,6 +20,7 @@ import StylesWorkspace from "./StylesWorkspace";
 import LibraryWorkspace from "./LibraryWorkspace";
 import ExportsWorkspace from "./ExportsWorkspace";
 import ProviderSettingsWorkspace from "./ProviderSettingsWorkspace";
+import AskGuideWorkspace from "./AskGuideWorkspace";
 import HomeShortcuts from "./HomeShortcuts";
 import { INPUT_TO_SOURCE } from "../shortcutMeta";
 import { getJobs } from "../api/client";
@@ -39,6 +41,7 @@ const navItems = [
   { id: "home", label: "Home", icon: Home },
   { id: "builder", label: "Builder", icon: PenLine },
   { id: "library", label: "Library", icon: Library },
+  { id: "ask", label: "Ask Guide", icon: BookOpenCheck },
   { id: "styles", label: "Styles", icon: Layers3 },
   { id: "models", label: "Models", icon: Bot },
   { id: "exports", label: "Exports", icon: Download }
@@ -51,6 +54,7 @@ const TOOL_ROUTES = {
   improve_guide: { section: "builder", source: "llm" },
   add_style: { section: "styles" },
   compare_styles: { section: "styles" },
+  ask_guide: { section: "ask" },
   export_center: { section: "exports" },
   find_guide: { section: "library", view: "search:" },
   quiz: { section: "library" },
@@ -155,6 +159,7 @@ export default function DesktopDashboard() {
           />
         )}
         {activeSection === "models" && <ProviderSettingsWorkspace />}
+        {activeSection === "ask" && <AskGuideWorkspace />}
         {activeSection === "styles" && (
           <StylesWorkspace selectedStyle={selectedStyle} onSelectStyle={setSelectedStyle} onOpenBuilder={openBuilder} />
         )}

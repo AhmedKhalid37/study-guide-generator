@@ -112,7 +112,8 @@ flashcards with CSV / Anki / Quizlet export.
   cannot safely manage host processes. Provider config edits stay on Provider
   Settings (no second writer). See `DECISIONS.md`.
 - **Ask Your Guide — IN PROGRESS (Slice 1 design DONE; Slice 2 backend context
-  inventory DONE; Slice 3 backend context preparation / chunking DONE).** A
+  inventory DONE; Slice 3 backend context preparation / chunking DONE; inserted
+  workspace shell DONE).** A
   dedicated **`AskGuideWorkspace`** (first-class page/tab alongside
   Builder/Library/Styles/Providers) where the user selects a generated guide/job and
   chats with it using a **local model only**. Designed in
@@ -143,8 +144,14 @@ flashcards with CSV / Anki / Quizlet export.
   `jobs/<id>/ask/cache/context_index.json` keyed by a content hash over guide+source
   bytes (idempotent `hit`/`built`/`rebuilt`, atomic writes, fenced to the job dir).
   The whitelisted response returns counts + a citation summary only (no body, key,
-  URL, or host path); no model call, sessions, UI, or new dependency.
-  **NEXT = Slice 4 backend local chat endpoint** (`POST /api/ask/sessions/{id}/message`:
+  URL, or host path); no model call, sessions, or new dependency. An intentionally
+  inserted frontend/product slice then shipped the visible **Ask Guide** workspace
+  shell: top-level nav, guide picker, disabled chat/readiness panel, context sources
+  rail, prepare-context button, and LMM offline/reachable status with the manual
+  command helper. It consumes only the existing summary endpoints and still has **no
+  backend chat route, no sessions, no model/local-model call, no cloud fallback, no
+  extra uploads, no chat persistence, and no artifact mutation.**
+  **NEXT = backend local chat endpoint** (`POST /api/ask/sessions/{id}/message`:
   status-gate → retrieve over the Slice 3 index → local-only generation → cited answer).
   See `DECISIONS.md`.
 

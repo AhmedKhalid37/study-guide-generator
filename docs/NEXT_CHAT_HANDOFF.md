@@ -7,17 +7,31 @@
 
 ## Current position
 - **Branch (trunk / PR target):** `chrome-renderer-v1`
-- **Trunk includes:** `95132fe` (LMM Phase 1 validation) + `af0ec0e` (Ask Your Guide
-  Slice 1 design, docs-only), on top of the LMM group (`94003bc`→`e399f09`), the
-  **Shortcut Inspector / Repair Loop** (`a0f96d1`→`4458c9a`) + the Edit-preset follow-up
-  (`adc2a7e`), the **in-app provider settings feature group** (`978516e`→`61fb423`), and
-  the large-PDF core (`60c3e78`).
-- **Active work branch:** `ask-context-prepare` — **Ask Your Guide Slice 3**
-  (backend context preparation / chunking) ran here; see "What just landed" +
-  `docs/ASK_YOUR_GUIDE_DESIGN.md` §11 (Ask Slice 3). **Not yet committed/pushed** unless
-  the operator asks. **NEXT = Ask Slice 4 (backend local chat endpoint).**
+- **Trunk includes:** `af0ec0e` (Ask Slice 1 design), `2634f63` (Ask Slice 2 context
+  inventory), and `a29a405` (Ask Slice 3 context preparation), on top of the validated
+  LMM group and prior feature groups.
+- **Active work branch:** `ask-workspace-shell` — inserted **Ask Your Guide workspace
+  shell** slice ran here; see "What just landed". **Not committed/pushed** unless the
+  operator asks. **NEXT = Ask backend local chat endpoint.**
 
 ## What just landed
+- **Ask Your Guide — inserted workspace shell slice (FRONTEND ONLY)** (branch
+  `ask-workspace-shell`). Adds a first-class `Ask Guide` sidebar workspace with the
+  design-doc three-region shape: guide picker (left), disabled chat/readiness panel
+  (center), and selected-guide/context/local-model rail (right). It consumes existing
+  summary-only endpoints: `GET /api/ask/jobs`, `GET /api/ask/jobs/{job_id}/context`,
+  `POST /api/ask/jobs/{job_id}/prepare`, plus existing LMM `GET
+  /api/local-model/status` and `GET /api/local-model/command-profile`. It shows eligible
+  guides, safe metadata, readiness reasons, guide/source counts, attachment/page
+  summaries, prepare cache status + chunk counts + citation samples, and local model
+  offline/reachable state with the manual command helper. **No backend chat route, no
+  sessions, no `/api/ask/sessions`, no model/local-model call, no DeepSeek/Qwen/cloud
+  fallback, no extra uploads, no chat persistence, no artifact mutation, no dependency.**
+  The composer is disabled with "chat lands next" copy. New pure helper
+  `frontend/src/askGuide.js` basenames attachment/page-selection names and renders only
+  safe summaries (no guide/source body, chunk text, raw key, full URL, or host path).
+  Verified: `npm run test:ask-guide`, `npm run test:local-model-command`,
+  `npm run test:local-model-status`, `npm run build`.
 - **Ask Your Guide — Slice 3: backend context preparation / chunking (BACKEND ONLY)**
   (branch `ask-context-prepare`). New stdlib-only `pipeline/ask_context.py` chunks
   `clean.md` (guide) + optional `extracted.txt` (source) deterministically on heading /
@@ -243,21 +257,12 @@ commit before moving on. Surgical edits, not rewrites. The PDF/Chromium pipeline
 load-bearing — do not rewrite casually.
 
 ## Next recommended slice
-**Pick ONE safe option:**
-- **Ask Your Guide — Slice 3: context preparation / chunking (recommended).**
-  Slice 2 (context inventory endpoints) is DONE (branch `ask-context-inventory`,
-  `CURRENT_TASK.md` #51). The next slice is **backend-only**: chunk
-  `clean.md`/`extracted.txt` on heading / `## Page N` boundaries preserving each
-  chunk's **citation anchor**, build the **dependency-free lexical** index, and cache
-  it per `(job_id, content_hash)`; expose `POST /api/ask/jobs/{id}/prepare`
-  (idempotent — second prepare is a cache hit; re-prepare on content change). **No
-  model call, no retrieval-at-query, no sessions, no UI, no new dependency, no artifact
-  mutation.** Build on the read-only `pipeline/ask_inventory.py` reader. See
-  `docs/ASK_YOUR_GUIDE_DESIGN.md` §3.3 + §11 (Ask Slice 3).
-- **Local Model Manager — Phase 2 host companion launcher (DESIGN-FIRST, optional).**
-  Only if app-managed **start/stop** of a host `llama-server` is desired. Process
-  control crosses the container boundary and is deferred to an optional host companion
-  (direct Docker→host spawn rejected). Design + sign-off first (LMM Slice 5).
+**Ask Your Guide — backend local chat endpoint (BACKEND ONLY).** Add sessions
+(create/load) and `POST /api/ask/sessions/{id}/message`: status-gate on LMM, retrieve
+over the Slice 3 lexical index (`ask_context.load_index`), budget-assemble context, call
+the **local** provider only, and return a grounded/cited answer. Offline returns a
+structured unavailable response with no model call. **No cloud key read, no extra uploads,
+no UI redesign, no host process control, no rolling summary yet.**
 - **Focused manual validation / polish of the Shortcut Inspector UI.** The
   inspect→repair loop + degraded-activation confirm are complete and validated at
   the API + harness level; the remaining gap is a human click-through of the live

@@ -169,6 +169,32 @@ export function getLocalModelCommandProfile() {
   return requestJson("/api/local-model/command-profile");
 }
 
+// ── Ask Your Guide (workspace shell / context readiness only) ────────────────
+// These endpoints are summary-only contracts from Ask Slices 2/3. The frontend
+// receives eligible guide metadata, context inventory counts, and prepare counts
+// only — never raw guide/source text, chunk text, provider keys, full URLs, or
+// host filesystem paths. This shell does NOT call a model and has no sessions.
+export function getAskJobs(params = {}) {
+  const query = new URLSearchParams();
+  Object.entries(params).forEach(([key, value]) => {
+    if (value !== undefined && value !== null && value !== "") {
+      query.append(key, String(value));
+    }
+  });
+  const suffix = query.toString();
+  return requestJson(`/api/ask/jobs${suffix ? `?${suffix}` : ""}`);
+}
+
+export function getAskJobContext(jobId) {
+  return requestJson(`/api/ask/jobs/${encodeURIComponent(jobId)}/context`);
+}
+
+export function prepareAskJobContext(jobId) {
+  return requestJson(`/api/ask/jobs/${encodeURIComponent(jobId)}/prepare`, {
+    method: "POST"
+  });
+}
+
 export function getStyles() {
   return requestJson("/api/styles");
 }

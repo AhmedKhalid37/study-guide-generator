@@ -5,8 +5,27 @@
 
 ---
 
-## NEXT — Ask Slice 3 DONE (backend context preparation / chunking); NEXT = Ask Slice 4 backend local chat endpoint. (LMM Phase 1 COMPLETE + VALIDATED below.)
+## NEXT — Ask inserted workspace shell DONE; NEXT = Ask backend local chat endpoint. (LMM Phase 1 COMPLETE + VALIDATED below.)
 
+- **Ask Your Guide — inserted UI/product shell slice is DONE** — branch
+  `ask-workspace-shell`, see DONE #53 below. A first-class `Ask Guide` workspace now
+  sits alongside Builder/Library/Styles/Models/Exports. It consumes the existing
+  summary-only endpoints (`GET /api/ask/jobs`, `GET /api/ask/jobs/{id}/context`,
+  `POST /api/ask/jobs/{id}/prepare`) plus LMM status/command-helper endpoints, with a
+  three-region shell: guide picker, disabled chat/readiness panel, and context/local
+  model rail. It shows eligible guides, safe inventory counts, attachment/page
+  summaries, prepare cache status/chunk counts/citation samples, and local model
+  offline/reachable state. **No backend chat route, no sessions, no model/local-model
+  call, no cloud fallback, no extra uploads, no chat persistence, no artifact mutation,
+  no new dependency.** The chat input is explicitly disabled until the backend local
+  chat endpoint lands. Defensive frontend helpers strip attachment/page-selection
+  basenames and render only safe summaries — no raw guide/source text or chunk text.
+- **NEXT — Ask backend local chat endpoint (BACKEND ONLY).** Sessions (create/load) +
+  `POST /api/ask/sessions/{id}/message`: status-gate on LMM → retrieve over the Slice 3
+  lexical index (`ask_context.load_index`) → budget-assemble → **local-only**
+  `generate_chat_completion` → grounded, cited answer; offline → structured offline
+  response (no model call). **No cloud key read, no UI, no extra uploads, no rolling
+  summary yet.** See `docs/ASK_YOUR_GUIDE_DESIGN.md` §8 + §11.
 - **Ask Your Guide — Slice 3 is DONE (backend context preparation / chunking)** —
   branch `ask-context-prepare`, see DONE #52 below. New stdlib-only helper
   `pipeline/ask_context.py` chunks `clean.md` (guide) + optional `extracted.txt`
@@ -22,13 +41,6 @@
   **no guide/source body, chunk text, key, URL, or host path.** **No chat, no retrieval
   endpoint, no model/local-model call, no sessions, no extra uploads, no UI, no new
   dependency; original artifacts untouched (no `save_clean_md`, no manifest write).**
-- **NEXT — Ask Slice 4: backend local chat endpoint (BACKEND ONLY).** Sessions
-  (create/load) + `POST /api/ask/sessions/{id}/message`: status-gate on LMM →
-  retrieve over the Slice 3 lexical index (`ask_context.load_index`) → budget-assemble
-  → **local-only** `generate_chat_completion` → grounded, cited answer; offline →
-  structured offline response (no model call). **No cloud key read, no UI, no extra
-  uploads, no rolling summary yet.** See `docs/ASK_YOUR_GUIDE_DESIGN.md` §8 + §11
-  (Ask Slice 4).
 - **Ask Your Guide — Slice 2 is DONE (backend context inventory endpoint)** —
   branch `ask-context-inventory`, see DONE #51 below. Two **read-only** endpoints over
   generated-guide artifacts: `GET /api/ask/jobs` lists **only Ask-eligible jobs** (those
@@ -2043,6 +2055,45 @@ parked on the `hardening` branch — not merged, not deleted.
       response + on-disk cache secret-scanned clean (no `sk-`/`api_key`/`Authorization`/
       `https://`/host path/chunk `text`). **No frontend/shared file touched** (build not
       required).
+
+53. **Ask Your Guide — inserted Slice 4: first-class workspace shell (FRONTEND
+    ONLY)** — branch `ask-workspace-shell` (cut from `chrome-renderer-v1` at
+    `a29a405`). Inserts the visible product shell before backend chat/session
+    complexity: a top-level `Ask Guide` workspace in the sidebar with left guide
+    picker, center disabled chat/readiness panel, and right context/local-model rail.
+    **No backend route changed. No chat endpoint, no `/api/ask/sessions`, no model call,
+    no local-model call, no cloud fallback, no extra uploads, no chat history
+    persistence, no artifact mutation, no dependency.**
+    - **Frontend API helpers** in `frontend/src/api/client.js`: `getAskJobs`,
+      `getAskJobContext`, `prepareAskJobContext`, consuming the existing
+      summary-only endpoints from Ask Slices 2/3. Existing LMM helpers continue to
+      consume `GET /api/local-model/status` and `GET /api/local-model/command-profile`.
+    - **New `frontend/src/components/AskGuideWorkspace.jsx`**: fetches eligible
+      generated guides from `GET /api/ask/jobs`, selects a guide and loads
+      `GET /api/ask/jobs/{id}/context`, shows guide/source readiness counts
+      (guide chars/headings, source chars/page anchors), attachment filenames/modes/
+      warnings, page selections, provider/model/preset/style metadata, and reasons
+      for not-ready jobs. The center panel has a disabled composer and explicit
+      "chat lands next" copy. `Prepare context` calls
+      `POST /api/ask/jobs/{id}/prepare` and shows cache status (`built`/`hit`/
+      `rebuilt`), total/guide/source chunk counts, and bounded citation samples.
+    - **Local model status**: the rail reads LMM status and reuses the existing
+      `localModelStatus.js`/`localModelCommand.js` helpers plus the exported
+      `CommandHelper` renderer from `LocalModelsPanel.jsx`. Offline/unconfigured
+      states show the manual command helper; reachable states show safe model count,
+      default/selected model, latency, and bounded model chips. There are **no**
+      start/stop/process-control buttons.
+    - **Security/redaction proof in the UI layer**: new pure
+      `frontend/src/askGuide.js` helper renders only summary fields and defensively
+      basenames attachment/page-selection filenames. It never renders guide/source
+      bodies, chunk text, full URLs, raw keys, or host filesystem paths; browser state
+      holds only endpoint summaries. Build output is generated by Vite and no new
+      served secret surface is introduced.
+    - **Verified**: `npm run test:ask-guide` (all helper checks pass, including
+      POSIX/Windows path stripping), `npm run test:local-model-command` pass,
+      `npm run test:local-model-status` pass, `npm run build` pass. Backend files were
+      not touched, so `compileall` was not required for this slice. Ask backend
+      regression tests are still expected before merge handoff (inventory + prepare).
 
 ## NEXT (in order)
 

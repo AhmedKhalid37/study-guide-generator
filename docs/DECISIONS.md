@@ -995,3 +995,18 @@ re-opening a guide a cache hit rather than a re-chunk. Slice 3 stays strictly ba
 read-only over originals — no model/local-model call, no key read, no sessions, no UI, no
 new dependency, and it never writes `clean.md`/`extracted.txt`/`job.json` or calls
 `save_clean_md`.
+
+## Ask workspace shell is inserted before backend chat/session complexity (2026-06-05)
+After Ask Slice 3, the original plan pointed directly at backend local chat. We
+intentionally inserted a frontend/product shell slice first: top-level `Ask Guide`
+navigation, guide picker, context inventory, prepare-context readiness, local-model
+status, and a disabled chat placeholder — **without** sessions, message endpoints, or
+model calls. **Why:** seeing the real workflow before committing to the session/message
+API prevents awkward API/UX coupling. The shell makes the product sequence explicit
+(select guide → inspect readiness → prepare context → verify local model → chat later),
+surfaces the exact empty/offline/not-ready states the backend must support, and lets the
+next backend slice target the UI's real needs instead of a speculative route contract.
+The security posture also becomes visible early: the UI only renders summary fields,
+defensively basenames attachment/page-selection names, and never displays raw guide/source
+text, chunk text, keys, full URLs, or host paths. After this inserted slice, NEXT returns
+to the backend local chat endpoint.

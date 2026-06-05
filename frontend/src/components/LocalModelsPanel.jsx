@@ -419,7 +419,7 @@ function Troubleshooting({ state, host, inDocker, notes }) {
 // button and nothing here executes. `prominent` expands it inline (offline /
 // not-configured); otherwise it is a collapsed, secondary <details> so a reachable
 // server keeps the helper out of the way.
-function CommandHelper({
+export function CommandHelper({
   prominent,
   profiles,
   activeProfile,

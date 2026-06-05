@@ -14,7 +14,8 @@
     "test:shortcut-form": "node scripts/verify-shortcut-form.mjs",
     "test:shortcuts": "node scripts/verify-shortcut-status.mjs && node scripts/verify-shortcut-repair.mjs && node scripts/verify-shortcut-activation.mjs && node scripts/verify-shortcut-form.mjs",
     "test:local-model-status": "node scripts/verify-local-model-status.mjs",
-    "test:local-model-command": "node scripts/verify-local-model-command.mjs"
+    "test:local-model-command": "node scripts/verify-local-model-command.mjs",
+    "test:ask-guide": "node scripts/verify-ask-guide.mjs"
   },
   "dependencies": {
     "@vitejs/plugin-react": "^4.3.4",
