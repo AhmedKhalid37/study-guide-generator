@@ -111,7 +111,8 @@ flashcards with CSV / Anki / Quizlet export.
   process spawn is rejected** — a non-root (uid 10001), `no-new-privileges` container
   cannot safely manage host processes. Provider config edits stay on Provider
   Settings (no second writer). See `DECISIONS.md`.
-- **Ask Your Guide — PLANNED / DESIGN-FIRST (Slice 1 design DONE, docs-only).** A
+- **Ask Your Guide — IN PROGRESS (Slice 1 design DONE; Slice 2 backend context
+  inventory DONE).** A
   dedicated **`AskGuideWorkspace`** (first-class page/tab alongside
   Builder/Library/Styles/Providers) where the user selects a generated guide/job and
   chats with it using a **local model only**. Designed in
@@ -129,9 +130,14 @@ flashcards with CSV / Anki / Quizlet export.
   material first, cite page/section, say so when not covered, never invent
   facts/formulas/pages/dates). Extra uploads are **session-scoped** (never merged into
   the job, reuse `extract.py`); chat history is clearable and **never** auto-exported;
-  **no secrets stored.** Build plan is 10 slices; **NEXT = Slice 2 backend context
-  inventory endpoint** (`GET /api/ask/jobs` + `GET /api/ask/jobs/{id}/context`,
-  read-only, no chat). **Not implemented yet** beyond the design. See `DECISIONS.md`.
+  **no secrets stored.** Build plan is 10 slices. **Slice 2 shipped** the two
+  **read-only** context-inventory endpoints — `GET /api/ask/jobs` (lists only
+  guides with a generated `clean.md`) + `GET /api/ask/jobs/{id}/context` (per-job
+  guide/source/attachment summary + a `readiness` object), backed by the thin
+  read-only reader `pipeline/ask_inventory.py` and the existing manifest/attachment
+  redaction (no chat, chunking, model call, or UI; original artifacts untouched).
+  **NEXT = Slice 3 context preparation / chunking** (`POST /api/ask/jobs/{id}/prepare`).
+  See `DECISIONS.md`.
 
 ## 4. Architecture facts a new session MUST know
 

@@ -7,20 +7,39 @@
 
 ## Current position
 - **Branch (trunk / PR target):** `chrome-renderer-v1`
-- **Latest commit on trunk:** `95132fe` — "Validate Local Model Manager Phase 1 +
-  reconcile docs (LMM Slice 5)", on top of the Slice 4 command helper (`e399f09`), the
-  Slice 3 status panel (`7429f24`), the Slice 2 status endpoint (`e27c674`), the Slice 1
-  design (`94003bc`), the **Shortcut Inspector / Repair Loop** (`a0f96d1`→`4458c9a`) +
-  the Edit-preset follow-up (`adc2a7e`). The **in-app provider settings feature group**
-  (`978516e`→`61fb423`) and the large-PDF core (`60c3e78`) remain on trunk below.
-- **Active work branch:** `ask-your-guide-design` — **Ask Your Guide Slice 1**
-  (design, **docs-only**) ran here; see "What just landed" +
-  `docs/ASK_YOUR_GUIDE_DESIGN.md`. (Trunk also now includes LMM Phase 1 Slice 5
-  validation, `95132fe`.)
-- **Remote:** `origin/chrome-renderer-v1` == `95132fe` (the Ask design branch is local,
-  docs-only, not yet pushed/merged).
+- **Trunk includes:** `95132fe` (LMM Phase 1 validation) + `af0ec0e` (Ask Your Guide
+  Slice 1 design, docs-only), on top of the LMM group (`94003bc`→`e399f09`), the
+  **Shortcut Inspector / Repair Loop** (`a0f96d1`→`4458c9a`) + the Edit-preset follow-up
+  (`adc2a7e`), the **in-app provider settings feature group** (`978516e`→`61fb423`), and
+  the large-PDF core (`60c3e78`).
+- **Active work branch:** `ask-context-inventory` — **Ask Your Guide Slice 2**
+  (backend context inventory endpoint) ran here; see "What just landed" +
+  `docs/ASK_YOUR_GUIDE_DESIGN.md` §11 (Ask Slice 2). **Not yet committed/pushed** unless
+  the operator asks.
 
 ## What just landed
+- **Ask Your Guide — Slice 2: backend context inventory endpoint (BACKEND ONLY)**
+  (branch `ask-context-inventory`). Two **read-only** endpoints over generated-guide
+  artifacts: `GET /api/ask/jobs` lists **only Ask-eligible jobs** (those with a
+  generated `clean.md`; guide-less / failed / incomplete jobs filtered out) with curated
+  redacted picker fields (id/title/status/created+updated/style/preset/provider/model/
+  favorite/attachment_summary/guide+source availability); `GET /api/ask/jobs/{id}/context`
+  returns a per-job **readiness + source inventory** (guide `clean_md` present + char +
+  heading counts; source `extracted.txt` present + char + `## Page N` anchor count;
+  redacted attachment names/modes/extracted_chars/warnings; page selections; a
+  `readiness{status,ready,reasons}` object; unknown job → 404, guide-less existing job →
+  200 `not_ready`). New thin reader `pipeline/ask_inventory.py` (counts only — **never a
+  guide/source body**); routes reuse the existing `_safe_manifest` /
+  `_safe_attachment_metadata` / `_attachment_summary` / `_safe_page_selections`
+  redaction + an explicit field whitelist, registered before the SPA mount. **No chat,
+  no chunking, no retrieval/indexing, no model call, no local-model call, no cloud
+  fallback, no session storage, no extra uploads, no UI; original job artifacts
+  untouched (no `save_clean_md`, no manifest write).** Verified: `compileall` OK,
+  `docker compose config` exit 0, image rebuilt + container healthy,
+  `test_scripts/test_ask_context_inventory.py` **50/50 in Docker**, live seeded-job
+  proof + clean raw-response secret scan (planted `sk-live-…`/base-URL/host-path did not
+  leak), read-only sha256 of `clean.md`/`extracted.txt`/`job.json` unchanged. See
+  `CURRENT_TASK.md` #51. **NEXT = Ask Slice 3 (context preparation / chunking).**
 - **Ask Your Guide — Slice 1: design (docs-only)** (branch `ask-your-guide-design`).
   A design-first definition of a dedicated **Ask Your Guide** workspace
   (`docs/ASK_YOUR_GUIDE_DESIGN.md`): the user selects a generated guide/job and chats
@@ -202,15 +221,16 @@ load-bearing — do not rewrite casually.
 
 ## Next recommended slice
 **Pick ONE safe option:**
-- **Ask Your Guide — Slice 2: backend context inventory endpoint (recommended).**
-  Slice 1 (design) is DONE (`docs/ASK_YOUR_GUIDE_DESIGN.md`). The next slice is
-  **backend-only**: `GET /api/ask/jobs` (eligible guides with a generated `clean.md`)
-  + `GET /api/ask/jobs/{id}/context` (read-only summary of available
-  guide/source/attachments + readiness). **No chat, no chunking, no model call, no
-  UI.** It reads job artifacts (`clean.md`/`extracted.txt`/manifest) **read-only**,
-  reuses the existing job listing, and leaks no key/full URL. It **consumes** LMM
-  status and the existing `local` provider; **it does not start/stop `llama-server`**
-  (no process control). See `docs/ASK_YOUR_GUIDE_DESIGN.md` §8 + §11 (Ask Slice 2).
+- **Ask Your Guide — Slice 3: context preparation / chunking (recommended).**
+  Slice 2 (context inventory endpoints) is DONE (branch `ask-context-inventory`,
+  `CURRENT_TASK.md` #51). The next slice is **backend-only**: chunk
+  `clean.md`/`extracted.txt` on heading / `## Page N` boundaries preserving each
+  chunk's **citation anchor**, build the **dependency-free lexical** index, and cache
+  it per `(job_id, content_hash)`; expose `POST /api/ask/jobs/{id}/prepare`
+  (idempotent — second prepare is a cache hit; re-prepare on content change). **No
+  model call, no retrieval-at-query, no sessions, no UI, no new dependency, no artifact
+  mutation.** Build on the read-only `pipeline/ask_inventory.py` reader. See
+  `docs/ASK_YOUR_GUIDE_DESIGN.md` §3.3 + §11 (Ask Slice 3).
 - **Local Model Manager — Phase 2 host companion launcher (DESIGN-FIRST, optional).**
   Only if app-managed **start/stop** of a host `llama-server` is desired. Process
   control crosses the container boundary and is deferred to an optional host companion

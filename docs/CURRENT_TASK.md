@@ -5,8 +5,29 @@
 
 ---
 
-## NEXT — Ask Your Guide DESIGNED (Slice 1, docs-only); NEXT = Ask Slice 2 backend context inventory endpoint. (LMM Phase 1 COMPLETE + VALIDATED below.)
+## NEXT — Ask Slice 2 DONE (backend context inventory endpoint); NEXT = Ask Slice 3 backend context preparation / chunking. (LMM Phase 1 COMPLETE + VALIDATED below.)
 
+- **Ask Your Guide — Slice 2 is DONE (backend context inventory endpoint)** —
+  branch `ask-context-inventory`, see DONE #51 below. Two **read-only** endpoints over
+  generated-guide artifacts: `GET /api/ask/jobs` lists **only Ask-eligible jobs** (those
+  with a generated `clean.md`; guide-less / failed / incomplete jobs are filtered out)
+  with curated, redacted picker fields (id/title/status/created+updated/style/preset/
+  provider/model/favorite/attachment_summary/guide+source availability); `GET
+  /api/ask/jobs/{id}/context` returns a per-job **readiness + source inventory**
+  (guide `clean_md` present + char + heading counts; source `extracted.txt` present +
+  char + `## Page N` anchor count; redacted attachment names/modes/extracted_chars/
+  warnings; page selections; a `readiness{status,ready,reasons}` object). Thin read-only
+  reader `pipeline/ask_inventory.py` (counts only — never a guide/source **body**);
+  routes reuse the existing `_safe_manifest`/`_safe_attachment_metadata`/
+  `_attachment_summary`/`_safe_page_selections` redaction and emit an explicit field
+  whitelist, so **no raw key / full base URL / filesystem path / artifact body** can ride
+  along. **No chat, no chunking, no retrieval/indexing, no model call, no session storage,
+  no UI; original job artifacts untouched (no `save_clean_md`, no manifest write).**
+- **NEXT — Ask Slice 3: backend context preparation / chunking (BACKEND ONLY).**
+  Chunk `clean.md`/`extracted.txt` with `## Page N`/heading citation anchors, build the
+  dependency-free lexical index, cache per `(job_id, content_hash)`; `POST
+  /api/ask/jobs/{id}/prepare`. **No model call, no retrieval-at-query, no UI, no new
+  dependency.** See `docs/ASK_YOUR_GUIDE_DESIGN.md` §11 (Ask Slice 3).
 - **Ask Your Guide — Slice 1 design is DONE (docs-only)** — branch
   `ask-your-guide-design`, on `docs/ASK_YOUR_GUIDE_DESIGN.md`, see DONE #50 below.
   A dedicated **`AskGuideWorkspace`** (first-class page/tab) where the user selects a
@@ -19,11 +40,6 @@
   so when not covered, never invent). Conservative session-scoped storage (never
   auto-exported, no secrets). 8 proposed endpoints, all local-only + read-only over
   job artifacts. **No code changed.**
-- **NEXT — Ask Slice 2: backend context inventory endpoint (BACKEND ONLY).** Add
-  `GET /api/ask/jobs` (eligible guides with a generated `clean.md`) + `GET
-  /api/ask/jobs/{id}/context` (read-only summary of available guide/source/attachments
-  + readiness). **No chat, no chunking, no model call, no UI.** See
-  `docs/ASK_YOUR_GUIDE_DESIGN.md` §11 (Ask Slice 2).
 - **LMM Phase 1 is COMPLETE and VALIDATED.** Slices 1→4 (design → detection-only
   status endpoint → status panel → command helper) are on trunk (`94003bc`,
   `e27c674`, `7429f24`, `e399f09`), and the **Slice 5 validation + docs-reconciliation
@@ -1916,6 +1932,54 @@ parked on the `hardening` branch — not merged, not deleted.
       optional multimodal), each with scope/files/tests/acceptance/non-goals.
     - **Outcome:** design complete; **NEXT = Ask Slice 2 (backend context inventory
       endpoint)**. Safe to merge (docs-only).
+
+51. **Ask Your Guide — Slice 2: backend context inventory endpoint (BACKEND ONLY)**
+    — branch `ask-context-inventory` (cut from `chrome-renderer-v1`, trunk incl.
+    `95132fe` + `af0ec0e`). Two **read-only** inventory/context-summary endpoints for
+    generated guides — **no chat, no chunking, no retrieval/indexing, no model call,
+    no local-model call, no cloud fallback, no session storage, no extra uploads, no
+    frontend, no mutation of any original job artifact.**
+    - **New thin reader `pipeline/ask_inventory.py`** — read-only artifact reader:
+      `has_generated_guide(job)` (eligibility = `clean.md` exists),
+      `guide_inventory(job)` (`clean_md_present` + char count + ATX heading count),
+      `source_inventory(job)` (`extracted_txt_present` + char count + `## Page N`
+      anchor count). Returns **counts/booleans only — never a guide/source body**;
+      never writes, never calls `save_clean_md`, no secret surface.
+    - **`GET /api/ask/jobs`** lists **only Ask-eligible jobs** (those with a generated
+      `clean.md`); guide-less / failed / incomplete jobs (no `clean.md`) are **filtered
+      out**, not returned as ineligible. Reuses the existing `JOBS_DIR.glob("*/job.json")`
+      manifest listing + the same newest-first / favorites-float ordering as `/api/jobs`.
+      Each row is a curated, redacted picker summary: `id`, `title`, `status`,
+      `created_at`, `updated_at`, `style` (`prompt_name`), `generator_preset`,
+      `provider`, `model`, `favorite`, `attachment_summary`, `guide_available`,
+      `source_available`.
+    - **`GET /api/ask/jobs/{id}/context`** returns a per-job readiness + source
+      inventory: `guide{clean_md_present,char_count,heading_count}`,
+      `source{extracted_txt_present,char_count,page_anchor_count}`, redacted
+      `attachments[]` (filename/extension/mode/status/extracted_chars/truncated/
+      warnings), `attachment_summary`, `page_selections`, and a
+      `readiness{status:"ready"|"not_ready", ready:bool, reasons:[]}` object. An
+      **unknown job → 404** (via the existing `_get_job` guard); an existing but
+      guide-less job → `200` `not_ready` (not a 404).
+    - **Redacted by construction.** Both routes build on the existing
+      `_safe_manifest` / `_safe_attachment_metadata` / `_attachment_summary` /
+      `_safe_page_selections` helpers and emit an **explicit field whitelist** —
+      nothing from the manifest is passed through verbatim — so **no raw API key,
+      `api_key`/`Authorization` field, `sk-` value, full base URL (scheme/host), or
+      filesystem path** can ride along, and **no guide/source body** is ever returned.
+      Registered well before the SPA mount (and the parametric `/api/jobs/{job_id}`
+      catch-all — different prefix), so `/api/*` keeps winning.
+    - **Verified** (`python -m compileall api pipeline` OK; `docker compose config`
+      exit 0; image rebuilt + container healthy): focused
+      `test_scripts/test_ask_context_inventory.py` **50/50 in Docker** (pure reader +
+      both endpoints: eligible appears / guide-less absent / counts + page-anchor +
+      attachment fields + page selections / unknown→404 / redaction scan / read-only
+      sha256 of `clean.md`+`extracted.txt`+`job.json` unchanged). **Live** seeded-job
+      proof: `/api/ask/jobs` + `/context` return the curated fields; a raw-response
+      secret scan over both endpoints found **no** `sk-`/`api_key`/`Authorization`/
+      `https://`/`/home/secret`/`base_url` leak even though the seeded manifest +
+      attachment carried a planted `sk-live-…` key, a full base URL, and a host path.
+      Release smoke unchanged. **No frontend file touched** (build not needed).
 
 ## NEXT (in order)
 

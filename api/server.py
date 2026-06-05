@@ -16,7 +16,14 @@ from fastapi.responses import FileResponse, Response
 from pydantic import BaseModel, ValidationError
 from starlette.concurrency import run_in_threadpool
 
-from pipeline import generator_presets, library_store, presets as preset_store, shortcut_store, style_store
+from pipeline import (
+    ask_inventory,
+    generator_presets,
+    library_store,
+    presets as preset_store,
+    shortcut_store,
+    style_store,
+)
 from pipeline.job_manager import (
     JOBS_DIR,
     Job,
@@ -790,6 +797,113 @@ def list_jobs(limit: int = 20) -> dict[str, Any]:
     )
     jobs.sort(key=lambda item: not bool(item.get("favorite")))
     return {"jobs": jobs[: max(limit, 0)]}
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Ask Your Guide — context inventory (Ask Slice 2, read-only).
+#
+# Registered here (well before the SPA mount and the parametric /api/jobs/{job_id}
+# catch-all — different prefix, so no capture conflict). These endpoints expose a
+# SAFE, read-only inventory of generated guides so a future Ask Your Guide
+# workspace can pick a guide and see what context is available. They read job
+# artifacts (clean.md / extracted.txt / manifest) ONLY, never write, never call a
+# model, and reuse the existing manifest/attachment redaction helpers — so no raw
+# key, full base URL, filesystem path, or artifact body is ever exposed. They do
+# NOT chunk, index, retrieve, create jobs, or touch save_clean_md.
+# ──────────────────────────────────────────────────────────────────────────────
+
+
+def _ask_job_summary(manifest: dict[str, Any], job: Job) -> dict[str, Any]:
+    """Curated, redacted summary row for the Ask guide picker.
+
+    Builds on the same ``_safe_manifest`` redaction the job listing uses, then
+    emits only an explicit whitelist of display-safe fields (no raw key, no full
+    URL, no filesystem path can ride along because nothing is passed through
+    verbatim)."""
+    safe = _safe_manifest(manifest)
+    job_id = str(manifest.get("id") or job.id)
+    return {
+        "id": job_id,
+        "title": safe.get("title"),
+        "status": safe.get("status"),
+        "created_at": safe.get("created_at"),
+        "updated_at": safe.get("updated_at"),
+        "style": safe.get("prompt_name"),
+        "generator_preset": safe.get("generator_preset"),
+        "provider": safe.get("provider"),
+        "model": safe.get("model"),
+        "favorite": bool(safe.get("favorite")),
+        "attachment_summary": _attachment_summary(manifest),
+        "guide_available": True,
+        "source_available": job.extracted_txt.exists(),
+    }
+
+
+@app.get("/api/ask/jobs")
+def list_ask_jobs(limit: int = 50) -> dict[str, Any]:
+    """List ONLY Ask-eligible jobs: those with a generated guide (clean.md).
+
+    Reuses the existing job manifest listing; a guide-less / failed / incomplete
+    job (no clean.md) is filtered out rather than returned as ineligible."""
+    jobs: list[dict[str, Any]] = []
+    if JOBS_DIR.exists():
+        for manifest_path in JOBS_DIR.glob("*/job.json"):
+            manifest = _read_json(manifest_path)
+            if manifest is None:
+                continue
+            job_id = str(manifest.get("id") or manifest_path.parent.name)
+            job = Job(job_id)
+            if not ask_inventory.has_generated_guide(job):
+                continue
+            jobs.append(_ask_job_summary(manifest, job))
+
+    # Newest first, then float favorites to the top (mirrors /api/jobs ordering).
+    jobs.sort(
+        key=lambda item: str(item.get("created_at") or item.get("id") or ""),
+        reverse=True,
+    )
+    jobs.sort(key=lambda item: not bool(item.get("favorite")))
+    return {"jobs": jobs[: max(limit, 0)]}
+
+
+@app.get("/api/ask/jobs/{job_id}/context")
+def get_ask_job_context(job_id: str) -> dict[str, Any]:
+    """Read-only readiness + source inventory for ONE job (404 if unknown).
+
+    Summarizes the generated guide, extracted source, and attachment metadata,
+    plus a readiness object for future Ask prep. Returns counts/booleans only —
+    never the guide/source body, never a key/URL/path."""
+    job = _get_job(job_id)
+    manifest = job.read_manifest()
+    safe = _safe_manifest(manifest)
+
+    guide = ask_inventory.guide_inventory(job)
+    source = ask_inventory.source_inventory(job)
+
+    reasons: list[str] = []
+    if not guide["clean_md_present"]:
+        reasons.append("No generated guide (clean.md) is available for this job yet.")
+    ready = bool(guide["clean_md_present"])
+
+    return {
+        "id": job.id,
+        "title": safe.get("title"),
+        "status": safe.get("status"),
+        "style": safe.get("prompt_name"),
+        "generator_preset": safe.get("generator_preset"),
+        "provider": safe.get("provider"),
+        "model": safe.get("model"),
+        "guide": guide,
+        "source": source,
+        "attachments": _safe_attachment_metadata(manifest.get("attachments", [])),
+        "attachment_summary": _attachment_summary(manifest),
+        "page_selections": _safe_page_selections(manifest.get("page_selections")),
+        "readiness": {
+            "status": "ready" if ready else "not_ready",
+            "ready": ready,
+            "reasons": reasons,
+        },
+    }
 
 
 @app.get("/api/library")

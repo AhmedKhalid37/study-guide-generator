@@ -940,3 +940,28 @@ tokenizer dependency; the budget is derived from the local model's advertised wi
 available but defaults conservatively, and an over-budget guide **fails gracefully** ("too
 large for this model — use a longer-context model or ask a narrower question") rather than
 silently truncating away the cited passage.
+
+## Ask Slice 2: `/api/ask/jobs` lists only eligible guides; context is whitelist-redacted and 404s only on a missing job (2026-06-05)
+The Ask context-inventory endpoints make three deliberate contract choices that later
+slices and the frontend will rely on. **(1) Eligibility filters, it does not flag.**
+`GET /api/ask/jobs` returns **only** jobs that have a generated `clean.md` — a guide-less
+/ failed / incomplete job is **omitted from the list**, not returned with an
+`eligible:false` marker. The design ("list eligible guides") and the product framing (a
+guide *picker*) both want a clean pickable set, and a future "why can't I ask this job?"
+affordance belongs on the per-job context endpoint, not as noise in the picker.
+**(2) The per-job `…/context` endpoint 404s only when the *job* does not exist** (via the
+existing `_get_job` guard); an existing-but-guide-less job returns **200 with
+`readiness.ready=false`** + a human reason, never a 404 — so the frontend can show "this
+job has no generated guide yet" instead of treating it like a missing route. **(3)
+Redaction is by construction, via the existing job-listing helpers + an explicit field
+whitelist.** Both routes run the manifest through the same `_safe_manifest` /
+`_safe_attachment_metadata` / `_attachment_summary` / `_safe_page_selections` helpers the
+job listing already uses, and then emit only a hand-listed set of display fields —
+**nothing from the manifest is passed through verbatim.** A thin read-only reader
+`pipeline/ask_inventory.py` supplies counts only (guide/source char + heading + `## Page N`
+anchor counts) and **never returns a guide/source body**. **Why:** this keeps the leak
+surface closed even if a manifest later gains a new secret-ish field (it simply won't be in
+the whitelist), avoids inventing a second jobs registry, and matches the LMM/provider
+redaction posture. Slice 2 stays strictly read-only — it never writes, never calls
+`save_clean_md`, never creates a job, makes no model/local-model call, and does no
+chunking/retrieval (those are Slice 3+).
