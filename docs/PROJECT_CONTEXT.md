@@ -111,6 +111,27 @@ flashcards with CSV / Anki / Quizlet export.
   process spawn is rejected** — a non-root (uid 10001), `no-new-privileges` container
   cannot safely manage host processes. Provider config edits stay on Provider
   Settings (no second writer). See `DECISIONS.md`.
+- **Ask Your Guide — PLANNED / DESIGN-FIRST (Slice 1 design DONE, docs-only).** A
+  dedicated **`AskGuideWorkspace`** (first-class page/tab alongside
+  Builder/Library/Styles/Providers) where the user selects a generated guide/job and
+  chats with it using a **local model only**. Designed in
+  `docs/ASK_YOUR_GUIDE_DESIGN.md`. **Local-only in v1** — resolves the **`local`
+  provider only**, **status-gated** on LMM Phase 1 (offline → first-class offline
+  state + the LMM command helper; **no DeepSeek/Qwen/cloud fallback**, a hosted
+  "ask any provider" mode is a future explicit opt-in). It **reads** LMM status and
+  job artifacts read-only; it **does not** start/stop `llama-server`, create
+  generation jobs, or modify `clean.md`/`extracted.txt`/the manifest. A **context
+  manager is mandatory** (chunk `clean.md`/`extracted.txt` with `## Page N`/heading
+  citation anchors → a dependency-free lexical index cached per `(job_id,
+  content_hash)` → **budgeted retrieval** reserving answer/system-rules/recent chat →
+  a rolling chat summary; **never** dump the whole guide + all attachments + all
+  history into every turn). A hard **accuracy/citation contract** (answer from the
+  material first, cite page/section, say so when not covered, never invent
+  facts/formulas/pages/dates). Extra uploads are **session-scoped** (never merged into
+  the job, reuse `extract.py`); chat history is clearable and **never** auto-exported;
+  **no secrets stored.** Build plan is 10 slices; **NEXT = Slice 2 backend context
+  inventory endpoint** (`GET /api/ask/jobs` + `GET /api/ask/jobs/{id}/context`,
+  read-only, no chat). **Not implemented yet** beyond the design. See `DECISIONS.md`.
 
 ## 4. Architecture facts a new session MUST know
 

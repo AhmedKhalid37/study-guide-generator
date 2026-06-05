@@ -5,8 +5,25 @@
 
 ---
 
-## NEXT — Local Model Manager — Phase 1 COMPLETE + VALIDATED (Slices 1→4 + Slice 5 validation); NEXT = Ask Your Guide local-only chat (recommended)
+## NEXT — Ask Your Guide DESIGNED (Slice 1, docs-only); NEXT = Ask Slice 2 backend context inventory endpoint. (LMM Phase 1 COMPLETE + VALIDATED below.)
 
+- **Ask Your Guide — Slice 1 design is DONE (docs-only)** — branch
+  `ask-your-guide-design`, on `docs/ASK_YOUR_GUIDE_DESIGN.md`, see DONE #50 below.
+  A dedicated **`AskGuideWorkspace`** (first-class page/tab) where the user selects a
+  generated guide/job and chats with it using a **local model only** (status-gated on
+  LMM Phase 1; no DeepSeek/Qwen/cloud fallback). Mandatory **context manager +
+  budgeted retrieval** (chunk `clean.md`/`extracted.txt` with `## Page N`/heading
+  citation anchors, dependency-free lexical index cached per `(job_id, content_hash)`,
+  reserve answer/system-rules/recent-chat, rolling chat summary). Hard
+  **accuracy/citation contract** (answer from material first, cite page/section, say
+  so when not covered, never invent). Conservative session-scoped storage (never
+  auto-exported, no secrets). 8 proposed endpoints, all local-only + read-only over
+  job artifacts. **No code changed.**
+- **NEXT — Ask Slice 2: backend context inventory endpoint (BACKEND ONLY).** Add
+  `GET /api/ask/jobs` (eligible guides with a generated `clean.md`) + `GET
+  /api/ask/jobs/{id}/context` (read-only summary of available guide/source/attachments
+  + readiness). **No chat, no chunking, no model call, no UI.** See
+  `docs/ASK_YOUR_GUIDE_DESIGN.md` §11 (Ask Slice 2).
 - **LMM Phase 1 is COMPLETE and VALIDATED.** Slices 1→4 (design → detection-only
   status endpoint → status panel → command helper) are on trunk (`94003bc`,
   `e27c674`, `7429f24`, `e399f09`), and the **Slice 5 validation + docs-reconciliation
@@ -1850,6 +1867,55 @@ parked on the `hardening` branch — not merged, not deleted.
     - **Outcome:** **Phase 1 COMPLETE + validated; no bugs found; no code changed.**
       Recommended next: **Ask Your Guide local-only chat**, or host-companion DESIGN
       (sign-off-gated). Safe to merge (docs-only).
+
+50. **Ask Your Guide — Slice 1: design (DOCS-ONLY)** — branch `ask-your-guide-design`
+    (cut from `chrome-renderer-v1` @ `95132fe`). A design-first definition of a
+    dedicated **Ask Your Guide** workspace where the user selects a generated
+    guide/job and chats with it using a **local** model. **No backend endpoint, no
+    frontend UI, no pipeline/extraction change, no provider-settings change, no LMM
+    change, no new dependency. No code changed.**
+    - **Deliverable:** new `docs/ASK_YOUR_GUIDE_DESIGN.md` + reconciled
+      `CURRENT_TASK.md`, `NEXT_CHAT_HANDOFF.md`, `PROJECT_CONTEXT.md`, and three
+      `DECISIONS.md` entries.
+    - **Dedicated workspace, not a Library button.** `AskGuideWorkspace` is a
+      first-class page/tab alongside Builder/Library/Styles/Providers — guide+session
+      picker (left), chat (center), sources/context/citations panel (right/drawer).
+      Library/Job Details may *later* deep-link "Open in Ask Your Guide"; the
+      workspace is primary.
+    - **Local-only in v1.** Resolves the **`local` provider only**, **status-gated**
+      on LMM Phase 1 (`GET /api/local-model/status`); offline → first-class offline
+      state + the LMM command helper, chat disabled. **No DeepSeek/Qwen/cloud
+      fallback**; a hosted "ask any provider" mode is a future **explicit** opt-in.
+      Model-agnostic (any OpenAI-compatible local server); long-context / thinking /
+      multimodal used only when the server advertises them (multimodal deferred).
+    - **Context manager is mandatory** (no "send the whole guide + all attachments +
+      all history every turn"): chunk `clean.md`/`extracted.txt` with `## Page N` /
+      heading **citation anchors**, a **dependency-free lexical** index cached per
+      `(job_id, content_hash)`, **budgeted retrieval** (reserve answer + system rules
+      + recent chat, fill the remainder), a **rolling chat summary** + recent-turn
+      window + pinned facts, visible prep progress, and graceful "too large for this
+      model" failure.
+    - **Accuracy/citation contract:** answer from guide/source/uploads first; cite
+      page/section; say so when not in the material; never invent
+      facts/formulas/pages/dates; distinguish "from your guide" vs general knowledge;
+      explain conflicts; ask when ambiguous; show + check calculations; mark
+      high-vs-uncertain exam advice. A later slice **validates** emitted citations
+      against in-context labels.
+    - **Storage (conservative):** per-guide sessions under
+      `jobs/<id>/ask/sessions/<sid>/` (metadata + history + uploads + cache);
+      extra uploads **session-scoped** (never merged into the original job); chat
+      history clearable/deletable; **never** auto-exported; **no secrets stored**.
+    - **Endpoints proposed (sliceable, all local-only + redacted):** `GET
+      /api/ask/jobs`, `GET /api/ask/jobs/{id}/context`, `POST …/prepare`, `POST
+      …/sessions`, `GET /api/ask/sessions/{sid}`, `POST …/message`, `POST
+      …/attachments`, `DELETE …/sessions/{sid}` + `…/history`. Every route reads job
+      artifacts **read-only** (never `save_clean_md`, never creates a generation
+      job), reuses `extract.py` for extra uploads, and leaks no key/full URL.
+    - **10-slice build plan** (design → context inventory → chunking → local chat →
+      workspace shell → chat UI → extra uploads → long-chat memory → accuracy/polish →
+      optional multimodal), each with scope/files/tests/acceptance/non-goals.
+    - **Outcome:** design complete; **NEXT = Ask Slice 2 (backend context inventory
+      endpoint)**. Safe to merge (docs-only).
 
 ## NEXT (in order)
 

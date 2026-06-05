@@ -7,19 +7,33 @@
 
 ## Current position
 - **Branch (trunk / PR target):** `chrome-renderer-v1`
-- **Latest commit on trunk:** `e399f09` — "Add local-model command-helper (copy start
-  command) (LMM Slice 4)", on top of the Slice 3 status panel (`7429f24`), the Slice 2
-  status endpoint (`e27c674`), the Slice 1 design (`94003bc`), the **Shortcut Inspector
-  / Repair Loop** (`a0f96d1`→`4458c9a`) + the Edit-preset follow-up (`adc2a7e`). The
-  **in-app provider settings feature group** (`978516e`→`61fb423`) and the large-PDF
-  core (`60c3e78`) remain on trunk below.
-- **Active work branch:** `docs-validate-local-model-manager-phase1` — **LMM Slice 5**
-  (Phase-1 validation / docs reconciliation, **docs-only**) ran here and **PASSED**;
-  see "What just landed" + `docs/VALIDATION_LOCAL_MODEL_MANAGER_PHASE1.md`.
-- **Remote:** `origin/chrome-renderer-v1` == `e399f09` (the validation branch is local,
+- **Latest commit on trunk:** `95132fe` — "Validate Local Model Manager Phase 1 +
+  reconcile docs (LMM Slice 5)", on top of the Slice 4 command helper (`e399f09`), the
+  Slice 3 status panel (`7429f24`), the Slice 2 status endpoint (`e27c674`), the Slice 1
+  design (`94003bc`), the **Shortcut Inspector / Repair Loop** (`a0f96d1`→`4458c9a`) +
+  the Edit-preset follow-up (`adc2a7e`). The **in-app provider settings feature group**
+  (`978516e`→`61fb423`) and the large-PDF core (`60c3e78`) remain on trunk below.
+- **Active work branch:** `ask-your-guide-design` — **Ask Your Guide Slice 1**
+  (design, **docs-only**) ran here; see "What just landed" +
+  `docs/ASK_YOUR_GUIDE_DESIGN.md`. (Trunk also now includes LMM Phase 1 Slice 5
+  validation, `95132fe`.)
+- **Remote:** `origin/chrome-renderer-v1` == `95132fe` (the Ask design branch is local,
   docs-only, not yet pushed/merged).
 
 ## What just landed
+- **Ask Your Guide — Slice 1: design (docs-only)** (branch `ask-your-guide-design`).
+  A design-first definition of a dedicated **Ask Your Guide** workspace
+  (`docs/ASK_YOUR_GUIDE_DESIGN.md`): the user selects a generated guide/job and chats
+  with it using a **local model only**. First-class page/tab (guide+session picker /
+  chat / sources+citations panel), **local-only** and **status-gated** on LMM Phase 1
+  (offline → first-class offline state + command helper; **no DeepSeek/Qwen/cloud
+  fallback**), a **mandatory context manager** (chunk `clean.md`/`extracted.txt` with
+  `## Page N`/heading citation anchors → dependency-free lexical index cached per
+  `(job_id, content_hash)` → budgeted retrieval reserving answer/system-rules/recent
+  chat → rolling chat summary), a hard **accuracy/citation contract**, conservative
+  **session-scoped** storage (never auto-exported, no secrets), 8 proposed local-only
+  endpoints (`/api/ask/*`, all read-only over job artifacts), and a 10-slice build
+  plan. **No code changed.** NEXT = Ask Slice 2 (backend context inventory endpoint).
 - **Local Model Manager — Phase 1 COMPLETE + VALIDATED** (Slices 1→4 +
   Slice 5 validation). Detection-only status (`GET /api/local-model/status` +
   `POST /api/local-model/check`), the read-only **Local Models** panel, and the
@@ -188,12 +202,15 @@ load-bearing — do not rewrite casually.
 
 ## Next recommended slice
 **Pick ONE safe option:**
-- **Ask Your Guide — local-only chat (recommended).** Now that LMM Phase 1 is
-  complete + validated, the natural next feature is a local-only chat over a generated
-  guide that **consumes** the LMM detection status (first-class offline empty state, no
-  hosted fallback in local-only mode) and the existing `local` provider. **It reads
-  status; it does not start/stop `llama-server`** (no process control). Design-first;
-  see `LOCAL_MODEL_MANAGER_DESIGN.md` §10 + §11 ("Later — Ask Your Guide").
+- **Ask Your Guide — Slice 2: backend context inventory endpoint (recommended).**
+  Slice 1 (design) is DONE (`docs/ASK_YOUR_GUIDE_DESIGN.md`). The next slice is
+  **backend-only**: `GET /api/ask/jobs` (eligible guides with a generated `clean.md`)
+  + `GET /api/ask/jobs/{id}/context` (read-only summary of available
+  guide/source/attachments + readiness). **No chat, no chunking, no model call, no
+  UI.** It reads job artifacts (`clean.md`/`extracted.txt`/manifest) **read-only**,
+  reuses the existing job listing, and leaks no key/full URL. It **consumes** LMM
+  status and the existing `local` provider; **it does not start/stop `llama-server`**
+  (no process control). See `docs/ASK_YOUR_GUIDE_DESIGN.md` §8 + §11 (Ask Slice 2).
 - **Local Model Manager — Phase 2 host companion launcher (DESIGN-FIRST, optional).**
   Only if app-managed **start/stop** of a host `llama-server` is desired. Process
   control crosses the container boundary and is deferred to an optional host companion

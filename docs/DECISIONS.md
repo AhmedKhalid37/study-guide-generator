@@ -879,3 +879,64 @@ if called), no raw key, host-only URL (no userinfo/port/path/query). No new depe
 backend uses stdlib `shlex`; the frontend helpers are pure ESM unit-tested by a node
 harness. The next step is **LMM Phase-1 validation / docs reconciliation** (Slice 5, the
 host companion DESIGN, stays sign-off-gated).
+
+## Ask Your Guide is a dedicated first-class workspace, not a Library-only button (2026-06-05, DESIGN)
+The **Ask Your Guide** feature (`docs/ASK_YOUR_GUIDE_DESIGN.md`, Slice 1 design) is a
+**dedicated top-level workspace/tab** (`AskGuideWorkspace`) alongside
+Builder/Library/Styles/Providers — guide+session picker (left), chat (center),
+sources/context/citations panel (right/drawer) — **not** a button hidden inside Library
+or the Job Details drawer. **Why:** chatting with a guide is a distinct, repeatable task
+(select a guide, ask many questions across a session, add session docs, cite sources)
+that warrants its own surface, navigation, and session state; burying it in Library would
+make it a one-shot afterthought and couple its lifecycle to the Library list. Library /
+Job Details may **later** gain an "Open in Ask Your Guide" deep-link as an *additive*
+shortcut, but the workspace remains the primary entry point. The design ships **no code**
+in Slice 1 (docs-only); the workspace is built later (Slices 5–6) on top of the
+backend-first slices (2–4).
+
+## Ask Your Guide v1 is local-only with no hosted fallback (2026-06-05, DESIGN)
+Ask Your Guide v1 uses the **`local` provider only** and is **status-gated** on Local
+Model Manager Phase 1 (`GET /api/local-model/status`): if the local server is
+`reachable:false`, chat is **unavailable** and the workspace shows a first-class offline
+state reusing the `local_offline` category + the LMM **command helper** ("start it from
+Local Models"). **There is no DeepSeek/Qwen/cloud fallback by default** — Ask resolves
+`local`, reads **no** cloud key, and has **no** code path that silently falls through to a
+paid provider. **Why:** the feature's whole point is a cost-free, private "chat with my
+material" mode; silently spending on a hosted API (or leaking the user's coursework to a
+cloud provider) when the local server is down would betray that intent and the app's
+keys-stay-server-side posture. A hosted **"ask any provider"** mode can be designed later
+as an **explicit, separate opt-in toggle** — never the v1 default and never a silent
+fallback. The design stays **model-agnostic** (any OpenAI-compatible local server; no
+single model hardcoded as required) and only *opportunistically* uses extra capability
+the server advertises — larger retrieval pool for long-context models, a thinking pass
+for thinking-capable models (reusing the existing `thinking` plumbing), multimodal
+**deferred** — degrading silently when a capability is absent. Ask **reads** LMM status;
+it **never** starts/stops `llama-server` (process control stays owned by the LMM / a
+future host companion). Consistent with the LMM design §10 ("Ask Your Guide" note) and the
+"Soft `model_hint`, not a hard pin" posture.
+
+## Ask Your Guide requires a context manager + retrieval — never dump everything into every turn (2026-06-05, DESIGN)
+Ask Your Guide must **not** be built as "send the whole guide + all attachments + all chat
+history on every turn." Each turn is assembled by a **context manager** that does
+**budgeted retrieval**: chunk `clean.md` (the generated guide) and `extracted.txt` (the
+source, carrying `## Page N` anchors) on heading/paragraph boundaries — each chunk keeps
+its nearest heading / `## Page N` as a **citation label** — build a **dependency-free
+lexical index** (keyword/BM25-style scoring in pure Python; **no** embedding model, vector
+DB, or tokenizer dependency added) **cached per `(job_id, content_hash)`**, then per
+question select the top-ranked chunks across guide/source/extra-uploads up to a
+**configurable token budget that reserves room for the answer, the system/answer-rules
+block, and the recent conversation** before filling the remainder with retrieved chunks.
+Older chat turns are compacted into a **rolling summary** with a recent-turn verbatim
+window + pinned facts. **Why:** local models have finite (often modest) context windows
+and are slow on local hardware, and — critically — **flooding the prompt with the whole
+corpus *degrades* accuracy** (the relevant passage drowns in irrelevant text) and gets
+monotonically worse as the chat grows; a stressed-student audience makes a confident wrong
+answer the worst outcome. Budgeted retrieval keeps each turn small, fast, on-topic, and
+**citable** (the model is instructed to cite **only** in-context labels; a later accuracy
+slice **validates** emitted page/section references against the labels actually in context
+and strips/flags any that were not — turning "no hallucinated page numbers" from a prompt
+request into a checked invariant). Token counting is **approximate** (chars/4) to avoid a
+tokenizer dependency; the budget is derived from the local model's advertised window when
+available but defaults conservatively, and an over-budget guide **fails gracefully** ("too
+large for this model — use a longer-context model or ask a narrower question") rather than
+silently truncating away the cited passage.
