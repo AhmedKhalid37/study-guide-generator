@@ -112,7 +112,7 @@ flashcards with CSV / Anki / Quizlet export.
   cannot safely manage host processes. Provider config edits stay on Provider
   Settings (no second writer). See `DECISIONS.md`.
 - **Ask Your Guide — IN PROGRESS (Slice 1 design DONE; Slice 2 backend context
-  inventory DONE).** A
+  inventory DONE; Slice 3 backend context preparation / chunking DONE).** A
   dedicated **`AskGuideWorkspace`** (first-class page/tab alongside
   Builder/Library/Styles/Providers) where the user selects a generated guide/job and
   chats with it using a **local model only**. Designed in
@@ -136,7 +136,16 @@ flashcards with CSV / Anki / Quizlet export.
   guide/source/attachment summary + a `readiness` object), backed by the thin
   read-only reader `pipeline/ask_inventory.py` and the existing manifest/attachment
   redaction (no chat, chunking, model call, or UI; original artifacts untouched).
-  **NEXT = Slice 3 context preparation / chunking** (`POST /api/ask/jobs/{id}/prepare`).
+  **Slice 3 shipped** `POST /api/ask/jobs/{id}/prepare` + the stdlib-only
+  `pipeline/ask_context.py`: deterministic, citation-labelled chunking of
+  `clean.md`/`extracted.txt` on heading / `## Page N` boundaries + a dependency-free
+  lexical index (term frequencies + `doc_freq`), cached at
+  `jobs/<id>/ask/cache/context_index.json` keyed by a content hash over guide+source
+  bytes (idempotent `hit`/`built`/`rebuilt`, atomic writes, fenced to the job dir).
+  The whitelisted response returns counts + a citation summary only (no body, key,
+  URL, or host path); no model call, sessions, UI, or new dependency.
+  **NEXT = Slice 4 backend local chat endpoint** (`POST /api/ask/sessions/{id}/message`:
+  status-gate → retrieve over the Slice 3 index → local-only generation → cited answer).
   See `DECISIONS.md`.
 
 ## 4. Architecture facts a new session MUST know

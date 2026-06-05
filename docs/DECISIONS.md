@@ -965,3 +965,33 @@ the whitelist), avoids inventing a second jobs registry, and matches the LMM/pro
 redaction posture. Slice 2 stays strictly read-only — it never writes, never calls
 `save_clean_md`, never creates a job, makes no model/local-model call, and does no
 chunking/retrieval (those are Slice 3+).
+
+## Ask Slice 3: cache at `jobs/<id>/ask/cache/`, content-hash key, paragraph-boundary chunks (no overlap) (2026-06-05)
+Ask context preparation (`POST /api/ask/jobs/{id}/prepare`, `pipeline/ask_context.py`)
+makes four deliberate, non-obvious choices that Slice 4 retrieval will rely on. **(1)
+Cache lives at `jobs/<job_id>/ask/cache/context_index.json`** — co-located with the job
+(so the existing trash/purge model removes it with the parent job), fenced inside the job
+dir (`_ensure_fenced`), and written atomically (temp file + `os.replace`, mirroring
+`provider_settings_store`/`library_store`). It is **safe to delete/rebuild** and is the
+on-disk layout the design §7 left open. **(2) The cache key is a sha256 over the actual
+`clean.md` + `extracted.txt` *content* (length-delimited, `None`-source distinct from
+empty), never timestamps** — so an edited guide/source re-prepares and an unchanged one is
+a `hit` that rewrites nothing; a *format* bump is handled by a separate `version` field
+(kept OUT of the content hash) and a corrupt/stale cache rebuilds safely instead of
+crashing. **(3) Chunking is deterministic with NO overlap in v1** — split on markdown
+heading boundaries (guide) / `## Page N` anchors (source), then greedily pack paragraphs up
+to a ~650-token target (`chars/4`, no tokenizer dep) with an ~800-token hard ceiling; a
+single oversized paragraph hard-splits at the ceiling. The design permits "small overlap
+when useful," but v1 omits it because paragraph/heading boundaries already give clean,
+**exact** citation labels (nearest heading / `Page N`) and predictable chunk counts;
+overlap can be added later without changing the contract. **(4) The cache *file* may hold
+chunk `text` + per-chunk term frequencies + `doc_freq` (Slice 4 retrieval needs them), but
+the *prepare response* never does** — it returns an explicit whitelist (counts +
+content_hash + a bounded citation summary + a *job-relative* `cache_relpath`), and the
+cache is built **only** from the two plain-text artifacts (never the manifest), so no key /
+full URL / host path / unrelated manifest field can enter either surface. **Why:** keeps
+the leak surface closed by construction, keeps retrieval cheap and deterministic, and keeps
+re-opening a guide a cache hit rather than a re-chunk. Slice 3 stays strictly backend +
+read-only over originals — no model/local-model call, no key read, no sessions, no UI, no
+new dependency, and it never writes `clean.md`/`extracted.txt`/`job.json` or calls
+`save_clean_md`.

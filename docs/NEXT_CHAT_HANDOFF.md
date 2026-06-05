@@ -12,12 +12,35 @@
   **Shortcut Inspector / Repair Loop** (`a0f96d1`→`4458c9a`) + the Edit-preset follow-up
   (`adc2a7e`), the **in-app provider settings feature group** (`978516e`→`61fb423`), and
   the large-PDF core (`60c3e78`).
-- **Active work branch:** `ask-context-inventory` — **Ask Your Guide Slice 2**
-  (backend context inventory endpoint) ran here; see "What just landed" +
-  `docs/ASK_YOUR_GUIDE_DESIGN.md` §11 (Ask Slice 2). **Not yet committed/pushed** unless
-  the operator asks.
+- **Active work branch:** `ask-context-prepare` — **Ask Your Guide Slice 3**
+  (backend context preparation / chunking) ran here; see "What just landed" +
+  `docs/ASK_YOUR_GUIDE_DESIGN.md` §11 (Ask Slice 3). **Not yet committed/pushed** unless
+  the operator asks. **NEXT = Ask Slice 4 (backend local chat endpoint).**
 
 ## What just landed
+- **Ask Your Guide — Slice 3: backend context preparation / chunking (BACKEND ONLY)**
+  (branch `ask-context-prepare`). New stdlib-only `pipeline/ask_context.py` chunks
+  `clean.md` (guide) + optional `extracted.txt` (source) deterministically on heading /
+  `## Page N` boundaries (~650-token target, ~800 ceiling via `chars/4`, no overlap),
+  preserving each chunk's **citation label** (nearest guide heading / `Page N` + page
+  number) and building a **dependency-free lexical index** (per-chunk term frequencies +
+  `doc_freq`). `POST /api/ask/jobs/{id}/prepare` (before the SPA mount) builds OR reuses
+  a cache at `jobs/<id>/ask/cache/context_index.json`, keyed by a **content hash** over
+  guide+source bytes — **idempotent** (`hit` rewrites nothing; `clean.md`/`extracted.txt`
+  change → `rebuilt`; corrupt/stale cache → safe rebuild), **atomic** (temp +
+  `os.replace`), **fenced** to the job dir. Unknown job → 404; guide-less existing job →
+  200 `ready:false`. Response is an explicit whitelist (`job_id`, `ready`, `cache_status`,
+  `content_hash`, guide/source/total chunk counts, bounded `citation_summary`,
+  job-relative `cache_relpath`) — **no guide/source body, chunk text, key, full URL, or
+  host path**; the cache holds chunk text for Slice 4 but only whitelisted top-level keys
+  (never the manifest). **No chat, no retrieval endpoint, no model/local-model call, no
+  cloud key read, no sessions, no extra uploads, no UI, no new dependency; original
+  artifacts untouched (no `save_clean_md`, no manifest write).** Verified: `compileall`
+  OK, `docker compose config` exit 0, container healthy,
+  `test_scripts/test_ask_context_prepare.py` **58/58 in Docker**, Slice 2
+  `test_ask_context_inventory.py` **50/50** unchanged, live prepare→hit on a real job +
+  clean response/cache secret scan, read-only sha256 of `clean.md`/`extracted.txt`/
+  `job.json` unchanged. See `CURRENT_TASK.md` #52. **NEXT = Ask Slice 4 (local chat).**
 - **Ask Your Guide — Slice 2: backend context inventory endpoint (BACKEND ONLY)**
   (branch `ask-context-inventory`). Two **read-only** endpoints over generated-guide
   artifacts: `GET /api/ask/jobs` lists **only Ask-eligible jobs** (those with a

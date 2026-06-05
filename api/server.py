@@ -17,6 +17,7 @@ from pydantic import BaseModel, ValidationError
 from starlette.concurrency import run_in_threadpool
 
 from pipeline import (
+    ask_context,
     ask_inventory,
     generator_presets,
     library_store,
@@ -903,6 +904,44 @@ def get_ask_job_context(job_id: str) -> dict[str, Any]:
             "ready": ready,
             "reasons": reasons,
         },
+    }
+
+
+@app.post("/api/ask/jobs/{job_id}/prepare")
+def prepare_ask_job_context(job_id: str) -> dict[str, Any]:
+    """Build/refresh the Ask chunk index for ONE job (404 if unknown).
+
+    Idempotent: an unchanged guide+source returns a cache ``hit`` without
+    rewriting anything; a content change rebuilds. A guide-less but existing
+    job returns 200 ``ready:false`` (mirroring the Slice 2 context endpoint),
+    never a 404. Builds/reads ONLY ``clean.md`` + ``extracted.txt`` and writes
+    only the job-local Ask cache — it never calls a model, reads a key, or
+    mutates the original artifacts/manifest.
+
+    The response is an explicit whitelist of counts + a citation summary; it
+    never returns guide/source body text, chunk text, keys, URLs, or host
+    paths (only a job-relative cache path)."""
+    job = _get_job(job_id)
+    result = ask_context.prepare_context(job)
+
+    if not result.get("ready"):
+        return {
+            "job_id": job.id,
+            "ready": False,
+            "cache_status": result.get("cache_status", "skipped"),
+            "reason": result.get("reason"),
+        }
+
+    return {
+        "job_id": job.id,
+        "ready": True,
+        "cache_status": result["cache_status"],
+        "content_hash": result["content_hash"],
+        "guide_chunk_count": result["guide_chunk_count"],
+        "source_chunk_count": result["source_chunk_count"],
+        "total_chunk_count": result["total_chunk_count"],
+        "citation_summary": result["citation_summary"],
+        "cache_relpath": result["cache_relpath"],
     }
 
 
