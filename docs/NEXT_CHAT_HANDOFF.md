@@ -10,12 +10,42 @@
 - **Trunk includes:** `af0ec0e` (Ask Slice 1 design), `2634f63` (Ask Slice 2 context
   inventory), `a29a405` (Ask Slice 3 context preparation), and the inserted Ask
   workspace shell, on top of the validated LMM group and prior feature groups.
-- **Active work branch:** `lmm-phase2e-selected-model-handoff` — Local Model
-  Manager Phase 2E selected library model handoff. **NEXT = Phase 2F start/stop
-  design review, or one more non-process-control slice for confirmed selected
-  model to Provider Settings handoff if desired.**
+- **Active work branch:** `lmm-phase2f-start-stop-design` — Local Model Manager
+  Phase 2F start/stop design review, docs only. **NEXT = Phase 2G1 companion
+  process-control internals with a fake/safe test executable only, no backend
+  bridge and no UI.**
 
 ## What just landed
+- **Local Model Manager Phase 2F — start/stop design review** (branch
+  `lmm-phase2f-start-stop-design`). Docs-only safety review before implementing
+  any `llama-server` process control. Updated
+  `docs/LOCAL_MODEL_MANAGER_PHASE2_DESIGN.md` with the future companion API
+  contract for `GET /server/status`, `POST /server/start`,
+  `POST /server/stop`, and `POST /server/restart`; backend bridge targets
+  `GET /api/local-model/server/status`, `POST /api/local-model/server/start`,
+  `POST /api/local-model/server/stop`, and
+  `POST /api/local-model/server/restart`; and the future Local Models UI
+  contract. The process-control boundary is reaffirmed: Docker FastAPI never
+  directly starts/stops host processes; only the host companion may spawn
+  `llama-server`; the companion may stop only a tracked process it started; no
+  Docker socket, privileged container, host PID namespace, or direct
+  Docker-to-host spawn; Linux Docker control remains Unix-socket-first with token
+  auth; frontend never receives token/socket/Authorization/raw host paths. Start
+  accepts only selected `model_id`, whitelisted `profile_id`, and typed bounded
+  params (`port`, `ctx_size`, `gpu_layers`, `threads`, optional `batch_size`) with
+  no shell command, no free-form args, no arbitrary executable path, and no
+  frontend/backend model path. Stop refuses to kill stale/reused/foreign PIDs.
+  Restart requires a fresh validated start payload or `reuse_last: true` only
+  when last launch metadata still validates. Added threat model, allowed states,
+  whitelisted profiles (`gpu_default`, `cpu`, later `low_memory`), process state
+  file rules, Linux `/proc` stale-PID checks, port conflict handling, bounded and
+  redacted logs, host-side health checks, backend/UI safety rules, future tests,
+  rollout slices Phase 2G1-G5, and a lasting `DECISIONS.md` entry. No code,
+  companion implementation, backend endpoint, frontend UI, Docker change,
+  Provider Settings write, Ask change, dependency, subprocess launch, or
+  `llama-server` start/stop/restart implementation was added. Validation:
+  `python -m compileall api pipeline tools`, `git diff --check`, and docs-only
+  `git diff --name-only`.
 - **Local Model Manager Phase 2E — selected library model handoff** (branch
   `lmm-phase2e-selected-model-handoff`). Backend/frontend/docs/tests slice. Added
   app-side persistence for a chosen discovered GGUF model without starting

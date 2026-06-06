@@ -112,13 +112,14 @@ flashcards with CSV / Anki / Quizlet export.
   cannot safely manage host processes. Provider config edits stay on Provider
   Settings (no second writer). See `DECISIONS.md`.
 - **Local Model Manager Phase 2 direction — HOST COMPANION + APPROVED GGUF LIBRARY
-  IN PROGRESS.** Phase 2A is documented in
+  + START/STOP CONTRACT IN PROGRESS.** Phase 2A is documented in
   `docs/LOCAL_MODEL_MANAGER_PHASE2_DESIGN.md`; Phase 2B adds the scanning-only host
   companion prototype under `tools/local_model_companion/`; Phase 2C adds the
   read-only Docker backend bridge; Phase 2D adds the frontend model-library picker
   in the existing Local Models panel; Phase 2E persists a selected discovered GGUF
-  model as app-side metadata only. Future in-app model start/stop must go
-  through React UI → Docker FastAPI backend → Unix-socket-first,
+  model as app-side metadata only. Phase 2F is docs-only and defines the future
+  safe start/stop/restart contract. Future in-app model start/stop must go
+  through React UI -> Docker FastAPI backend -> Unix-socket-first,
   token-authenticated host companion. For the current Linux Docker deployment,
   companion control assumes a Unix domain socket mounted into the backend
   container; `127.0.0.1`-only companion control is not assumed reachable from
@@ -162,13 +163,29 @@ flashcards with CSV / Anki / Quizlet export.
   flow, and a non-runnable future-launch preview that carries model id/filename/
   root-relative path/root id plus a `gpu_default` profile placeholder. The
   command-profile response also carries this selected-model metadata/preview.
+  Phase 2F adds the durable design contract for future companion endpoints
+  `GET /server/status`, `POST /server/start`, `POST /server/stop`, and
+  `POST /server/restart`; future backend bridge routes
+  `GET /api/local-model/server/status`, `POST /api/local-model/server/start`,
+  `POST /api/local-model/server/stop`, and
+  `POST /api/local-model/server/restart`; and future UI controls. Start must
+  accept only selected `model_id`, whitelisted `profile_id`, and typed bounded
+  params (`port`, `ctx_size`, `gpu_layers`, `threads`, optional `batch_size`),
+  never a shell command, free-form args, arbitrary executable path, or raw model
+  path. Stop may terminate only the tracked companion-started process after
+  identity checks; stale/reused/foreign PIDs are not killed. Restart is stop then
+  start with either a fresh validated payload or `reuse_last: true` only when last
+  launch metadata still validates. Process state is companion-private,
+  permission-restricted, redacted in APIs, and checked for PID reuse on Linux via
+  `/proc` where available. Logs are bounded/redacted; port conflicts fail safely;
+  companion status is operational state and does not write Provider Settings.
   There is still no permanent Docker Compose mount, Provider Settings write, Ask
   change, dependency addition, local provider base-URL/model behavior change,
   model execution, `llama-server` launch, process control, subprocess/shell use in
   the app path, start/stop/restart API, browser storage, token/socket exposure, or
-  absolute host path rendering. Next recommended slice is Phase 2F start/stop
-  design review, or Phase 2F selected model to confirmed Provider Settings handoff
-  if one more non-process-control slice is desired.
+  absolute host path rendering. Next recommended slice is Phase 2G1 companion
+  process-control internals with a fake/safe test executable only, no backend
+  bridge and no UI.
 - **Ask Your Guide — IN PROGRESS (Slice 1 design DONE; Slice 2 backend context
   inventory DONE; Slice 3 backend context preparation / chunking DONE; inserted
   workspace shell DONE; backend local chat API DONE; frontend chat UI wiring DONE;

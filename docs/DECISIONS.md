@@ -1145,3 +1145,47 @@ tracked process it started and must not kill unrelated manually-started
 `llama-server` instances. Logs are bounded and redacted. Phase 2B, if pursued, should
 prototype approved-folder scanning only using the chosen transport contract;
 start/stop comes later after the companion boundary is accepted.
+
+## LMM Phase 2F start/stop/restart is companion-owned, typed, tracked, and redacted (2026-06-06, DESIGN)
+Local Model Manager Phase 2F (`docs/LOCAL_MODEL_MANAGER_PHASE2_DESIGN.md`) fixes the
+safe contract for future `llama-server` process control before implementation. Future
+start/stop/restart remains **host-companion-owned**: the Docker backend must never
+become a host process manager, must never use the Docker socket, `--privileged`, host
+PID namespace, direct Docker-to-host spawn, or a frontend-supplied executable/model
+path to control host processes. The React UI still never talks directly to the
+companion and never receives the companion token, socket path, Authorization header,
+raw companion connection details, or raw absolute host model paths. Linux Docker
+control remains Unix-socket-first and token-authenticated.
+
+Start requests may contain only a selected companion `model_id`, a whitelisted
+`profile_id`, and typed bounded parameters such as `port`, `ctx_size`, `gpu_layers`,
+`threads`, and optional `batch_size`. They must not contain shell commands,
+free-form flags, arbitrary executable paths, raw model paths, environment blocks, or
+anything that can be appended to a command line. The companion resolves `model_id`
+against the approved-root GGUF library, canonicalizes the configured executable,
+checks execute permission, converts the profile and parameters into an argv array,
+and never uses `shell=True`. Initial profiles are `gpu_default` and `cpu`, with
+`low_memory` deferred until validated.
+
+Stop requests may only target the process the companion started and still tracks.
+The companion records restricted process state: PID, process start time, executable
+identity/path, model id/root id, profile id, port, typed params, started timestamp,
+last health check/error, log path, and redacted argv metadata. Before reporting
+running or sending a signal, Linux-first implementation must verify identity through
+PID existence, executable/command match where possible, recorded process start time
+via `/proc` where available, and expected port health. If the PID is stale, reused,
+foreign, or uncertain, the companion must not kill it; state becomes `unknown` or is
+cleared safely. Manually started `llama-server` processes are never adopted or
+killed in v1. Restart is stop-then-start and accepts either a full validated start
+payload or `reuse_last: true` only when stored launch metadata still validates.
+
+Port conflicts fail safely with `port_in_use`; a manually started server on `8080`
+may make the local provider reachable, but it is not a companion-managed process.
+Logs are companion-owned, bounded, non-world-readable, and redacted for tokens,
+Authorization headers, credentialed URLs, socket paths, and absolute model paths;
+no unbounded log streaming ships in the first process-control implementation.
+Companion health checks poll the host model API, for example
+`http://127.0.0.1:<port>/v1/models`, to mark the companion-managed process running.
+This operational state is not a Provider Settings source of truth, and no future
+start/stop slice may write Provider Settings or change Ask unless a later explicit
+decision and implementation slice says so.

@@ -1,6 +1,6 @@
 # LOCAL_MODEL_MANAGER_PHASE2_DESIGN.md - Host companion and approved GGUF library
 
-> **Status: Phase 2E selected library model handoff implemented.** Phase 2A
+> **Status: Phase 2F start/stop design review complete.** Phase 2A
 > established the host-companion boundary.
 > Phase 2B adds a Linux-first, stdlib-only host companion prototype under
 > `tools/local_model_companion/` for approved-folder GGUF scanning and a
@@ -12,6 +12,8 @@
 > Unix socket using a temporary Compose override. Phase 2D adds the frontend
 > model-library picker. Phase 2E persists the selected discovered GGUF model as
 > app-side safe metadata only and feeds a non-runnable future-launch preview.
+> Phase 2F is docs-only and defines the safe contract for future Phase 2G
+> companion-managed `llama-server` start/stop/restart.
 > There is still no production Docker Compose mount, Provider Settings write, Ask
 > change, dependency addition, local provider base-URL/model behavior change,
 > model execution, or `llama-server` start/stop/restart behavior.
@@ -450,8 +452,8 @@ POST /api/local-model/server/restart
 
 Phase 2C implemented the first three read-only/library endpoints. Phase 2E adds
 selection metadata endpoints under `/library/selection`. The start/stop/restart
-endpoints above remain future Phase 2F+ design targets and are not registered in
-FastAPI by Phase 2E.
+endpoints above remain future Phase 2G implementation targets and are not
+registered in FastAPI by Phase 2F.
 
 Backend rules:
 
@@ -550,9 +552,14 @@ safe response fields.
 - **Phase 2E:** DONE. Selected discovered GGUF model persists as app-side safe
   metadata and feeds a non-runnable future-launch preview; no Provider Settings
   write, no Ask change, no process control.
-- **Phase 2F:** start/stop design review, or selected model to confirmed Provider
-  Settings handoff if one more non-process-control slice is desired.
-- **Phase 2G:** validation/security pass after the next behavior slice.
+- **Phase 2F:** DONE. Start/stop design review for future companion-managed
+  `llama-server` process control; docs only, no routes or implementation.
+- **Phase 2G1:** companion process-control internals with a fake/safe test
+  executable only; no backend bridge or UI.
+- **Phase 2G2:** backend bridge for server status/start/stop/restart; no UI.
+- **Phase 2G3:** Local Models UI start/stop/restart controls.
+- **Phase 2G4:** live Linux validation with real `llama-server`.
+- **Phase 2G5:** hardening/security pass.
 - **Later:** packaging/signing and cross-platform installers.
 
 Each slice must preserve the boundary: Docker backend talks to the companion; the
@@ -870,6 +877,429 @@ Focused validation:
   process-control routes/labels, and no companion connection secret strings in
   the new UI slice.
 
-Next recommended slice is Phase 2F start/stop design review. If the operator
-wants one more non-process-control step first, do Phase 2F selected model to
-confirmed Provider Settings handoff.
+## 18. Phase 2F Start/Stop Design Review
+
+Phase 2F is a docs-only safety review before any `llama-server` process-control
+implementation. It defines the required contract for Phase 2G and does not add
+companion code, backend routes, frontend controls, Docker changes, subprocess
+launching, Provider Settings writes, Ask changes, dependencies, or any
+start/stop/restart behavior.
+
+### Threat Model
+
+Future process control must defend against:
+
+- arbitrary command execution through free-form flags, shell strings, executable
+  paths, profile names, model ids, or filenames;
+- killing unrelated host processes, including manually started `llama-server`
+  instances;
+- path traversal, symlink escape, or a model path resolving outside an approved
+  root;
+- malicious model filenames, root ids, profile ids, or typed parameter inputs;
+- port conflicts with manually started servers or unrelated processes;
+- stale PID files and PID reuse after the tracked process exits;
+- log leakage of tokens, Authorization headers, full URLs with credentials,
+  absolute model paths, environment variables, or command lines;
+- token/socket leakage from companion to backend to frontend;
+- frontend accidentally receiving raw host paths;
+- the companion control API being exposed to the network;
+- the Docker backend becoming a general host process manager;
+- user confusion between selected model metadata and the currently running
+  companion-managed model.
+
+### Process-Control Boundary
+
+The boundary remains unchanged:
+
+- Docker FastAPI never directly starts, stops, restarts, signals, or inspects host
+  processes.
+- Only the host companion may spawn `llama-server`.
+- The companion may stop only a process it started and still tracks as its own.
+- No Docker socket, privileged container, host PID namespace, or direct
+  Docker-to-host spawn is allowed.
+- Companion control is Unix-socket-first for the Linux Docker deployment.
+- Companion token/auth remains required for all non-public companion requests.
+- The frontend never receives the companion token, socket path, Authorization
+  header, raw companion URL, or raw absolute host model path.
+
+The model API and the companion control API are separate. `llama-server` may bind
+`--host 0.0.0.0` so the Docker backend can reach the OpenAI-compatible model API,
+but the companion control API must never bind publicly. If future security work
+wants a tighter model API binding, that needs its own design and validation.
+
+### Companion Server API Contract
+
+All endpoints require `Authorization: Bearer <token>`, return JSON, use bounded
+request/response sizes, and redact tokens, socket paths, raw absolute host paths,
+Authorization headers, credentialed URLs, and unbounded logs.
+
+Allowed states:
+
+- `stopped`: no tracked companion-started server is active.
+- `starting`: companion spawned a tracked child and is waiting for health.
+- `running`: tracked child identity is verified and health succeeded recently.
+- `stopping`: companion is terminating only its tracked child.
+- `crashed`: tracked child exited unexpectedly or failed health after start.
+- `unknown`: companion cannot prove process identity or state safely.
+- `error`: companion hit a bounded operational/configuration error.
+
+`GET /server/status`
+
+- Request body: none.
+- Response shape:
+
+```jsonc
+{
+  "ok": true,
+  "state": "stopped",
+  "managed": false,
+  "model_id": null,
+  "root_id": null,
+  "profile_id": null,
+  "port": null,
+  "params": {},
+  "started_at": null,
+  "last_health_check": null,
+  "last_error": null,
+  "log_tail": null
+}
+```
+
+- `pid` is omitted in normal frontend/backend responses. If a troubleshooting
+  response later includes a process hint, it must be bounded and not enough to
+  invite manual killing from the UI.
+- `log_tail` is `null` unless explicitly requested by a later bounded
+  troubleshooting flag; v1 should not stream logs.
+- Error categories: `unauthorized`, `state_unavailable`, `stale_pid`,
+  `identity_uncertain`, `companion_config`, `companion_error`.
+- State transitions: refresh may move `starting` to `running` or `crashed`,
+  `running` to `crashed` or `unknown`, `stopping` to `stopped` or `unknown`.
+
+`POST /server/start`
+
+- Request body accepts only:
+
+```jsonc
+{
+  "model_id": "opaque_companion_model_id",
+  "profile_id": "gpu_default",
+  "parameters": {
+    "port": 8080,
+    "ctx_size": 8192,
+    "gpu_layers": 999,
+    "threads": null,
+    "batch_size": null
+  }
+}
+```
+
+- `model_id` must resolve inside the companion's approved-root model library.
+- `profile_id` must be one of the companion's whitelisted profiles.
+- Parameters are typed and bounded. Unknown parameters are rejected.
+- No shell command, no free-form args, no arbitrary executable path, no model path,
+  and no environment block is accepted from the frontend or backend.
+- Response shape:
+
+```jsonc
+{
+  "ok": true,
+  "state": "starting",
+  "managed": true,
+  "model_id": "opaque_companion_model_id",
+  "root_id": "default",
+  "profile_id": "gpu_default",
+  "port": 8080,
+  "params": {
+    "ctx_size": 8192,
+    "gpu_layers": 999,
+    "threads": null,
+    "batch_size": null
+  },
+  "started_at": "2026-06-06T12:00:00Z",
+  "last_error": null
+}
+```
+
+- Error categories: `unauthorized`, `already_running`, `unknown_model`,
+  `model_outside_approved_root`, `invalid_profile`, `invalid_parameter`,
+  `port_in_use`, `executable_missing`, `executable_not_allowed`,
+  `launch_failed`, `start_timeout`, `health_check_failed`, `companion_config`,
+  `companion_error`.
+- State transitions: `stopped`/`crashed`/safe `unknown` -> `starting` ->
+  `running` on health success, or `crashed`/`error` on launch or health failure.
+  `running` -> `already_running` unless restart is used.
+
+`POST /server/stop`
+
+- Request body:
+
+```jsonc
+{ "grace_seconds": 10 }
+```
+
+- `grace_seconds` is optional and bounded. The companion may clamp it to a safe
+  range.
+- Stop only targets the tracked PID started by this companion.
+- If the PID is stale, reused, foreign, or identity cannot be proven, do not kill;
+  clear stale state or mark `unknown` safely.
+- Response shape:
+
+```jsonc
+{
+  "ok": true,
+  "state": "stopped",
+  "managed": false,
+  "last_error": null
+}
+```
+
+- Error categories: `unauthorized`, `not_running`, `stale_pid`,
+  `identity_uncertain`, `stop_timeout`, `companion_error`.
+- State transitions: `running`/`starting` -> `stopping` -> `stopped`; uncertain
+  identity -> `unknown` without signaling.
+
+`POST /server/restart`
+
+- Request body requires either an explicit validated start payload:
+
+```jsonc
+{
+  "model_id": "opaque_companion_model_id",
+  "profile_id": "gpu_default",
+  "parameters": { "port": 8080, "ctx_size": 8192, "gpu_layers": 999 }
+}
+```
+
+  or:
+
+```jsonc
+{ "reuse_last": true }
+```
+
+- `reuse_last` works only when the last launch metadata still validates against
+  the current approved model library, profile whitelist, executable config, and
+  parameter bounds.
+- Restart is stop then start. If stop cannot prove identity, restart must not
+  kill and must not continue to start unless the resulting state is safe and the
+  explicit request says to start after a non-running/cleared state.
+- Response shape: same safe fields as start/status.
+- Error categories: all stop/start categories plus `missing_last_launch`,
+  `last_launch_invalid`, `restart_stop_failed`, `restart_start_failed`.
+
+### Whitelisted Launch Profiles
+
+Profiles convert selected model metadata plus typed bounded parameters into an
+argv array. They never accept free-form flags.
+
+Shared rules:
+
+- The executable path is configured in companion config, never supplied by UI or
+  backend.
+- The executable path is canonicalized and checked for existence, execute
+  permission, and expected file identity where possible.
+- The model id is resolved by the companion against the approved-root model
+  library. The model path never comes from frontend/backend.
+- Launch uses an argv array only and never `shell=True`.
+- Numeric parameters are bounded and rejected or clamped only by explicit profile
+  rules.
+- Profile defaults are companion-owned and may be displayed to the UI only as safe
+  metadata.
+
+Initial profiles:
+
+| Profile | Purpose | Defaults | Bounds |
+| --- | --- | --- | --- |
+| `gpu_default` | Normal GPU/offload launch | `port: 8080`, `ctx_size: 8192`, `gpu_layers: 999`, `threads: null`, `batch_size: null` | `port: 1024-65535`, `ctx_size: 512-131072`, `gpu_layers: 0-999`, `threads: 1-256`, `batch_size: 1-4096` |
+| `cpu` | CPU-only launch | `port: 8080`, `ctx_size: 4096`, `gpu_layers: 0`, `threads: null`, `batch_size: null` | same port/thread/batch bounds; `ctx_size: 512-65536`; `gpu_layers: 0` only |
+| `low_memory` | Later constrained profile | `port: 8080`, `ctx_size: 2048`, `gpu_layers: 0`, `threads: null`, `batch_size: 128` | may be added later after validation; absent profiles are rejected |
+
+Example argv shape:
+
+```text
+/path/to/llama-server
+  -m <resolved-approved-model-path>
+  --host 0.0.0.0
+  --port <port>
+  -c <ctx_size>
+  -ngl <gpu_layers>
+```
+
+The private argv contains the resolved model path only inside the companion. API
+responses expose model id, root id, filename/display metadata, and redacted argv
+metadata only.
+
+### Process State Storage
+
+The companion stores process state in a companion-owned runtime/config directory
+with restricted permissions. The state file contains:
+
+- tracked PID;
+- process start time;
+- executable fingerprint and/or canonical resolved executable path;
+- argv metadata with model path redacted for API use;
+- private resolved model path only if needed for identity verification;
+- model id and root id;
+- profile id;
+- port;
+- selected typed params;
+- `started_at`;
+- `last_health_check`;
+- `last_error`;
+- log path;
+- status.
+
+Rules:
+
+- No raw companion token, Authorization header, provider API key, or socket secret
+  is stored in process state.
+- API responses omit unnecessary absolute model paths. Absolute paths may remain
+  in companion-private state only when needed to verify process identity.
+- State updates should be atomic to avoid corrupt stale PID files.
+- Stale PID detection must guard against PID reuse before any signal is sent.
+
+### Process Identity and Stale PID Checks
+
+Before reporting a tracked process as running or stopping it, the companion must
+verify identity:
+
+- PID exists.
+- Command or executable matches the expected canonical `llama-server` path where
+  the platform supports it.
+- Process start time matches the recorded start time where available.
+- The expected port responds to the expected model-server health probe.
+- If any required identity check is uncertain, the companion does not kill.
+
+Linux is first. Use `/proc/<pid>` for executable, command line, and process start
+metadata when available. Windows/macOS process identity and termination semantics
+are deferred to later designs.
+
+Stale or reused PID handling:
+
+- stale dead PID -> clear/mark stopped with bounded last error;
+- PID reused by a foreign process -> `unknown` or `stale_pid`, no signal;
+- identity uncertain -> `unknown`, no signal;
+- manually started `llama-server` -> never adopted and never killed in v1.
+
+### Port Handling
+
+- `port` is numeric, bounded, and profile-allowed. Default v1 allowed range is
+  `1024-65535`; privileged ports are rejected unless a later design explicitly
+  allows them.
+- Start preflights port availability on the host before spawn.
+- If another process already listens on the requested port, return
+  `port_in_use`; do not adopt it.
+- If a manually started `llama-server` is already on `8080`, companion start
+  fails with `port_in_use`. The Phase 1/Ask local-provider status may still show a
+  reachable manual server; the Local Models UI must distinguish that from a
+  companion-managed server.
+- If the child later reports address-in-use, surface `port_in_use`, stop/clean up
+  only the child just spawned, and leave no misleading running state.
+
+### Logs
+
+- Companion captures stdout/stderr to a bounded companion-owned log file with
+  non-world-readable permissions.
+- Log retention is bounded by size and/or rotation count.
+- No unbounded streaming log endpoint in first implementation.
+- Logs are not returned unless an explicit future troubleshooting field requests
+  a bounded tail.
+- Returned log tails must redact tokens, Authorization headers, raw API keys,
+  full URLs with credentials, socket paths, and absolute model paths where
+  possible.
+
+### Health Checks
+
+- After start, the companion polls from the host:
+  `http://127.0.0.1:<port>/v1/models` or a documented equivalent health endpoint.
+- Health success moves state to `running`.
+- Timeout moves state to `crashed` or `error`; if the companion just started the
+  child, it stops only that child after identity verification.
+- The backend still uses the configured local-provider base URL for actual app
+  generation and Ask. Companion status is operational state, not the Provider
+  Settings source of truth unless a later confirmed flow changes that.
+
+### Backend Bridge Contract for Phase 2G
+
+Future backend routes:
+
+```text
+GET  /api/local-model/server/status
+POST /api/local-model/server/start
+POST /api/local-model/server/stop
+POST /api/local-model/server/restart
+```
+
+Backend rules:
+
+- Reads companion token/socket config server-side only.
+- Forwards only typed payloads matching the companion contract.
+- Redacts companion responses before returning them to the frontend.
+- Returns safe normalized errors.
+- Never accepts free-form command args, shell strings, executable paths, raw model
+  paths, environment blocks, or arbitrary flags.
+- Never exposes the companion token, socket path, Authorization header, raw host
+  paths, or raw companion connection details.
+- Does not write Provider Settings unless a later explicit confirmed slice adds
+  that behavior.
+- Does not change Ask.
+
+### UI Contract for Phase 2G
+
+Future Local Models UI controls:
+
+- Start selected model.
+- Stop managed server.
+- Restart managed server.
+- Show `running`, `stopped`, `starting`, `stopping`, `crashed`, `unknown`, and
+  error states.
+- Explain port conflicts, including the case where a manual server is already
+  running separately from the companion-managed server.
+- Explain companion missing/offline/auth-failed states.
+- Keep the manual command fallback.
+- Explicitly warn that Stop affects only the companion-managed server.
+- Disable Start when no selected model exists.
+- No free-form flags UI in v1.
+- No raw host path, token, socket path, or Authorization display.
+- No Provider Settings write unless a later explicit confirmed slice adds it.
+
+### Required Test Plan for Phase 2G
+
+Future implementation must include tests for:
+
+- companion start success with a fake executable or safe test process;
+- start rejects unknown model id;
+- start rejects a model outside an approved root;
+- start rejects invalid profile;
+- start rejects invalid parameters;
+- start rejects port in use;
+- start while running returns `already_running`;
+- stop stops a tracked process;
+- stop does not kill a foreign PID;
+- stale PID is not killed;
+- restart validates previous metadata before `reuse_last`;
+- logs are bounded and redacted;
+- auth is required;
+- backend redacts token/socket/paths;
+- UI contains no raw path/token/socket display;
+- no shell/subprocess free-form args are accepted;
+- no Provider Settings write;
+- no Ask change;
+- no Docker privileged mode, host PID namespace, or Docker socket.
+
+### Explicit Non-Goals for Phase 2F
+
+- No implementation.
+- No process-control code.
+- No backend routes.
+- No frontend UI.
+- No Docker changes.
+- No `llama-server` launch.
+- No Provider Settings write.
+- No Ask change.
+- No hosted/cloud Ask.
+- No model download manager.
+- No multi-server pool.
+- No Windows/macOS process implementation.
+
+Next recommended slice is **Phase 2G1: companion process-control internals with
+a fake/safe test executable only**, no backend bridge or UI.

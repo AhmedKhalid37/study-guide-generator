@@ -5,7 +5,50 @@
 
 ---
 
-## NEXT — LMM Phase 2E selected library model handoff DONE.
+## NEXT — LMM Phase 2F start/stop design review DONE.
+
+- **Local Model Manager Phase 2F — start/stop design review is DONE** on branch
+  `lmm-phase2f-start-stop-design`. This was a docs-only safety review for future
+  Phase 2G companion-managed `llama-server` process control.
+- **Design scope:** `docs/LOCAL_MODEL_MANAGER_PHASE2_DESIGN.md` now defines the
+  exact future contract for companion `GET /server/status`,
+  `POST /server/start`, `POST /server/stop`, and `POST /server/restart`; backend
+  bridge routes `GET/POST /api/local-model/server/*`; and Local Models UI
+  start/stop/restart behavior. These remain design targets only and are not
+  implemented.
+- **Process-control boundary reaffirmed:** Docker FastAPI never directly starts,
+  stops, restarts, signals, or inspects host processes; only the host companion
+  may spawn `llama-server`; the companion may stop only a process it started and
+  still tracks; no Docker socket, privileged container, host PID namespace, or
+  direct Docker-to-host spawn; Linux Docker control remains Unix-socket-first with
+  token auth; frontend never receives token/socket/Authorization/raw host paths.
+- **Start/stop contract summary:** start accepts only selected `model_id`,
+  whitelisted `profile_id`, and typed bounded params (`port`, `ctx_size`,
+  `gpu_layers`, `threads`, optional `batch_size`); no shell command, no
+  free-form args, no arbitrary executable path, no frontend/backend model path.
+  Stop accepts bounded `grace_seconds` and refuses to kill stale/reused/foreign
+  PIDs. Restart is stop-then-start with either a fresh validated payload or
+  `reuse_last: true` only when last launch metadata still validates.
+- **Safety details added:** threat model, allowed states (`stopped`, `starting`,
+  `running`, `stopping`, `crashed`, `unknown`, `error`), whitelisted profiles
+  (`gpu_default`, `cpu`, later `low_memory`), companion-private process state
+  file shape, Linux `/proc` identity/stale-PID checks, port conflict handling,
+  bounded/redacted logs, host-side health checks, backend redaction rules, UI
+  safety copy, future test plan, and Phase 2G rollout slices.
+- **DECISIONS.md entry added:** lasting decision that LMM start/stop/restart must
+  remain companion-owned, profile-whitelisted, typed/bounded, PID-identity-checked,
+  and redacted; Docker/backend/frontend must not become host process managers or
+  Provider Settings writers in this flow.
+- **Files changed:** docs only:
+  `docs/LOCAL_MODEL_MANAGER_PHASE2_DESIGN.md`, `docs/CURRENT_TASK.md`,
+  `docs/NEXT_CHAT_HANDOFF.md`, `docs/PROJECT_CONTEXT.md`, and
+  `docs/DECISIONS.md`.
+- **Validation:** `python -m compileall api pipeline tools` passed,
+  `git diff --check` passed, and `git diff --name-only` shows docs only.
+- **Recommended next slice:** Phase 2G1 companion process-control internals with
+  a fake/safe test executable only, no backend bridge and no UI.
+
+## Previous — LMM Phase 2E selected library model handoff DONE.
 
 - **Local Model Manager Phase 2E — selected library model handoff is DONE** on
   branch `lmm-phase2e-selected-model-handoff`. Added safe backend persistence for
@@ -15,47 +58,13 @@
   persists a selected model by `model_id` plus optional safe snapshot, preferring
   validation against the cached companion library when available; `DELETE
   /api/local-model/library/selection` clears only the app-side selection.
-- **Storage:** `config/local_model_library_selection.json`, schema
-  `{ "version": 1, "selected": { ...safe model metadata... } | null }`. Stored
-  fields are whitelisted to `id`, `display_name`, `filename`, `relative_path`,
-  `root_id`, `size_bytes`, `modified_at`, `family_hint`, `quant_hint`,
-  `server_compatible`, and `selected_at`. Writes are atomic temp-file +
-  `os.replace`; no job artifact/history/cache/export file is used.
-- **UI behavior:** the Local Models panel now fetches companion status, cached
-  library, and saved selection on load. Clicking a discovered GGUF still only
-  chooses it in React state; **Remember selected model** persists it through the
-  backend selection endpoint. The panel shows the saved **Chosen library model**,
-  a stale/saved-but-not-current-library state with a scan suggestion, **Clear
-  selection**, and a safe future-launch preview (`model_id`, filename,
-  root-relative path, root id, `gpu_default` placeholder profile). The preview is
-  explicitly non-runnable; the companion will resolve the model id in a later
-  launch slice. Existing manual command helper remains available.
 - **Safety scope preserved:** no Provider Settings write, no Ask change, no local
   provider base URL/model behavior change, no Docker change, no host-gateway TCP,
   no Docker socket, no privileged container, no host PID namespace, no
   `llama-server` process launch, no subprocess/shell execution, no start/stop/
   restart route or UI control, no browser localStorage/sessionStorage, no
-  `dangerouslySetInnerHTML`, no raw companion token/socket/Authorization/full URL
-  exposure, and no absolute host model path exposure.
-- **Files changed:** `pipeline/local_model_library_selection.py`,
-  `api/server.py`, `pipeline/provider_config.py`,
-  `test_scripts/test_local_model_library_selection.py`,
-  `frontend/src/api/client.js`, `frontend/src/localModelLibrary.js`,
-  `frontend/src/components/LocalModelsPanel.jsx`,
-  `frontend/scripts/verify-local-model-library.mjs`, plus docs.
-- **Validation so far:** `python test_scripts/test_local_model_library_selection.py`
-  14/14, `python test_scripts/test_local_model_companion_bridge.py` 14/14
-  (FastAPI route introspection skipped in host Python), `python
-  test_scripts/test_local_model_companion_scan.py` 21/21, `python
-  test_scripts/test_local_model_status.py` 17/17, `python
-  test_scripts/test_local_model_command_profile.py` 13/13, `python -m compileall
-  api pipeline tools`, `npm --prefix frontend run test:local-model-library`,
-  `npm --prefix frontend run test:local-model-status`, `npm --prefix frontend run
-  test:local-model-command`, and `npm --prefix frontend run build` passed
-  (existing Vite large-chunk warning only).
-- **Recommended next slice:** Phase 2F start/stop design review, or Phase 2F
-  selected model to confirmed Provider Settings handoff if one more
-  non-process-control slice is desired first.
+  raw companion token/socket/Authorization/full URL exposure, and no absolute host
+  model path exposure.
 
 ## Previous — LMM Phase 2D UI model-library picker DONE.
 
