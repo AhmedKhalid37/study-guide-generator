@@ -1,13 +1,17 @@
 # LOCAL_MODEL_MANAGER_PHASE2_DESIGN.md - Host companion and approved GGUF library
 
-> **Status: Phase 2C read-only backend bridge implemented.** Phase 2A established
-> the host-companion boundary. Phase 2B adds a Linux-first, stdlib-only host
-> companion prototype under `tools/local_model_companion/` for approved-folder GGUF
-> scanning and a Unix-domain-socket API contract. Phase 2C adds a backend-only,
-> read-only bridge from FastAPI to that companion for status, cached library, and
-> explicit companion scan. There is still no frontend UI, Docker Compose mount,
-> Provider Settings write, Ask change, dependency addition, model execution, or
-> `llama-server` start/stop/restart behavior.
+> **Status: Phase 2C read-only backend bridge implemented; socket-mount
+> validation harness added.** Phase 2A established the host-companion boundary.
+> Phase 2B adds a Linux-first, stdlib-only host companion prototype under
+> `tools/local_model_companion/` for approved-folder GGUF scanning and a
+> Unix-domain-socket API contract. Phase 2C adds a backend-only, read-only bridge
+> from FastAPI to that companion for status, cached library, and explicit
+> companion scan. The validation-only harness
+> `test_scripts/validate_lmm_companion_socket_mount.py` passed live validation and
+> proves the Docker app container can reach the host companion through a mounted
+> Unix socket using a temporary Compose override. There is still no frontend UI,
+> production Docker Compose mount, Provider Settings write, Ask change, dependency
+> addition, model execution, or `llama-server` start/stop/restart behavior.
 
 ---
 
@@ -92,6 +96,33 @@ Primary Linux Docker design:
 - The React frontend never receives the token, socket path, mounted path, or raw
   companion connection details.
 - This preserves the "not exposed on the network" property better than TCP.
+
+Phase 2C socket-mount validation:
+
+- `test_scripts/validate_lmm_companion_socket_mount.py` is a manual live harness,
+  not normal release smoke.
+- It creates a temporary `/tmp` workspace with a fake approved model root,
+  fake `.gguf` files, a non-GGUF file, explicit companion config, and a host
+  companion Unix socket.
+- It generates a temporary Compose override that mounts only the temporary
+  runtime directory into the backend container and sets server-side
+  `LMM_COMPANION_SOCKET`, `LMM_COMPANION_TOKEN`, and
+  `LMM_COMPANION_TIMEOUT_SECONDS`.
+- It verifies the deployed backend endpoints
+  `GET /api/local-model/companion/status`, `GET /api/local-model/library`, and
+  `POST /api/local-model/library/scan` through `http://127.0.0.1:8000`.
+- It checks fake GGUF discovery, non-GGUF exclusion, root-relative paths, response
+  redaction of token/socket/raw temp host paths, and absence of local-model
+  start/stop/restart endpoints.
+- Live validation passed 17/17: the backend reported configured/reachable
+  companion status with `scan`, returned safe empty cached library state before
+  scan, returned two fake GGUF models after scan, excluded the non-GGUF file,
+  returned root-relative paths only, leaked no token/socket/temp absolute host
+  path, and left start/stop/restart probes unavailable.
+- It makes no permanent Docker Compose change and does not introduce UI,
+  Provider Settings writes, Ask changes, host-gateway TCP, Docker socket,
+  privileged container mode, host PID namespace, `llama-server` launch, or model
+  process control.
 
 Documented alternatives:
 

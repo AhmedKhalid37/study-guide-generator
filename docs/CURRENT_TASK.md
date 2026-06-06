@@ -5,7 +5,56 @@
 
 ---
 
-## NEXT — LMM Phase 2C backend companion bridge DONE; NEXT = Phase 2D UI picker or socket-mount validation.
+## NEXT — LMM Phase 2C socket-mount validation harness ADDED; NEXT = Phase 2D UI picker.
+
+- **Local Model Manager Phase 2C socket-mount validation — PASSED** on
+  branch `lmm-phase2c-socket-mount-validation`. Added
+  `test_scripts/validate_lmm_companion_socket_mount.py`, a manual live validation
+  harness that proves the deployed Docker backend can reach a host companion
+  through a mounted Unix domain socket and call the Phase 2C backend endpoints
+  successfully.
+- **Validation-only behavior:** the harness creates a temporary `/tmp`
+  validation workspace, fake approved model root, fake `.gguf` files plus one
+  non-GGUF file, explicit companion config, host companion process, and temporary
+  Compose override. The override mounts only the temporary runtime directory into
+  the app container and sets server-side `LMM_COMPANION_SOCKET`,
+  `LMM_COMPANION_TOKEN`, and `LMM_COMPANION_TIMEOUT_SECONDS`. It is removed during
+  cleanup and is not committed. The committed `docker-compose.yml` is unchanged.
+- **Runtime checks covered by the harness:** wait for companion `GET /health` over
+  the host Unix socket, bring the app service up with the temporary override, wait
+  for `GET /api/health` on `http://127.0.0.1:8000`, then call
+  `GET /api/local-model/companion/status`, `GET /api/local-model/library`,
+  `POST /api/local-model/library/scan`, and `GET /api/local-model/library`. It
+  asserts configured/reachable status, `scan` capability, safe empty pre-scan
+  library, fake GGUF model discovery, non-GGUF exclusion, root-relative
+  `relative_path`, and no backend response leak of the token, raw socket path, or
+  temporary absolute host model path.
+- **Safety scope preserved:** no frontend UI, no production Docker Compose change,
+  no Provider Settings write, no Ask change, no local provider base-URL behavior
+  change, no host-gateway TCP, no Docker socket, no privileged container, no host
+  PID namespace, no `llama-server` launch, no start/stop/restart backend API, and
+  no process-control/subprocess/shell addition outside the validation script's own
+  orchestration. The harness explicitly checks that
+  `POST /api/local-model/server/start`, `/stop`, and `/restart` are unavailable.
+- **Validation command:** `python test_scripts/validate_lmm_companion_socket_mount.py`.
+  This is manual/live only and should not be added to normal smoke release unless
+  explicitly requested. It will fail clearly if Docker is unavailable, Compose
+  cannot use service `app`, port `8000` cannot become healthy, or the socket mount
+  cannot be reached from the container.
+- **Validation result:** live Docker/socket validation passed 17/17. Endpoint
+  summary: companion status was configured/reachable with `scan`; pre-scan library
+  returned safe empty models; scan returned the two fake GGUF fixtures
+  (`gemma-validation-Q4_K_M.gguf`, `nested/qwen-validation-Q8_0.GGUF`) and excluded
+  `notes.txt`; post-scan cached library returned both models; process-control
+  probes for `/server/start`, `/server/stop`, and `/server/restart` returned
+  unavailable (`405 Method Not Allowed`). Redaction proof passed: backend responses
+  contained no companion token, no raw host/container socket path, and no temporary
+  absolute host model/runtime path. The app service was restored with the committed
+  Compose file only and was healthy afterward.
+- **Recommended next slice:** Phase 2D Local Models UI model-library picker using
+  the existing read-only endpoints, still with no start/stop/process control.
+
+## Previous — LMM Phase 2C backend companion bridge DONE.
 
 - **Local Model Manager Phase 2C — read-only backend bridge to the host companion
   model library is DONE** on branch `lmm-phase2c-backend-companion-bridge`.

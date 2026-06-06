@@ -135,12 +135,23 @@ flashcards with CSV / Anki / Quizlet export.
   server-side `LMM_COMPANION_SOCKET`, `LMM_COMPANION_TOKEN`, and optional
   `LMM_COMPANION_TIMEOUT_SECONDS`. The bridge whitelists model fields, bounds and
   redacts warnings, rejects absolute returned paths, and never exposes the raw
-  companion token/socket path. There is still no frontend UI, Docker Compose mount,
-  Provider Settings change, Ask change, dependency addition, model execution,
-  `llama-server` launch, process control, subprocess use in the bridge, or
-  start/stop/restart API. Next recommended slice is Phase 2D Local Models UI
-  model-library picker, still no start/stop, or a Docker/socket-mount validation
-  slice first if needed.
+  companion token/socket path. Phase 2C socket-mount validation adds a manual live
+  harness, `test_scripts/validate_lmm_companion_socket_mount.py`, that creates a
+  temporary `/tmp` fake approved model root/config/socket, starts the host
+  companion, generates a temporary Compose override that mounts only the temp
+  runtime directory into service `app`, and verifies the Docker backend can call
+  `/api/local-model/companion/status`, `/api/local-model/library`, and
+  `/api/local-model/library/scan` through the mounted Unix socket. The override is
+  not committed and the production `docker-compose.yml` remains unchanged. The
+  live harness passed 17/17: status configured/reachable with `scan`, pre-scan
+  library safe/empty, fake GGUF fixtures returned, non-GGUF excluded, redaction
+  checks passed, process-control probes unavailable, and the app restored healthy
+  with committed Compose only. There is still no frontend UI, permanent Docker
+  Compose mount, Provider Settings
+  change, Ask change, dependency addition, model execution, `llama-server` launch,
+  process control, subprocess use in the bridge, or start/stop/restart API. Next
+  recommended slice is Phase 2D Local Models UI model-library picker, still no
+  start/stop.
 - **Ask Your Guide — IN PROGRESS (Slice 1 design DONE; Slice 2 backend context
   inventory DONE; Slice 3 backend context preparation / chunking DONE; inserted
   workspace shell DONE; backend local chat API DONE; frontend chat UI wiring DONE;
