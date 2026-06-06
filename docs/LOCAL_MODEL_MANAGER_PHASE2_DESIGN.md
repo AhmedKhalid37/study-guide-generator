@@ -1,11 +1,13 @@
 # LOCAL_MODEL_MANAGER_PHASE2_DESIGN.md - Host companion and approved GGUF library
 
-> **Status: Phase 2B scanning prototype implemented.** Phase 2A established the
-> host-companion boundary. Phase 2B adds a Linux-first, stdlib-only host companion
-> prototype under `tools/local_model_companion/` for approved-folder GGUF scanning
-> and a Unix-domain-socket API contract. It is scanning-only: no backend bridge,
-> frontend UI, Docker changes, Provider Settings changes, Ask changes, dependency
-> additions, model execution, or `llama-server` start/stop/restart behavior.
+> **Status: Phase 2C read-only backend bridge implemented.** Phase 2A established
+> the host-companion boundary. Phase 2B adds a Linux-first, stdlib-only host
+> companion prototype under `tools/local_model_companion/` for approved-folder GGUF
+> scanning and a Unix-domain-socket API contract. Phase 2C adds a backend-only,
+> read-only bridge from FastAPI to that companion for status, cached library, and
+> explicit companion scan. There is still no frontend UI, Docker Compose mount,
+> Provider Settings write, Ask change, dependency addition, model execution, or
+> `llama-server` start/stop/restart behavior.
 
 ---
 
@@ -412,6 +414,10 @@ POST /api/local-model/server/stop
 POST /api/local-model/server/restart
 ```
 
+Phase 2C implemented only the first three read-only/library endpoints. The
+start/stop/restart endpoints above remain future Phase 2E design targets and are
+not registered in FastAPI by Phase 2C.
+
 Backend rules:
 
 - Backend reads companion connection config/token from server-side config only.
@@ -501,7 +507,9 @@ safe response fields.
 
 - **Phase 2B:** DONE. Companion prototype for approved-folder scanning only, using
   the Unix-domain-socket transport contract; no start/stop.
-- **Phase 2C:** backend bridge read-only companion status and model library.
+- **Phase 2C:** DONE. Backend bridge read-only companion status, cached model
+  library, and explicit companion scan; no UI, no Docker Compose mount, no
+  start/stop.
 - **Phase 2D:** Local Models UI model library picker.
 - **Phase 2E:** start/stop selected model through companion.
 - **Phase 2F:** validation/security pass.
@@ -586,3 +594,88 @@ Implemented Unix socket API:
 No process-control API is implemented in Phase 2B. There is no `/server/start`,
 `/server/stop`, or `/server/restart`, no `llama-server` launch, no shell execution,
 and no subprocess usage in the companion package.
+
+## 15. Phase 2C Backend Companion Bridge
+
+Files:
+
+- `pipeline/local_model_companion_client.py`
+- `api/server.py`
+- `test_scripts/test_local_model_companion_bridge.py`
+
+Backend endpoints:
+
+```text
+GET  /api/local-model/companion/status
+GET  /api/local-model/library
+POST /api/local-model/library/scan
+```
+
+Configuration is server-side only:
+
+- `LMM_COMPANION_SOCKET`
+- `LMM_COMPANION_TOKEN`
+- `LMM_COMPANION_TIMEOUT_SECONDS` (optional)
+
+Missing socket or token means the bridge is unconfigured. The raw token and raw
+socket path are never returned to the frontend. Responses expose only
+`socket_configured: true/false` and, when configured, `socket_label: "configured"`.
+
+Implemented client behavior:
+
+- Uses stdlib `socket.AF_UNIX`; no new dependency.
+- Sends `Authorization: Bearer <token>` to the companion.
+- Calls companion `GET /health`, `GET /models`, and `POST /models/scan`.
+- Bounds request timeout and response body size.
+- Parses JSON and rejects malformed or unexpected shapes safely.
+- Treats unconfigured/offline/auth/timeout/error states as safe DTOs, not raw API
+  crashes.
+
+Normalized error categories:
+
+- `companion_config`
+- `companion_offline`
+- `companion_auth`
+- `companion_timeout`
+- `companion_error`
+
+Model-library safety:
+
+- `GET /api/local-model/library` reads the companion cached model list only; it
+  does not trigger a scan.
+- `POST /api/local-model/library/scan` triggers scanning inside the companion only.
+  The Docker backend still never scans host folders directly.
+- Model records are whitelisted to: `id`, `display_name`, `filename`,
+  `relative_path`, `root_id`, `size_bytes`, `modified_at`, `family_hint`,
+  `quant_hint`, and `server_compatible`.
+- Unexpected companion fields are dropped.
+- Absolute `relative_path` values are not returned.
+- Absolute paths, URLs, auth-like text, and token-like text are redacted from
+  returned strings and bounded warnings.
+- Warnings are bounded and include truncation metadata when the companion sends too
+  many entries.
+
+Non-goals preserved in Phase 2C:
+
+- No frontend UI.
+- No Docker Compose mount or deployment change.
+- No Provider Settings write and no local-provider base URL behavior change.
+- No Ask change.
+- No host-gateway TCP implementation.
+- No direct Docker host filesystem scan.
+- No model launch.
+- No process-control route.
+- No `/api/local-model/server/start`, `/api/local-model/server/stop`, or
+  `/api/local-model/server/restart`.
+- No shell execution and no subprocess usage in the bridge code.
+
+Focused validation:
+
+- `python test_scripts/test_local_model_companion_bridge.py` passed 14/14 checks in
+  host Python. FastAPI route introspection was skipped there because FastAPI was not
+  installed, matching the existing backend script style; source-level route checks
+  still verify no start/stop/restart API was added.
+
+Next recommended slice is Phase 2D Local Models UI model-library picker, still with
+no start/stop/process control. A narrow Docker/socket-mount validation slice may be
+done first if runtime deployment confidence is preferred.

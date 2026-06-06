@@ -37,6 +37,11 @@ from pipeline.job_manager import (
     restore_job,
     trash_job,
 )
+from pipeline.local_model_companion_client import (
+    get_companion_library,
+    get_companion_status,
+    scan_companion_library,
+)
 from pipeline.llm_client import LLMProviderError, MissingLLMConfigError, generate_chat_completion
 from pipeline.markdown_sections import (
     check_outline_compliance,
@@ -459,6 +464,28 @@ async def local_model_command_profile() -> dict[str, Any]:
     # whitelist with a model PLACEHOLDER — no request input, no host filesystem read,
     # no GGUF scan, no raw key, no full URL. Read-only: writes nothing.
     return await run_in_threadpool(get_local_model_command_profiles)
+
+
+@app.get("/api/local-model/companion/status")
+async def local_model_companion_status() -> dict[str, Any]:
+    # Local Model Manager Phase 2C: read-only bridge to the host companion over the
+    # server-configured Unix socket. Unavailable companion states are safe 200
+    # responses; connection details stay server-side.
+    return await run_in_threadpool(get_companion_status)
+
+
+@app.get("/api/local-model/library")
+async def local_model_library() -> dict[str, Any]:
+    # Cached companion library read. This never scans host folders directly and
+    # never changes provider settings.
+    return await run_in_threadpool(get_companion_library)
+
+
+@app.post("/api/local-model/library/scan")
+async def scan_local_model_library() -> dict[str, Any]:
+    # Explicit companion scan trigger. The Docker backend delegates the scan to the
+    # companion and returns a whitelisted, redacted model library.
+    return await run_in_threadpool(scan_companion_library)
 
 
 @app.get("/api/styles")

@@ -113,13 +113,14 @@ flashcards with CSV / Anki / Quizlet export.
   Settings (no second writer). See `DECISIONS.md`.
 - **Local Model Manager Phase 2 direction — HOST COMPANION + APPROVED GGUF LIBRARY
   IN PROGRESS.** Phase 2A is documented in
-  `docs/LOCAL_MODEL_MANAGER_PHASE2_DESIGN.md`; Phase 2B now adds a scanning-only
-  host companion prototype under `tools/local_model_companion/`. Future in-app
-  model selection/start/stop must go through React UI → Docker FastAPI backend →
-  Unix-socket-first, token-authenticated host companion. For the current Linux
-  Docker deployment, companion control assumes a Unix domain socket mounted into
-  the backend container; `127.0.0.1`-only companion control is not assumed reachable
-  from Docker unless host networking/native packaging is used, and host-gateway TCP
+  `docs/LOCAL_MODEL_MANAGER_PHASE2_DESIGN.md`; Phase 2B adds the scanning-only host
+  companion prototype under `tools/local_model_companion/`; Phase 2C adds the
+  read-only Docker backend bridge. Future in-app model selection/start/stop must go
+  through React UI → Docker FastAPI backend → Unix-socket-first,
+  token-authenticated host companion. For the current Linux Docker deployment,
+  companion control assumes a Unix domain socket mounted into the backend
+  container; `127.0.0.1`-only companion control is not assumed reachable from
+  Docker unless host networking/native packaging is used, and host-gateway TCP
   requires explicit operator sign-off. The Docker backend must not directly browse
   the host filesystem or directly start/stop host processes. Phase 2B scans only
   explicit user-approved roots from an explicit local JSON config; no default home
@@ -127,13 +128,19 @@ flashcards with CSV / Anki / Quizlet export.
   Docker. The scanner canonicalizes roots/candidates, accepts `.gguf` files only,
   resolves symlinks and rejects targets outside approved roots, skips symlinked
   directories, bounds files/models/time/warnings, and returns safe model metadata
-  with stable opaque ids and root-relative paths only. It also implements `GET
-  /health`, `GET /models`, and `POST /models/scan` over a token-authenticated Unix
-  socket, but there is still no backend bridge, frontend UI, Docker Compose change,
+  with stable opaque ids and root-relative paths only. It implements `GET /health`,
+  `GET /models`, and `POST /models/scan` over a token-authenticated Unix socket.
+  Phase 2C exposes backend endpoints `GET /api/local-model/companion/status`,
+  `GET /api/local-model/library`, and `POST /api/local-model/library/scan`, using
+  server-side `LMM_COMPANION_SOCKET`, `LMM_COMPANION_TOKEN`, and optional
+  `LMM_COMPANION_TIMEOUT_SECONDS`. The bridge whitelists model fields, bounds and
+  redacts warnings, rejects absolute returned paths, and never exposes the raw
+  companion token/socket path. There is still no frontend UI, Docker Compose mount,
   Provider Settings change, Ask change, dependency addition, model execution,
-  `llama-server` launch, process control, subprocess use, or start/stop/restart
-  API. Phase 2C should bridge read-only companion status/model library through the
-  backend; start/stop remains later and companion-only.
+  `llama-server` launch, process control, subprocess use in the bridge, or
+  start/stop/restart API. Next recommended slice is Phase 2D Local Models UI
+  model-library picker, still no start/stop, or a Docker/socket-mount validation
+  slice first if needed.
 - **Ask Your Guide — IN PROGRESS (Slice 1 design DONE; Slice 2 backend context
   inventory DONE; Slice 3 backend context preparation / chunking DONE; inserted
   workspace shell DONE; backend local chat API DONE; frontend chat UI wiring DONE;

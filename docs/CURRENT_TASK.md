@@ -5,7 +5,60 @@
 
 ---
 
-## NEXT — LMM Phase 2B approved-folder scanning companion DONE; NEXT = Phase 2C read-only backend bridge.
+## NEXT — LMM Phase 2C backend companion bridge DONE; NEXT = Phase 2D UI picker or socket-mount validation.
+
+- **Local Model Manager Phase 2C — read-only backend bridge to the host companion
+  model library is DONE** on branch `lmm-phase2c-backend-companion-bridge`.
+  Backend-only: added `pipeline/local_model_companion_client.py`, wired
+  `api/server.py`, and added `test_scripts/test_local_model_companion_bridge.py`.
+  New endpoints under the existing LMM namespace:
+  `GET /api/local-model/companion/status`, `GET /api/local-model/library`, and
+  `POST /api/local-model/library/scan`. They use server-side env only:
+  `LMM_COMPANION_SOCKET`, `LMM_COMPANION_TOKEN`, and optional
+  `LMM_COMPANION_TIMEOUT_SECONDS`.
+- **Phase 2C bridge behavior:** the backend uses a tiny stdlib Unix-socket HTTP
+  client (`socket.AF_UNIX`) with `Authorization: Bearer <token>`, bounded timeout,
+  and JSON response parsing. Missing socket/token means unconfigured. Missing,
+  refused, timed-out, auth-failed, malformed, or unexpected companion responses
+  return safe HTTP-200-style DTOs with normalized categories:
+  `companion_config`, `companion_offline`, `companion_auth`,
+  `companion_timeout`, or `companion_error`. The frontend never receives the raw
+  token, raw socket path, Authorization header, traceback, or low-level socket
+  detail.
+- **Phase 2C library safety:** the bridge whitelists model fields only (`id`,
+  `display_name`, `filename`, `relative_path`, `root_id`, `size_bytes`,
+  `modified_at`, `family_hint`, `quant_hint`, `server_compatible`), drops
+  unexpected companion fields, rejects absolute `relative_path` values, redacts
+  absolute paths/URLs/auth-like text/tokens from strings and bounded warnings, and
+  never scans host files directly from Docker. `GET /api/local-model/library`
+  reads the companion's cached model list only; `POST /api/local-model/library/scan`
+  delegates the explicit scan to the companion.
+- **Phase 2C hard non-goals preserved:** no frontend UI, no Docker Compose change,
+  no Provider Settings writes, no Ask changes, no local provider base-URL behavior
+  change, no direct Docker host filesystem scan, no host-gateway TCP
+  implementation, no start/stop/restart routes, no process control, no model
+  launch, no shell execution, no subprocess usage in the bridge, and no new
+  dependency.
+- **Validation:** `python test_scripts/test_local_model_companion_bridge.py` passed
+  14/14 checks (FastAPI route introspection skipped because FastAPI is not
+  installed in host Python), covering unconfigured env, successful fake Unix-socket
+  responses and Authorization header, model whitelisting/counting, auth failure,
+  missing/refused socket, timeout, malformed/unexpected JSON, redaction, absolute
+  path rejection, warning bounds, and no process-control route/source surface.
+  Also passed: `python test_scripts/test_local_model_companion_scan.py` 21/21
+  (with the known AF_UNIX bind runtime skip in this sandbox),
+  `python test_scripts/test_local_model_status.py` 17/17,
+  `python test_scripts/test_local_model_command_profile.py` 13/13,
+  `python -m compileall api pipeline tools`, `npm --prefix frontend run
+  test:local-model-status`, `npm --prefix frontend run test:local-model-command`,
+  `npm --prefix frontend run build` (existing Vite large-chunk warning only),
+  `git diff --check`, and `docker compose config >/tmp/compose-check.txt` exit 0.
+- **Recommended next slice:** Phase 2D Local Models UI model-library picker using
+  these read-only endpoints, still with no start/stop/process control. If runtime
+  deployment confidence is preferred first, do a narrow Docker/socket-mount
+  validation slice before UI; no Compose mount was added in Phase 2C.
+
+## Previous — LMM Phase 2B approved-folder scanning companion DONE.
 
 - **Local Model Manager Phase 2B — host companion approved-folder GGUF scanning
   prototype is DONE** on branch `lmm-phase2b-companion-scan`. Added isolated,

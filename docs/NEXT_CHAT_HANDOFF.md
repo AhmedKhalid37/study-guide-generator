@@ -10,12 +10,38 @@
 - **Trunk includes:** `af0ec0e` (Ask Slice 1 design), `2634f63` (Ask Slice 2 context
   inventory), `a29a405` (Ask Slice 3 context preparation), and the inserted Ask
   workspace shell, on top of the validated LMM group and prior feature groups.
-- **Active work branch:** `lmm-phase2b-companion-scan` — Local Model Manager Phase
-  2B host companion approved-folder GGUF scanning prototype. **NEXT = Phase 2C
-  read-only backend bridge to companion health/model-library over the mounted Unix
-  socket. Keep start/stop/restart deferred.**
+- **Active work branch:** `lmm-phase2c-backend-companion-bridge` — Local Model
+  Manager Phase 2C read-only backend bridge to the host companion model library.
+  **NEXT = Phase 2D Local Models UI model-library picker, still no
+  start/stop/restart; alternatively do a narrow Docker/socket-mount validation
+  slice first if runtime deployment confidence is preferred.**
 
 ## What just landed
+- **Local Model Manager Phase 2C — read-only backend bridge to the host companion
+  model library** (branch `lmm-phase2c-backend-companion-bridge`). Added
+  `pipeline/local_model_companion_client.py`, wired `api/server.py`, and added
+  `test_scripts/test_local_model_companion_bridge.py`. New backend endpoints:
+  `GET /api/local-model/companion/status`, `GET /api/local-model/library`, and
+  `POST /api/local-model/library/scan`. Config is server-side env only:
+  `LMM_COMPANION_SOCKET`, `LMM_COMPANION_TOKEN`, optional
+  `LMM_COMPANION_TIMEOUT_SECONDS`. The bridge is a small stdlib Unix-socket HTTP
+  client that sends `Authorization: Bearer <token>`, parses JSON with bounded
+  timeout/body size, and normalizes failures to safe categories:
+  `companion_config`, `companion_offline`, `companion_auth`,
+  `companion_timeout`, `companion_error`. It whitelists model records to safe
+  fields only, rejects absolute `relative_path` values, redacts tokens/auth text,
+  raw socket paths, URLs, and absolute paths from responses/warnings, bounds
+  warnings, and never exposes the raw token or socket path. `GET /library` reads
+  cached companion models only; `POST /library/scan` delegates scanning to the
+  companion. No frontend UI, Docker Compose mount, Provider Settings write, Ask
+  change, local provider base-URL change, host-gateway TCP, direct host filesystem
+  scan, process control, model launch, start/stop/restart route, shell execution,
+  subprocess usage in the bridge, or new dependency was added. Validation passed:
+  companion bridge 14/14 (FastAPI route introspection skipped in host Python
+  because FastAPI is unavailable), companion scan 21/21 with the known sandbox
+  AF_UNIX bind skip, local-model status 17/17, command profile 13/13, compileall,
+  frontend local-model status/command checks, frontend build with the existing Vite
+  large-chunk warning only, `git diff --check`, and Compose config exit 0.
 - **Local Model Manager Phase 2B — companion approved-folder GGUF scanning
   prototype** (branch `lmm-phase2b-companion-scan`). Added stdlib-only host
   companion code under `tools/local_model_companion/`: explicit config loading,
