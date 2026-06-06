@@ -111,6 +111,25 @@ flashcards with CSV / Anki / Quizlet export.
   process spawn is rejected** — a non-root (uid 10001), `no-new-privileges` container
   cannot safely manage host processes. Provider config edits stay on Provider
   Settings (no second writer). See `DECISIONS.md`.
+- **Local Model Manager Phase 2 direction — HOST COMPANION + APPROVED GGUF LIBRARY
+  DESIGN COMPLETE.** Phase 2A is documented in
+  `docs/LOCAL_MODEL_MANAGER_PHASE2_DESIGN.md` and remains docs-only. Future in-app
+  model selection/start/stop must go through React UI → Docker FastAPI backend →
+  Unix-socket-first, token-authenticated host companion. For the current Linux
+  Docker deployment, Phase 2B assumes a Unix domain socket mounted into the backend
+  container; `127.0.0.1`-only companion control is not assumed reachable from
+  Docker unless host networking/native packaging is used, and host-gateway TCP
+  requires explicit operator sign-off. The Docker backend must not directly browse
+  the host filesystem or directly start/stop host processes. Model scanning is
+  explicit and limited to one or more user-approved roots, `.gguf` only, with
+  canonicalized paths and a safe symlink/traversal policy; no whole-PC scan and no
+  home-directory scan by default. The companion owns host filesystem/process
+  access, uses whitelisted `llama-server` profiles with typed bounded parameters
+  only, and may stop only the process it started and tracks. `llama-server` may
+  still bind `--host 0.0.0.0` for the model `/v1` API so Docker can reach it; that
+  is separate from companion control, which must never be public. Phase 2B, if
+  chosen, should prototype approved-folder scanning only using the chosen transport
+  contract; start/stop is later and remains companion-only.
 - **Ask Your Guide — IN PROGRESS (Slice 1 design DONE; Slice 2 backend context
   inventory DONE; Slice 3 backend context preparation / chunking DONE; inserted
   workspace shell DONE; backend local chat API DONE; frontend chat UI wiring DONE;

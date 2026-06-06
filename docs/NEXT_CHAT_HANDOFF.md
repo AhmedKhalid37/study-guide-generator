@@ -10,13 +10,39 @@
 - **Trunk includes:** `af0ec0e` (Ask Slice 1 design), `2634f63` (Ask Slice 2 context
   inventory), `a29a405` (Ask Slice 3 context preparation), and the inserted Ask
   workspace shell, on top of the validated LMM group and prior feature groups.
-- **Active work branch:** `ask-local-direct-answer-guard` — tiny Ask prompt guard for
-  local thinking-style models that otherwise return empty visible assistant content
-  while filling `reasoning_content`; see "What just landed". **Not committed/pushed**
-  unless the operator asks. **NEXT = Ask extra session uploads only as a separate
-  explicit slice, or narrow manual Ask polish if another concrete issue surfaces.**
+- **Active work branch:** `lmm-phase2-host-companion-design` — docs-only Local Model
+  Manager Phase 2A design for a host companion plus approved GGUF model library.
+  **No code changed.** **NEXT = Phase 2B approved-folder scanning companion only if
+  the operator chooses to proceed, using the chosen transport contract; do not
+  implement start/stop before the companion design/security boundary is accepted.**
 
 ## What just landed
+- **Local Model Manager Phase 2A — host companion + approved GGUF model library
+  DESIGN** (branch `lmm-phase2-host-companion-design`). New doc:
+  `docs/LOCAL_MODEL_MANAGER_PHASE2_DESIGN.md`; reconciled
+  `CURRENT_TASK.md`, `PROJECT_CONTEXT.md`, `LOCAL_MODEL_MANAGER_DESIGN.md`, and
+  `DECISIONS.md`. The future architecture is React UI → Docker FastAPI backend →
+  Unix-socket-first token-authenticated host companion → approved model directory
+  scan → host `llama-server` process lifecycle. For Linux Docker, Phase 2B assumes
+  a Unix domain socket mounted into the backend container; a host `127.0.0.1`-only
+  companion is not assumed reachable from Docker. Host-gateway TCP is only an
+  explicit alternative with operator sign-off, Docker-bridge firewall restriction,
+  and token auth. Host networking/native packaging can use loopback, but is not the
+  default Docker design. The React UI never talks directly to the companion; the
+  backend reads the companion token/connection config server-side only and redacts
+  host paths; Provider Settings remains the config writer unless a later accepted
+  design deliberately changes that. Model scanning is explicit and limited to one
+  or more user-approved roots, with canonicalized paths, safe symlink policy,
+  `.gguf` only, and no whole-PC/home-default scan. Start requests use a model id
+  plus whitelisted profile id and typed parameters only; no free-form args or shell
+  strings. The companion may stop only the tracked process it started. If the
+  companion is absent, the UI should fall back to the Phase 1 manual command helper.
+  `llama-server` may still bind `--host 0.0.0.0` for the model `/v1` API so Docker
+  can reach it; that is separate from the companion control API, which must never
+  be public. **No
+  companion implementation, backend endpoint, frontend UI, Docker change, process
+  spawn, model scanning implementation, Provider Settings change, Ask behavior
+  change, upload, dependency, or code edit was made.**
 - **Compatibility fix — Ask local direct-answer guard** (branch
   `ask-local-direct-answer-guard`). Manual local llama-server testing with
   `gemma-4-26B-A4B-it-UD-Q4_K_M.gguf` showed `/v1/chat/completions` can return HTTP

@@ -1092,3 +1092,56 @@ outside the job tree. **Why:** clear history is a reversible-feeling reset of th
 conversation, while delete is the explicit removal of one chat container. Keeping the
 prepared context cache avoids making session cleanup unexpectedly expensive and preserves
 the existing "prepare once, reuse" workflow.
+
+## LMM Phase 2 process control uses a host companion; scanning is approved-root only (2026-06-06, DESIGN)
+Local Model Manager Phase 2A (`docs/LOCAL_MODEL_MANAGER_PHASE2_DESIGN.md`) makes the
+host companion the only acceptable path for future in-app local model process control.
+The Docker backend must **never** directly spawn, stop, or manage host processes, and
+must not gain host powers through the Docker socket, `--privileged`, host PID namespace,
+or other container escape mechanisms. **Why:** the backend runs inside a hardened
+non-root Docker container; direct host process control crosses the container-host
+boundary, breaks the deployed security model, and would require unsafe privileges or
+unreliable filesystem/PID assumptions.
+
+The future architecture is React UI -> Docker FastAPI backend -> Unix-socket-first,
+token-authenticated host companion -> approved model directory scan -> host
+`llama-server` process lifecycle. The React UI never talks directly to the companion.
+The backend reads the companion connection config and token from server-side config
+only and never returns the token, socket path, or raw connection details to the
+frontend. For Linux Docker, Phase 2 control transport is Unix domain socket first:
+the companion listens on a socket file under a user-owned runtime directory, and
+Docker Compose later mounts only that socket file or containing runtime directory
+into the backend container. Socket permissions restrict access; token auth remains
+defense-in-depth unless deliberately dropped by a later accepted design.
+
+Host-gateway TCP is an explicit alternative requiring operator sign-off: the
+companion must bind only to a Docker-reachable host interface or Docker bridge
+gateway, never public `0.0.0.0`; firewall rules must restrict access to Docker bridge
+subnets; and token auth is required. Host networking is another explicit alternative
+where container `127.0.0.1` reaches the host listener, but it is not the default
+because it changes Docker deployment/security. Pure host desktop/native packaging is
+a later option where backend and companion run under the same host user. A
+`127.0.0.1`-only companion control API is therefore **not** assumed reachable from
+Docker unless host networking/native packaging is used.
+
+`llama-server` may still bind `--host 0.0.0.0` for the model `/v1` API so Docker can
+reach it; that is separate from the companion control API, which must never be
+exposed publicly. Direct Docker-to-host process spawn remains rejected, as do Docker
+socket access, privileged containers, host PID namespace, and whole-PC scanning.
+
+Model scanning is limited to one or more explicit user-approved model roots. There is
+no whole-PC scan, no home-directory scan by default, and no arbitrary path search from
+Docker. The companion canonicalizes approved roots and candidate files, accepts only
+`.gguf` candidates, rejects traversal outside approved roots, and must document/test a
+safe symlink policy: reject symlinks, or resolve them and require the resolved path to
+remain inside an approved root. The frontend should receive safe model records with an
+opaque model id or root-relative display path, not unnecessary absolute host paths.
+
+Start/stop uses whitelisted `llama-server` profiles: selected model id plus profile id
+plus typed bounded parameters such as context size, GPU layers, port, and maybe threads.
+There are no free-form args in v1, no shell string execution, and no `shell=True`; the
+companion builds an argv array from fixed profile rules. The companion may stop only the
+tracked process it started and must not kill unrelated manually-started
+`llama-server` instances. Logs are bounded and redacted. Phase 2B, if pursued, should
+prototype approved-folder scanning only using the chosen transport contract;
+start/stop comes later after the companion boundary is accepted.

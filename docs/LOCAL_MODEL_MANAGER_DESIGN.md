@@ -7,7 +7,9 @@
 > `llama-server`) from inside the Study Guide Generator. **Phase 1 (detection-only +
 > manual command helper) is on trunk (`94003bc`→`e399f09`) and validated** in
 > `docs/VALIDATION_LOCAL_MODEL_MANAGER_PHASE1.md` (see the Phase-1 validation note
-> below §11). Phase 2 (host companion) remains **design-only / sign-off-gated**. It is
+> below §11). Phase 2A (host companion + approved GGUF model library) is now
+> **design-only** in `docs/LOCAL_MODEL_MANAGER_PHASE2_DESIGN.md`; no Phase 2 code is
+> implemented. It is
 > a **separate feature** from in-app Provider Settings (which is COMPLETE through Slice
 > 5). For the live per-slice log see `CURRENT_TASK.md`; for the "why" behind choices
 > see `DECISIONS.md`; for the stable overview see `PROJECT_CONTEXT.md`; the canonical
@@ -18,7 +20,7 @@
 > `no-new-privileges:true`. A local `llama-server` the operator wants to manage
 > runs on the **host**, reached today at `http://host.docker.internal:8080/v1`.
 > A container process **cannot reliably or safely** start/stop a host process —
-> that crosses the container↔host boundary. The recommendation below is therefore
+> that crosses the container-host boundary. The recommendation below is therefore
 > **detection-first**, with process control deferred to an explicit, optional
 > host-side companion.
 
@@ -133,16 +135,19 @@ existing primitives, not new infrastructure.
 
 ### Option B — Host-side companion launcher (optional, later)
 - A **separate, tiny host program** (script or daemon) runs **outside** Docker,
-  under the operator's own account, and exposes a **localhost-only**, **token-
-  authenticated** control API. The app's backend calls the companion to
+  under the operator's own account, and exposes a **local, token-authenticated**
+  control API. For Linux Docker the primary transport is a Unix domain socket
+  mounted into the backend container. A `127.0.0.1`-only TCP listener is valid only
+  for native/desktop packaging, host-network Docker, or an explicitly signed-off
+  host-gateway TCP alternative. The app's backend calls the companion to
   start/stop/restart `llama-server` with **whitelisted** flags.
 - **Pros:** real process control without giving the container host privileges; the
   privilege boundary stays where the OS already trusts it (the host user);
   GPU/driver access is the host's, not the container's.
-- **Cons:** more moving parts (install/run/version the companion); a new
-  localhost control surface that **must** be authenticated and command-whitelisted;
-  cross-platform packaging (Linux/macOS/Windows). Design only in this doc; build
-  only after explicit sign-off.
+- **Cons:** more moving parts (install/run/version the companion); a new local
+  control surface that **must** be authenticated, command-whitelisted, and not
+  publicly exposed; cross-platform packaging (Linux/macOS/Windows). Design only in
+  this doc; build only after explicit sign-off.
 
 ### Option C — In-container `llama-server`
 - Bundle and run `llama-server` **inside** the app container.
@@ -182,7 +187,10 @@ existing primitives, not new infrastructure.
 ## 3. Recommended architecture — staged
 
 **Phase 1 — Detection-only Local Model Manager (Option A).** Build first.
-**Phase 2 — Optional host companion launcher (Option B), design then build.**
+**Phase 2 — Optional host companion launcher + approved GGUF library (Option B),
+design then build.** Phase 2A design is now captured in
+`docs/LOCAL_MODEL_MANAGER_PHASE2_DESIGN.md`; this original document remains the
+canonical Phase 1 design/implementation record.
 **Phase 3 — Optional packaged desktop/native flow** (an Electron/native wrapper
 that runs the backend *and* the model server under one local user, sidestepping the
 container boundary entirely) — far later, design only.
@@ -381,7 +389,11 @@ Phase 1 inherits the existing, already-shipped guarantees and adds nothing risky
   `_safe_fetch_message`). The frontend never receives raw transport errors.
 
 **If a future host companion (Phase 2) exists, it MUST:**
-- **bind only to localhost** (`127.0.0.1`), never `0.0.0.0`;
+- use **Unix socket transport first for Linux Docker**; a `127.0.0.1`-only TCP
+  control API is valid only for native/desktop packaging, host-network Docker, or
+  an explicitly signed-off host-gateway TCP alternative;
+- **never expose companion control publicly**; if TCP is used, never bind to public
+  `0.0.0.0`;
 - **require a token or same-user access** — a shared secret the app holds (stored
   server-side, never sent to the frontend) **or** an OS-level same-user check;
 - **only allow whitelisted commands + flags** — a fixed `llama-server` profile
@@ -392,6 +404,37 @@ Phase 1 inherits the existing, already-shipped guarantees and adds nothing risky
   concatenation into a shell; spawn with an **argv array** only;
 - treat its own control API as an **untrusted-input boundary** (whitelist parse,
   exactly like shortcut import).
+
+### Transport / Connectivity (Phase 2 control API)
+
+Linux Docker cannot assume that a host service bound only to host `127.0.0.1` is
+reachable from a container. Container loopback is the container itself, and
+`host.docker.internal`/host-gateway access may not reach a host loopback-only
+listener. Phase 2B should therefore prototype the companion against a Unix socket
+transport contract unless the operator explicitly chooses host-gateway TCP.
+
+Primary Linux Docker design:
+
+- The host companion listens on a Unix domain socket file under a user-owned
+  runtime directory.
+- Docker Compose later mounts only that socket file, or only the containing
+  runtime directory, into the backend container.
+- The backend talks to the companion through the mounted socket.
+- Socket permissions restrict access; token auth remains defense-in-depth unless a
+  later accepted design deliberately drops it.
+- The frontend never receives the token, socket path, or raw companion connection
+  config.
+
+Alternatives:
+
+- **Host-gateway TCP companion:** bind to a Docker-reachable host interface or
+  Docker bridge gateway, not public `0.0.0.0`; firewall to Docker bridge subnets;
+  token required; explicit operator sign-off required because it is weaker than a
+  Unix socket.
+- **Host networking:** run the backend container with host networking so
+  `127.0.0.1` works; not default because it changes Docker deployment/security.
+- **Pure host desktop/native packaging:** run backend and companion under the same
+  host user, avoiding Docker bridge issues.
 
 ---
 
@@ -437,10 +480,11 @@ For the host companion (Option B). None of this exists in Phase 1.
   abstracts a tiny per-OS process layer. argv-array spawning (no shell) sidesteps
   most quoting issues.
 - **Docker vs native desktop** — in the Docker deployment the companion is a
-  **separate host process** the app calls over localhost; in a future packaged
-  desktop app (Phase 3) the same logic could live in the native wrapper running as
-  the operator, removing the boundary. The control contract should be identical so
-  the frontend doesn't care which backs it.
+  **separate host process** the app calls over the mounted Unix socket by default;
+  in a future packaged desktop app (Phase 3) the same logic could live in the
+  native wrapper running as the operator, where `127.0.0.1` loopback control may be
+  acceptable. The control contract should be identical so the frontend doesn't care
+  which backs it.
 
 ---
 
@@ -695,7 +739,10 @@ Each slice: **scope / files likely touched / tests / acceptance / non-goals.**
 >   placeholder coinciding with `display:"none"`).
 >
 > **Remaining LMM work — all DEFERRED / design-gated (none started):**
-> - **Host companion DESIGN** (Slice 5 design doc, Option B) — sign-off-gated.
+> - **Host companion + approved GGUF library Phase 2A DESIGN** is complete in
+>   `docs/LOCAL_MODEL_MANAGER_PHASE2_DESIGN.md`; no code exists.
+> - **Phase 2B approved-folder scanning companion prototype** — only if the
+>   operator chooses to proceed; no start/stop in that slice.
 > - **Host companion implementation** (Slice 6+) — only on explicit approval.
 > - **Model directory (GGUF) browsing / scanning** (§6) — not in Phase 1.
 > - **Start / stop / restart** of `llama-server` — never in Phase 1; companion-only.
@@ -703,19 +750,36 @@ Each slice: **scope / files likely touched / tests / acceptance / non-goals.**
 > - **Ask Your Guide local-only chat integration** (§10) — separate feature; the
 >   recommended next slice, but not started and not part of LMM Phase 1.
 
-### LMM Slice 5 — host companion launcher DESIGN (Option B)
-- **Scope:** a dedicated design doc (`docs/LOCAL_MODEL_COMPANION_DESIGN.md`) for the
-  host companion: localhost+token control API, whitelisted profile launch, PID/log/
-  lifecycle (§8), approved model dir scan (§6), per-OS process layer. **Design only.**
-- **Files:** new design doc + `DECISIONS.md` entry. No code.
-- **Acceptance:** a buildable companion contract + threat model, explicitly sign-off-
-  gated.
-- **Non-goals:** any companion code.
+### LMM Phase 2A — host companion + approved GGUF library DESIGN (DONE)
+- **Scope:** a dedicated design doc
+  (`docs/LOCAL_MODEL_MANAGER_PHASE2_DESIGN.md`) for the host companion and model
+  library: Unix-socket-first Linux Docker transport, token-authenticated control
+  API, approved model roots, explicit `.gguf` scanning, symlink/traversal policy,
+  safe model metadata, whitelisted launch profiles, PID/log/lifecycle rules,
+  backend bridge, UI plan, security model, cross-platform notes, and conservative
+  follow-on slices.
+  **Design only.**
+- **Files:** new Phase 2 design doc + updates to `CURRENT_TASK.md`,
+  `NEXT_CHAT_HANDOFF.md`, `PROJECT_CONTEXT.md`, this document, and `DECISIONS.md`.
+  No code.
+- **Acceptance:** future process control goes through a host companion, never
+  direct Docker host spawn; model scanning is limited to user-approved directories,
+  never whole-PC scanning; the companion owns host filesystem/process access while
+  the Docker backend talks to it over a narrow local API.
+- **Non-goals:** any companion code, backend endpoint, frontend UI, Docker change,
+  process spawn, model scan implementation, Provider Settings change, Ask change,
+  upload, or dependency.
 
-### LMM Slice 6+ — host companion implementation (only if approved)
-- **Scope:** build the companion + the backend client to it, behind a feature flag.
-  Strictly per the Slice 5 design + §7/§8 security. Single-server first.
-- **Non-goals:** multi-server pool; Windows packaging (later); auto-restart loops.
+### LMM Phase 2B+ — host companion implementation slices (only if approved)
+- **Phase 2B:** companion prototype for approved-folder scanning only using the
+  chosen transport contract; no start/stop.
+- **Phase 2C:** backend bridge for read-only companion status/model library.
+- **Phase 2D:** Local Models UI model library picker.
+- **Phase 2E:** start/stop selected model through the companion.
+- **Phase 2F:** validation/security pass.
+- **Later:** packaging/signing and Windows/macOS support.
+- **Non-goals for early implementation:** multi-server pool; Windows packaging;
+  auto-restart loops; direct Docker host process spawn.
 
 ### Later — Ask Your Guide local-only chat integration
 - Reads LMM status; first-class offline empty state; no hosted fallback in

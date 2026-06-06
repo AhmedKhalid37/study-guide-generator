@@ -5,7 +5,39 @@
 
 ---
 
-## NEXT — Ask local direct-answer guard DONE; NEXT = explicit extra-uploads slice or broader manual Ask polish. (LMM Phase 1 COMPLETE + VALIDATED below.)
+## NEXT — LMM Phase 2A host companion design DONE; NEXT = Phase 2B approved-folder scanning companion only if operator chooses.
+
+- **Local Model Manager Phase 2A — host companion + approved GGUF model library
+  DESIGN is DONE** — branch `lmm-phase2-host-companion-design`, docs-only. New
+  design doc: `docs/LOCAL_MODEL_MANAGER_PHASE2_DESIGN.md`. It keeps Phase 1 as
+  complete/validated and defines the future Phase 2 boundary: React UI →
+  Docker FastAPI backend → Unix-socket-first, token-authenticated host companion →
+  approved model directory scan → host `llama-server` process lifecycle. The
+  Docker backend must not directly browse the host filesystem or start/stop host
+  processes; direct Docker-to-host spawn remains permanently rejected. Model
+  scanning is limited to explicit user-approved roots, never whole-PC or default
+  home-directory scanning. The companion owns host filesystem/process access and
+  exposes only a narrow local API with whitelisted command profiles, typed safe
+  parameters, bounded/redacted logs, and stop behavior limited to processes it
+  started and tracks.
+- **Phase 2A transport correction:** for the current Linux Docker deployment,
+  Phase 2B should assume a Unix domain socket mounted into the backend container.
+  A companion bound only to host `127.0.0.1` is not assumed reachable from Docker;
+  loopback-only TCP is valid only for host-network/native packaging, and
+  host-gateway TCP requires explicit operator sign-off, firewall restriction to
+  Docker bridge subnets, and token auth. `llama-server` may still bind
+  `--host 0.0.0.0` for the model `/v1` API so Docker can reach it; that is
+  separate from the companion control API, which must never be public.
+- **Phase 2A non-goals were preserved:** no code, no companion implementation, no
+  backend endpoints, no frontend UI, no Docker changes, no process spawn, no
+  model scanning implementation, no provider settings behavior change, no Ask
+  behavior change, no uploads, and no new dependency.
+- **Recommended next LMM slice only if the operator chooses to proceed:** Phase
+  2B companion prototype for approved-folder GGUF scanning only, using the chosen
+  transport contract, with no start/stop yet. Do not implement start/stop before
+  the companion design and security boundary are accepted.
+
+## Previous — Ask local direct-answer guard DONE; NEXT = explicit extra-uploads slice or broader manual Ask polish. (LMM Phase 1 COMPLETE + VALIDATED below.)
 
 - **Ask Your Guide — local direct-answer guard is DONE** — branch
   `ask-local-direct-answer-guard`. Manual local llama-server testing with
