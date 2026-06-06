@@ -1,11 +1,11 @@
 # LOCAL_MODEL_MANAGER_PHASE2_DESIGN.md - Host companion and approved GGUF library
 
-> **Status: Phase 2A DESIGN ONLY.** No code, endpoints, UI, Docker changes, model
-> scanning, or process spawning are implemented by this slice. Phase 1 remains
-> complete and validated: detection-only status, Local Models panel, and manual
-> command helper. This document designs the next architecture boundary for a
-> future Local Model Manager that can scan user-approved GGUF folders and manage a
-> host `llama-server` through a small host-side companion.
+> **Status: Phase 2B scanning prototype implemented.** Phase 2A established the
+> host-companion boundary. Phase 2B adds a Linux-first, stdlib-only host companion
+> prototype under `tools/local_model_companion/` for approved-folder GGUF scanning
+> and a Unix-domain-socket API contract. It is scanning-only: no backend bridge,
+> frontend UI, Docker changes, Provider Settings changes, Ask changes, dependency
+> additions, model execution, or `llama-server` start/stop/restart behavior.
 
 ---
 
@@ -183,6 +183,11 @@ explicitly signed-off host-gateway TCP alternative; it must never be public.
 - Redaction: no paths, token, environment, command line, or secrets.
 - Failure modes: unavailable companion, version mismatch, unauthorized.
 
+**Phase 2B implementation status:** implemented in
+`tools/local_model_companion/companion.py` over a Unix domain socket using Python
+stdlib HTTP handling. Requires `Authorization: Bearer <token>`; token may come from
+`LMM_COMPANION_TOKEN` or the explicit local companion config and is never returned.
+
 ### `GET /models`
 
 - Auth: required.
@@ -196,6 +201,10 @@ explicitly signed-off host-gateway TCP alternative; it must never be public.
 - Redaction: no unnecessary absolute host paths.
 - Failure modes: unauthorized, no approved roots, scan cache unavailable,
   malformed state.
+
+**Phase 2B implementation status:** implemented as a cached read. It returns the
+last in-memory scan result only and does not scan until `POST /models/scan` is
+called.
 
 ### `POST /models/scan`
 
@@ -221,6 +230,10 @@ explicitly signed-off host-gateway TCP alternative; it must never be public.
 - Redaction: warnings must be bounded and path-redacted or root-relative.
 - Failure modes: no approved roots, root missing, permission denied, symlink
   escape rejected, traversal rejected, scan timeout, too many files.
+
+**Phase 2B implementation status:** implemented for configured approved roots only.
+It returns safe model records with opaque ids derived from root id plus normalized
+root-relative path. It does not expose absolute host paths in model records.
 
 ### `GET /server/status`
 
@@ -486,8 +499,8 @@ safe response fields.
 
 ## 12. Slice Plan After Phase 2A
 
-- **Phase 2B:** companion prototype design/code for approved-folder scanning only,
-  using the chosen transport contract; no start/stop.
+- **Phase 2B:** DONE. Companion prototype for approved-folder scanning only, using
+  the Unix-domain-socket transport contract; no start/stop.
 - **Phase 2C:** backend bridge read-only companion status and model library.
 - **Phase 2D:** Local Models UI model library picker.
 - **Phase 2E:** start/stop selected model through companion.
@@ -510,3 +523,66 @@ companion owns host filesystem/process access; frontend never receives the token
 - No Ask behavior change.
 - No extra uploads.
 - No new dependency.
+
+## 14. Phase 2B Scanning Prototype
+
+Files:
+
+- `tools/local_model_companion/config.py`
+- `tools/local_model_companion/model_library.py`
+- `tools/local_model_companion/companion.py`
+- `test_scripts/test_local_model_companion_scan.py`
+
+Config shape:
+
+```json
+{
+  "approved_roots": [
+    {
+      "id": "default",
+      "path": "/home/user/models",
+      "recursive": true
+    }
+  ],
+  "token": "optional-local-companion-token"
+}
+```
+
+The config path must be explicit through `--config` or `LMM_COMPANION_CONFIG`.
+There is no default home scan, no implicit `~/models`, and no silent approved-root
+creation. Missing config returns a safe no-roots state. `LMM_COMPANION_TOKEN`
+overrides the optional config token for the socket server.
+
+CLI:
+
+```bash
+python -m tools.local_model_companion.companion --config /path/to/config.json scan
+python -m tools.local_model_companion.companion --config /path/to/config.json serve --socket /path/to/companion.sock
+```
+
+Implemented scan safety:
+
+- Scans only configured approved roots.
+- Canonicalizes approved roots and candidate paths.
+- Accepts `.gguf` case-insensitively.
+- Resolves file symlinks and requires the resolved target to remain inside the
+  approved root.
+- Rejects symlink escapes and traversal candidates with bounded warnings.
+- Skips symlinked directories to avoid recursive symlink loops.
+- Supports recursive or top-level-only scans per root.
+- Bounds files inspected, models returned, elapsed time, and warning count.
+- Converts missing roots, broken symlinks, permission/path errors, and scan limits
+  into bounded warnings instead of crashes.
+- Returns safe model metadata only: opaque stable id, display name, filename,
+  root-relative path, root id, size, modified timestamp, family/quant hints, and
+  `server_compatible: true` for discovered GGUF candidates.
+
+Implemented Unix socket API:
+
+- `GET /health`
+- `GET /models`
+- `POST /models/scan`
+
+No process-control API is implemented in Phase 2B. There is no `/server/start`,
+`/server/stop`, or `/server/restart`, no `llama-server` launch, no shell execution,
+and no subprocess usage in the companion package.

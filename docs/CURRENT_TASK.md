@@ -5,7 +5,54 @@
 
 ---
 
-## NEXT — LMM Phase 2A host companion design DONE; NEXT = Phase 2B approved-folder scanning companion only if operator chooses.
+## NEXT — LMM Phase 2B approved-folder scanning companion DONE; NEXT = Phase 2C read-only backend bridge.
+
+- **Local Model Manager Phase 2B — host companion approved-folder GGUF scanning
+  prototype is DONE** on branch `lmm-phase2b-companion-scan`. Added isolated,
+  stdlib-only companion code under `tools/local_model_companion/`:
+  `config.py`, `model_library.py`, and `companion.py`. It loads an explicit JSON
+  config, scans only configured user-approved roots for `.gguf` files, returns safe
+  metadata with stable opaque ids derived from `root_id + normalized relative_path`,
+  and keeps absolute host paths out of model records. Config path is explicit via
+  `--config` or `LMM_COMPANION_CONFIG`; there is no default home scan, no implicit
+  `~/models`, and no silent root creation. Missing config returns a safe
+  `no_approved_roots` warning and no models.
+- **Phase 2B Unix socket status:** implemented a minimal Unix-domain-socket HTTP
+  companion API in `tools/local_model_companion/companion.py`: `GET /health`,
+  `GET /models` (cached only), and `POST /models/scan` (explicit scan). Every
+  endpoint requires `Authorization: Bearer <token>`; token comes from
+  `LMM_COMPANION_TOKEN` or the explicit local companion config and is never
+  returned. The current execution sandbox denies AF_UNIX bind with
+  `PermissionError: [Errno 1] Operation not permitted`, so the focused test verifies
+  the socket server implementation shape and reports the runtime bind as skipped by
+  sandbox.
+- **Implemented scan safety:** approved-root canonicalization, candidate
+  canonicalization, `.gguf` case-insensitive match, symlink resolution with
+  inside-root enforcement, symlink escapes rejected, symlinked directories skipped
+  to avoid loops, optional recursion, max files inspected, max models returned,
+  elapsed-time guard, bounded warnings, missing-root/broken-symlink/path errors as
+  warnings, root-relative paths only in records, best-effort family/quant hints, and
+  no absolute host paths in model records.
+- **Hard non-goals preserved:** no backend bridge endpoints, no frontend UI, no
+  Docker Compose changes, no Provider Settings changes, no Ask changes, no new
+  frontend dependency, no model execution, no whole-PC scan, no default home scan,
+  no arbitrary path search from Docker, no arbitrary shell commands, no
+  `llama-server` start/stop/restart, no process control, no subprocess usage in the
+  companion package.
+- **Focused validation:** `python test_scripts/test_local_model_companion_scan.py`
+  passed 21/21 checks, including no-config/no-roots, missing root warning, simple
+  GGUF metadata, non-GGUF ignore, recursive scan, symlink inside accepted, symlink
+  escape rejected, traversal guard, broken symlink warning, max models, bounded
+  warnings, config shape, socket implementation shape, source inspection for no
+  process control/shell/subprocess, stable ids, hints, and no absolute host paths in
+  model records. Continue to run `python -m compileall api pipeline tools` and
+  `git diff --check` before closing the slice if not already run.
+- **Recommended next slice:** Phase 2C should add a read-only Docker backend bridge
+  that talks to the mounted Unix socket for companion health/status and model
+  library/scan, with server-side token/socket config only and no frontend token or
+  socket exposure. Keep start/stop/restart deferred.
+
+## Previous — LMM Phase 2A host companion design DONE.
 
 - **Local Model Manager Phase 2A — host companion + approved GGUF model library
   DESIGN is DONE** — branch `lmm-phase2-host-companion-design`, docs-only. New

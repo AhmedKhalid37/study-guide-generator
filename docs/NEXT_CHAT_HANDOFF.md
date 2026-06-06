@@ -10,13 +10,35 @@
 - **Trunk includes:** `af0ec0e` (Ask Slice 1 design), `2634f63` (Ask Slice 2 context
   inventory), `a29a405` (Ask Slice 3 context preparation), and the inserted Ask
   workspace shell, on top of the validated LMM group and prior feature groups.
-- **Active work branch:** `lmm-phase2-host-companion-design` — docs-only Local Model
-  Manager Phase 2A design for a host companion plus approved GGUF model library.
-  **No code changed.** **NEXT = Phase 2B approved-folder scanning companion only if
-  the operator chooses to proceed, using the chosen transport contract; do not
-  implement start/stop before the companion design/security boundary is accepted.**
+- **Active work branch:** `lmm-phase2b-companion-scan` — Local Model Manager Phase
+  2B host companion approved-folder GGUF scanning prototype. **NEXT = Phase 2C
+  read-only backend bridge to companion health/model-library over the mounted Unix
+  socket. Keep start/stop/restart deferred.**
 
 ## What just landed
+- **Local Model Manager Phase 2B — companion approved-folder GGUF scanning
+  prototype** (branch `lmm-phase2b-companion-scan`). Added stdlib-only host
+  companion code under `tools/local_model_companion/`: explicit config loading,
+  bounded approved-root `.gguf` scanner, safe model metadata, CLI, and a minimal
+  Unix-domain-socket HTTP API. Config shape:
+  `{"approved_roots":[{"id":"default","path":"/home/user/models","recursive":true}],"token":"optional-local-companion-token"}`.
+  The config path must be supplied via `--config` or `LMM_COMPANION_CONFIG`; no
+  default home scan, no implicit `~/models`, and no silent approved-root creation.
+  Missing config returns no models plus a bounded `no_approved_roots` warning. The
+  scanner canonicalizes roots/candidates, accepts `.gguf` case-insensitively,
+  resolves symlink files and requires the resolved target to remain inside the
+  approved root, rejects symlink escapes/traversal, skips symlinked directories,
+  supports optional recursion, bounds files/models/time/warnings, and returns only
+  safe records with stable opaque ids, root-relative paths, size, modified time,
+  family/quant hints, and `server_compatible: true`. Implemented socket endpoints:
+  `GET /health`, `GET /models` cached read, `POST /models/scan` explicit scan, all
+  requiring `Authorization: Bearer <token>` from `LMM_COMPANION_TOKEN` or config.
+  No backend bridge, frontend UI, Docker change, Provider Settings change, Ask
+  change, dependency, model execution, whole-PC/home scan, arbitrary host path scan,
+  shell execution, subprocess use, or `llama-server` process control was added.
+  Focused test `python test_scripts/test_local_model_companion_scan.py` passed
+  21/21; the sandbox denies AF_UNIX bind, so the socket runtime bind section is
+  reported as implementation-shape checked/skipped by sandbox.
 - **Local Model Manager Phase 2A — host companion + approved GGUF model library
   DESIGN** (branch `lmm-phase2-host-companion-design`). New doc:
   `docs/LOCAL_MODEL_MANAGER_PHASE2_DESIGN.md`; reconciled
