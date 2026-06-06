@@ -42,6 +42,7 @@ RETRIEVAL_TOKEN_BUDGET = max(
     800, TOTAL_CONTEXT_TOKENS - RESERVE_ANSWER_TOKENS - RESERVE_SYSTEM_TOKENS - RESERVE_HISTORY_TOKENS
 )
 CHARS_PER_TOKEN = 4
+LOCAL_THINKING_MODEL_CONTROL = "/no_think"
 
 _TERM_RE = re.compile(r"[a-z0-9]{2,}")
 _SESSION_ID_RE = re.compile(r"^ask_[a-f0-9]{32}$")
@@ -501,6 +502,9 @@ def _chunk_metadata(chunk: dict[str, Any], label: str) -> dict[str, Any]:
 
 
 ANSWER_RULES = """You are Ask Your Guide, a local-only study assistant.
+Answer directly in normal assistant content.
+Do not put the final answer only in hidden reasoning/reasoning_content.
+Do not spend the whole response thinking; write the final answer visibly.
 Use only the provided guide/source chunks for factual claims about the user's material.
 Cite only the citation labels listed in the context, exactly as written.
 Prefer one citation at the end of a paragraph or a short final "Sources used" line; do not cite every sentence.
@@ -546,11 +550,16 @@ def assemble_prompt(
         "Available citation labels for this turn:\n"
         + ("\n".join(f"- {label}" for label in citation_labels) if citation_labels else "- none")
     )
+    # Local thinking-style llama-server models may otherwise spend the whole Ask
+    # response budget in hidden reasoning. This marker is model-facing only; it is
+    # never appended to the saved user turn or returned as chat content.
     user = (
         "Recent conversation window:\n"
         + ("\n".join(recent_lines) if recent_lines else "(none)")
         + "\n\nRetrieved guide/source chunks:\n"
         + ("\n\n".join(context_blocks) if context_blocks else "(No relevant chunks were retrieved.)")
+        + "\n\nLocal thinking-model control:\n"
+        + LOCAL_THINKING_MODEL_CONTROL
         + "\n\nUser question:\n"
         + question
     )

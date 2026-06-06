@@ -189,9 +189,17 @@ flashcards with CSV / Anki / Quizlet export.
   `generate_chat_completion` and returns a structured `provider_error` with
   `error.category: provider_empty_response` and a retryable user-safe message instead
   of a raw FastAPI 500; the failed turn does not append a successful user/assistant
-  history pair. This did not change retrieval, prompt assembly, fallback behavior,
-  citation validation, session management, provider settings, streaming, uploads,
-  rolling summary, multimodal, or process control. **NEXT = Ask extra session uploads
+  history pair. A later local-thinking-model compatibility guard updated Ask prompt
+  assembly to request visible assistant content instead of final answers only in
+  hidden reasoning/reasoning_content. Manual full-prompt validation then showed the
+  system-only guard was insufficient for the Gemma llama-server setup, so Ask now
+  also inserts a model-only `/no_think` control in the assembled local-LLM user
+  prompt immediately before the final `User question:` block. That marker is never
+  persisted as user text, exposed in session load/list summaries, or rendered by the
+  frontend, and it does not weaken grounding/citation rules. These Ask follow-ups
+  did not change retrieval, fallback behavior, citation validation, session
+  management, provider settings, streaming, uploads, rolling summary, multimodal, or
+  process control. **NEXT = Ask extra session uploads
   only as a separate explicit slice, or narrow manual Ask polish if another concrete
   issue surfaces.** Still deferred: extra uploads unless explicitly chosen,
   streaming, hosted/cloud Ask, rolling summary, multimodal, and process control.

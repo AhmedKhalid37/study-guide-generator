@@ -115,6 +115,10 @@ def test_pure_retrieval_and_prompt(tmp: Path) -> None:
         recent_history=[{"role": "user", "content": "Earlier alpha question."}],
     )
     prompt_blob = _blob(messages)
+    check("pure: model prompt includes no-think control", ask_sessions.LOCAL_THINKING_MODEL_CONTROL in prompt_blob)
+    check("pure: no-think control near final question", "Local thinking-model control" in prompt_blob and "/no_think" in prompt_blob and "User question" in prompt_blob)
+    check("pure: direct visible-answer rule present", "Answer directly in normal assistant content" in prompt_blob)
+    check("pure: hidden reasoning guard present", "reasoning_content" in prompt_blob and "write the final answer visibly" in prompt_blob)
     check("pure: hard rule not covered present", "not covered in the guide/source" in prompt_blob)
     check("pure: hard rule no invented citations present", "Do not invent" in prompt_blob)
     check("pure: citation labels included", bool(citations) and all(c in prompt_blob for c in citations))
@@ -172,6 +176,7 @@ def test_pure_session_management(tmp: Path) -> None:
         listed = ask_sessions.list_sessions(job)["sessions"]
         check("pure sessions: list returns two", len(listed) == 2)
         check("pure sessions: summaries clean", _clean(_blob(listed)))
+        check("pure sessions: summaries omit no-think control", ask_sessions.LOCAL_THINKING_MODEL_CONTROL not in _blob(listed))
         first_summary = next((item for item in listed if item["session_id"] == first_id), {})
         check("pure sessions: message count", first_summary.get("message_count") == 2)
         check("pure sessions: last snippet redacted", _clean(_blob(first_summary.get("last_message"))))
@@ -269,10 +274,12 @@ def test_pure_empty_model_response(tmp: Path) -> None:
         check("pure empty: no raw prompt", "Retrieved guide/source chunks" not in response_blob)
         check("pure empty: no chunk text", GUIDE_MARKER not in response_blob and SOURCE_MARKER not in response_blob)
         check("pure empty: local provider only", captured.get("config_provider") == "local")
+        check("pure empty: model prompt includes no-think control", ask_sessions.LOCAL_THINKING_MODEL_CONTROL in _blob(captured.get("messages")))
         check("pure empty: no DeepSeek/Qwen fallback", "deepseek" not in _blob(captured.get("config")).lower() and "qwen" not in _blob(captured.get("config")).lower())
         history_path = job.dir / "ask" / "sessions" / session_id / "history.jsonl"
         history_lines = history_path.read_text(encoding="utf-8").splitlines() if history_path.exists() else []
         check("pure empty: no assistant success message appended", history_lines == [])
+        check("pure empty: history omits no-think control", ask_sessions.LOCAL_THINKING_MODEL_CONTROL not in "\n".join(history_lines))
         after = {
             "clean": _digest(job.clean_md),
             "extracted": _digest(job.extracted_txt),
@@ -463,9 +470,11 @@ def test_endpoints() -> None:
         check("ep: empty model response no raw prompt", "Retrieved guide/source chunks" not in rm_empty.text)
         check("ep: empty model response no chunk text", GUIDE_MARKER not in rm_empty.text and SOURCE_MARKER not in rm_empty.text)
         check("ep: empty model response local provider only", captured.get("empty_config_provider") == "local")
+        check("ep: empty prompt includes no-think control", ask_sessions.LOCAL_THINKING_MODEL_CONTROL in _blob(captured.get("empty_messages")))
         empty_history = eligible.dir / "ask" / "sessions" / session_id / "history.jsonl"
         empty_lines = empty_history.read_text(encoding="utf-8").splitlines() if empty_history.exists() else []
         check("ep: empty model response appends no history", empty_lines == [])
+        check("ep: empty history omits no-think control", ask_sessions.LOCAL_THINKING_MODEL_CONTROL not in "\n".join(empty_lines))
         after_empty = {
             "clean": _digest(eligible.clean_md),
             "extracted": _digest(eligible.extracted_txt),
@@ -493,6 +502,9 @@ def test_endpoints() -> None:
 
         prompt_blob = _blob(captured.get("messages"))
         check("ep: prompt includes citation-labelled chunks", "[Source Page 4]" in prompt_blob or "[Guide Alpha Topic]" in prompt_blob)
+        check("ep: prompt includes no-think control", ask_sessions.LOCAL_THINKING_MODEL_CONTROL in prompt_blob)
+        check("ep: prompt includes direct visible-answer rule", "Answer directly in normal assistant content" in prompt_blob)
+        check("ep: prompt includes hidden reasoning guard", "reasoning_content" in prompt_blob and "write the final answer visibly" in prompt_blob)
         check("ep: prompt includes hard answer rules", "Cite only the citation labels" in prompt_blob and "Do not invent" in prompt_blob)
         check("ep: prompt got redacted question", SECRET_KEY not in prompt_blob and SECRET_URL not in prompt_blob)
         check("ep: local provider only", captured.get("config_provider") == "local")
@@ -506,11 +518,17 @@ def test_endpoints() -> None:
         meta_path = session_dir / "session.json"
         lines = history_path.read_text(encoding="utf-8").splitlines()
         check("ep: history jsonl two records", len(lines) == 2 and all(json.loads(line) for line in lines))
+        records = [json.loads(line) for line in lines]
+        user_records = [record for record in records if record.get("role") == "user"]
+        check("ep: stored user message omits no-think control", user_records and all(ask_sessions.LOCAL_THINKING_MODEL_CONTROL not in record.get("content", "") for record in user_records))
+        loaded_after_answer = client.get(f"/api/ask/sessions/{session_id}")
+        check("ep: frontend-visible history omits no-think control", ask_sessions.LOCAL_THINKING_MODEL_CONTROL not in loaded_after_answer.text)
         meta = json.loads(meta_path.read_text(encoding="utf-8"))
         check("ep: session metadata updated", meta.get("updated_at") != meta.get("created_at"))
 
         file_blob = history_path.read_text(encoding="utf-8") + meta_path.read_text(encoding="utf-8")
         check("ep: session/history files clean", _clean(file_blob))
+        check("ep: session/history files omit no-think control", ask_sessions.LOCAL_THINKING_MODEL_CONTROL not in file_blob)
 
         cache_path = eligible.dir / "ask" / "cache" / "context_index.json"
         check("ep: cache exists", cache_path.exists())
@@ -523,6 +541,7 @@ def test_endpoints() -> None:
         ids = [item.get("session_id") for item in rlist.json().get("sessions", [])]
         check("ep: list multiple sessions", session_id in ids and second_id in ids)
         check("ep: newest session sorted first", ids[0] == second_id)
+        check("ep: session summaries omit no-think control", ask_sessions.LOCAL_THINKING_MODEL_CONTROL not in rlist.text)
 
         # 11. clear history keeps session/cache/artifacts.
         rclear = client.delete(f"/api/ask/sessions/{session_id}/history")

@@ -5,8 +5,31 @@
 
 ---
 
-## NEXT — Ask empty local-model response guard DONE; NEXT = explicit extra-uploads slice or broader manual Ask polish. (LMM Phase 1 COMPLETE + VALIDATED below.)
+## NEXT — Ask local direct-answer guard DONE; NEXT = explicit extra-uploads slice or broader manual Ask polish. (LMM Phase 1 COMPLETE + VALIDATED below.)
 
+- **Ask Your Guide — local direct-answer guard is DONE** — branch
+  `ask-local-direct-answer-guard`. Manual local llama-server testing with
+  `gemma-4-26B-A4B-it-UD-Q4_K_M.gguf` showed thinking-style responses could spend
+  the whole budget in `reasoning_content` and return empty visible assistant content.
+  The first system-rule-only guard failed in the full Ask prompt; direct tests showed
+  `/no_think` in the model-facing user message produces visible content.
+  `pipeline/ask_sessions.py` now keeps the concise visible-answer system rules and
+  adds a standalone `/no_think` local thinking-model control immediately before the
+  final `User question:` block sent to `generate_chat_completion`. The marker is
+  model-only: it is not stored in `history.jsonl`, returned by session load/list
+  responses, included in session summaries, or rendered by the frontend.
+  Citation/grounding rules are preserved. Validated: `python
+  test_scripts/test_ask_local_chat.py` passed 45/45 pure checks with endpoint skip
+  because FastAPI is unavailable in this environment; `python
+  test_scripts/test_ask_context_inventory.py` passed 11/11 with the same endpoint
+  skip; `python test_scripts/test_ask_context_prepare.py` passed 28/28 with the same
+  endpoint skip; `python -m compileall api pipeline` passed; `npm --prefix frontend
+  run test:ask-guide` passed; `npm --prefix frontend run build` passed with the
+  existing Vite large-chunk warning; `python test_scripts/smoke_release.py` passed
+  28/28; `docker compose config >/tmp/compose-check.txt` exited 0. Local-only
+  behavior is unchanged: no hosted fallback, provider-settings writes, local model
+  process control, uploads, streaming, retrieval changes, citation-validation
+  changes, or reasoning_content exposure.
 - **Ask Your Guide — empty local-model response guard is DONE** — branch
   `ask-empty-response-guard`, see DONE #59 below. During manual Ask UI validation
   after the math/source polish slice, a browser Ask message returned
@@ -2405,6 +2428,41 @@ parked on the `hardening` branch — not merged, not deleted.
     - **Manual validation:** Docker app rebuilt/restarted and healthy. The original
       empty local-model behavior was not reproducible, but the simulated regression
       is now covered.
+
+60. **Compatibility fix — Ask local thinking-model `/no_think` control** — branch
+    `ask-local-direct-answer-guard`.
+    Follow-up to manual browser validation of DONE #59.
+    - **Bug:** the previous direct-answer system rules were not strong enough for the
+      full Ask prompt with the Gemma llama-server setup. The local model generated
+      through the whole Ask response budget in hidden `reasoning_content` and
+      returned no visible assistant content, producing `provider_empty_response`.
+    - **Fix:** `pipeline/ask_sessions.py` keeps the direct visible-answer system
+      rules and adds a standalone `/no_think` local thinking-model control only to
+      the assembled model-facing user message, immediately before the final `User
+      question:` block sent to `generate_chat_completion`.
+    - **Model-only boundary:** `/no_think` is not appended to the saved raw user turn,
+      not stored in `history.jsonl`, not returned by session load/list responses, not
+      included in session summaries, and not rendered by the frontend. Citation and
+      grounding rules are preserved.
+    - **Tests/validation:** `python test_scripts/test_ask_local_chat.py` passed
+      45/45 pure checks with endpoint skip because FastAPI is unavailable in this
+      environment. `python test_scripts/test_ask_context_inventory.py` passed 11/11
+      with endpoint skip. `python test_scripts/test_ask_context_prepare.py` passed
+      28/28 with endpoint skip. `python -m compileall api pipeline` passed.
+      `npm --prefix frontend run test:ask-guide` passed. `npm --prefix frontend run
+      build` passed with the existing Vite large-chunk warning. `python
+      test_scripts/smoke_release.py` passed 28/28. `docker compose config
+      >/tmp/compose-check.txt` exit code 0.
+    - **Manual/live validation:** Docker app rebuilt/restarted and healthy. Local
+      model status from the container was reachable for
+      `gemma-4-26B-A4B-it-UD-Q4_K_M.gguf`. A live Ask session
+      `ask_7cec13974cbf48ccb7de71889c9a71e9` against job
+      `20260605-181809-c768` returned `status: answered` with visible assistant
+      content instead of `provider_empty_response`. Session load/list responses and
+      persisted `history.jsonl` did not contain `/no_think`; container-side grep of
+      that session/cache found no `/no_think`, `reasoning_content`, or
+      `provider_empty_response`. Headless Chromium verified the rebuilt browser shell
+      is served; a full browser click/send replay was not automated in this repo.
 
 ## NEXT (in order)
 

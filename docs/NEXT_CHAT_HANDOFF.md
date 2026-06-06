@@ -10,13 +10,40 @@
 - **Trunk includes:** `af0ec0e` (Ask Slice 1 design), `2634f63` (Ask Slice 2 context
   inventory), `a29a405` (Ask Slice 3 context preparation), and the inserted Ask
   workspace shell, on top of the validated LMM group and prior feature groups.
-- **Active work branch:** `ask-empty-response-guard` — tiny Ask local-model empty
-  response guard after manual UI validation found a raw 500; see "What just
-  landed". **Not committed/pushed** unless the operator asks. **NEXT = Ask extra
-  session uploads only as a separate explicit slice, or narrow manual Ask polish if
-  another concrete issue surfaces.**
+- **Active work branch:** `ask-local-direct-answer-guard` — tiny Ask prompt guard for
+  local thinking-style models that otherwise return empty visible assistant content
+  while filling `reasoning_content`; see "What just landed". **Not committed/pushed**
+  unless the operator asks. **NEXT = Ask extra session uploads only as a separate
+  explicit slice, or narrow manual Ask polish if another concrete issue surfaces.**
 
 ## What just landed
+- **Compatibility fix — Ask local direct-answer guard** (branch
+  `ask-local-direct-answer-guard`). Manual local llama-server testing with
+  `gemma-4-26B-A4B-it-UD-Q4_K_M.gguf` showed `/v1/chat/completions` can return HTTP
+  200 with `choices[0].message.content == ""`, visible reasoning only in
+  `reasoning_content`, and `finish_reason == "length"` unless explicitly instructed
+  to put the answer in normal assistant content. The system-only guard helped tiny
+  prompts but failed in the full Ask prompt, while adding `/no_think` in the
+  model-facing user message produced visible content. `pipeline/ask_sessions.py`
+  now keeps the concise direct-answer system rules and also inserts a standalone
+  `/no_think` local thinking-model control immediately before the final `User
+  question:` block assembled for `generate_chat_completion`. The marker is not user
+  content: it is never appended to `history.jsonl`, returned by session load/list
+  endpoints, included in session summaries, or rendered by the frontend. Citation
+  and grounding rules are unchanged. `test_scripts/test_ask_local_chat.py` asserts
+  the marker is present in model prompts, absent from stored/frontend-visible
+  messages and summaries, citation rules remain present, empty-response handling
+  still works, successful answers still work, and raw prompts/chunk text/secrets/full
+  URLs/paths stay hidden. Verified: Ask local chat 45/45 pure checks passed with
+  endpoint skip because FastAPI is unavailable in the host Python; inventory 11/11
+  and prepare 28/28 passed with the same endpoint skips; `python -m compileall api
+  pipeline`, frontend Ask checks, frontend build, and release smoke all passed;
+  `docker compose config >/tmp/compose-check.txt` exit 0. Docker app was
+  rebuilt/restarted healthy. Live Ask against reachable local Gemma returned
+  `status: answered` with visible assistant content instead of
+  `provider_empty_response`; session load/list/history did not expose `/no_think`.
+  Headless Chromium verified the rebuilt browser shell is served; full browser
+  click/send replay was not automated in this repo.
 - **Bugfix — Ask empty local-model response guard** (branch
   `ask-empty-response-guard`). During manual Ask UI validation after the
   math/source polish slice, a browser Ask message returned
