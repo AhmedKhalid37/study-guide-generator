@@ -191,3 +191,40 @@ export function selectedLibraryModel(data, selectedId) {
   if (typeof selectedId !== "string" || !selectedId) return null;
   return libraryModels(data).find((model) => model.id === selectedId) || null;
 }
+
+export function normalizeLibrarySelection(data) {
+  const selected = data?.selected;
+  if (!selected || typeof selected !== "object") return null;
+  const model = normalizeLibraryModel(selected);
+  if (!model) return null;
+  const selectedAt = safeText(selected.selected_at, 80);
+  if (selectedAt) model.selected_at = selectedAt;
+  return model;
+}
+
+export function librarySelectionPreview(data) {
+  const preview = data?.future_launch_preview;
+  if (!preview || typeof preview !== "object") return null;
+  const out = {};
+  const profile = safeText(preview.profile, 120);
+  const modelId = safeText(preview.model_id, 500);
+  const filename = safeText(preview.filename, 500);
+  const relativePath = isSafeRelativePath(preview.relative_path)
+    ? safeText(preview.relative_path, 500).replace(/\\/g, "/")
+    : null;
+  const rootId = safeText(preview.root_id, 120);
+  const resolver = safeText(preview.resolver, 120);
+  if (profile) out.profile = profile;
+  if (modelId) out.model_id = modelId;
+  if (filename) out.filename = filename;
+  if (relativePath) out.relative_path = relativePath;
+  if (rootId) out.root_id = rootId;
+  if (resolver) out.resolver = resolver;
+  out.runnable_command = preview.runnable_command === true;
+  return Object.keys(out).length ? out : null;
+}
+
+export function librarySelectionStale(library, selected) {
+  if (!selected?.id || !library || typeof library !== "object") return false;
+  return !libraryModels(library).some((model) => model.id === selected.id);
+}

@@ -10,12 +10,43 @@
 - **Trunk includes:** `af0ec0e` (Ask Slice 1 design), `2634f63` (Ask Slice 2 context
   inventory), `a29a405` (Ask Slice 3 context preparation), and the inserted Ask
   workspace shell, on top of the validated LMM group and prior feature groups.
-- **Active work branch:** `lmm-phase2d-model-library-ui` — Local Model Manager
-  Phase 2D frontend model-library picker. **NEXT = Phase 2E design choice: selected
-  model handoff to Provider Settings / command helper with no process control, or
-  explicit start/stop design review if the operator chooses that direction.**
+- **Active work branch:** `lmm-phase2e-selected-model-handoff` — Local Model
+  Manager Phase 2E selected library model handoff. **NEXT = Phase 2F start/stop
+  design review, or one more non-process-control slice for confirmed selected
+  model to Provider Settings handoff if desired.**
 
 ## What just landed
+- **Local Model Manager Phase 2E — selected library model handoff** (branch
+  `lmm-phase2e-selected-model-handoff`). Backend/frontend/docs/tests slice. Added
+  app-side persistence for a chosen discovered GGUF model without starting
+  anything. New backend endpoints:
+  `GET /api/local-model/library/selection`,
+  `POST /api/local-model/library/selection`, and
+  `DELETE /api/local-model/library/selection`. Storage is
+  `config/local_model_library_selection.json` with schema
+  `{version: 1, selected: null | safe_model}`; only safe selected-model metadata is
+  stored: `id`, `display_name`, `filename`, root-relative `relative_path`,
+  `root_id`, `size_bytes`, `modified_at`, `family_hint`, `quant_hint`,
+  `server_compatible`, and `selected_at`. Writes are atomic temp-file +
+  `os.replace`. POST prefers validating `model_id` against the cached companion
+  library when available and otherwise accepts a sanitized safe snapshot. Absolute
+  `relative_path` values are dropped; unknown fields are dropped; path/token/auth/
+  full-URL-like strings are redacted. `GET /api/local-model/command-profile` now
+  also includes `selected_library_model` and a non-runnable
+  `future_launch_preview` (`model_id`, filename, root-relative path, root id,
+  `gpu_default` profile placeholder, companion-model-id resolver). The Local
+  Models panel fetches saved selection on load, lets a clicked model be persisted
+  via **Remember selected model**, shows the saved **Chosen library model**, marks
+  saved selections stale when absent from the current library, shows **Clear
+  selection**, and keeps the existing manual command helper available. No Provider
+  Settings write, Ask change, Docker change, local provider base URL/model change,
+  browser storage, raw companion token/socket/Authorization exposure, absolute
+  host path exposure, start/stop/restart route/UI, subprocess/shell execution, or
+  `llama-server` process launch was added. Validation passed: new backend
+  selection 14/14, companion bridge 14/14 (FastAPI route inspection skipped in host
+  Python), companion scan 21/21, local-model status 17/17, command profile 13/13,
+  compileall, frontend local-model library/status/command checks, and frontend
+  build with the existing Vite large-chunk warning only.
 - **Local Model Manager Phase 2D — Local Models UI model-library picker** (branch
   `lmm-phase2d-model-library-ui`). Frontend/client/tests/docs only. Added a compact
   **Model Library** section inside the existing Local Models panel. New frontend

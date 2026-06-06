@@ -1,7 +1,7 @@
 # LOCAL_MODEL_MANAGER_PHASE2_DESIGN.md - Host companion and approved GGUF library
 
-> **Status: Phase 2C read-only backend bridge implemented; socket-mount
-> validation harness added.** Phase 2A established the host-companion boundary.
+> **Status: Phase 2E selected library model handoff implemented.** Phase 2A
+> established the host-companion boundary.
 > Phase 2B adds a Linux-first, stdlib-only host companion prototype under
 > `tools/local_model_companion/` for approved-folder GGUF scanning and a
 > Unix-domain-socket API contract. Phase 2C adds a backend-only, read-only bridge
@@ -9,9 +9,12 @@
 > companion scan. The validation-only harness
 > `test_scripts/validate_lmm_companion_socket_mount.py` passed live validation and
 > proves the Docker app container can reach the host companion through a mounted
-> Unix socket using a temporary Compose override. There is still no frontend UI,
-> production Docker Compose mount, Provider Settings write, Ask change, dependency
-> addition, model execution, or `llama-server` start/stop/restart behavior.
+> Unix socket using a temporary Compose override. Phase 2D adds the frontend
+> model-library picker. Phase 2E persists the selected discovered GGUF model as
+> app-side safe metadata only and feeds a non-runnable future-launch preview.
+> There is still no production Docker Compose mount, Provider Settings write, Ask
+> change, dependency addition, local provider base-URL/model behavior change,
+> model execution, or `llama-server` start/stop/restart behavior.
 
 ---
 
@@ -445,9 +448,10 @@ POST /api/local-model/server/stop
 POST /api/local-model/server/restart
 ```
 
-Phase 2C implemented only the first three read-only/library endpoints. The
-start/stop/restart endpoints above remain future Phase 2E design targets and are
-not registered in FastAPI by Phase 2C.
+Phase 2C implemented the first three read-only/library endpoints. Phase 2E adds
+selection metadata endpoints under `/library/selection`. The start/stop/restart
+endpoints above remain future Phase 2F+ design targets and are not registered in
+FastAPI by Phase 2E.
 
 Backend rules:
 
@@ -543,10 +547,12 @@ safe response fields.
   start/stop.
 - **Phase 2D:** DONE. Local Models UI model library picker; frontend-only
   selection, no Provider Settings write, no Ask change, no process control.
-- **Phase 2E:** either selected-model handoff to Provider Settings / command
-  helper while still avoiding process control, or an explicit start/stop design
-  review if the operator chooses to move toward process lifecycle management.
-- **Phase 2F:** validation/security pass.
+- **Phase 2E:** DONE. Selected discovered GGUF model persists as app-side safe
+  metadata and feeds a non-runnable future-launch preview; no Provider Settings
+  write, no Ask change, no process control.
+- **Phase 2F:** start/stop design review, or selected model to confirmed Provider
+  Settings handoff if one more non-process-control slice is desired.
+- **Phase 2G:** validation/security pass after the next behavior slice.
 - **Later:** packaging/signing and cross-platform installers.
 
 Each slice must preserve the boundary: Docker backend talks to the companion; the
@@ -773,7 +779,97 @@ Focused validation:
 - Existing frontend checks (`test:local-model-status`,
   `test:local-model-command`) and backend local-model suites remain green.
 
-Next recommended slice is Phase 2E selected-model handoff to Provider Settings /
-command helper, still with no process control. If the operator explicitly wants to
-move toward process lifecycle management, do a Phase 2E start/stop design review
-before implementation.
+## 17. Phase 2E Selected Library Model Handoff
+
+Files:
+
+- `pipeline/local_model_library_selection.py`
+- `api/server.py`
+- `pipeline/provider_config.py`
+- `test_scripts/test_local_model_library_selection.py`
+- `frontend/src/api/client.js`
+- `frontend/src/localModelLibrary.js`
+- `frontend/src/components/LocalModelsPanel.jsx`
+- `frontend/scripts/verify-local-model-library.mjs`
+
+Backend endpoints:
+
+```text
+GET    /api/local-model/library/selection
+POST   /api/local-model/library/selection
+DELETE /api/local-model/library/selection
+```
+
+Storage:
+
+- Durable app-side JSON file: `config/local_model_library_selection.json`.
+- Schema: `{ "version": 1, "selected": null | safe_selected_model }`.
+- Writes use atomic temp-file plus `os.replace`.
+- This is not a job artifact, export, history file, cache, Provider Settings file,
+  or browser storage.
+
+Stored selected-model fields:
+
+- `id`
+- `display_name`
+- `filename`
+- `relative_path` (root-relative only; absolute values dropped)
+- `root_id`
+- `size_bytes`
+- `modified_at`
+- `family_hint`
+- `quant_hint`
+- `server_compatible`
+- `selected_at`
+
+Implemented behavior:
+
+- `GET /selection` returns the current safe selected model or `selected: null`,
+  plus a non-runnable `future_launch_preview`.
+- `POST /selection` accepts `model_id` plus an optional safe model snapshot. When
+  the cached companion library has models, the backend validates the id against
+  that cached list and stores the sanitized library record. If no cached list is
+  available, it stores only the sanitized snapshot.
+- `DELETE /selection` clears only this app-side selection file.
+- `GET /api/local-model/command-profile` includes `selected_library_model` and a
+  non-runnable `future_launch_preview` with model id, filename, root-relative
+  path, root id, `gpu_default` profile placeholder, and companion-model-id
+  resolver.
+- The Local Models panel fetches saved selection on load, lets the user click a
+  model, persists only after **Remember selected model**, shows the saved **Chosen
+  library model**, marks it stale when absent from the current library, and offers
+  **Clear selection**.
+- The preview deliberately does not generate a runnable command with a host
+  absolute model path. Future companion launch will resolve the selected model id.
+- Existing Phase 1 manual command helper remains available.
+
+Non-goals preserved in Phase 2E:
+
+- No Provider Settings write.
+- No Ask change.
+- No local provider base URL/default model/runtime behavior change.
+- No Docker Compose change.
+- No host-gateway TCP, Docker socket, privileged container, or host PID namespace.
+- No `llama-server` launch.
+- No subprocess, shell execution, or process control.
+- No start/stop/restart route or UI control.
+- No browser localStorage/sessionStorage.
+- No raw companion token, socket path, Authorization header, full URL, or absolute
+  host model path exposure.
+
+Focused validation:
+
+- `python test_scripts/test_local_model_library_selection.py` passed 14/14,
+  covering empty/save/load/clear, absolute `relative_path` drop, unsafe field
+  dropping, token/socket/auth/full-URL/path-like redaction, no Provider Settings
+  change, no job artifact touch, no start/stop/restart endpoints, no
+  subprocess/shell source, and command-helper preview metadata.
+- `npm --prefix frontend run test:local-model-library` covers selection
+  GET/POST/DELETE helpers, selected UI state, persisted display, stale display,
+  clear flow, no Provider Settings calls, no browser storage, no raw HTML, no
+  process-control routes/labels, and no companion connection secret strings in
+  the new UI slice.
+
+Next recommended slice is Phase 2F start/stop design review. If the operator
+wants one more non-process-control step first, do Phase 2F selected model to
+confirmed Provider Settings handoff.

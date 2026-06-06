@@ -1079,6 +1079,9 @@ def get_local_model_command_profiles() -> dict[str, Any]:
     in_docker = Path("/.dockerenv").exists()
     host = _base_url_host(_effective_base_url("local"))
     profiles = [_render_command_profile(p) for p in _LOCAL_COMMAND_PROFILES]
+    from pipeline.local_model_library_selection import get_library_model_selection
+
+    selection = get_library_model_selection()
     notes = [
         "These are suggestions you run yourself in a terminal — the app does not "
         "start, stop, or run llama-server.",
@@ -1098,5 +1101,7 @@ def get_local_model_command_profiles() -> dict[str, Any]:
         "base_url_host": host,
         "profile": profiles[0],
         "profiles": profiles,
+        "selected_library_model": selection.get("selected"),
+        "future_launch_preview": selection.get("future_launch_preview"),
         "notes": notes,
     }

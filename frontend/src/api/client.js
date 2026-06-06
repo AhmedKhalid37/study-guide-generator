@@ -186,6 +186,22 @@ export function scanLocalModelLibrary() {
   return requestJson("/api/local-model/library/scan", { method: "POST" });
 }
 
+export function getLocalModelLibrarySelection() {
+  return requestJson("/api/local-model/library/selection");
+}
+
+export function saveLocalModelLibrarySelection(selection) {
+  return requestJson("/api/local-model/library/selection", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(selection ?? {})
+  });
+}
+
+export function clearLocalModelLibrarySelection() {
+  return requestJson("/api/local-model/library/selection", { method: "DELETE" });
+}
+
 // ── Ask Your Guide ──────────────────────────────────────────────────────────
 // These endpoints expose eligible guide metadata, context inventory/preparation
 // counts, and local-only chat sessions. Responses are server-redacted and the UI

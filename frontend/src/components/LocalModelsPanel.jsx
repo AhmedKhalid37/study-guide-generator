@@ -13,11 +13,14 @@ import {
 } from "lucide-react";
 import {
   checkLocalModelStatus,
+  clearLocalModelLibrarySelection,
   getLocalModelCompanionStatus,
   getLocalModelCommandProfile,
   getLocalModelLibrary,
+  getLocalModelLibrarySelection,
   getLocalModelStatus,
   scanLocalModelLibrary,
+  saveLocalModelLibrarySelection,
 } from "../api/client";
 import {
   STATE_ERROR,
@@ -59,7 +62,10 @@ import {
   libraryModelCount,
   libraryModels,
   libraryRootsConfigured,
+  librarySelectionPreview,
+  librarySelectionStale,
   libraryWarnings,
+  normalizeLibrarySelection,
   selectedLibraryModel,
 } from "../localModelLibrary";
 
@@ -126,6 +132,11 @@ export default function LocalModelsPanel({ onEditLocalProvider }) {
   const [scanningLibrary, setScanningLibrary] = useState(false);
   const [scanMessage, setScanMessage] = useState(null);
   const [selectedLibraryModelId, setSelectedLibraryModelId] = useState(null);
+  const [librarySelectionData, setLibrarySelectionData] = useState(null);
+  const [librarySelectionLoading, setLibrarySelectionLoading] = useState(true);
+  const [librarySelectionSaving, setLibrarySelectionSaving] = useState(false);
+  const [librarySelectionRequestError, setLibrarySelectionRequestError] = useState(null);
+  const [librarySelectionMessage, setLibrarySelectionMessage] = useState(null);
 
   const fetchStatus = useCallback((probe) => {
     const call = probe ? checkLocalModelStatus : getLocalModelStatus;
@@ -194,6 +205,28 @@ export default function LocalModelsPanel({ onEditLocalProvider }) {
     fetchLibrary(false);
   }, [fetchCompanionStatus, fetchLibrary]);
 
+  const fetchLibrarySelection = useCallback(() => {
+    setLibrarySelectionLoading(true);
+    setLibrarySelectionRequestError(null);
+    return getLocalModelLibrarySelection()
+      .then((data) => {
+        const selected = normalizeLibrarySelection(data);
+        setLibrarySelectionData(data);
+        if (selected?.id) setSelectedLibraryModelId(selected.id);
+      })
+      .catch((err) => {
+        setLibrarySelectionData(null);
+        setLibrarySelectionRequestError(
+          err?.message || "Saved library selection is unavailable on this backend version."
+        );
+      })
+      .finally(() => setLibrarySelectionLoading(false));
+  }, []);
+
+  useEffect(() => {
+    fetchLibrarySelection();
+  }, [fetchLibrarySelection]);
+
   // Load the static command-helper profiles once. A failure (e.g. an older backend
   // without the endpoint) simply leaves commandData null → the helper hides; it is
   // never an error the user has to act on.
@@ -249,12 +282,9 @@ export default function LocalModelsPanel({ onEditLocalProvider }) {
   const libraryCount = libraryModelCount(libraryData);
   const libraryRoots = libraryRootsConfigured(libraryData);
   const warnings = libraryWarnings(libraryData);
-
-  useEffect(() => {
-    if (selectedLibraryModelId && libraryData && !librarySelectedModel) {
-      setSelectedLibraryModelId(null);
-    }
-  }, [libraryData, librarySelectedModel, selectedLibraryModelId]);
+  const savedLibrarySelection = normalizeLibrarySelection(librarySelectionData);
+  const selectionPreview = librarySelectionPreview(librarySelectionData);
+  const selectionStale = librarySelectionStale(libraryData, savedLibrarySelection);
 
   const onCopyCommand = useCallback(async () => {
     if (!activeProfile?.command) return;
@@ -278,6 +308,41 @@ export default function LocalModelsPanel({ onEditLocalProvider }) {
       fetchCompanionStatus();
     });
   }, [fetchCompanionStatus, fetchLibrary]);
+
+  const onRememberLibrarySelection = useCallback(() => {
+    if (!librarySelectedModel) return;
+    setLibrarySelectionSaving(true);
+    setLibrarySelectionRequestError(null);
+    setLibrarySelectionMessage(null);
+    saveLocalModelLibrarySelection({
+      model_id: librarySelectedModel.id,
+      model: librarySelectedModel,
+    })
+      .then((data) => {
+        setLibrarySelectionData(data);
+        setLibrarySelectionMessage("Selected library model remembered.");
+      })
+      .catch((err) => {
+        setLibrarySelectionRequestError(err?.message || "Could not remember selected model.");
+      })
+      .finally(() => setLibrarySelectionSaving(false));
+  }, [librarySelectedModel]);
+
+  const onClearLibrarySelection = useCallback(() => {
+    setLibrarySelectionSaving(true);
+    setLibrarySelectionRequestError(null);
+    setLibrarySelectionMessage(null);
+    clearLocalModelLibrarySelection()
+      .then((data) => {
+        setLibrarySelectionData(data);
+        setSelectedLibraryModelId(null);
+        setLibrarySelectionMessage("Selected library model cleared.");
+      })
+      .catch((err) => {
+        setLibrarySelectionRequestError(err?.message || "Could not clear selected model.");
+      })
+      .finally(() => setLibrarySelectionSaving(false));
+  }, []);
 
   return (
     <div className="mt-8 max-w-[860px]">
@@ -411,8 +476,20 @@ export default function LocalModelsPanel({ onEditLocalProvider }) {
               scanMessage={scanMessage}
               selectedModelId={selectedLibraryModelId}
               selectedModel={librarySelectedModel}
+              savedSelection={savedLibrarySelection}
+              selectionPreview={selectionPreview}
+              selectionStale={selectionStale}
+              selectionLoading={librarySelectionLoading}
+              selectionSaving={librarySelectionSaving}
+              selectionRequestError={librarySelectionRequestError}
+              selectionMessage={librarySelectionMessage}
               onScan={onScanLibrary}
-              onSelectModel={setSelectedLibraryModelId}
+              onSelectModel={(id) => {
+                setSelectedLibraryModelId(id);
+                setLibrarySelectionMessage(null);
+              }}
+              onRememberSelection={onRememberLibrarySelection}
+              onClearSelection={onClearLibrarySelection}
             />
 
             {/* Command helper (LMM Slice 4): copyable, manual-only start command */}
@@ -486,8 +563,17 @@ function ModelLibrarySection({
   scanMessage,
   selectedModelId,
   selectedModel,
+  savedSelection,
+  selectionPreview,
+  selectionStale,
+  selectionLoading,
+  selectionSaving,
+  selectionRequestError,
+  selectionMessage,
   onScan,
   onSelectModel,
+  onRememberSelection,
+  onClearSelection,
 }) {
   const badgeTone = companionBadgeMeta.tone || "neutral";
   const statusCopy = companionStatusCopy(
@@ -499,6 +585,8 @@ function ModelLibrarySection({
   const lastScan = libraryData?.last_scan_at
     ? formatModelModifiedAt(libraryData.last_scan_at)
     : "Never";
+  const chosenName = savedSelection?.display_name || savedSelection?.filename || "—";
+  const hasPendingChoice = !!selectedModel && selectedModel.id !== savedSelection?.id;
 
   return (
     <section className="mt-4 rounded-lg border border-white/10 bg-white/[0.02] p-3">
@@ -511,7 +599,7 @@ function ModelLibrarySection({
             </span>
           </div>
           <p className="mt-1 text-[11.5px] leading-5 text-[#9098A8]">
-            Approved GGUF folder discovery. Selection is visual only in this view.
+            Approved GGUF folder discovery with app-side selected-model metadata.
           </p>
         </div>
         <span
@@ -536,17 +624,27 @@ function ModelLibrarySection({
         <Metric label="Approved roots" value={String(libraryRoots)} />
         <Metric label="Cached models" value={String(libraryCount)} />
         <Metric label="Last scan" value={lastScan} />
-        <Metric label="Selected here" value={selectedModel?.display_name || "—"} />
+        <Metric label="Chosen library model" value={selectionLoading ? "Loading…" : chosenName} />
       </div>
 
       <p className="mt-3 text-[11.5px] leading-5 text-[#9098A8]">{statusCopy}</p>
-      {libraryRequestError && (
+      {(libraryRequestError || selectionRequestError) && (
         <p className="mt-2 break-words text-[11.5px] leading-5 text-[#FCD34D]">
-          {libraryRequestError}
+          {libraryRequestError || selectionRequestError}
         </p>
       )}
-      {scanMessage && (
-        <p className="mt-2 text-[11px] leading-4 text-[#6B7185]">{scanMessage}</p>
+      {(scanMessage || selectionMessage) && (
+        <p className="mt-2 text-[11px] leading-4 text-[#6B7185]">{scanMessage || selectionMessage}</p>
+      )}
+
+      {savedSelection && (
+        <ChosenLibraryModel
+          model={savedSelection}
+          preview={selectionPreview}
+          stale={selectionStale}
+          saving={selectionSaving}
+          onClear={onClearSelection}
+        />
       )}
 
       {warnings.length > 0 && (
@@ -585,6 +683,7 @@ function ModelLibrarySection({
                 key={model.id}
                 model={model}
                 selected={model.id === selectedModelId}
+                persisted={model.id === savedSelection?.id}
                 onSelect={() => onSelectModel(model.id)}
               />
             ))}
@@ -593,10 +692,23 @@ function ModelLibrarySection({
       </div>
 
       {selectedModel && (
-        <p className="mt-3 text-[11px] leading-4 text-[#6B7185]">
-          Selected model stays in this panel only. Provider Settings, Ask, and the
-          local provider default are unchanged.
-        </p>
+        <div className="mt-3 flex flex-wrap items-center gap-2 border-t border-white/5 pt-3">
+          <button
+            type="button"
+            className="sg-ghost-button"
+            onClick={onRememberSelection}
+            disabled={selectionSaving || !hasPendingChoice}
+            title="Persist this selected library model as app-side metadata"
+          >
+            {selectionSaving ? <Loader2 size={14} className="animate-spin" /> : <Check size={14} />}
+            <span className="ml-1.5">
+              {hasPendingChoice ? "Remember selected model" : "Selected model remembered"}
+            </span>
+          </button>
+          <p className="min-w-[220px] flex-1 text-[11px] leading-4 text-[#6B7185]">
+            Provider Settings, Ask, and the local provider default are unchanged.
+          </p>
+        </div>
       )}
     </section>
   );
@@ -645,7 +757,79 @@ function EmptyLibraryState({ state, roots, requestError }) {
   );
 }
 
-function LibraryModelButton({ model, selected, onSelect }) {
+function ChosenLibraryModel({ model, preview, stale, saving, onClear }) {
+  const name = model.display_name || model.filename || model.relative_path || model.id;
+  return (
+    <div className="mt-3 rounded-lg border border-[#86EFAC]/20 bg-[#86EFAC]/[0.04] p-3">
+      <div className="flex flex-wrap items-start gap-2">
+        <div className="min-w-0 flex-1">
+          <div className="flex flex-wrap items-center gap-1.5">
+            <strong className="break-words text-[12.5px] text-[#E8EAF0]">{name}</strong>
+            <span className="rounded-full border border-[#86EFAC]/30 bg-[#86EFAC]/10 px-2 py-0.5 text-[10px] uppercase tracking-wide text-[#86EFAC]">
+              Chosen library model
+            </span>
+            {stale && (
+              <span className="rounded-full border border-[#FCD34D]/30 bg-[#FCD34D]/10 px-2 py-0.5 text-[10px] uppercase tracking-wide text-[#FCD34D]">
+                Saved but not in current library
+              </span>
+            )}
+          </div>
+          <dl className="mt-2 grid gap-x-3 gap-y-1 text-[11px] leading-4 text-[#9098A8] sm:grid-cols-2">
+            <SafeDetail label="File" value={model.filename || "—"} />
+            <SafeDetail label="Path" value={model.relative_path || "—"} />
+            <SafeDetail label="Root" value={model.root_id || "—"} />
+            <SafeDetail label="Size" value={formatModelSize(model.size_bytes)} />
+            <SafeDetail label="Modified" value={formatModelModifiedAt(model.modified_at)} />
+            <SafeDetail label="Selected" value={formatModelModifiedAt(model.selected_at)} />
+          </dl>
+          {stale && (
+            <p className="mt-2 text-[11px] leading-4 text-[#FCD34D]">
+              Scan approved folder(s) again if this model moved or was removed.
+            </p>
+          )}
+        </div>
+        <button
+          type="button"
+          className="sg-ghost-button shrink-0"
+          onClick={onClear}
+          disabled={saving}
+          title="Clear the saved library model selection"
+        >
+          {saving ? <Loader2 size={14} className="animate-spin" /> : <CircleSlash size={14} />}
+          <span className="ml-1.5">Clear selection</span>
+        </button>
+      </div>
+      {preview && <FutureLaunchPreview preview={preview} />}
+      <p className="mt-2 text-[11px] leading-4 text-[#6B7185]">
+        This does not start the server yet. start/stop is a future companion slice.
+        Provider Settings were not changed.
+      </p>
+    </div>
+  );
+}
+
+function FutureLaunchPreview({ preview }) {
+  return (
+    <div className="mt-3 rounded-lg border border-white/10 bg-black/20 p-2.5">
+      <span className="mb-1.5 block text-[10.5px] font-medium uppercase tracking-wide text-[#9098A8]">
+        Future launch preview
+      </span>
+      <dl className="grid gap-x-3 gap-y-1 text-[11px] leading-4 text-[#9098A8] sm:grid-cols-2">
+        <SafeDetail label="Model id" value={preview.model_id || "—"} />
+        <SafeDetail label="File" value={preview.filename || "—"} />
+        <SafeDetail label="Path" value={preview.relative_path || "companion resolves id"} />
+        <SafeDetail label="Root" value={preview.root_id || "—"} />
+        <SafeDetail label="Profile" value={preview.profile || "gpu_default"} />
+        <SafeDetail label="Resolver" value={preview.resolver || "companion_model_id"} />
+      </dl>
+      <p className="mt-2 text-[11px] leading-4 text-[#6B7185]">
+        No runnable command is generated here; the companion will resolve the model id in a later launch slice.
+      </p>
+    </div>
+  );
+}
+
+function LibraryModelButton({ model, selected, persisted, onSelect }) {
   const name = model.display_name || model.filename || model.relative_path || model.id;
   const chips = [
     model.family_hint,
@@ -680,6 +864,11 @@ function LibraryModelButton({ model, selected, onSelect }) {
             {selected && (
               <span className="rounded-full border border-[#86EFAC]/30 bg-[#86EFAC]/10 px-2 py-0.5 text-[10px] uppercase tracking-wide text-[#86EFAC]">
                 Selected here
+              </span>
+            )}
+            {persisted && (
+              <span className="rounded-full border border-[#C4B5FD]/30 bg-[#7C3AED]/15 px-2 py-0.5 text-[10px] uppercase tracking-wide text-[#C4B5FD]">
+                Remembered
               </span>
             )}
           </div>

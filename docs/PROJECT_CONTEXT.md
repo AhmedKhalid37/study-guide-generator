@@ -116,7 +116,8 @@ flashcards with CSV / Anki / Quizlet export.
   `docs/LOCAL_MODEL_MANAGER_PHASE2_DESIGN.md`; Phase 2B adds the scanning-only host
   companion prototype under `tools/local_model_companion/`; Phase 2C adds the
   read-only Docker backend bridge; Phase 2D adds the frontend model-library picker
-  in the existing Local Models panel. Future in-app model selection/start/stop must go
+  in the existing Local Models panel; Phase 2E persists a selected discovered GGUF
+  model as app-side metadata only. Future in-app model start/stop must go
   through React UI → Docker FastAPI backend → Unix-socket-first,
   token-authenticated host companion. For the current Linux Docker deployment,
   companion control assumes a Unix domain socket mounted into the backend
@@ -150,14 +151,24 @@ flashcards with CSV / Anki / Quizlet export.
   with committed Compose only. Phase 2D adds frontend API helpers for companion
   status/library/scan and a read-only **Model Library** section that shows
   unconfigured/offline/auth/reachable/no-roots/no-models/warning states, displays
-  only safe GGUF metadata, and allows visual-only model selection in React state.
+  only safe GGUF metadata, and initially allowed visual-only model selection in
+  React state.
+  Phase 2E adds `GET/POST/DELETE /api/local-model/library/selection`, persisted in
+  `config/local_model_library_selection.json` via atomic writes, and stores only
+  whitelisted safe fields (`id`, `display_name`, `filename`, root-relative
+  `relative_path`, `root_id`, `size_bytes`, `modified_at`, `family_hint`,
+  `quant_hint`, `server_compatible`, `selected_at`). The Local Models panel now
+  shows the saved chosen library model, stale saved selections, a clear-selection
+  flow, and a non-runnable future-launch preview that carries model id/filename/
+  root-relative path/root id plus a `gpu_default` profile placeholder. The
+  command-profile response also carries this selected-model metadata/preview.
   There is still no permanent Docker Compose mount, Provider Settings write, Ask
-  change, dependency addition, model execution, `llama-server` launch, process
-  control, subprocess use in the bridge, start/stop/restart API, browser storage,
-  token/socket exposure, or absolute host path rendering. Next recommended slice
-  is Phase 2E selected-model handoff to Provider Settings / command helper with no
-  process control, unless the operator explicitly chooses a start/stop design
-  review first.
+  change, dependency addition, local provider base-URL/model behavior change,
+  model execution, `llama-server` launch, process control, subprocess/shell use in
+  the app path, start/stop/restart API, browser storage, token/socket exposure, or
+  absolute host path rendering. Next recommended slice is Phase 2F start/stop
+  design review, or Phase 2F selected model to confirmed Provider Settings handoff
+  if one more non-process-control slice is desired.
 - **Ask Your Guide — IN PROGRESS (Slice 1 design DONE; Slice 2 backend context
   inventory DONE; Slice 3 backend context preparation / chunking DONE; inserted
   workspace shell DONE; backend local chat API DONE; frontend chat UI wiring DONE;

@@ -22,8 +22,11 @@ import {
   libraryModelCount,
   libraryModels,
   libraryRootsConfigured,
+  librarySelectionPreview,
+  librarySelectionStale,
   libraryWarnings,
   normalizeLibraryModel,
+  normalizeLibrarySelection,
   selectedLibraryModel,
 } from "../src/localModelLibrary.js";
 
@@ -141,8 +144,12 @@ check("libraryModelCount falls back", libraryModelCount({ models: [model] }) ===
 check("libraryRootsConfigured reads count", libraryRootsConfigured(library) === 1);
 check("warnings keep safe relative path", libraryWarnings(library)[0].relative_path === "safe/model.gguf");
 check("warnings drop unsafe relative path", libraryWarnings(library)[1].relative_path === undefined);
-check("selected model is frontend-state lookup only", selectedLibraryModel(library, "gguf_1")?.display_name === "Gemma 4 Q4");
+check("selected model lookup uses current library", selectedLibraryModel(library, "gguf_1")?.display_name === "Gemma 4 Q4");
 check("unknown selected model -> null", selectedLibraryModel(library, "missing") === null);
+check("saved selection normalizes", normalizeLibrarySelection({ selected: { ...model, selected_at: "2026-06-06T00:00:00Z" } })?.id === "gguf_1");
+check("saved selection stale detects missing model", librarySelectionStale({ models: [] }, normalized) === true);
+check("saved selection stale detects current model", librarySelectionStale(library, normalized) === false);
+check("future preview drops unsafe path", librarySelectionPreview({ future_launch_preview: { model_id: "gguf_1", filename: "m.gguf", relative_path: "/tmp/m.gguf", profile: "gpu_default" } }).relative_path === undefined);
 check("size formatter", formatModelSize(5 * 1024 * 1024 * 1024) === "5 GB");
 check("modified formatter tolerates garbage", formatModelModifiedAt("not-a-date") === "not-a-date");
 
@@ -151,6 +158,9 @@ const clientSource = fs.readFileSync(path.join(root, "src/api/client.js"), "utf8
 check("companion status helper path", /function getLocalModelCompanionStatus\(\)[\s\S]*requestJson\("\/api\/local-model\/companion\/status"\)/.test(clientSource));
 check("library helper path", /function getLocalModelLibrary\(\)[\s\S]*requestJson\("\/api\/local-model\/library"\)/.test(clientSource));
 check("scan helper path and POST", /function scanLocalModelLibrary\(\)[\s\S]*requestJson\("\/api\/local-model\/library\/scan", \{ method: "POST" \}\)/.test(clientSource));
+check("selection GET helper path", /function getLocalModelLibrarySelection\(\)[\s\S]*requestJson\("\/api\/local-model\/library\/selection"\)/.test(clientSource));
+check("selection POST helper path and method", /function saveLocalModelLibrarySelection\(selection\)[\s\S]*requestJson\("\/api\/local-model\/library\/selection", \{[\s\S]*method: "POST"/.test(clientSource));
+check("selection DELETE helper path and method", /function clearLocalModelLibrarySelection\(\)[\s\S]*requestJson\("\/api\/local-model\/library\/selection", \{ method: "DELETE" \}\)/.test(clientSource));
 
 // UI source invariants for the Phase 2D additions.
 const panelSource = fs.readFileSync(path.join(root, "src/components/LocalModelsPanel.jsx"), "utf8");
@@ -162,11 +172,16 @@ const librarySection = panelSource.slice(
 check("Model Library section is present", librarySection.includes("Model Library"));
 check("scan button label is present", librarySection.includes("Scan approved folder(s)"));
 check("scan flow calls local scan helper", panelSource.includes("scanLocalModelLibrary") && panelSource.includes("fetchLibrary(true)"));
-check("selection uses React state only", panelSource.includes("selectedLibraryModelId") && !librarySection.includes("updateProviderSettings"));
+check("selected model UI state exists", panelSource.includes("selectedLibraryModelId") && panelSource.includes("setSelectedLibraryModelId"));
+check("persisted selected model display exists", librarySection.includes("Chosen library model") && librarySection.includes("Remember selected model"));
+check("stale selected model display exists", librarySection.includes("Saved but not in current library") && librarySection.includes("Scan approved folder(s) again"));
+check("clear selection flow exists", librarySection.includes("Clear selection") && panelSource.includes("clearLocalModelLibrarySelection"));
+check("selection save flow calls selection API", panelSource.includes("saveLocalModelLibrarySelection") && panelSource.includes("model_id: librarySelectedModel.id"));
+check("future launch preview exists", librarySection.includes("Future launch preview") && librarySection.includes("gpu_default"));
 check("no Provider Settings writes in panel", !/(updateProviderSettings|setDefaultProvider|clearProviderKey|testProviderSettings|fetchProviderModels)\s*\(/.test(panelSource));
 check("no browser storage in new library files", !/(localStorage|sessionStorage)/.test(librarySection + helperSource));
 check("no raw HTML rendering", !/(dangerouslySetInnerHTML)/.test(librarySection + helperSource));
-check("no token/connection secret strings in new UI slice", !/(Authorization|Bearer|LMM_COMPANION|socket_path|token)/.test(librarySection + helperSource));
+check("no connection secret strings in new UI slice", !/(Authorization|Bearer|LMM_COMPANION|socket_path|token)/.test(librarySection + helperSource));
 check("no process-control routes in frontend client", !/\/api\/local-model\/server\/(start|stop|restart)/.test(clientSource));
 check("new library UI has no process-control labels", !/\b(Start|Stop|Restart)\b/.test(librarySection));
 

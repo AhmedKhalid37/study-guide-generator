@@ -42,6 +42,12 @@ from pipeline.local_model_companion_client import (
     get_companion_status,
     scan_companion_library,
 )
+from pipeline.local_model_library_selection import (
+    LocalModelLibrarySelectionError,
+    clear_library_model_selection,
+    get_library_model_selection,
+    save_library_model_selection,
+)
 from pipeline.llm_client import LLMProviderError, MissingLLMConfigError, generate_chat_completion
 from pipeline.markdown_sections import (
     check_outline_compliance,
@@ -486,6 +492,32 @@ async def scan_local_model_library() -> dict[str, Any]:
     # Explicit companion scan trigger. The Docker backend delegates the scan to the
     # companion and returns a whitelisted, redacted model library.
     return await run_in_threadpool(scan_companion_library)
+
+
+@app.get("/api/local-model/library/selection")
+async def get_local_model_library_selection() -> dict[str, Any]:
+    # Phase 2E selected-library-model handoff. App-side metadata only: no provider
+    # settings write, no process control, no companion config exposure.
+    return await run_in_threadpool(get_library_model_selection)
+
+
+@app.post("/api/local-model/library/selection")
+async def set_local_model_library_selection(request: Request) -> dict[str, Any]:
+    try:
+        payload = await request.json()
+    except json.JSONDecodeError as exc:
+        raise HTTPException(status_code=400, detail="Selection payload must be valid JSON.") from exc
+    try:
+        return await run_in_threadpool(save_library_model_selection, payload)
+    except LocalModelLibrarySelectionError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@app.delete("/api/local-model/library/selection")
+async def delete_local_model_library_selection() -> dict[str, Any]:
+    # Clears only the Phase 2E app-side selection file. Provider Settings and the
+    # local provider runtime behavior are intentionally unchanged.
+    return await run_in_threadpool(clear_library_model_selection)
 
 
 @app.get("/api/styles")
