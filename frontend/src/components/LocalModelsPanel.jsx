@@ -13,8 +13,11 @@ import {
 } from "lucide-react";
 import {
   checkLocalModelStatus,
+  getLocalModelCompanionStatus,
   getLocalModelCommandProfile,
+  getLocalModelLibrary,
   getLocalModelStatus,
+  scanLocalModelLibrary,
 } from "../api/client";
 import {
   STATE_ERROR,
@@ -41,6 +44,24 @@ import {
   copyButtonLabel,
   profileById,
 } from "../localModelCommand";
+import {
+  COMPANION_AUTH_FAILED,
+  COMPANION_ERROR,
+  COMPANION_OFFLINE,
+  COMPANION_REACHABLE,
+  COMPANION_UNCONFIGURED,
+  companionBadge,
+  companionCapabilities,
+  companionErrorMessage,
+  companionState,
+  formatModelModifiedAt,
+  formatModelSize,
+  libraryModelCount,
+  libraryModels,
+  libraryRootsConfigured,
+  libraryWarnings,
+  selectedLibraryModel,
+} from "../localModelLibrary";
 
 // Read-only Local Models status panel (LMM Slice 3). Consumes the detection-only
 // Slice 2 endpoints (GET /api/local-model/status on open, POST
@@ -96,6 +117,15 @@ export default function LocalModelsPanel({ onEditLocalProvider }) {
   const [commandData, setCommandData] = useState(null);
   const [selectedProfileId, setSelectedProfileId] = useState(null);
   const [copyState, setCopyState] = useState(COPY_IDLE);
+  const [companionStatus, setCompanionStatus] = useState(null);
+  const [companionLoading, setCompanionLoading] = useState(true);
+  const [companionRequestError, setCompanionRequestError] = useState(null);
+  const [libraryData, setLibraryData] = useState(null);
+  const [libraryLoading, setLibraryLoading] = useState(true);
+  const [libraryRequestError, setLibraryRequestError] = useState(null);
+  const [scanningLibrary, setScanningLibrary] = useState(false);
+  const [scanMessage, setScanMessage] = useState(null);
+  const [selectedLibraryModelId, setSelectedLibraryModelId] = useState(null);
 
   const fetchStatus = useCallback((probe) => {
     const call = probe ? checkLocalModelStatus : getLocalModelStatus;
@@ -119,6 +149,50 @@ export default function LocalModelsPanel({ onEditLocalProvider }) {
   useEffect(() => {
     fetchStatus(false);
   }, [fetchStatus]);
+
+  const fetchCompanionStatus = useCallback(() => {
+    setCompanionLoading(true);
+    setCompanionRequestError(null);
+    return getLocalModelCompanionStatus()
+      .then((data) => setCompanionStatus(data))
+      .catch((err) => {
+        setCompanionStatus(null);
+        setCompanionRequestError(
+          err?.message || "Companion status is unavailable on this backend version."
+        );
+      })
+      .finally(() => setCompanionLoading(false));
+  }, []);
+
+  const fetchLibrary = useCallback((scan = false) => {
+    const call = scan ? scanLocalModelLibrary : getLocalModelLibrary;
+    if (scan) {
+      setScanningLibrary(true);
+      setScanMessage(null);
+    } else {
+      setLibraryLoading(true);
+    }
+    setLibraryRequestError(null);
+    return call()
+      .then((data) => {
+        setLibraryData(data);
+        if (scan) setScanMessage("Scan complete.");
+      })
+      .catch((err) => {
+        const message = err?.message || "Model library is unavailable on this backend version.";
+        setLibraryRequestError(message);
+        if (scan) setScanMessage("Scan failed.");
+      })
+      .finally(() => {
+        setLibraryLoading(false);
+        setScanningLibrary(false);
+      });
+  }, []);
+
+  useEffect(() => {
+    fetchCompanionStatus();
+    fetchLibrary(false);
+  }, [fetchCompanionStatus, fetchLibrary]);
 
   // Load the static command-helper profiles once. A failure (e.g. an older backend
   // without the endpoint) simply leaves commandData null → the helper hides; it is
@@ -166,6 +240,21 @@ export default function LocalModelsPanel({ onEditLocalProvider }) {
   const canCopy = commandAvailable(activeProfile);
   const helperNotes = commandNotes(commandData);
   const helperProminent = state === STATE_OFFLINE || state === STATE_NOT_CONFIGURED;
+  const companionStateKey = companionState(companionStatus, libraryData);
+  const companionBadgeMeta = companionBadge(companionStateKey);
+  const companionError = companionErrorMessage(companionStatus, libraryData);
+  const companionScanCapable = companionCapabilities(companionStatus).includes("scan");
+  const libraryModelList = libraryModels(libraryData);
+  const librarySelectedModel = selectedLibraryModel(libraryData, selectedLibraryModelId);
+  const libraryCount = libraryModelCount(libraryData);
+  const libraryRoots = libraryRootsConfigured(libraryData);
+  const warnings = libraryWarnings(libraryData);
+
+  useEffect(() => {
+    if (selectedLibraryModelId && libraryData && !librarySelectedModel) {
+      setSelectedLibraryModelId(null);
+    }
+  }, [libraryData, librarySelectedModel, selectedLibraryModelId]);
 
   const onCopyCommand = useCallback(async () => {
     if (!activeProfile?.command) return;
@@ -183,6 +272,12 @@ export default function LocalModelsPanel({ onEditLocalProvider }) {
     }
     setTimeout(() => setCopyState(COPY_IDLE), 2600);
   }, [activeProfile]);
+
+  const onScanLibrary = useCallback(() => {
+    fetchLibrary(true).finally(() => {
+      fetchCompanionStatus();
+    });
+  }, [fetchCompanionStatus, fetchLibrary]);
 
   return (
     <div className="mt-8 max-w-[860px]">
@@ -298,6 +393,28 @@ export default function LocalModelsPanel({ onEditLocalProvider }) {
               </ul>
             )}
 
+            <ModelLibrarySection
+              companionStateKey={companionStateKey}
+              companionBadgeMeta={companionBadgeMeta}
+              companionLoading={companionLoading}
+              companionRequestError={companionRequestError}
+              companionError={companionError}
+              companionScanCapable={companionScanCapable}
+              libraryData={libraryData}
+              libraryLoading={libraryLoading}
+              libraryRequestError={libraryRequestError}
+              libraryModels={libraryModelList}
+              libraryCount={libraryCount}
+              libraryRoots={libraryRoots}
+              warnings={warnings}
+              scanning={scanningLibrary}
+              scanMessage={scanMessage}
+              selectedModelId={selectedLibraryModelId}
+              selectedModel={librarySelectedModel}
+              onScan={onScanLibrary}
+              onSelectModel={setSelectedLibraryModelId}
+            />
+
             {/* Command helper (LMM Slice 4): copyable, manual-only start command */}
             {canCopy && (
               <CommandHelper
@@ -347,6 +464,256 @@ export default function LocalModelsPanel({ onEditLocalProvider }) {
           </>
         )}
       </div>
+    </div>
+  );
+}
+
+function ModelLibrarySection({
+  companionStateKey,
+  companionBadgeMeta,
+  companionLoading,
+  companionRequestError,
+  companionError,
+  companionScanCapable,
+  libraryData,
+  libraryLoading,
+  libraryRequestError,
+  libraryModels,
+  libraryCount,
+  libraryRoots,
+  warnings,
+  scanning,
+  scanMessage,
+  selectedModelId,
+  selectedModel,
+  onScan,
+  onSelectModel,
+}) {
+  const badgeTone = companionBadgeMeta.tone || "neutral";
+  const statusCopy = companionStatusCopy(
+    companionStateKey,
+    companionRequestError,
+    companionError,
+    companionScanCapable
+  );
+  const lastScan = libraryData?.last_scan_at
+    ? formatModelModifiedAt(libraryData.last_scan_at)
+    : "Never";
+
+  return (
+    <section className="mt-4 rounded-lg border border-white/10 bg-white/[0.02] p-3">
+      <div className="flex flex-wrap items-start gap-3">
+        <div className="min-w-0 flex-1">
+          <div className="flex flex-wrap items-center gap-2">
+            <strong className="text-[12.5px] text-[#E8EAF0]">Model Library</strong>
+            <span className="rounded-full border border-white/10 bg-white/[0.03] px-2 py-0.5 text-[10px] uppercase tracking-wide text-[#9098A8]">
+              Library discovery only
+            </span>
+          </div>
+          <p className="mt-1 text-[11.5px] leading-5 text-[#9098A8]">
+            Approved GGUF folder discovery. Selection is visual only in this view.
+          </p>
+        </div>
+        <span
+          className={`inline-flex h-[24px] shrink-0 items-center gap-1 whitespace-nowrap rounded-full px-2.5 text-[10.5px] ${PILL_TONE[badgeTone]}`}
+        >
+          {companionLoading ? <Loader2 size={11} className="animate-spin" /> : <CompanionStateIcon state={companionStateKey} />}
+          {companionLoading ? "Checking…" : companionBadgeMeta.label}
+        </span>
+        <button
+          type="button"
+          className="sg-ghost-button shrink-0"
+          onClick={onScan}
+          disabled={scanning}
+          title="Ask the companion to rescan approved folders"
+        >
+          {scanning ? <Loader2 size={14} className="animate-spin" /> : <RefreshCw size={14} />}
+          <span className="ml-1.5">{scanning ? "Scanning…" : "Scan approved folder(s)"}</span>
+        </button>
+      </div>
+
+      <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-4">
+        <Metric label="Approved roots" value={String(libraryRoots)} />
+        <Metric label="Cached models" value={String(libraryCount)} />
+        <Metric label="Last scan" value={lastScan} />
+        <Metric label="Selected here" value={selectedModel?.display_name || "—"} />
+      </div>
+
+      <p className="mt-3 text-[11.5px] leading-5 text-[#9098A8]">{statusCopy}</p>
+      {libraryRequestError && (
+        <p className="mt-2 break-words text-[11.5px] leading-5 text-[#FCD34D]">
+          {libraryRequestError}
+        </p>
+      )}
+      {scanMessage && (
+        <p className="mt-2 text-[11px] leading-4 text-[#6B7185]">{scanMessage}</p>
+      )}
+
+      {warnings.length > 0 && (
+        <div className="mt-3 rounded-lg border border-[#FCD34D]/20 bg-[#FCD34D]/[0.04] p-2.5">
+          <span className="mb-1 block text-[10.5px] font-medium uppercase tracking-wide text-[#FCD34D]">
+            Scan warnings
+          </span>
+          <ul className="space-y-1 text-[11px] leading-5 text-[#9098A8]">
+            {warnings.slice(0, 5).map((warning, i) => (
+              <li key={`${warning.code || "warning"}-${i}`} className="flex gap-1.5">
+                <AlertTriangle size={12} className="mt-1 shrink-0 text-[#FCD34D]" />
+                <span className="min-w-0 break-words">
+                  {warning.message || warning.code || "Companion warning"}
+                  {warning.root_id ? ` · root ${warning.root_id}` : ""}
+                  {warning.relative_path ? ` · ${warning.relative_path}` : ""}
+                  {warning.count ? ` · ${warning.count} more` : ""}
+                </span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+
+      <div className="mt-3">
+        {libraryLoading && !libraryData ? (
+          <div className="flex items-center gap-2 rounded-lg border border-white/10 bg-white/[0.03] p-3 text-[11.5px] text-[#9098A8]">
+            <Loader2 size={14} className="animate-spin" />
+            Loading cached library…
+          </div>
+        ) : libraryModels.length === 0 ? (
+          <EmptyLibraryState state={companionStateKey} roots={libraryRoots} requestError={libraryRequestError} />
+        ) : (
+          <div className="grid gap-2">
+            {libraryModels.map((model) => (
+              <LibraryModelButton
+                key={model.id}
+                model={model}
+                selected={model.id === selectedModelId}
+                onSelect={() => onSelectModel(model.id)}
+              />
+            ))}
+          </div>
+        )}
+      </div>
+
+      {selectedModel && (
+        <p className="mt-3 text-[11px] leading-4 text-[#6B7185]">
+          Selected model stays in this panel only. Provider Settings, Ask, and the
+          local provider default are unchanged.
+        </p>
+      )}
+    </section>
+  );
+}
+
+function CompanionStateIcon({ state }) {
+  if (state === COMPANION_REACHABLE) return <Check size={11} />;
+  if (state === COMPANION_UNCONFIGURED) return <CircleSlash size={11} />;
+  if (state === COMPANION_OFFLINE) return <WifiOff size={11} />;
+  if (state === COMPANION_AUTH_FAILED || state === COMPANION_ERROR) {
+    return <AlertTriangle size={11} />;
+  }
+  return <CircleSlash size={11} />;
+}
+
+function companionStatusCopy(state, requestError, errorMessage, scanCapable) {
+  if (requestError) return "Companion endpoints are unavailable; manual command helper remains usable below.";
+  if (state === COMPANION_REACHABLE) {
+    return scanCapable
+      ? "Companion is reachable and can scan approved folders."
+      : "Companion is reachable; scan capability was not reported.";
+  }
+  if (state === COMPANION_UNCONFIGURED) {
+    return "Companion is not configured on the backend. Configure it server-side to use approved-folder discovery.";
+  }
+  if (state === COMPANION_OFFLINE) {
+    return "Companion is configured but not reachable. Cached library data may be empty or stale.";
+  }
+  if (state === COMPANION_AUTH_FAILED) {
+    return "Companion authentication failed. Check the server-side companion configuration.";
+  }
+  return errorMessage || "Companion library state is unavailable.";
+}
+
+function EmptyLibraryState({ state, roots, requestError }) {
+  let copy = "No GGUF models discovered yet.";
+  if (requestError) copy = "Cached model library is unavailable on this backend.";
+  else if (state === COMPANION_UNCONFIGURED) copy = "No companion configured for approved-folder discovery.";
+  else if (state === COMPANION_OFFLINE) copy = "Companion is not reachable; no cached models are available.";
+  else if (state === COMPANION_AUTH_FAILED) copy = "Companion auth failed; no cached models are available.";
+  else if (roots === 0) copy = "No approved folders are configured on the companion.";
+  return (
+    <div className="rounded-lg border border-white/10 bg-white/[0.03] p-3 text-[11.5px] leading-5 text-[#9098A8]">
+      {copy}
+    </div>
+  );
+}
+
+function LibraryModelButton({ model, selected, onSelect }) {
+  const name = model.display_name || model.filename || model.relative_path || model.id;
+  const chips = [
+    model.family_hint,
+    model.quant_hint,
+    model.server_compatible === true ? "server compatible" : null,
+  ].filter(Boolean);
+  return (
+    <button
+      type="button"
+      onClick={onSelect}
+      aria-pressed={selected}
+      className={`w-full rounded-lg border p-3 text-left transition ${
+        selected
+          ? "border-[#86EFAC]/30 bg-[#86EFAC]/[0.07]"
+          : "border-white/10 bg-white/[0.025] hover:border-white/20 hover:bg-white/[0.04]"
+      }`}
+    >
+      <div className="flex items-start gap-3">
+        <span
+          className={`mt-0.5 grid h-5 w-5 shrink-0 place-items-center rounded-full border ${
+            selected
+              ? "border-[#86EFAC]/40 bg-[#86EFAC]/10 text-[#86EFAC]"
+              : "border-white/10 bg-white/[0.03] text-[#6B7185]"
+          }`}
+          aria-hidden="true"
+        >
+          {selected ? <Check size={12} /> : null}
+        </span>
+        <div className="min-w-0 flex-1">
+          <div className="flex flex-wrap items-center gap-1.5">
+            <strong className="break-words text-[12.5px] text-[#E8EAF0]">{name}</strong>
+            {selected && (
+              <span className="rounded-full border border-[#86EFAC]/30 bg-[#86EFAC]/10 px-2 py-0.5 text-[10px] uppercase tracking-wide text-[#86EFAC]">
+                Selected here
+              </span>
+            )}
+          </div>
+          <dl className="mt-2 grid gap-x-3 gap-y-1 text-[11px] leading-4 text-[#9098A8] sm:grid-cols-2">
+            <SafeDetail label="File" value={model.filename || "—"} />
+            <SafeDetail label="Path" value={model.relative_path || "—"} />
+            <SafeDetail label="Root" value={model.root_id || "—"} />
+            <SafeDetail label="Size" value={formatModelSize(model.size_bytes)} />
+            <SafeDetail label="Modified" value={formatModelModifiedAt(model.modified_at)} />
+            <SafeDetail label="Compatible" value={model.server_compatible === true ? "Yes" : "Unknown"} />
+          </dl>
+          {chips.length > 0 && (
+            <div className="mt-2 flex flex-wrap gap-1.5">
+              {chips.map((chip) => (
+                <span
+                  key={chip}
+                  className="rounded-full border border-white/10 bg-white/[0.04] px-2 py-0.5 text-[10.5px] text-[#D4D4D8]"
+                >
+                  {chip}
+                </span>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
+    </button>
+  );
+}
+
+function SafeDetail({ label, value }) {
+  return (
+    <div className="min-w-0">
+      <dt className="inline text-[#6B7185]">{label}: </dt>
+      <dd className="inline break-words text-[#D4D4D8]">{value}</dd>
     </div>
   );
 }

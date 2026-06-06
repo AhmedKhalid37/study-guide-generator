@@ -5,7 +5,52 @@
 
 ---
 
-## NEXT — LMM Phase 2C socket-mount validation harness ADDED; NEXT = Phase 2D UI picker.
+## NEXT — LMM Phase 2D UI model-library picker DONE; NEXT = Phase 2E design choice.
+
+- **Local Model Manager Phase 2D — Local Models UI model-library picker is DONE**
+  on branch `lmm-phase2d-model-library-ui`. Frontend/client/tests/docs only.
+  Added a compact **Model Library** section to the existing Local Models panel.
+  It fetches companion status from `GET /api/local-model/companion/status` and
+  cached library data from `GET /api/local-model/library`, and adds **Scan
+  approved folder(s)** wired to `POST /api/local-model/library/scan`.
+- **UI behavior:** the section shows safe companion states for unconfigured,
+  offline/unreachable, auth failed, reachable, endpoint unavailable, no approved
+  roots, no cached/discovered models, and scan warnings. Discovered GGUF models
+  render only safe fields: `display_name`, `filename`, `relative_path`, `root_id`,
+  formatted `size_bytes`, formatted `modified_at`, `family_hint`, `quant_hint`,
+  and `server_compatible`.
+- **Selection is frontend-only:** clicking a discovered model only updates React
+  component state for visual selection inside the panel. It does not persist to
+  browser storage, does not write Provider Settings, does not change the local
+  provider default model/base URL, does not affect Ask, and does not start a
+  model server.
+- **Safety scope preserved:** no backend endpoints were added, no Docker changes,
+  no Provider Settings writes, no Ask changes, no local provider base-URL behavior
+  change, no token/socket path/Authorization exposure, no absolute host path
+  rendering, no `dangerouslySetInnerHTML`, no localStorage/sessionStorage, no
+  dependency addition, no `llama-server` process control, and no
+  start/stop/restart UI/routes. Existing Phase 1 manual command helper remains
+  available when companion discovery is unavailable.
+- **Files changed:** `frontend/src/api/client.js`,
+  `frontend/src/localModelLibrary.js`,
+  `frontend/src/components/LocalModelsPanel.jsx`,
+  `frontend/scripts/verify-local-model-library.mjs`,
+  `frontend/package.json`, plus docs.
+- **Validation:** `npm --prefix frontend run test:local-model-library`,
+  `npm --prefix frontend run test:local-model-status`,
+  `npm --prefix frontend run test:local-model-command`,
+  `npm --prefix frontend run build` (existing Vite large-chunk warning only),
+  `python test_scripts/test_local_model_companion_bridge.py`,
+  `python test_scripts/test_local_model_companion_scan.py`,
+  `python test_scripts/test_local_model_status.py`,
+  `python test_scripts/test_local_model_command_profile.py`, and
+  `python -m compileall api pipeline tools` passed.
+- **Recommended next slice:** Phase 2E should be a design/implementation slice for
+  selected-model handoff to Provider Settings / command helper while still avoiding
+  process control, unless the operator explicitly chooses a start/stop design
+  review first.
+
+## Previous — LMM Phase 2C socket-mount validation harness ADDED.
 
 - **Local Model Manager Phase 2C socket-mount validation — PASSED** on
   branch `lmm-phase2c-socket-mount-validation`. Added

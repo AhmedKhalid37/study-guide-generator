@@ -541,8 +541,11 @@ safe response fields.
 - **Phase 2C:** DONE. Backend bridge read-only companion status, cached model
   library, and explicit companion scan; no UI, no Docker Compose mount, no
   start/stop.
-- **Phase 2D:** Local Models UI model library picker.
-- **Phase 2E:** start/stop selected model through companion.
+- **Phase 2D:** DONE. Local Models UI model library picker; frontend-only
+  selection, no Provider Settings write, no Ask change, no process control.
+- **Phase 2E:** either selected-model handoff to Provider Settings / command
+  helper while still avoiding process control, or an explicit start/stop design
+  review if the operator chooses to move toward process lifecycle management.
 - **Phase 2F:** validation/security pass.
 - **Later:** packaging/signing and cross-platform installers.
 
@@ -707,6 +710,70 @@ Focused validation:
   installed, matching the existing backend script style; source-level route checks
   still verify no start/stop/restart API was added.
 
-Next recommended slice is Phase 2D Local Models UI model-library picker, still with
-no start/stop/process control. A narrow Docker/socket-mount validation slice may be
-done first if runtime deployment confidence is preferred.
+## 16. Phase 2D Frontend Model-Library Picker
+
+Files:
+
+- `frontend/src/api/client.js`
+- `frontend/src/localModelLibrary.js`
+- `frontend/src/components/LocalModelsPanel.jsx`
+- `frontend/scripts/verify-local-model-library.mjs`
+- `frontend/package.json`
+
+Frontend API helpers:
+
+```text
+getLocalModelCompanionStatus() -> GET  /api/local-model/companion/status
+getLocalModelLibrary()         -> GET  /api/local-model/library
+scanLocalModelLibrary()        -> POST /api/local-model/library/scan
+```
+
+Implemented UI behavior:
+
+- Adds a compact **Model Library** section inside the existing Local Models panel.
+- Fetches companion status and cached library data on open.
+- Shows safe states for companion unconfigured, offline/unreachable, auth failed,
+  reachable, endpoint unavailable, no approved roots, no cached/discovered models,
+  and scan warnings.
+- The scan button is an explicit **Scan approved folder(s)** action that delegates
+  to the existing Phase 2C backend scan endpoint.
+- Renders discovered GGUF models using only safe fields:
+  `display_name`, `filename`, `relative_path`, `root_id`, formatted `size_bytes`,
+  formatted `modified_at`, `family_hint`, `quant_hint`, and
+  `server_compatible`.
+- Allows visual-only selection in React state. Selection is not persisted and is
+  not consumed by Ask or Provider Settings in this slice.
+- Keeps the existing Phase 1 manual command helper visible/usable when companion
+  discovery is unavailable.
+
+Non-goals preserved in Phase 2D:
+
+- No backend endpoint addition.
+- No Docker Compose change.
+- No Provider Settings write and no local-provider base URL/default-model behavior
+  change.
+- No Ask change.
+- No browser localStorage/sessionStorage.
+- No token, raw socket path, Authorization header, or absolute host path exposure.
+- No `dangerouslySetInnerHTML`.
+- No dependency addition.
+- No `llama-server` launch.
+- No process-control UI or route.
+- No `/api/local-model/server/start`, `/api/local-model/server/stop`, or
+  `/api/local-model/server/restart`.
+
+Focused validation:
+
+- `npm --prefix frontend run test:local-model-library` covers API helper
+  paths/methods, companion state normalization, model whitelist normalization,
+  safe rendering source checks, scan flow, frontend-only selection, no Provider
+  Settings writes, no browser storage, no raw HTML rendering, no token/socket/auth
+  strings in the new UI slice, and no process-control routes/labels in the new
+  section.
+- Existing frontend checks (`test:local-model-status`,
+  `test:local-model-command`) and backend local-model suites remain green.
+
+Next recommended slice is Phase 2E selected-model handoff to Provider Settings /
+command helper, still with no process control. If the operator explicitly wants to
+move toward process lifecycle management, do a Phase 2E start/stop design review
+before implementation.

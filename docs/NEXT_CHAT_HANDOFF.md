@@ -10,12 +10,34 @@
 - **Trunk includes:** `af0ec0e` (Ask Slice 1 design), `2634f63` (Ask Slice 2 context
   inventory), `a29a405` (Ask Slice 3 context preparation), and the inserted Ask
   workspace shell, on top of the validated LMM group and prior feature groups.
-- **Active work branch:** `lmm-phase2c-socket-mount-validation` — Local Model
-  Manager Phase 2C Docker/backend-to-host-companion Unix socket mount validation
-  harness. **NEXT = Phase 2D Local Models UI model-library picker, still no
-  start/stop/restart.**
+- **Active work branch:** `lmm-phase2d-model-library-ui` — Local Model Manager
+  Phase 2D frontend model-library picker. **NEXT = Phase 2E design choice: selected
+  model handoff to Provider Settings / command helper with no process control, or
+  explicit start/stop design review if the operator chooses that direction.**
 
 ## What just landed
+- **Local Model Manager Phase 2D — Local Models UI model-library picker** (branch
+  `lmm-phase2d-model-library-ui`). Frontend/client/tests/docs only. Added a compact
+  **Model Library** section inside the existing Local Models panel. New frontend
+  API helpers: `getLocalModelCompanionStatus()` →
+  `GET /api/local-model/companion/status`, `getLocalModelLibrary()` →
+  `GET /api/local-model/library`, and `scanLocalModelLibrary()` →
+  `POST /api/local-model/library/scan`. The panel fetches companion status and
+  cached library on open, shows safe states for unconfigured/offline/auth
+  failed/reachable/endpoint-unavailable/no-roots/no-models/warnings, and renders
+  discovered GGUF models using only whitelisted fields: `display_name`, `filename`,
+  `relative_path`, `root_id`, formatted `size_bytes`, formatted `modified_at`,
+  `family_hint`, `quant_hint`, and `server_compatible`. Clicking a model only sets
+  React UI state for visual selection; it does not write Provider Settings, change
+  the default local model/base URL, persist to browser storage, affect Ask, or run
+  any process. Existing Phase 1 manual command helper remains visible/usable when
+  companion discovery is unavailable. No backend endpoint, Docker change,
+  dependency, token/socket/Authorization exposure, absolute host path rendering,
+  `dangerouslySetInnerHTML`, localStorage/sessionStorage, start/stop/restart route,
+  or `llama-server` process control was added. Added pure helper
+  `frontend/src/localModelLibrary.js` and verifier
+  `frontend/scripts/verify-local-model-library.mjs` wired as
+  `npm --prefix frontend run test:local-model-library`.
 - **Local Model Manager Phase 2C socket-mount validation harness** (branch
   `lmm-phase2c-socket-mount-validation`). Added
   `test_scripts/validate_lmm_companion_socket_mount.py`, a manual/live validation

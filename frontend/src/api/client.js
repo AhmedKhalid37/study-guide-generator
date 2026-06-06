@@ -169,6 +169,23 @@ export function getLocalModelCommandProfile() {
   return requestJson("/api/local-model/command-profile");
 }
 
+// Local Model Manager Phase 2D library discovery. These calls read companion
+// status and the approved GGUF library through the backend bridge. The frontend
+// never receives or stores companion connection secrets, never sends a request
+// body, and never writes Provider Settings. Scan means "ask the companion to
+// rescan approved folders"; it is not process control.
+export function getLocalModelCompanionStatus() {
+  return requestJson("/api/local-model/companion/status");
+}
+
+export function getLocalModelLibrary() {
+  return requestJson("/api/local-model/library");
+}
+
+export function scanLocalModelLibrary() {
+  return requestJson("/api/local-model/library/scan", { method: "POST" });
+}
+
 // ── Ask Your Guide ──────────────────────────────────────────────────────────
 // These endpoints expose eligible guide metadata, context inventory/preparation
 // counts, and local-only chat sessions. Responses are server-redacted and the UI
