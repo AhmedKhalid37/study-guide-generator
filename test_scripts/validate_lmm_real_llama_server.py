@@ -209,7 +209,7 @@ def run() -> int:
 
     port = _env_int("LMM_REAL_PORT", 18080, 1024, 65535)
     ctx_size = _env_int("LMM_REAL_CTX_SIZE", 8192, 512, 131072)
-    gpu_layers = _env_int("LMM_REAL_GPU_LAYERS", 999, 0, 999)
+    gpu_layers = _env_int("LMM_REAL_GPU_LAYERS", 0, 0, 999)
     threads = _env_int("LMM_REAL_THREADS", 8, 1, 256)
     readiness_timeout = _env_float("LMM_REAL_READINESS_TIMEOUT", 60.0, 1.0, 120.0)
 

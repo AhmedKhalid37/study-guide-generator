@@ -164,25 +164,70 @@ def run() -> int:
         # 1. Unconfigured env is safe for all bridge endpoints.
         _set_companion_env(None, None)
         unc_status = bridge.get_companion_server_status()
+        unc_profiles = bridge.get_companion_server_profiles()
         unc_start = bridge.start_companion_server(_safe_start_payload())
         unc_stop = bridge.stop_companion_server({"grace_seconds": 5})
         unc_restart = bridge.restart_companion_server({"reuse_last": True})
         check(
-            "unconfigured env: status/start/stop/restart return safe config errors",
-            all(
+            "unconfigured env: status/profiles/start/stop/restart return safe config errors",
+            unc_profiles["profiles"] == []
+            and all(
                 item["configured"] is False
                 and item["reachable"] is False
                 and item["error"]["category"] == "companion_config"
                 and secret_socket not in _blob(item)
-                for item in (unc_status, unc_start, unc_stop, unc_restart)
+                for item in (unc_status, unc_profiles, unc_start, unc_stop, unc_restart)
             ),
-            detail=str([unc_status, unc_start, unc_stop, unc_restart]),
+            detail=str([unc_status, unc_profiles, unc_start, unc_stop, unc_restart]),
         )
 
         # 2. Successful fake socket companion responses and request shapes.
         old_socket_ctor = _install_fake_socket(
             [
                 _http_response(200, {"ok": True, "state": "stopped", "managed": False, "error": None, "log_tail": []}),
+                _http_response(
+                    200,
+                    {
+                        "ok": True,
+                        "profiles": [
+                            {
+                                "id": "cpu_safe",
+                                "display_name": f"CPU safe {secret_token}",
+                                "description": f"Slow {absolute_host_path}",
+                                "type": "llama_server",
+                                "test_profile": False,
+                                "runnable": True,
+                                "runnable_reason": None,
+                                "default_parameters": {"port": 18080},
+                                "parameters": {
+                                    "port": {"type": "integer", "min": 1024, "max": 65535, "default": 18080, "label": "Port", "help": "Local port"},
+                                    "ctx_size": {"type": "integer", "min": 512, "max": 131072, "default": 4096, "label": "Context", "help": "Context"},
+                                    "gpu_layers": {"type": "integer", "min": 0, "max": 999, "default": 0, "label": "GPU layers", "help": "High layers may OOM"},
+                                    "threads": {"type": "integer", "min": 1, "max": 256, "default": 8, "label": "Threads", "help": "Threads"},
+                                    "cache_type_k": {"type": "enum", "allowed_values": ["f16", "q8_0"], "default": "f16", "label": "K cache", "help": "Allowed only"},
+                                    "flash_attention": {"type": "boolean", "default": False, "label": "Flash attention", "help": "Boolean"},
+                                },
+                                "warnings": [f"secret path {absolute_host_path}"],
+                                "executable_path": absolute_host_path,
+                                "argv": ["/bin/fake", "--model", absolute_host_path],
+                            },
+                            {
+                                "id": "missing_real",
+                                "display_name": "Missing real",
+                                "description": "Missing executable.",
+                                "type": "llama_server",
+                                "test_profile": False,
+                                "runnable": False,
+                                "runnable_reason": "executable_missing",
+                                "parameters": {
+                                    "port": {"type": "integer", "min": 1024, "max": 65535, "default": 18081, "label": "Port", "help": "Local port"},
+                                },
+                                "warnings": [],
+                            },
+                        ],
+                        "warnings": [],
+                    },
+                ),
                 _http_response(
                     200,
                     {
@@ -220,6 +265,7 @@ def run() -> int:
         )
         _set_companion_env(secret_socket, secret_token, timeout="2")
         ok_status = bridge.get_companion_server_status()
+        ok_profiles = bridge.get_companion_server_profiles()
         ok_start = bridge.start_companion_server(_safe_start_payload(8123))
         ok_stop = bridge.stop_companion_server({"grace_seconds": 5})
         ok_restart = bridge.restart_companion_server(_safe_start_payload(8124))
@@ -227,20 +273,33 @@ def run() -> int:
         bodies = [_request_body(item) for item in sent]
         check(
             "success: methods/paths and Authorization header are correct",
-            len(sent) == 4
+            len(sent) == 5
             and sent[0].startswith("GET /server/status ")
-            and sent[1].startswith("POST /server/start ")
-            and sent[2].startswith("POST /server/stop ")
-            and sent[3].startswith("POST /server/restart ")
+            and sent[1].startswith("GET /profiles ")
+            and sent[2].startswith("POST /server/start ")
+            and sent[3].startswith("POST /server/stop ")
+            and sent[4].startswith("POST /server/restart ")
             and all(f"Authorization: Bearer {secret_token}" in item for item in sent),
             detail=str(sent),
         )
         check(
             "success: start/stop/restart forward only allowed typed fields",
-            bodies[1] == _safe_start_payload(8123)
-            and bodies[2] == {"grace_seconds": 5}
-            and bodies[3] == _safe_start_payload(8124),
-            detail=str(bodies[1:]),
+            bodies[2] == _safe_start_payload(8123)
+            and bodies[3] == {"grace_seconds": 5}
+            and bodies[4] == _safe_start_payload(8124),
+            detail=str(bodies[2:]),
+        )
+        check(
+            "success: profiles response is safe metadata only",
+            ok_profiles["reachable"] is True
+            and [item["id"] for item in ok_profiles["profiles"]] == ["cpu_safe", "missing_real"]
+            and ok_profiles["profiles"][0]["parameters"]["cache_type_k"]["allowed_values"] == ["f16", "q8_0"]
+            and ok_profiles["profiles"][0]["parameters"]["flash_attention"]["type"] == "boolean"
+            and ok_profiles["profiles"][1]["runnable"] is False
+            and ok_profiles["profiles"][1]["runnable_reason"] == "executable_missing"
+            and "executable_path" not in _blob(ok_profiles)
+            and "argv" not in _blob(ok_profiles),
+            detail=str(ok_profiles),
         )
         check(
             "success: responses expose only safe server status fields",
@@ -256,7 +315,7 @@ def run() -> int:
             and "params" not in ok_start,
             detail=str({"status": ok_status, "start": ok_start, "stop": ok_stop, "restart": ok_restart}),
         )
-        _assert_no_leaks("success redaction: no token/socket/path/auth/url/raw argv leaks", {"start": ok_start, "restart": ok_restart}, forbidden)
+        _assert_no_leaks("success redaction: no token/socket/path/auth/url/raw argv leaks", {"profiles": ok_profiles, "start": ok_start, "restart": ok_restart}, forbidden)
         bridge.socket.socket = old_socket_ctor
 
         # 3. Auth failure maps to companion_auth without echoing token/body.
@@ -347,13 +406,46 @@ def run() -> int:
         start_rejected = bridge.start_companion_server(bad_start)
         start_bad_param = bridge.start_companion_server({**_safe_start_payload(), "parameters": {"port": 80}})
         start_unknown_param = bridge.start_companion_server({**_safe_start_payload(), "parameters": {"port": 8123, "cmd": "x"}})
+        start_bad_bool = bridge.start_companion_server({**_safe_start_payload(), "parameters": {"flash_attention": "true"}})
+        start_bad_enum = bridge.start_companion_server({**_safe_start_payload(), "parameters": {"cache_type_k": "/tmp/bad"}})
         check(
             "start validation: rejects unsafe top-level and invalid/free-form parameter fields before socket",
             start_rejected["error"]["category"] == "bad_request"
             and start_bad_param["error"]["category"] == "bad_request"
             and start_unknown_param["error"]["category"] == "bad_request"
+            and start_bad_bool["error"]["category"] == "bad_request"
+            and start_bad_enum["error"]["category"] == "bad_request"
             and len(_FakeSocket.instances) == 0,
-            detail=str([start_rejected, start_bad_param, start_unknown_param]),
+            detail=str([start_rejected, start_bad_param, start_unknown_param, start_bad_bool, start_bad_enum]),
+        )
+        bridge.socket.socket = old_socket_ctor
+
+        old_socket_ctor = _install_fake_socket(
+            [_http_response(200, {"ok": True, "state": "running", "managed": True, "port": 8128})]
+        )
+        safe_optional = bridge.start_companion_server(
+            {
+                **_safe_start_payload(8128),
+                "profile_id": "gpu_balanced",
+                "parameters": {
+                    "port": 8128,
+                    "ctx_size": 4096,
+                    "gpu_layers": 20,
+                    "threads": 8,
+                    "parallel": 1,
+                    "cache_type_k": "q8_0",
+                    "flash_attention": True,
+                    "mmap": False,
+                },
+            }
+        )
+        check(
+            "start validation: safe optional int/enum/boolean params pass to companion",
+            safe_optional["port"] == 8128
+            and _request_body(_request_texts()[-1])["parameters"]["cache_type_k"] == "q8_0"
+            and _request_body(_request_texts()[-1])["parameters"]["flash_attention"] is True
+            and _request_body(_request_texts()[-1])["parameters"]["mmap"] is False,
+            detail=str(safe_optional),
         )
         bridge.socket.socket = old_socket_ctor
 
@@ -427,6 +519,7 @@ def run() -> int:
             all(
                 route in api_source
                 for route in (
+                    "/api/local-model/server/profiles",
                     "/api/local-model/server/status",
                     "/api/local-model/server/start",
                     "/api/local-model/server/stop",
@@ -449,6 +542,7 @@ def run() -> int:
             all(
                 route in frontend_client_source
                 for route in (
+                    "/api/local-model/server/profiles",
                     "/api/local-model/server/status",
                     "/api/local-model/server/start",
                     "/api/local-model/server/stop",
@@ -474,6 +568,7 @@ def run() -> int:
             check(
                 "routes: FastAPI app exposes Phase 2G3 bridge endpoints",
                 {
+                    "/api/local-model/server/profiles",
                     "/api/local-model/server/status",
                     "/api/local-model/server/start",
                     "/api/local-model/server/stop",

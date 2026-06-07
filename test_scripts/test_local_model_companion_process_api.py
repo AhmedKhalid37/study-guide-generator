@@ -258,12 +258,13 @@ def run() -> int:
             # Unauthorized requests are rejected before routing.
             unauthorized = [
                 client.request("GET", "/server/status", None),
+                client.request("GET", "/profiles", None),
                 client.request("POST", "/server/start", None, {}),
                 client.request("POST", "/server/stop", None, {}),
                 client.request("POST", "/server/restart", None, {}),
             ]
             check(
-                "auth: unauthorized rejected for all /server endpoints",
+                "auth: unauthorized rejected for all /server and /profiles endpoints",
                 all(status == 401 and body["error"]["code"] == "unauthorized" for status, body in unauthorized),
                 detail=str(unauthorized),
             )
@@ -278,6 +279,22 @@ def run() -> int:
                 and initial["error"] is None
                 and initial["log_tail"] == [],
                 detail=str(initial),
+            )
+
+            _, profile_body = client.request("GET", "/profiles", token)
+            profile_blob = _blob(profile_body)
+            check(
+                "profiles: HTTP endpoint returns safe profile metadata",
+                profile_body["ok"] is True
+                and profile_body["profiles"][0]["id"] == "fake_test"
+                and profile_body["profiles"][0]["test_profile"] is True
+                and profile_body["profiles"][0]["runnable"] is True
+                and "parameters" in profile_body["profiles"][0]
+                and str(exe) not in profile_blob
+                and str(tmp) not in profile_blob
+                and "executable_path" not in profile_blob
+                and "argv" not in profile_blob,
+                detail=profile_blob,
             )
 
             _, scan_body = client.request("POST", "/models/scan", token, {})
@@ -365,7 +382,7 @@ def run() -> int:
             _, unknown_model_stopped = client.request("POST", "/server/start", token, _safe_start_payload("gguf_missing", 18185))
             check(
                 "start: unknown model id rejected when stopped",
-                unknown_model_stopped["state"] == "stopped" and unknown_model_stopped["error"]["category"] == "unknown_model",
+                unknown_model_stopped["state"] == "error" and unknown_model_stopped["error"]["category"] == "unknown_model",
                 detail=str(unknown_model_stopped),
             )
 
@@ -374,7 +391,7 @@ def run() -> int:
             _, unknown_profile = client.request("POST", "/server/start", token, bad_profile_payload)
             check(
                 "start: unknown profile rejected",
-                unknown_profile["state"] == "stopped" and unknown_profile["error"]["category"] == "unknown_profile",
+                unknown_profile["state"] == "error" and unknown_profile["error"]["category"] == "unknown_profile",
                 detail=str(unknown_profile),
             )
 
@@ -383,7 +400,7 @@ def run() -> int:
             _, invalid_params = client.request("POST", "/server/start", token, bad_params)
             check(
                 "start: invalid typed parameters rejected",
-                invalid_params["state"] == "stopped" and invalid_params["error"]["category"] == "invalid_parameters",
+                invalid_params["state"] == "error" and invalid_params["error"]["category"] == "invalid_parameters",
                 detail=str(invalid_params),
             )
 
@@ -396,7 +413,7 @@ def run() -> int:
                 state.process_manager._port_available = old_port_available
             check(
                 "start: port conflict rejected",
-                conflict["state"] == "stopped" and conflict["error"]["category"] == "port_in_use",
+                conflict["state"] == "error" and conflict["error"]["category"] == "port_in_use",
                 detail=str(conflict),
             )
 
@@ -470,10 +487,10 @@ def run() -> int:
                 and "network_mode: host" not in compose_source,
             )
             check(
-                "scope: no real llama-server launch profile",
-                "llama-server" not in companion_source
-                and "llama-server" not in profile_source
-                and "llama-server" in pm_source
+                "scope: real llama-server launch profile is explicit config only",
+                "real_llama_server_profile" in profile_source
+                and "llama-server" in profile_source
+                and "real_llama_server_profile" in companion_source
                 and "fake_test" in profile_source,
             )
             check(

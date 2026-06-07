@@ -196,7 +196,7 @@ def run() -> int:
             )
             check(
                 "start: rejects unknown model id",
-                unknown_model["state"] == "stopped" and unknown_model["error"]["category"] == "unknown_model",
+                unknown_model["state"] == "error" and unknown_model["error"]["category"] == "unknown_model",
                 detail=str(unknown_model),
             )
 
@@ -209,7 +209,7 @@ def run() -> int:
             )
             check(
                 "start: rejects model outside approved root",
-                outside_res["state"] == "stopped" and outside_res["error"]["category"] == "model_outside_approved_root",
+                outside_res["state"] == "error" and outside_res["error"]["category"] == "model_outside_approved_root",
                 detail=str(outside_res),
             )
 
@@ -221,12 +221,12 @@ def run() -> int:
             )
             check(
                 "start: rejects unknown profile",
-                unknown_profile["state"] == "stopped" and unknown_profile["error"]["category"] == "invalid_profile",
+                unknown_profile["state"] == "error" and unknown_profile["error"]["category"] == "invalid_profile",
                 detail=str(unknown_profile),
             )
             check(
                 "start: rejects invalid typed params",
-                invalid_params["state"] == "stopped" and invalid_params["error"]["category"] == "invalid_parameter",
+                invalid_params["state"] == "error" and invalid_params["error"]["category"] == "invalid_parameter",
                 detail=str(invalid_params),
             )
 
@@ -237,7 +237,7 @@ def run() -> int:
             )
             check(
                 "start: rejects port conflict",
-                conflict["state"] == "stopped" and conflict["error"]["category"] == "port_in_use",
+                conflict["state"] == "error" and conflict["error"]["category"] == "port_in_use",
                 detail=str(conflict),
             )
 
