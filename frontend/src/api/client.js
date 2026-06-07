@@ -202,6 +202,39 @@ export function clearLocalModelLibrarySelection() {
   return requestJson("/api/local-model/library/selection", { method: "DELETE" });
 }
 
+// Local Model Manager Phase 2G4 process controls. The frontend talks only to the
+// Phase 2G3 backend bridge; it never calls the host companion directly. Payloads
+// are constructed by the UI from saved selected-model metadata plus fixed typed
+// defaults only: no runnable binary details, filesystem locations, free-form
+// process flags, or connection details.
+export function getLocalModelServerStatus() {
+  return requestJson("/api/local-model/server/status");
+}
+
+export function startLocalModelServer(payload) {
+  return requestJson("/api/local-model/server/start", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload ?? {})
+  });
+}
+
+export function stopLocalModelServer(payload) {
+  return requestJson("/api/local-model/server/stop", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload ?? {})
+  });
+}
+
+export function restartLocalModelServer(payload) {
+  return requestJson("/api/local-model/server/restart", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload ?? {})
+  });
+}
+
 // ── Ask Your Guide ──────────────────────────────────────────────────────────
 // These endpoints expose eligible guide metadata, context inventory/preparation
 // counts, and local-only chat sessions. Responses are server-redacted and the UI

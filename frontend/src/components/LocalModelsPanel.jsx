@@ -18,9 +18,13 @@ import {
   getLocalModelCommandProfile,
   getLocalModelLibrary,
   getLocalModelLibrarySelection,
+  getLocalModelServerStatus,
   getLocalModelStatus,
+  restartLocalModelServer,
   scanLocalModelLibrary,
   saveLocalModelLibrarySelection,
+  startLocalModelServer,
+  stopLocalModelServer,
 } from "../api/client";
 import {
   STATE_ERROR,
@@ -68,11 +72,25 @@ import {
   normalizeLibrarySelection,
   selectedLibraryModel,
 } from "../localModelLibrary";
+import {
+  SAFE_SERVER_DEFAULTS,
+  SAFE_TEST_PROFILE_ID,
+  buildLocalModelServerStartPayload,
+  buildLocalModelServerStopPayload,
+  localModelServerErrorMessage,
+  localModelServerIsManagedRunning,
+  localModelServerStatusLabel,
+  normalizeLocalModelServerState,
+} from "../localModelServer";
 
-// Read-only Local Models status panel (LMM Slice 3). Consumes the detection-only
+// Local Models status panel. The local provider status remains detection-only;
+// Phase 2G4 adds companion-managed test/server process controls through the
+// backend bridge only. It NEVER edits provider settings, never calls the host
+// companion directly, and never renders raw connection details or full URL.
+//
+// Consumes the detection-only
 // Slice 2 endpoints (GET /api/local-model/status on open, POST
-// /api/local-model/check on Refresh). It NEVER edits provider settings, never
-// starts/stops a process, and never renders a raw key or full URL — it only shows
+// /api/local-model/check on Refresh). It only shows
 // the already-safe fields the backend exposes. Config edits link back to the
 // Providers cards above (the single writer). Designed to mount under the provider
 // list inside ProviderSettingsWorkspace.
@@ -137,6 +155,11 @@ export default function LocalModelsPanel({ onEditLocalProvider }) {
   const [librarySelectionSaving, setLibrarySelectionSaving] = useState(false);
   const [librarySelectionRequestError, setLibrarySelectionRequestError] = useState(null);
   const [librarySelectionMessage, setLibrarySelectionMessage] = useState(null);
+  const [serverStatus, setServerStatus] = useState(null);
+  const [serverLoading, setServerLoading] = useState(true);
+  const [serverAction, setServerAction] = useState(null);
+  const [serverRequestError, setServerRequestError] = useState(null);
+  const [serverMessage, setServerMessage] = useState(null);
 
   const fetchStatus = useCallback((probe) => {
     const call = probe ? checkLocalModelStatus : getLocalModelStatus;
@@ -226,6 +249,24 @@ export default function LocalModelsPanel({ onEditLocalProvider }) {
   useEffect(() => {
     fetchLibrarySelection();
   }, [fetchLibrarySelection]);
+
+  const fetchServerStatus = useCallback(() => {
+    setServerLoading(true);
+    setServerRequestError(null);
+    return getLocalModelServerStatus()
+      .then((data) => setServerStatus(data))
+      .catch((err) => {
+        setServerStatus(null);
+        setServerRequestError(
+          err?.message || "Managed server status is unavailable on this backend version."
+        );
+      })
+      .finally(() => setServerLoading(false));
+  }, []);
+
+  useEffect(() => {
+    fetchServerStatus();
+  }, [fetchServerStatus]);
 
   // Load the static command-helper profiles once. A failure (e.g. an older backend
   // without the endpoint) simply leaves commandData null → the helper hides; it is
@@ -344,11 +385,51 @@ export default function LocalModelsPanel({ onEditLocalProvider }) {
       .finally(() => setLibrarySelectionSaving(false));
   }, []);
 
+  const savedServerSelection = normalizeLibrarySelection(librarySelectionData);
+  const serverStartPayload = buildLocalModelServerStartPayload(savedServerSelection);
+  const runServerAction = useCallback(
+    (action) => {
+      const startPayload = buildLocalModelServerStartPayload(savedServerSelection);
+      let call = null;
+      let payload = null;
+      if (action === "start") {
+        call = startLocalModelServer;
+        payload = startPayload;
+      } else if (action === "stop") {
+        call = stopLocalModelServer;
+        payload = buildLocalModelServerStopPayload();
+      } else if (action === "restart") {
+        call = restartLocalModelServer;
+        payload = startPayload;
+      }
+      if (!call || !payload) return Promise.resolve();
+
+      setServerAction(action);
+      setServerRequestError(null);
+      setServerMessage(null);
+      return call(payload)
+        .then((data) => {
+          setServerStatus(data);
+          const label = localModelServerStatusLabel(data);
+          setServerMessage(`Managed server ${action} completed: ${label}.`);
+          return data;
+        })
+        .catch((err) => {
+          setServerRequestError(err?.message || `Managed server ${action} failed.`);
+        })
+        .finally(() => {
+          setServerAction(null);
+          fetchServerStatus().finally(() => fetchStatus(false));
+        });
+    },
+    [fetchServerStatus, fetchStatus, savedServerSelection]
+  );
+
   return (
     <div className="mt-8 max-w-[860px]">
       <div className="sg-section-head">
         <h2>Local Models</h2>
-        <span>Detection-only · read-only</span>
+        <span>Status · library · managed test server</span>
       </div>
 
       <div className="rounded-2xl border border-white/10 bg-white/[0.03] p-4">
@@ -492,6 +573,22 @@ export default function LocalModelsPanel({ onEditLocalProvider }) {
               onClearSelection={onClearLibrarySelection}
             />
 
+            <ManagedServerSection
+              companionStateKey={companionStateKey}
+              companionLoading={companionLoading}
+              selection={savedServerSelection}
+              startPayload={serverStartPayload}
+              status={serverStatus}
+              loading={serverLoading}
+              action={serverAction}
+              requestError={serverRequestError}
+              message={serverMessage}
+              onRefresh={fetchServerStatus}
+              onStart={() => runServerAction("start")}
+              onStop={() => runServerAction("stop")}
+              onRestart={() => runServerAction("restart")}
+            />
+
             {/* Command helper (LMM Slice 4): copyable, manual-only start command */}
             {canCopy && (
               <CommandHelper
@@ -535,8 +632,8 @@ export default function LocalModelsPanel({ onEditLocalProvider }) {
               ))}
             </div>
             <p className="mt-2 text-[11px] leading-4 text-[#6B7185]">
-              Read-only — this panel detects the local server. It never starts, stops, or
-              configures it. Edit the base URL and default model on the Local provider card above.
+              Local provider status is still detection-only. Managed Server controls use only
+              the companion backend bridge and do not edit the Local provider card above.
             </p>
           </>
         )}
@@ -714,6 +811,159 @@ function ModelLibrarySection({
   );
 }
 
+function ManagedServerSection({
+  companionStateKey,
+  companionLoading,
+  selection,
+  startPayload,
+  status,
+  loading,
+  action,
+  requestError,
+  message,
+  onRefresh,
+  onStart,
+  onStop,
+  onRestart,
+}) {
+  const companionAvailable = companionStateKey === COMPANION_REACHABLE;
+  const hasSelection = !!selection?.id && !!startPayload;
+  const managedRunning = localModelServerIsManagedRunning(status);
+  const state = normalizeLocalModelServerState(status);
+  const statusLabel = loading ? "Checking..." : localModelServerStatusLabel(status);
+  const statusError = localModelServerErrorMessage(status);
+  const busy = !!action;
+  const canStart = companionAvailable && hasSelection && !busy && !companionLoading;
+  const canStop = companionAvailable && managedRunning && !busy && !companionLoading;
+  const canRestart = companionAvailable && hasSelection && managedRunning && !busy && !companionLoading;
+  const selectedName = selection?.display_name || selection?.filename || selection?.id || "No selected model";
+  const port = startPayload?.parameters?.port ?? SAFE_SERVER_DEFAULTS.port;
+
+  let disabledCopy = null;
+  if (!companionAvailable) disabledCopy = "Companion must be reachable before managed controls are enabled.";
+  else if (!hasSelection) disabledCopy = "Choose and remember a library model before starting the managed server.";
+  else if (!managedRunning) disabledCopy = "Stop and restart are enabled only for a companion-managed running server.";
+
+  return (
+    <section className="mt-4 rounded-lg border border-white/10 bg-white/[0.02] p-3">
+      <div className="flex flex-wrap items-start gap-3">
+        <div className="min-w-0 flex-1">
+          <div className="flex flex-wrap items-center gap-2">
+            <strong className="text-[12.5px] text-[#E8EAF0]">Managed Server</strong>
+            <span className="rounded-full border border-[#FCD34D]/30 bg-[#FCD34D]/10 px-2 py-0.5 text-[10px] uppercase tracking-wide text-[#FCD34D]">
+              {SAFE_TEST_PROFILE_ID} validation profile only
+            </span>
+          </div>
+          <p className="mt-1 text-[11.5px] leading-5 text-[#9098A8]">
+            This controls only the companion-managed test/server process.
+          </p>
+        </div>
+        <span className={`inline-flex h-[24px] shrink-0 items-center gap-1 whitespace-nowrap rounded-full px-2.5 text-[10.5px] ${PILL_TONE[serverTone(status, companionAvailable)]}`}>
+          {loading ? <Loader2 size={11} className="animate-spin" /> : <ServerStateIcon state={state} companionAvailable={companionAvailable} />}
+          {statusLabel}
+        </span>
+        <button
+          type="button"
+          className="sg-ghost-button shrink-0"
+          onClick={onRefresh}
+          disabled={loading || busy}
+          title="Refresh companion-managed server status"
+        >
+          {loading ? <Loader2 size={14} className="animate-spin" /> : <RefreshCw size={14} />}
+          <span className="ml-1.5">Refresh managed status</span>
+        </button>
+      </div>
+
+      <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-4">
+        <Metric label="State" value={statusLabel} />
+        <Metric label="Managed" value={status?.managed === true ? "Yes" : "No"} />
+        <Metric label="Model id" value={selection?.id || status?.model_id || "-"} />
+        <Metric label="Port" value={String(status?.port || port)} />
+      </div>
+
+      <div className="mt-3 rounded-lg border border-white/10 bg-black/20 p-2.5">
+        <span className="mb-1.5 block text-[10.5px] font-medium uppercase tracking-wide text-[#9098A8]">
+          Start payload preview
+        </span>
+        <dl className="grid gap-x-3 gap-y-1 text-[11px] leading-4 text-[#9098A8] sm:grid-cols-2">
+          <SafeDetail label="Selected model" value={selectedName} />
+          <SafeDetail label="Profile" value={`${SAFE_TEST_PROFILE_ID} only`} />
+          <SafeDetail label="Port" value={String(SAFE_SERVER_DEFAULTS.port)} />
+          <SafeDetail label="Context" value={String(SAFE_SERVER_DEFAULTS.ctx_size)} />
+          <SafeDetail label="GPU layers" value={String(SAFE_SERVER_DEFAULTS.gpu_layers)} />
+          <SafeDetail label="Threads" value={String(SAFE_SERVER_DEFAULTS.threads)} />
+        </dl>
+      </div>
+
+      <div className="mt-3 flex flex-wrap items-center gap-2 border-t border-white/5 pt-3">
+        <button
+          type="button"
+          className="sg-ghost-button"
+          onClick={onStart}
+          disabled={!canStart}
+          title="Starts companion-managed server only."
+        >
+          {action === "start" ? <Loader2 size={14} className="animate-spin" /> : <Server size={14} />}
+          <span className="ml-1.5">{action === "start" ? "Starting..." : "Start selected model"}</span>
+        </button>
+        <button
+          type="button"
+          className="sg-ghost-button"
+          onClick={onStop}
+          disabled={!canStop}
+          title="Stops only the companion-managed server."
+        >
+          {action === "stop" ? <Loader2 size={14} className="animate-spin" /> : <CircleSlash size={14} />}
+          <span className="ml-1.5">{action === "stop" ? "Stopping..." : "Stop managed server"}</span>
+        </button>
+        <button
+          type="button"
+          className="sg-ghost-button"
+          onClick={onRestart}
+          disabled={!canRestart}
+          title="Restarts with the saved selected model and safe defaults."
+        >
+          {action === "restart" ? <Loader2 size={14} className="animate-spin" /> : <RefreshCw size={14} />}
+          <span className="ml-1.5">{action === "restart" ? "Restarting..." : "Restart managed server"}</span>
+        </button>
+      </div>
+
+      <div className="mt-3 space-y-1 text-[11px] leading-4 text-[#6B7185]">
+        <p>Starts companion-managed server only.</p>
+        <p>Stops only the companion-managed server. Manual servers are not stopped by this button.</p>
+        <p>Provider Settings are not changed.</p>
+      </div>
+
+      {disabledCopy && (
+        <p className="mt-2 text-[11px] leading-4 text-[#9098A8]">{disabledCopy}</p>
+      )}
+      {(requestError || statusError) && (
+        <p className="mt-2 break-words text-[11.5px] leading-5 text-[#FCD34D]">
+          {requestError || statusError}
+        </p>
+      )}
+      {message && <p className="mt-2 text-[11px] leading-4 text-[#6B7185]">{message}</p>}
+    </section>
+  );
+}
+
+function serverTone(status, companionAvailable) {
+  if (!companionAvailable) return "neutral";
+  const state = normalizeLocalModelServerState(status);
+  if (state === "running" || state === "already_running") return "reachable";
+  if (state === "crashed" || state === "error") return "error";
+  if (state === "stopped" || state === "not_running") return "offline";
+  return "neutral";
+}
+
+function ServerStateIcon({ state, companionAvailable }) {
+  if (!companionAvailable) return <CircleSlash size={11} />;
+  if (state === "running" || state === "already_running") return <Check size={11} />;
+  if (state === "stopped" || state === "not_running") return <CircleSlash size={11} />;
+  if (state === "crashed" || state === "error") return <AlertTriangle size={11} />;
+  return <CircleSlash size={11} />;
+}
+
 function CompanionStateIcon({ state }) {
   if (state === COMPANION_REACHABLE) return <Check size={11} />;
   if (state === COMPANION_UNCONFIGURED) return <CircleSlash size={11} />;
@@ -801,7 +1051,7 @@ function ChosenLibraryModel({ model, preview, stale, saving, onClear }) {
       </div>
       {preview && <FutureLaunchPreview preview={preview} />}
       <p className="mt-2 text-[11px] leading-4 text-[#6B7185]">
-        This does not start the server yet. start/stop is a future companion slice.
+        This selection is used by Managed Server start/restart with safe typed defaults.
         Provider Settings were not changed.
       </p>
     </div>
@@ -812,7 +1062,7 @@ function FutureLaunchPreview({ preview }) {
   return (
     <div className="mt-3 rounded-lg border border-white/10 bg-black/20 p-2.5">
       <span className="mb-1.5 block text-[10.5px] font-medium uppercase tracking-wide text-[#9098A8]">
-        Future launch preview
+        Saved selection preview
       </span>
       <dl className="grid gap-x-3 gap-y-1 text-[11px] leading-4 text-[#9098A8] sm:grid-cols-2">
         <SafeDetail label="Model id" value={preview.model_id || "—"} />
@@ -823,7 +1073,7 @@ function FutureLaunchPreview({ preview }) {
         <SafeDetail label="Resolver" value={preview.resolver || "companion_model_id"} />
       </dl>
       <p className="mt-2 text-[11px] leading-4 text-[#6B7185]">
-        No runnable command is generated here; the companion will resolve the model id in a later launch slice.
+        No runnable command is generated here; the companion resolves the model id server-side.
       </p>
     </div>
   );

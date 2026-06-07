@@ -207,14 +207,21 @@ flashcards with CSV / Anki / Quizlet export.
   safe payload fields (`model_id`, `profile_id`, `port`, `ctx_size`,
   `gpu_layers`, `threads`, `grace_seconds`, or `reuse_last`), rejects unknown
   fields before socket forwarding, and returns only whitelisted/redacted server
-  status DTO fields. There is still no permanent Docker Compose mount, Provider
-  Settings write, Ask change, dependency addition, local provider base-URL/model
-  behavior change, frontend UI, real `llama-server` launch, shell/free-form args,
-  browser storage, token/socket exposure, direct Docker host process control,
-  direct host filesystem scan, or absolute host path/raw argv rendering. Next
-  recommended slice is Phase 2G4 Local Models UI controls for start/stop/restart,
-  still fake/safe validation only; alternatively do live real `llama-server`
-  validation first if the operator wants runtime proof before UI.
+  status DTO fields. Phase 2G4 adds frontend/client UI controls only: the Local
+  Models panel has a **Managed Server** section that calls those backend bridge
+  routes, fetches status on load, starts/restarts from the saved selected library
+  model id plus fixed typed `fake_test` defaults (`port`, `ctx_size`,
+  `gpu_layers`, `threads`), stops only the companion-managed server with bounded
+  `grace_seconds`, keeps selected-model preview and manual command helper
+  fallback visible, and clearly states manual servers are not stopped and
+  Provider Settings are not changed. There is still no permanent Docker Compose
+  mount, Provider Settings write, Ask change, dependency addition, local provider
+  base-URL/model behavior change, direct companion frontend call, real
+  `llama-server` launch/validation, shell/free-form args UI, browser storage,
+  token/socket exposure in UI, direct Docker host process control, direct host
+  filesystem scan, or absolute host path/raw argv rendering. Next recommended
+  slice is Phase 2G5 live Linux validation with real `llama-server` and
+  hardening/runtime proof.
 - **Ask Your Guide — IN PROGRESS (Slice 1 design DONE; Slice 2 backend context
   inventory DONE; Slice 3 backend context preparation / chunking DONE; inserted
   workspace shell DONE; backend local chat API DONE; frontend chat UI wiring DONE;

@@ -10,14 +10,50 @@
 - **Trunk includes:** `af0ec0e` (Ask Slice 1 design), `2634f63` (Ask Slice 2 context
   inventory), `a29a405` (Ask Slice 3 context preparation), and the inserted Ask
   workspace shell, on top of the validated LMM group and prior feature groups.
-- **Active work branch:** `lmm-phase2g3-backend-process-bridge` — Local Model
-  Manager Phase 2G3 FastAPI backend bridge for companion
-  status/start/stop/restart.
-  **NEXT = Phase 2G4 Local Models UI controls for start/stop/restart, still
-  fake/safe validation only; alternatively Phase 2G4 live real `llama-server`
-  validation first if the operator wants runtime proof before UI.**
+- **Active work branch:** `lmm-phase2g4-process-ui` — Local Model Manager Phase
+  2G4 Local Models UI controls for companion-managed server lifecycle, still
+  fake/safe validation only.
+  **NEXT = Phase 2G5 live Linux validation with real `llama-server` and
+  hardening/runtime proof.**
 
 ## What just landed
+- **Local Model Manager Phase 2G4 — Local Models managed-server UI controls**
+  (branch `lmm-phase2g4-process-ui`). Frontend/client/tests/docs only. Added API
+  helpers for the existing Phase 2G3 bridge:
+  `getLocalModelServerStatus()` → `GET /api/local-model/server/status`,
+  `startLocalModelServer(payload)` → `POST /api/local-model/server/start`,
+  `stopLocalModelServer(payload)` → `POST /api/local-model/server/stop`, and
+  `restartLocalModelServer(payload)` → `POST /api/local-model/server/restart`.
+  The Local Models panel now has a **Managed Server** section that fetches server
+  status on load, uses the saved selected library model for start/restart, keeps
+  the selected-model preview visible, and keeps the manual command helper
+  fallback visible. Start/restart payloads include only
+  `{model_id, profile_id: "fake_test", parameters: {port: 18080, ctx_size: 2048,
+  gpu_layers: 0, threads: 2}}`; stop sends only `{grace_seconds: 5}`. The
+  `fake_test` profile is clearly labeled as validation/test only. Controls are
+  disabled when the companion is unavailable or no saved selected model exists;
+  stop/restart require a companion-managed running state. Copy states that this
+  controls only the companion-managed test/server process, manual servers are not
+  stopped, and Provider Settings are not changed. No backend route addition,
+  Docker Compose change, Provider Settings write, Ask change, local provider
+  base URL/model behavior change, direct companion frontend call, real
+  `llama-server` validation, host-gateway TCP, Docker socket, privileged
+  container, host PID namespace, browser storage, free-form command args UI,
+  arbitrary JSON editor, `dangerouslySetInnerHTML`, token/socket/Authorization
+  exposure, raw absolute path rendering, or raw argv exposure was added.
+  `frontend/scripts/verify-local-model-library.mjs` now verifies process API
+  helper paths/methods, safe payload shape, disabled/no-selection state, manual
+  helper fallback, companion-managed-only stop copy, no Provider Settings/Ask
+  calls, no browser storage/raw HTML, no token/socket/Authorization UI strings,
+  no raw absolute path rendering, and managed status/error normalization.
+  Validation passed: frontend local-model library/status/command checks,
+  frontend build (existing Vite large-chunk warning only), requested backend/
+  process suites, `python -m compileall api pipeline tools`, `git diff --check`,
+  `docker compose config >/tmp/compose-check.txt` exit 0, and manual/live
+  fake-companion direct-backend validation 22/22 with a temporary Compose
+  override. Live validation saved a fake GGUF selection, started the `fake_test`
+  profile, confirmed running status, stopped it, confirmed stopped status,
+  passed redaction checks, and restored the app with committed Compose only.
 - **Local Model Manager Phase 2G3 — backend process bridge** (branch
   `lmm-phase2g3-backend-process-bridge`). Added backend-only FastAPI routes
   `GET /api/local-model/server/status`, `POST /api/local-model/server/start`,

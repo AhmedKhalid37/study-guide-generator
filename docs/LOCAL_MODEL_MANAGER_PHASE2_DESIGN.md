@@ -1,6 +1,6 @@
 # LOCAL_MODEL_MANAGER_PHASE2_DESIGN.md - Host companion and approved GGUF library
 
-> **Status: Phase 2G3 backend process bridge complete.** Phase 2A
+> **Status: Phase 2G4 Local Models managed-server UI complete.** Phase 2A
 > established the host-companion boundary.
 > Phase 2B adds a Linux-first, stdlib-only host companion prototype under
 > `tools/local_model_companion/` for approved-folder GGUF scanning and a
@@ -18,11 +18,13 @@
 > `tools/local_model_companion/` and validates them only with a fake/safe test
 > executable. Phase 2G2 exposes those internals on the companion's own
 > Unix-socket HTTP API. Phase 2G3 exposes those companion process endpoints
-> through safe FastAPI backend bridge routes only.
+> through safe FastAPI backend bridge routes only. Phase 2G4 adds frontend UI
+> controls that call only those backend bridge routes with a saved selected model
+> id plus fixed typed `fake_test` defaults.
 > There is still no production Docker Compose mount, Provider Settings write, Ask
 > change, dependency addition, local provider base-URL/model behavior change,
-> frontend UI, model execution, or real `llama-server` start/stop/restart
-> validation.
+> direct companion frontend call, model execution, or real `llama-server`
+> start/stop/restart validation.
 
 ---
 
@@ -458,9 +460,10 @@ POST /api/local-model/server/restart
 
 Phase 2C implemented the first three read-only/library endpoints. Phase 2E adds
 selection metadata endpoints under `/library/selection`. Phase 2G3 implements the
-server status/start/stop/restart backend bridge routes above. They delegate only
-to the companion Unix socket; the Docker backend does not directly inspect,
-start, stop, signal, or adopt host processes.
+server status/start/stop/restart backend bridge routes above. Phase 2G4 adds UI
+controls that call only those backend bridge routes. They delegate only to the
+companion Unix socket; the Docker backend does not directly inspect, start, stop,
+signal, or adopt host processes.
 
 Backend rules:
 
@@ -568,11 +571,10 @@ safe response fields.
 - **Phase 2G3:** DONE. Backend bridge for server status/start/stop/restart; no
   UI, Docker change, Provider Settings write, Ask change, or real
   `llama-server` validation.
-- **Phase 2G4:** Local Models UI start/stop/restart controls, still fake/safe
-  validation only, or live real `llama-server` validation first if the operator
-  wants runtime proof before UI.
-- **Phase 2G5:** live Linux validation with real `llama-server` if not done
-  before UI.
+- **Phase 2G4:** DONE. Local Models UI start/stop/restart controls, still
+  fake/safe validation only; no backend routes, Docker changes, Provider
+  Settings writes, Ask changes, or real `llama-server` validation.
+- **Phase 2G5:** live Linux validation with real `llama-server`.
 - **Phase 2G6:** hardening/security pass.
 - **Later:** packaging/signing and cross-platform installers.
 
@@ -1277,7 +1279,7 @@ Backend rules:
 
 ### UI Contract for Phase 2G
 
-Future Local Models UI controls:
+Implemented Phase 2G4 Local Models UI controls:
 
 - Start selected model.
 - Stop managed server.
@@ -1290,6 +1292,12 @@ Future Local Models UI controls:
 - Keep the manual command fallback.
 - Explicitly warn that Stop affects only the companion-managed server.
 - Disable Start when no selected model exists.
+- Disable controls when the companion is unavailable.
+- Build start/restart payloads from the saved selected library model and fixed
+  typed defaults only: `model_id`, `profile_id: "fake_test"`, and
+  `parameters.port`, `parameters.ctx_size`, `parameters.gpu_layers`,
+  `parameters.threads`.
+- Label `fake_test` as validation/test profile only.
 - No free-form flags UI in v1.
 - No raw host path, token, socket path, or Authorization display.
 - No Provider Settings write unless a later explicit confirmed slice adds it.
@@ -1573,7 +1581,83 @@ New validation:
   no-backend-route assertions now recognize the Phase 2G3 bridge while preserving
   their original safety boundaries.
 
-Next recommended slice is **Phase 2G4: Local Models UI controls for
-start/stop/restart**, still fake/safe validation only. If the operator wants
-runtime proof before UI, do live real `llama-server` validation first as the next
-Phase 2G4 slice instead.
+## 22. Phase 2G4 Local Models Managed-Server UI
+
+Phase 2G4 implements only the frontend/client controls for the Phase 2G3 backend
+bridge. It adds no backend routes and no host/runtime/Docker behavior.
+
+Frontend API helpers:
+
+- `getLocalModelServerStatus()` calls `GET /api/local-model/server/status`.
+- `startLocalModelServer(payload)` calls `POST /api/local-model/server/start`.
+- `stopLocalModelServer(payload)` calls `POST /api/local-model/server/stop`.
+- `restartLocalModelServer(payload)` calls
+  `POST /api/local-model/server/restart`.
+
+The Local Models panel now includes a **Managed Server** section. On load it
+fetches managed server status alongside existing companion/library/selection
+state. It keeps the selected-model preview and manual command helper fallback
+visible. It renders companion unconfigured/offline/auth failed states, no saved
+selected model, stopped/running/already-running/not-running/unknown-style server
+states, and safe error categories including port conflict, invalid params,
+unknown model/profile, companion offline, and auth failure.
+
+Start and restart use an explicit safe payload built from the saved selected
+library model id plus fixed typed defaults only:
+
+```json
+{
+  "model_id": "saved-selected-library-model-id",
+  "profile_id": "fake_test",
+  "parameters": {
+    "port": 18080,
+    "ctx_size": 2048,
+    "gpu_layers": 0,
+    "threads": 2
+  }
+}
+```
+
+Stop sends only:
+
+```json
+{ "grace_seconds": 5 }
+```
+
+The UI labels `fake_test` as a validation/test profile only. It does not expose
+editable process flags, executable paths, model paths, commands, raw argv,
+arbitrary JSON, tokens, socket paths, Authorization headers, or raw absolute
+paths. Stop/restart are enabled only when status indicates a companion-managed
+running server. The section copy states that it controls only the companion-
+managed test/server process, manual servers are not stopped by the button, and
+Provider Settings are not changed.
+
+Explicit non-goals preserved in Phase 2G4:
+
+- No backend route additions.
+- No direct companion calls from the frontend.
+- No Docker Compose changes.
+- No Provider Settings writes.
+- No Ask changes.
+- No local provider base URL/model behavior change.
+- No real `llama-server` validation.
+- No host-gateway TCP, Docker socket, privileged container, or host PID
+  namespace.
+- No browser localStorage/sessionStorage.
+- No free-form command args UI or arbitrary JSON editor.
+- No `dangerouslySetInnerHTML`.
+- No token/socket/raw absolute path/raw argv exposure in UI.
+
+Validation added/updated:
+
+- `frontend/scripts/verify-local-model-library.mjs` now asserts the new API
+  helper paths/methods, allowed-only start payload fields, disallowed unsafe
+  payload fields, disabled start without saved selected model, manual command
+  helper fallback, companion-managed-only stop copy, no Provider Settings/Ask
+  calls, no browser storage, no raw HTML rendering, no token/socket/
+  Authorization strings in UI source/fixtures, no raw absolute path rendering,
+  and managed status/error normalization.
+
+Next recommended slice is **Phase 2G5: live Linux validation with real
+`llama-server` and hardening/runtime proof**. Keep Provider Settings and Ask
+unchanged unless a later explicit design changes that boundary.

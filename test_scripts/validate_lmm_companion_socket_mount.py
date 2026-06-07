@@ -1,4 +1,4 @@
-"""Live Docker validation for the LMM Phase 2C companion socket mount.
+"""Live Docker validation for the LMM companion socket mount and fake process bridge.
 
 This is a manual smoke harness, not part of normal release smoke:
 
@@ -6,8 +6,8 @@ This is a manual smoke harness, not part of normal release smoke:
 
 It starts the stdlib host companion on a temporary Unix socket, recreates the
 Docker app service with a temporary Compose override that mounts only that temp
-runtime directory, and verifies the read-only backend bridge endpoints through
-http://127.0.0.1:8000.
+runtime directory, and verifies backend bridge endpoints through
+http://127.0.0.1:8000, including the fake/safe managed-server lifecycle.
 """
 
 from __future__ import annotations
@@ -229,12 +229,19 @@ def _wait_for_companion(socket_path: Path, token: str, process: subprocess.Popen
     raise ValidationError(f"host companion health did not become ready: {last_error or 'socket missing'}")
 
 
-def _http_json(method: str, path: str, *, timeout: float = 5.0) -> tuple[int, Any]:
+def _http_json(method: str, path: str, *, body: dict[str, Any] | None = None, timeout: float = 5.0) -> tuple[int, Any]:
+    data = None
+    headers = {"Accept": "application/json"}
+    if body is not None:
+        data = json.dumps(body).encode("utf-8")
+        headers["Content-Type"] = "application/json"
+    elif method.upper() == "POST":
+        data = b""
     request = urllib.request.Request(
         f"{BACKEND_BASE_URL}{path}",
-        data=b"" if method.upper() == "POST" else None,
+        data=data,
         method=method.upper(),
-        headers={"Accept": "application/json"},
+        headers=headers,
     )
     try:
         with urllib.request.urlopen(request, timeout=timeout) as response:
@@ -343,19 +350,94 @@ def _validate_backend_endpoints(token: str, socket_path: Path, runtime_dir: Path
             detail=str(relative_path),
         )
 
-    _assert_no_leaks([status_body, pre_body, scan_body, post_body], token, socket_path, runtime_dir, model_root)
+    selected_model = models[0] if isinstance(models, list) and models else None
+    model_id = selected_model.get("id") if isinstance(selected_model, dict) else None
+    check("fake selected GGUF model id is available", isinstance(model_id, str) and bool(model_id), detail=str(selected_model))
 
-    for endpoint in (
-        "/api/local-model/server/start",
-        "/api/local-model/server/stop",
-        "/api/local-model/server/restart",
-    ):
-        process_code, process_body = _http_json("POST", endpoint)
-        check(
-            f"process-control endpoint unavailable: {endpoint}",
-            process_code in (404, 405),
-            detail=f"status={process_code} body={process_body}",
-        )
+    selection_code, selection_body = _http_json(
+        "POST",
+        "/api/local-model/library/selection",
+        body={"model_id": model_id, "model": selected_model},
+    )
+    check("POST library/selection saves fake GGUF model", selection_code == 200, detail=str(selection_body))
+    check(
+        "saved selection contains only safe selected model id",
+        isinstance(selection_body, dict)
+        and isinstance(selection_body.get("selected"), dict)
+        and selection_body["selected"].get("id") == model_id,
+        detail=str(selection_body),
+    )
+
+    server_status_code, server_status_body = _http_json("GET", "/api/local-model/server/status")
+    check(
+        "GET server/status returns stopped before start",
+        server_status_code == 200
+        and isinstance(server_status_body, dict)
+        and server_status_body.get("state") in {"stopped", "not_running"},
+        detail=str(server_status_body),
+    )
+
+    start_payload = {
+        "model_id": model_id,
+        "profile_id": "fake_test",
+        "parameters": {"port": 18080, "ctx_size": 2048, "gpu_layers": 0, "threads": 2},
+    }
+    start_code, start_body = _http_json("POST", "/api/local-model/server/start", body=start_payload)
+    check(
+        "POST server/start returns running for fake profile",
+        start_code == 200
+        and isinstance(start_body, dict)
+        and start_body.get("state") in {"running", "already_running"}
+        and start_body.get("managed") is True,
+        detail=str(start_body),
+    )
+
+    running_code, running_body = _http_json("GET", "/api/local-model/server/status")
+    check(
+        "GET server/status returns running after start",
+        running_code == 200
+        and isinstance(running_body, dict)
+        and running_body.get("state") == "running"
+        and running_body.get("managed") is True,
+        detail=str(running_body),
+    )
+
+    stop_code, stop_body = _http_json("POST", "/api/local-model/server/stop", body={"grace_seconds": 5})
+    check(
+        "POST server/stop returns stopped",
+        stop_code == 200
+        and isinstance(stop_body, dict)
+        and stop_body.get("state") in {"stopped", "not_running"},
+        detail=str(stop_body),
+    )
+
+    stopped_code, stopped_body = _http_json("GET", "/api/local-model/server/status")
+    check(
+        "GET server/status returns stopped after stop",
+        stopped_code == 200
+        and isinstance(stopped_body, dict)
+        and stopped_body.get("state") in {"stopped", "not_running"},
+        detail=str(stopped_body),
+    )
+
+    _assert_no_leaks(
+        [
+            status_body,
+            pre_body,
+            scan_body,
+            post_body,
+            selection_body,
+            server_status_body,
+            start_body,
+            running_body,
+            stop_body,
+            stopped_body,
+        ],
+        token,
+        socket_path,
+        runtime_dir,
+        model_root,
+    )
 
 
 def _start_companion(config_path: Path, socket_path: Path) -> subprocess.Popen[str]:
@@ -377,12 +459,43 @@ def _start_companion(config_path: Path, socket_path: Path) -> subprocess.Popen[s
     )
 
 
+def _write_fake_executable(path: Path) -> None:
+    path.write_text(
+        "\n".join(
+            [
+                "#!/usr/bin/env python3",
+                "import signal",
+                "import sys",
+                "import time",
+                "",
+                "running = True",
+                "",
+                "def stop(_signum, _frame):",
+                "    global running",
+                "    running = False",
+                "",
+                "signal.signal(signal.SIGTERM, stop)",
+                "signal.signal(signal.SIGINT, stop)",
+                "print('fake server started', flush=True)",
+                "while running:",
+                "    time.sleep(0.1)",
+                "print('fake server stopped', flush=True)",
+                "sys.exit(0)",
+                "",
+            ]
+        ),
+        encoding="utf-8",
+    )
+    os.chmod(path, 0o700)
+
+
 def run() -> int:
     token = f"tok-lmm-phase2c-{secrets.token_hex(16)}"
     temp_dir = Path(tempfile.mkdtemp(prefix="lmm_socket_mount_validation_", dir="/tmp"))
     runtime_dir = temp_dir / "runtime"
     model_root = temp_dir / "approved_models"
     config_path = temp_dir / "companion_config.json"
+    fake_executable = temp_dir / "fake_server.py"
     override_path = temp_dir / "compose.override.yml"
     socket_path = runtime_dir / "companion.sock"
     companion_process: subprocess.Popen[str] | None = None
@@ -397,11 +510,14 @@ def run() -> int:
         (model_root / "gemma-validation-Q4_K_M.gguf").write_bytes(b"gguf validation fixture")
         (nested / "qwen-validation-Q8_0.GGUF").write_bytes(b"gguf validation fixture")
         (model_root / "notes.txt").write_text("not a model", encoding="utf-8")
+        _write_fake_executable(fake_executable)
         _write_json(
             config_path,
             {
                 "approved_roots": [{"id": "validation", "path": str(model_root), "recursive": True}],
                 "token": token,
+                "process_runtime_dir": str(runtime_dir / "process"),
+                "profiles": {"fake_test": {"executable": str(fake_executable)}},
             },
         )
         os.chmod(config_path, 0o600)

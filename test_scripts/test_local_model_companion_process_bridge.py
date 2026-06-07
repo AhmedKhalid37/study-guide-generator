@@ -408,11 +408,11 @@ def run() -> int:
                 "pipeline/ask_context.py",
             )
         )
-        frontend_sources = "\n".join(
-            path.read_text(encoding="utf-8")
-            for path in (repo / "frontend" / "src").rglob("*")
-            if path.is_file() and path.suffix in {".js", ".jsx", ".ts", ".tsx"}
-        )
+        frontend_client_source = (repo / "frontend" / "src" / "api" / "client.js").read_text(encoding="utf-8")
+        panel_source = (repo / "frontend" / "src" / "components" / "LocalModelsPanel.jsx").read_text(encoding="utf-8")
+        managed_section = panel_source[
+            panel_source.find("function ManagedServerSection") : panel_source.find("function CompanionStateIcon")
+        ]
         server_route_source = "\n".join(
             inspect.getsource(func)
             for func in (
@@ -445,9 +445,21 @@ def run() -> int:
             "/api/local-model/server/" not in ask_sources,
         )
         check(
-            "scope: no frontend start/stop UI/routes added",
-            "/api/local-model/server/" not in frontend_sources
-            and not any(label in frontend_sources for label in ("Start server", "Stop server", "Restart server")),
+            "scope: Phase 2G4 frontend process UI uses backend bridge only",
+            all(
+                route in frontend_client_source
+                for route in (
+                    "/api/local-model/server/status",
+                    "/api/local-model/server/start",
+                    "/api/local-model/server/stop",
+                    "/api/local-model/server/restart",
+                )
+            )
+            and '"/server/start"' not in managed_section
+            and '"/server/stop"' not in managed_section
+            and '"/server/restart"' not in managed_section
+            and "LMM_COMPANION" not in managed_section
+            and "Authorization" not in managed_section,
         )
         check(
             "scope: backend bridge has no subprocess/os.system/shell/direct host control",

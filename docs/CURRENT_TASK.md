@@ -5,7 +5,61 @@
 
 ---
 
-## NEXT — LMM Phase 2G3 backend process bridge DONE.
+## NEXT — LMM Phase 2G4 Local Models managed-server UI DONE.
+
+- **Local Model Manager Phase 2G4 — Local Models UI start/stop/restart controls
+  is DONE** on branch `lmm-phase2g4-process-ui`. This is frontend/client/tests/
+  docs only, using the existing Phase 2G3 backend routes.
+- **Frontend API helpers added:** `getLocalModelServerStatus()` →
+  `GET /api/local-model/server/status`, `startLocalModelServer(payload)` →
+  `POST /api/local-model/server/start`, `stopLocalModelServer(payload)` →
+  `POST /api/local-model/server/stop`, and
+  `restartLocalModelServer(payload)` →
+  `POST /api/local-model/server/restart`. The frontend never calls the companion
+  directly.
+- **UI added:** the existing Local Models panel now includes a **Managed Server**
+  section. On load it fetches companion/library/selection state plus managed
+  server status, keeps the selected-model preview visible, and keeps the manual
+  command helper fallback visible. It renders companion unavailable/offline/auth
+  states, no saved selected model, stopped/running/already-running/not-running/
+  unknown-style server states, and safe error categories such as port conflict,
+  invalid params, unknown model/profile, companion offline, and auth failure.
+- **Start/restart payload shape:** start and restart use the saved selected
+  library model id plus fixed typed defaults only:
+  `{ model_id, profile_id: "fake_test", parameters: { port: 18080, ctx_size:
+  2048, gpu_layers: 0, threads: 2 } }`. The `fake_test` profile is labeled as a
+  validation/test profile only. Stop sends only `{ grace_seconds: 5 }`.
+- **Safety copy:** controls state "Starts companion-managed server only.",
+  "Stops only the companion-managed server. Manual servers are not stopped by
+  this button.", and "Provider Settings are not changed."
+- **Scope preserved:** no backend route additions, no Docker Compose changes, no
+  Provider Settings writes, no Ask changes, no local provider base URL/model
+  behavior change, no real `llama-server` validation, no host-gateway TCP, no
+  Docker socket, no privileged container, no host PID namespace, no browser
+  localStorage/sessionStorage, no direct companion frontend calls, no free-form
+  command args UI, no arbitrary JSON editor, no `dangerouslySetInnerHTML`, and no
+  token/socket/raw absolute path/raw argv exposure in the UI.
+- **Tests updated:** `frontend/scripts/verify-local-model-library.mjs` now covers
+  the new API helper paths/methods, allowed-only start payload shape, disallowed
+  unsafe fields, disabled start without saved selection, manual helper fallback,
+  companion-managed stop copy, no Provider Settings/Ask calls, no browser
+  storage, no raw HTML rendering, no token/socket/Authorization strings in the UI
+  source/fixtures, no raw absolute path rendering, and managed status/error
+  normalization.
+- **Validation:** frontend local-model library/status/command checks passed;
+  frontend build passed with the existing Vite large-chunk warning; requested
+  backend/process suites passed; `python -m compileall api pipeline tools`,
+  `git diff --check`, and `docker compose config >/tmp/compose-check.txt` exit 0
+  passed. Manual/live fake-companion validation through direct backend calls
+  passed 22/22 with a temporary Compose override: saved fake GGUF selection,
+  `server/start` returned running on `fake_test`, follow-up status returned
+  running, `server/stop` returned stopped, redaction checks passed, and the app
+  service was restored with the committed Compose file only.
+- **Recommended next slice:** Phase 2G5 live Linux validation with real
+  `llama-server` and hardening/runtime proof. Keep Provider Settings and Ask
+  unchanged unless a later explicit design changes that boundary.
+
+## Previous — LMM Phase 2G3 backend process bridge DONE.
 
 - **Local Model Manager Phase 2G3 — FastAPI backend bridge for companion server
   status/start/stop/restart is DONE** on branch
@@ -16,47 +70,6 @@
   existing Unix-socket `/server/*` endpoints using server-side
   `LMM_COMPANION_SOCKET`, `LMM_COMPANION_TOKEN`, and optional
   `LMM_COMPANION_TIMEOUT_SECONDS`.
-- **Request contract:** start accepts only `model_id`, `profile_id`, and typed
-  bounded `parameters` (`port`, `ctx_size`, `gpu_layers`, `threads`). Stop accepts
-  only typed bounded `grace_seconds`. Restart accepts either the same explicit
-  start payload or `{ "reuse_last": true }`. Unknown top-level fields and unknown
-  parameter fields are rejected with safe `bad_request` DTOs before any companion
-  socket request is sent.
-- **Safe bridge DTOs:** the backend returns only `ok`, `configured`, `reachable`,
-  `state`, `managed`, `model_id`, `profile_id`, `port`, `started_at`, `error`,
-  and bounded/redacted `log_tail`. Companion/backend failures normalize to safe
-  categories including `companion_config`, `companion_offline`,
-  `companion_auth`, `companion_timeout`, `companion_error`, `bad_request`,
-  `not_running`, `already_running`, `unknown_model`, `unknown_profile`,
-  `invalid_parameters`, `port_in_use`, `process_start_failed`,
-  `process_stop_failed`, `stale_process`, and `process_error`.
-- **Scope preserved:** no frontend UI, no Docker Compose changes, no Provider
-  Settings writes, no Ask changes, no local provider base URL/model behavior
-  change, no real `llama-server` validation, no direct Docker host process
-  control, no direct host filesystem scanning, no host-gateway TCP, no Docker
-  socket, no privileged container, no host PID namespace, no subprocess or shell
-  execution in the backend bridge, no free-form command args, and no raw companion
-  token/socket path/absolute model path/Authorization/full URL/raw argv exposure.
-- **Tests added/updated:** `test_scripts/test_local_model_companion_process_bridge.py`
-  covers unconfigured/offline/auth/timeout/malformed companion states, request
-  method/path/body shape, safe field whitelisting, redaction, payload validation,
-  no Provider Settings writes, no Ask changes, no frontend start/stop UI/routes,
-  and no backend subprocess/shell/direct host control. Older Phase 2C/2E/2G2
-  scope assertions were updated to recognize the Phase 2G3 backend bridge while
-  preserving their original safety boundaries.
-- **Validation:** requested Python backend suites, frontend local-model suites,
-  `python -m compileall api pipeline tools`, `npm --prefix frontend run build`,
-  `git diff --check`, and `docker compose config >/tmp/compose-check.txt` all
-  passed. Manual fake-companion live validation through `http://127.0.0.1:8000`
-  also passed with a temporary `/tmp` Compose override and fake executable:
-  backend `status` returned stopped, `library/scan` returned one fake GGUF model,
-  `server/start` returned running on port 8123, follow-up `status` returned
-  running, and `server/stop` returned stopped. The app service was restored with
-  the committed Compose file only afterward.
-- **Recommended next slice:** Phase 2G4 Local Models UI controls for
-  start/stop/restart, still fake/safe validation only; alternatively Phase 2G4
-  live real `llama-server` validation first if the operator wants runtime proof
-  before adding UI.
 
 ## Previous — LMM Phase 2G2 companion HTTP process API DONE.
 

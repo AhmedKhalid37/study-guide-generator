@@ -447,9 +447,20 @@ def run() -> int:
                 and "/api/local-model/server/" not in companion_source,
             )
             check(
-                "scope: no frontend start/stop UI/routes added",
-                "/api/local-model/server/" not in client_source
-                and not any(label in panel_source for label in ("Start server", "Stop server", "Restart server")),
+                "scope: Phase 2G4 frontend process UI uses backend bridge only",
+                all(route in client_source for route in (
+                    "/api/local-model/server/status",
+                    "/api/local-model/server/start",
+                    "/api/local-model/server/stop",
+                    "/api/local-model/server/restart",
+                ))
+                and '"/server/start"' not in client_source
+                and '"/server/stop"' not in client_source
+                and '"/server/restart"' not in client_source
+                and "LMM_COMPANION" not in client_source
+                and "Authorization" not in client_source
+                and "Starts companion-managed server only." in panel_source
+                and "Stops only the companion-managed server." in panel_source,
             )
             check(
                 "scope: no Docker privilege/socket/host PID changes",
