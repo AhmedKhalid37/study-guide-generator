@@ -289,13 +289,23 @@ flashcards with CSV / Anki / Quizlet export.
   server mode still works without the companion. Saved selected models are
   clearly labeled as stale/unconfirmed when the companion is unconfigured, and
   path-free root summaries (`id`, `recursive`, `model_count`) are displayed when
-  the backend has them. There is still no permanent Docker Compose mount, Provider Settings
-  write, Ask change, dependency addition, local provider base-URL/model behavior
-  change, direct companion frontend call, host-gateway TCP, shell/free-form args
-  UI, browser storage, token/socket exposure in UI, direct Docker host process
-  control, direct host filesystem scan, automatic restart loop, model download
-  manager, multi-server pool, Windows/macOS process control, or absolute host
-  path/raw argv rendering.
+  the backend has them. Phase 2G10 adds docs/templates only for repeatable
+  Linux operator startup: `docs/LOCAL_MODEL_MANAGER_RUNTIME_SERVICE.md` plus
+  safe example companion config, `.ini` presets, systemd user service, and
+  temporary Docker override files under `docs/examples/`. The runtime guide
+  covers operator-owned config/runtime/log/model-root paths, local token
+  generation and non-commit rules, manual companion health/profile/scan checks,
+  Docker socket-directory mounting, systemd user-service commands, the Phase
+  2G8 real-profile E2E env, troubleshooting, and the LMM security checklist.
+  Templates use placeholders only (`/mnt/ai/llm-models`,
+  `/usr/bin/llama-server`, `replace-with-local-token`) and keep tokens
+  server-side. There is still no permanent Docker Compose mount, Provider
+  Settings write, Ask change, dependency addition, local provider base-URL/model
+  behavior change, direct companion frontend call, host-gateway TCP,
+  shell/free-form args UI, browser storage, token/socket exposure in UI, direct
+  Docker host process control, direct host filesystem scan, automatic restart
+  loop, model download manager, multi-server pool, Windows/macOS process
+  control, or absolute host path/raw argv rendering.
 - **Ask Your Guide — IN PROGRESS (Slice 1 design DONE; Slice 2 backend context
   inventory DONE; Slice 3 backend context preparation / chunking DONE; inserted
   workspace shell DONE; backend local chat API DONE; frontend chat UI wiring DONE;

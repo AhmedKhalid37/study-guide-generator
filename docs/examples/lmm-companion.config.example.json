@@ -1,0 +1,11 @@
+{
+  "approved_roots": [
+    { "id": "models", "path": "/mnt/ai/llm-models", "recursive": true }
+  ],
+  "token": "replace-with-local-token",
+  "process_runtime_dir": "/tmp/study-guide-generator-replace-with-user/lmm-process",
+  "llama_server_executable": "/usr/bin/llama-server",
+  "profile_preset_files": [
+    "~/.config/study-guide-generator/lmm-companion.profiles.ini"
+  ]
+}

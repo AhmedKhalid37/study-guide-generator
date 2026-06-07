@@ -1,6 +1,6 @@
 # LOCAL_MODEL_MANAGER_PHASE2_DESIGN.md - Host companion and approved GGUF library
 
-> **Status: Phase 2G9 approved-folder setup UX polish complete.** Phase 2A
+> **Status: Phase 2G10 runtime-service/operator packaging docs complete.** Phase 2A
 > established the host-companion boundary.
 > Phase 2B adds a Linux-first, stdlib-only host companion prototype under
 > `tools/local_model_companion/` for approved-folder GGUF scanning and a
@@ -42,6 +42,10 @@
 > unconfirmed when the companion is unconfigured; CPU-safe/balanced/low-memory
 > manual presets replace full-offload as the visible default; and safe root
 > summaries expose only root id, recursive flag, and model count.
+> Phase 2G10 adds docs/templates only for repeatable Linux operator startup:
+> `docs/LOCAL_MODEL_MANAGER_RUNTIME_SERVICE.md` and safe example companion
+> config, `.ini` presets, systemd user service, and temporary Docker override
+> files under `docs/examples/`.
 > There is still no production Docker Compose mount, Provider Settings write, Ask
 > change, dependency addition, local provider base-URL/model behavior change,
 > direct companion frontend call, host-gateway TCP, Docker socket, privileged
@@ -2201,3 +2205,60 @@ Non-goals preserved:
 - No token/socket/raw absolute host path/raw argv exposure.
 - No free-form flags UI.
 - No whole-PC scan.
+
+## 28. Phase 2G10 Runtime-Service / Operator Packaging Docs
+
+Phase 2G10 documents repeatable Linux operator startup for the host companion
+without changing application behavior or installing anything by default.
+
+Added docs/templates:
+
+- `docs/LOCAL_MODEL_MANAGER_RUNTIME_SERVICE.md`
+- `docs/examples/lmm-companion.config.example.json`
+- `docs/examples/lmm-companion.profiles.example.ini`
+- `docs/examples/lmm-companion.user.service.example`
+- `docs/examples/docker-compose.lmm-companion.override.example.yml`
+
+Runtime guide coverage:
+
+- Linux-first scope; Windows/macOS packaging remains deferred.
+- Operator-owned config, runtime/socket, process state, logs, and approved model
+  root paths.
+- Token generation with Python `secrets` or `openssl`, with explicit
+  non-commit rules.
+- Safe companion config and `.ini` profile examples with CPU safe, GPU balanced,
+  low-memory, and optional risky full-offload profiles.
+- Manual companion startup using
+  `python -m tools.local_model_companion.companion --config ... serve --socket ...`.
+- Basic health/profile/scan checks over the Unix socket without requiring a real
+  model launch.
+- Temporary Docker Compose override shape that mounts only the runtime/socket
+  directory and sets backend-only `LMM_COMPANION_SOCKET` /
+  `LMM_COMPANION_TOKEN`.
+- systemd user-service template and operator commands for enable, status,
+  logs, stop, and disable.
+- Real configured-profile E2E validation env, including the Phase 2G8 known-good
+  CPU-safe values for `/usr/bin/llama-server`, `/mnt/ai/llm-models`,
+  `gemma-4-26B-A4B-it-UD-Q4_K_M.gguf`, `port=18080`, `ctx_size=4096`,
+  `gpu_layers=0`, and `threads=8`.
+- Troubleshooting for unconfigured companion, missing socket, auth failure,
+  empty model library, stale selected model, missing profiles/executables, port
+  conflicts, CUDA OOM, readiness timeout, manual servers, Docker socket reach,
+  and runtime/socket permissions.
+- Security checklist preserving approved roots, server-side tokens, redacted
+  responses, no Docker socket, no privileged/host PID/host-gateway TCP, no
+  arbitrary shell, no Provider Settings writes, and unchanged Ask behavior.
+
+Scope preserved:
+
+- Docs/templates only.
+- No production backend behavior change.
+- No frontend UI change.
+- No Ask change.
+- No Provider Settings write.
+- No permanent Docker Compose change.
+- No actual installer or app-installed service.
+- No token committed.
+- No host-gateway TCP, Docker socket, privileged container, host PID namespace,
+  or host networking.
+- No model download manager or app-suggested settings.

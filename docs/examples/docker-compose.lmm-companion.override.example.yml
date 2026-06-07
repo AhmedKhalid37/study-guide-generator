@@ -1,0 +1,10 @@
+# Local-only example. Copy to an uncommitted override file and set
+# LMM_COMPANION_TOKEN in your shell or local env file. Do not commit real tokens.
+services:
+  app:
+    volumes:
+      - ${LMM_COMPANION_RUNTIME_DIR:-/tmp/study-guide-generator-${USER}}:/run/study-guide-generator/lmm-companion:rw
+    environment:
+      LMM_COMPANION_SOCKET: /run/study-guide-generator/lmm-companion/lmm-companion.sock
+      LMM_COMPANION_TOKEN: ${LMM_COMPANION_TOKEN:?set in local shell or .env.local}
+      LMM_COMPANION_TIMEOUT_SECONDS: "3"

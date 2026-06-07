@@ -9,6 +9,10 @@ real `llama-server` profiles, optional `.ini` preset import, and the Docker
 Unix-socket bridge. The app does not suggest hardware settings yet; profile
 defaults are operator-owned and whitelist-validated.
 
+For repeatable companion startup, systemd user-service examples, token rotation
+notes, and temporary Docker override templates, see
+`docs/LOCAL_MODEL_MANAGER_RUNTIME_SERVICE.md`.
+
 The web app does not implement a true browser folder picker for host GGUF
 folders. Approved folders currently come from the host companion config
 (`approved_roots`). Configure that file, restart the companion, then use Scan in

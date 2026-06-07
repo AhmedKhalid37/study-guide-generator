@@ -1,0 +1,17 @@
+[Unit]
+Description=Study Guide Generator Local Model Manager companion
+Documentation=docs/LOCAL_MODEL_MANAGER_RUNTIME_SERVICE.md
+After=default.target
+
+[Service]
+Type=simple
+WorkingDirectory=/home/replace-with-user/Downloads/project-root/main-app
+ExecStartPre=/usr/bin/mkdir -p %t/study-guide-generator
+ExecStart=/usr/bin/python3 -m tools.local_model_companion.companion --config /home/replace-with-user/.config/study-guide-generator/lmm-companion.json serve --socket %t/study-guide-generator/lmm-companion.sock
+Restart=on-failure
+RestartSec=5s
+StartLimitIntervalSec=120
+StartLimitBurst=3
+
+[Install]
+WantedBy=default.target

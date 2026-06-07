@@ -10,13 +10,30 @@
 - **Trunk includes:** `af0ec0e` (Ask Slice 1 design), `2634f63` (Ask Slice 2 context
   inventory), `a29a405` (Ask Slice 3 context preparation), and the inserted Ask
   workspace shell, on top of the validated LMM group and prior feature groups.
-- **Active work branch:** `lmm-phase2g9-runtime-setup-polish` — Local Model
-  Manager Phase 2G9 approved-folder setup UX + safe manual helper defaults.
-  **NEXT = validation / review, then packaging/runtime-service docs or a
-  separately designed host-companion approve-root flow. App-suggested settings
-  remain deferred.**
+- **Active work branch:** `lmm-phase2g10-runtime-service-docs` — Local Model
+  Manager Phase 2G10 companion runtime-service/operator packaging docs.
+  **NEXT = validation / review or live dry-run of the documented service flow,
+  then a separately designed host-companion approve-root flow if desired.
+  App-suggested settings remain deferred.**
 
 ## What just landed
+- **Local Model Manager Phase 2G10 — companion runtime-service/operator
+  packaging docs** (branch `lmm-phase2g10-runtime-service-docs`). Added
+  `docs/LOCAL_MODEL_MANAGER_RUNTIME_SERVICE.md` plus safe templates under
+  `docs/examples/`: companion JSON config, `.ini` profile presets, a systemd
+  user-service example, and a temporary Docker Compose override example. The
+  guide is Linux-first and covers operator-owned config/runtime/log/model-root
+  paths, token generation and non-commit rules, manual companion startup and
+  `/health`/`/profiles`/`/models/scan` checks, Docker socket-directory mounting,
+  user-service enable/status/log/stop commands, the Phase 2G8 real-profile E2E
+  validation env, troubleshooting, and a security checklist. Templates use
+  placeholders only (`/mnt/ai/llm-models`, `/usr/bin/llama-server`,
+  `replace-with-local-token`) and avoid whole-home mounts, Docker socket,
+  privileged mode, host PID namespace, host networking, host-gateway TCP, and
+  committed secrets. Scope preserved: docs/templates only; no production
+  backend behavior changes, frontend UI changes, Ask changes, Provider Settings
+  writes, permanent Docker Compose changes, app-installed service, actual
+  installer, model download manager, or app-suggested settings.
 - **Local Model Manager Phase 2G9 — approved-folder setup UX + safe manual
   helper defaults** (branch `lmm-phase2g9-runtime-setup-polish`). Manual command
   helper defaults are now CPU-safe first (`-c 4096 -ngl 0 --threads 8`), with

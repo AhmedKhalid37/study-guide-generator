@@ -5,7 +5,41 @@
 
 ---
 
-## NEXT — LMM Phase 2G9 approved-folder setup UX polish DONE.
+## NEXT — LMM Phase 2G10 runtime-service/operator packaging docs DONE.
+
+- **Local Model Manager Phase 2G10 is DONE** on branch
+  `lmm-phase2g10-runtime-service-docs`.
+- **Runtime service guide added:**
+  `docs/LOCAL_MODEL_MANAGER_RUNTIME_SERVICE.md` documents Linux-first operator
+  startup for the host companion, safe paths, token handling, manual companion
+  health checks, temporary Docker override shape, systemd user-service template,
+  E2E validation, troubleshooting, and the security checklist.
+- **Safe templates added under `docs/examples/`:**
+  `lmm-companion.config.example.json`,
+  `lmm-companion.profiles.example.ini`,
+  `lmm-companion.user.service.example`, and
+  `docker-compose.lmm-companion.override.example.yml`.
+- **Operational boundary preserved:** the socket directory is the only Docker
+  mount shown; the token is a placeholder and server-side only; model roots are
+  read by the host companion, not the Docker backend; and the examples avoid
+  whole-home mounts, Docker socket, privileged mode, host PID namespace, host
+  networking, and host-gateway TCP.
+- **Validation basis documented:** Phase 2G8 CPU-safe E2E passed with
+  `/usr/bin/llama-server`, `/mnt/ai/llm-models`,
+  `gemma-4-26B-A4B-it-UD-Q4_K_M.gguf`, `port=18080`,
+  `ctx_size=4096`, `gpu_layers=0`, and `threads=8`; full offload
+  `gpu_layers=999` remains an advanced risky example only because it failed
+  safely with CUDA OOM on the 26B model.
+- **Scope preserved:** docs/templates only; no production backend behavior
+  change, no frontend UI change, no Ask change, no Provider Settings write, no
+  permanent Docker Compose change, no actual installer, no app-installed system
+  service, no committed token, no model download manager, and no app-suggested
+  settings.
+- **Recommended next slice:** operator review / live dry-run of the documented
+  service flow, or a separately designed host-companion approve-root flow if
+  in-app root management is still desired.
+
+## Previous — LMM Phase 2G9 approved-folder setup UX polish DONE.
 
 - **Local Model Manager Phase 2G9 is DONE** on branch
   `lmm-phase2g9-runtime-setup-polish`.
