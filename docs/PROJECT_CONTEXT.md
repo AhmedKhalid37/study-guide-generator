@@ -227,15 +227,26 @@ flashcards with CSV / Anki / Quizlet export.
   `test_scripts/validate_lmm_real_llama_server.py`, which skips without explicit
   real env and otherwise starts a temporary companion, scans an approved root,
   launches real `llama-server`, verifies `/v1/models`, stops, checks port release
-  and redaction, and cleans up. There is still no permanent Docker Compose mount,
-  Provider Settings write, Ask change, dependency addition, local provider
-  base-URL/model behavior change, direct companion frontend call, shell/free-form
-  args UI, browser storage, token/socket exposure in UI, direct Docker host
-  process control, direct host filesystem scan, automatic restart loop, model
-  download manager, multi-server pool, Windows/macOS process control, or absolute
-  host path/raw argv rendering. Next recommended slice is operator-run live
-  `llama-server` validation using the harness, then optional real-profile UI
-  design if requested.
+  and redaction, and cleans up. Operator-run real Linux `llama-server` lifecycle
+  validation passed in CPU mode with `/usr/bin/llama-server` and
+  `/mnt/ai/llm-models/gemma-4-26B-A4B-it-UD-Q4_K_M.gguf` on port `18080`
+  (`ctx_size=4096`, `gpu_layers=0`, `threads=8`): the harness launched the real
+  server, reached `/v1/models`, and stopped cleanly. A full GPU/offload stress
+  attempt on port `8080` with `ctx_size=8192`, `gpu_layers=999`, and `threads=8`
+  failed safely before readiness, was classified as `model_may_be_too_large`, and
+  showed CUDA OOM / failed CUDA allocation in logs. High-GPU-offload validation
+  has not passed; practical GPU defaults still need follow-up because
+  `gpu_layers=999` can be too aggressive for large models on 16GB VRAM. There is
+  still no permanent Docker Compose mount, Provider Settings write, Ask change,
+  dependency addition, local provider base-URL/model behavior change, direct
+  companion frontend call, shell/free-form args UI, browser storage, token/socket
+  exposure in UI, direct Docker host process control, direct host filesystem scan,
+  automatic restart loop, model download manager, multi-server pool,
+  Windows/macOS process control, or absolute host path/raw argv rendering. Next
+  recommended slice is Phase 2G6 real-profile UI/defaults polish: safely expose
+  configured real profiles, avoid unsafe `gpu_layers=999` defaults for large
+  models, add CPU and low-memory GPU presets, and keep Provider Settings writes
+  out unless explicitly confirmed.
 - **Ask Your Guide — IN PROGRESS (Slice 1 design DONE; Slice 2 backend context
   inventory DONE; Slice 3 backend context preparation / chunking DONE; inserted
   workspace shell DONE; backend local chat API DONE; frontend chat UI wiring DONE;

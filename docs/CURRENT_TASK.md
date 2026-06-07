@@ -48,12 +48,24 @@
   container, no host PID namespace, no browser storage, no model download manager,
   no automatic restart loop, no multi-server pool, and no Windows/macOS process
   control. Ollama/simple-local-model remains a possible later path only.
-- **Validation:** focused fake and real-profile lifecycle tests passed; live real
-  validation skipped in this environment because explicit real env vars were not
-  present.
-- **Recommended next slice:** operator-run live `llama-server` proof using the
-  new harness, then a design slice for safely exposing configured real profiles
-  in UI without adding free-form args or Provider Settings writes.
+- **Real validation results:** focused fake and real-profile lifecycle tests
+  passed, and operator-run real Linux `llama-server` lifecycle validation passed
+  in CPU mode. With `/usr/bin/llama-server`,
+  `/mnt/ai/llm-models/gemma-4-26B-A4B-it-UD-Q4_K_M.gguf`, port `18080`,
+  `ctx_size=4096`, `gpu_layers=0`, and `threads=8`,
+  `test_scripts/validate_lmm_real_llama_server.py` launched real
+  `llama-server`, reached `/v1/models`, stopped cleanly, and verified cleanup.
+- **GPU/offload stress result:** the full-offload attempt with the same binary
+  and model on port `8080`, `ctx_size=8192`, `gpu_layers=999`, and `threads=8`
+  failed safely before readiness. It was classified as `model_may_be_too_large`;
+  logs showed CUDA OOM / failed CUDA allocation. This confirms the lifecycle
+  hardening detects model-load failure instead of reporting `running`. This does
+  **not** mean high-GPU-offload validation passed.
+- **Recommended next slice:** Phase 2G6 real-profile UI/defaults polish: expose
+  configured real profiles safely, avoid unsafe `gpu_layers=999` defaults for
+  large models on 16GB VRAM, add safer presets such as CPU and low-memory GPU,
+  and defer advanced/manual controls. Still no Provider Settings writes unless
+  explicitly confirmed.
 
 ## Previous — LMM Phase 2G4 Local Models managed-server UI DONE.
 

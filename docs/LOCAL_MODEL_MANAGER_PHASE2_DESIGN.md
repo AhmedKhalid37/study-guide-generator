@@ -23,7 +23,10 @@
 > id plus fixed typed `fake_test` defaults. Phase 2G5 adds explicit-config real
 > Linux `llama-server` profiles, readiness polling against `/v1/models`, bounded
 > log/error classification, process-group stop hardening, and a live validation
-> harness.
+> harness. Operator-run real Linux `llama-server` lifecycle validation passed in
+> CPU mode; a full GPU/offload stress attempt failed safely before readiness with
+> CUDA OOM and `model_may_be_too_large`, so high-GPU-offload validation has not
+> passed and practical GPU defaults still need Phase 2G6 polish.
 > There is still no production Docker Compose mount, Provider Settings write, Ask
 > change, dependency addition, local provider base-URL/model behavior change,
 > direct companion frontend call, host-gateway TCP, Docker socket, privileged
@@ -580,9 +583,11 @@ safe response fields.
   Settings writes, Ask changes, or real `llama-server` validation.
 - **Phase 2G5:** DONE. Explicit-config real Linux `llama-server` profiles,
   readiness polling, lifecycle hardening, safe error classification, and live
-  validation harness.
-- **Phase 2G6:** operator-run live validation follow-up and optional real-profile
-  UI design, if requested.
+  validation harness. Operator-run CPU lifecycle validation passed; full
+  GPU/offload stress failed safely with CUDA OOM and `model_may_be_too_large`.
+- **Phase 2G6:** real-profile UI/defaults polish: expose configured real
+  profiles safely, avoid unsafe `gpu_layers=999` defaults for large models, add
+  safer CPU and low-memory GPU presets, and defer advanced/manual controls.
 - **Later:** packaging/signing and cross-platform installers.
 
 Each slice must preserve the boundary: Docker backend talks to the companion; the
@@ -1770,6 +1775,30 @@ Live validation harness:
   approved root, starts real `llama-server`, verifies `/v1/models`, checks
   status, stops, verifies port release and redaction, and cleans up.
 
+Operator-run real validation results:
+
+- **CPU lifecycle validation passed.** Env:
+  `LMM_REAL_LLAMA_SERVER_BIN=/usr/bin/llama-server`,
+  `LMM_REAL_MODEL_ROOT=/mnt/ai/llm-models`,
+  `LMM_REAL_MODEL_PATTERN=gemma-4-26B-A4B-it-UD-Q4_K_M.gguf`,
+  `LMM_REAL_PORT=18080`, `LMM_REAL_CTX_SIZE=4096`,
+  `LMM_REAL_GPU_LAYERS=0`, `LMM_REAL_THREADS=8`. The harness launched real
+  `llama-server`, reached `/v1/models`, stopped cleanly, and verified cleanup.
+- **Full GPU/offload stress failed safely before readiness.** Env:
+  `LMM_REAL_LLAMA_SERVER_BIN=/usr/bin/llama-server`,
+  `LMM_REAL_MODEL_ROOT=/mnt/ai/llm-models`,
+  `LMM_REAL_MODEL_PATTERN=gemma-4-26B-A4B-it-UD-Q4_K_M.gguf`,
+  `LMM_REAL_PORT=8080`, `LMM_REAL_CTX_SIZE=8192`,
+  `LMM_REAL_GPU_LAYERS=999`, `LMM_REAL_THREADS=8`. The failure was classified as
+  `model_may_be_too_large`; logs showed CUDA OOM / failed CUDA allocation. This
+  validates safe model-load-failure detection and confirms the lifecycle does not
+  report `running` before readiness.
+- Do not claim high-GPU-offload validation passed. The validated real-runtime
+  success is Linux CPU-mode lifecycle start/readiness/stop, plus safe handling of
+  the too-large/high-offload GPU load failure.
+- Practical GPU defaults need a follow-up because `gpu_layers=999` can be too
+  aggressive for large models on 16GB VRAM.
+
 Explicit non-goals preserved in Phase 2G5:
 
 - No Provider Settings writes.
@@ -1784,7 +1813,8 @@ Explicit non-goals preserved in Phase 2G5:
 - No Windows/macOS process support.
 - No Ollama/simple-local-model path in this slice.
 
-Next recommended slice is operator-run live `llama-server` validation using the
-new harness, then a design pass for exposing configured real profiles in UI only
-if that can preserve the no-free-form-args and no-Provider-Settings-write
-boundaries.
+Next recommended slice is Phase 2G6 real-profile UI/defaults polish: expose
+configured real profiles safely, avoid unsafe `gpu_layers=999` defaults for large
+models, add safer presets such as CPU and low-memory GPU, and defer
+advanced/manual controls. Provider Settings writes remain out of scope unless
+explicitly confirmed.

@@ -12,8 +12,9 @@
   workspace shell, on top of the validated LMM group and prior feature groups.
 - **Active work branch:** `lmm-phase2g5-real-llama-validation` — Local Model
   Manager Phase 2G5 real Linux `llama-server` validation/lifecycle hardening.
-  **NEXT = operator-run live `llama-server` proof with explicit env, then
-  optional real-profile UI design if requested.**
+  **NEXT = Phase 2G6 real-profile UI/defaults polish: expose configured real
+  profiles safely, avoid unsafe `gpu_layers=999` defaults for large models, and
+  keep Provider Settings writes out unless explicitly confirmed.**
 
 ## What just landed
 - **Local Model Manager Phase 2G5 — real Linux llama-server validation and
@@ -43,7 +44,20 @@
   `LMM_REAL_LLAMA_SERVER_BIN`, `LMM_REAL_MODEL_ROOT`, and model id/pattern env,
   and when configured starts a temporary companion, scans, launches real
   `llama-server`, verifies `/v1/models`, stops, verifies port release/redaction,
-  and cleans up. Live real validation skipped here due missing explicit env.
+  and cleans up. Operator-run real Linux `llama-server` lifecycle validation
+  passed in CPU mode with `LMM_REAL_LLAMA_SERVER_BIN=/usr/bin/llama-server`,
+  `LMM_REAL_MODEL_ROOT=/mnt/ai/llm-models`,
+  `LMM_REAL_MODEL_PATTERN=gemma-4-26B-A4B-it-UD-Q4_K_M.gguf`,
+  `LMM_REAL_PORT=18080`, `LMM_REAL_CTX_SIZE=4096`,
+  `LMM_REAL_GPU_LAYERS=0`, and `LMM_REAL_THREADS=8`: the harness launched real
+  `llama-server`, reached `/v1/models`, and stopped cleanly. A full GPU/offload
+  stress attempt with the same binary/model on port `8080`, `ctx_size=8192`,
+  `gpu_layers=999`, and `threads=8` failed safely before readiness, was
+  classified as `model_may_be_too_large`, and logs showed CUDA OOM / failed CUDA
+  allocation. Do not describe high-GPU-offload validation as passed; the proven
+  result is CPU-mode real lifecycle validation plus safe model-load-failure
+  detection. Practical GPU defaults still need a follow-up because
+  `gpu_layers=999` can be too aggressive for large models on 16GB VRAM.
   Scope preserved: no Provider Settings writes, no Ask changes, no permanent
   Docker Compose changes, no host-gateway TCP, Docker socket, privileged
   container, host PID namespace, browser storage, automatic restart loop, model
