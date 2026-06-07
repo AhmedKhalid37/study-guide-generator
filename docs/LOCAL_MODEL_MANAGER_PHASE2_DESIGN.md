@@ -1,6 +1,6 @@
 # LOCAL_MODEL_MANAGER_PHASE2_DESIGN.md - Host companion and approved GGUF library
 
-> **Status: Phase 2F start/stop design review complete.** Phase 2A
+> **Status: Phase 2G1 companion process-control internals complete.** Phase 2A
 > established the host-companion boundary.
 > Phase 2B adds a Linux-first, stdlib-only host companion prototype under
 > `tools/local_model_companion/` for approved-folder GGUF scanning and a
@@ -13,10 +13,14 @@
 > model-library picker. Phase 2E persists the selected discovered GGUF model as
 > app-side safe metadata only and feeds a non-runnable future-launch preview.
 > Phase 2F is docs-only and defines the safe contract for future Phase 2G
-> companion-managed `llama-server` start/stop/restart.
+> companion-managed `llama-server` start/stop/restart. Phase 2G1 adds
+> companion-private process-management internals under
+> `tools/local_model_companion/` and validates them only with a fake/safe test
+> executable.
 > There is still no production Docker Compose mount, Provider Settings write, Ask
 > change, dependency addition, local provider base-URL/model behavior change,
-> model execution, or `llama-server` start/stop/restart behavior.
+> backend bridge start/stop route, frontend UI, companion start/stop HTTP API,
+> model execution, or real `llama-server` start/stop/restart behavior.
 
 ---
 
@@ -554,12 +558,14 @@ safe response fields.
   write, no Ask change, no process control.
 - **Phase 2F:** DONE. Start/stop design review for future companion-managed
   `llama-server` process control; docs only, no routes or implementation.
-- **Phase 2G1:** companion process-control internals with a fake/safe test
-  executable only; no backend bridge or UI.
-- **Phase 2G2:** backend bridge for server status/start/stop/restart; no UI.
-- **Phase 2G3:** Local Models UI start/stop/restart controls.
-- **Phase 2G4:** live Linux validation with real `llama-server`.
-- **Phase 2G5:** hardening/security pass.
+- **Phase 2G1:** DONE. Companion process-control internals with a fake/safe test
+  executable only; no companion HTTP start/stop API, backend bridge, or UI.
+- **Phase 2G2:** companion HTTP server endpoints for process status/start/stop/
+  restart using the internal manager; still no backend bridge or UI.
+- **Phase 2G3:** backend bridge for server status/start/stop/restart; no UI.
+- **Phase 2G4:** Local Models UI start/stop/restart controls.
+- **Phase 2G5:** live Linux validation with real `llama-server`.
+- **Phase 2G6:** hardening/security pass.
 - **Later:** packaging/signing and cross-platform installers.
 
 Each slice must preserve the boundary: Docker backend talks to the companion; the
@@ -1301,5 +1307,56 @@ Future implementation must include tests for:
 - No multi-server pool.
 - No Windows/macOS process implementation.
 
-Next recommended slice is **Phase 2G1: companion process-control internals with
-a fake/safe test executable only**, no backend bridge or UI.
+## 19. Phase 2G1 Companion Process Internals
+
+Phase 2G1 implements only companion-private lifecycle primitives. The app cannot
+start or stop models from the backend or frontend yet.
+
+Added internals:
+
+- `tools/local_model_companion/profiles.py` defines typed, bounded launch
+  profiles and the explicit `fake_test` profile constructor used by tests.
+- `tools/local_model_companion/process_manager.py` defines
+  `ManagedServerProcessManager`, `start_managed_server`,
+  `stop_managed_server`, and `get_managed_server_status`.
+- The manager resolves selected model ids against approved-root GGUF library
+  records, re-canonicalizes the root-relative model path, and rejects unknown
+  models or paths outside the approved root.
+- The manager validates executable paths from companion/test config, checks that
+  the file exists and is executable, builds argv arrays only, and launches with
+  `subprocess.Popen(..., shell=False)`.
+- Process state is stored in a companion-owned runtime directory as
+  `managed_server_state.json` via atomic replace. Active state includes version,
+  pid, model id, root id, profile id, port, typed params, `started_at`,
+  executable path/fingerprint metadata, Linux process start ticks, private model
+  path, redacted argv metadata, status, last error, and log path. It stores no
+  token.
+- Linux `/proc` checks verify PID existence, zombie/dead state, process start
+  ticks when available, and command/executable identity before status reports or
+  stop signals. Foreign or uncertain PIDs are not killed.
+- Logs are written to `managed_server.log` with non-world-readable permissions
+  where practical. Safe DTOs expose only a bounded, redacted tail.
+
+Phase 2G1 validation uses only a temporary fake Python executable created by the
+test. It stays alive, prints predictable output including redaction bait, handles
+termination, and is cleaned up by the test harness. No real `llama-server` is
+launched.
+
+Explicit non-goals preserved in Phase 2G1:
+
+- No FastAPI backend start/stop/restart routes.
+- No frontend UI.
+- No Docker Compose changes.
+- No Provider Settings writes.
+- No Ask changes.
+- No backend bridge start/stop.
+- No companion HTTP `/server/start`, `/server/stop`, or `/server/restart`
+  endpoints.
+- No real `llama-server` launch.
+- No shell execution or free-form command args.
+- No host-gateway TCP, Docker socket, privileged container, or host PID
+  namespace.
+
+Next recommended slice is **Phase 2G2: companion HTTP server endpoints for
+process status/start/stop/restart**, still no backend bridge or UI. If validation
+surfaces process-identity or redaction issues, do a hardening slice first.

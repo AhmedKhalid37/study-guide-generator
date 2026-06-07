@@ -10,12 +10,36 @@
 - **Trunk includes:** `af0ec0e` (Ask Slice 1 design), `2634f63` (Ask Slice 2 context
   inventory), `a29a405` (Ask Slice 3 context preparation), and the inserted Ask
   workspace shell, on top of the validated LMM group and prior feature groups.
-- **Active work branch:** `lmm-phase2f-start-stop-design` — Local Model Manager
-  Phase 2F start/stop design review, docs only. **NEXT = Phase 2G1 companion
-  process-control internals with a fake/safe test executable only, no backend
-  bridge and no UI.**
+- **Active work branch:** `lmm-phase2g1-companion-process-internals` — Local
+  Model Manager Phase 2G1 companion process-control internals with a fake/safe
+  test executable only. **NEXT = Phase 2G2 companion HTTP server endpoints for
+  process status/start/stop/restart, still no backend bridge or UI.**
 
 ## What just landed
+- **Local Model Manager Phase 2G1 — companion process-control internals**
+  (branch `lmm-phase2g1-companion-process-internals`). Added companion-private
+  lifecycle code only: `tools/local_model_companion/profiles.py` defines typed,
+  bounded launch profiles plus the explicit `fake_test` profile constructor, and
+  `tools/local_model_companion/process_manager.py` defines
+  `ManagedServerProcessManager`, `start_managed_server`,
+  `stop_managed_server`, and `get_managed_server_status`. Start resolves selected
+  model ids against approved-root GGUF records, re-canonicalizes model paths
+  inside configured roots, validates profile ids and typed params, validates a
+  companion/test-configured executable path, checks port availability, builds argv
+  arrays only, and launches with `subprocess.Popen(..., shell=False)`. Status and
+  stop use Linux `/proc` PID identity checks; stale/reused/foreign PIDs are never
+  killed. Active process state is written atomically to
+  `managed_server_state.json` in a companion-owned runtime dir and includes pid,
+  model/root/profile ids, port, params, started_at, executable metadata,
+  redacted argv metadata, private model path, status, last error, and log path; it
+  stores no token. Logs go to `managed_server.log`; safe DTOs expose only bounded
+  redacted tails. The focused test creates a temporary fake Python executable
+  that stays alive, prints predictable output/redaction bait, handles SIGTERM, and
+  is cleaned up. No FastAPI backend route, frontend UI, Docker Compose change,
+  Provider Settings write, Ask change, backend bridge start/stop, companion
+  `/server/start`/`stop`/`restart` HTTP endpoint, real `llama-server` launch,
+  shell execution, free-form args, host-gateway TCP, Docker socket, privileged
+  container, or host PID namespace was added.
 - **Local Model Manager Phase 2F — start/stop design review** (branch
   `lmm-phase2f-start-stop-design`). Docs-only safety review before implementing
   any `llama-server` process control. Updated

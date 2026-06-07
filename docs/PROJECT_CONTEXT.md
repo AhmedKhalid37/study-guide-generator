@@ -118,7 +118,9 @@ flashcards with CSV / Anki / Quizlet export.
   read-only Docker backend bridge; Phase 2D adds the frontend model-library picker
   in the existing Local Models panel; Phase 2E persists a selected discovered GGUF
   model as app-side metadata only. Phase 2F is docs-only and defines the future
-  safe start/stop/restart contract. Future in-app model start/stop must go
+  safe start/stop/restart contract. Phase 2G1 adds companion-private process
+  lifecycle internals with a fake/safe test executable only. Future in-app model
+  start/stop must go
   through React UI -> Docker FastAPI backend -> Unix-socket-first,
   token-authenticated host companion. For the current Linux Docker deployment,
   companion control assumes a Unix domain socket mounted into the backend
@@ -179,13 +181,20 @@ flashcards with CSV / Anki / Quizlet export.
   permission-restricted, redacted in APIs, and checked for PID reuse on Linux via
   `/proc` where available. Logs are bounded/redacted; port conflicts fail safely;
   companion status is operational state and does not write Provider Settings.
-  There is still no permanent Docker Compose mount, Provider Settings write, Ask
-  change, dependency addition, local provider base-URL/model behavior change,
-  model execution, `llama-server` launch, process control, subprocess/shell use in
-  the app path, start/stop/restart API, browser storage, token/socket exposure, or
-  absolute host path rendering. Next recommended slice is Phase 2G1 companion
-  process-control internals with a fake/safe test executable only, no backend
-  bridge and no UI.
+  Phase 2G1 adds `tools/local_model_companion/profiles.py` and
+  `process_manager.py` for internal-only fake-executable process control:
+  profile validation uses typed bounded params; model ids resolve against
+  approved-root scan records; argv arrays are built without shell execution;
+  state is written atomically to a companion-owned runtime dir; and Linux `/proc`
+  identity checks prevent killing stale/reused/foreign PIDs. Tests create a
+  temporary executable Python script and fake `.gguf` files only. There is still
+  no permanent Docker Compose mount, Provider Settings write, Ask change,
+  dependency addition, local provider base-URL/model behavior change, backend
+  bridge start/stop, companion start/stop HTTP API, frontend UI, real
+  `llama-server` launch, shell/free-form args, browser storage, token/socket
+  exposure, or absolute host path rendering. Next recommended slice is Phase 2G2
+  companion HTTP server endpoints for process status/start/stop/restart, still no
+  backend bridge or UI.
 - **Ask Your Guide — IN PROGRESS (Slice 1 design DONE; Slice 2 backend context
   inventory DONE; Slice 3 backend context preparation / chunking DONE; inserted
   workspace shell DONE; backend local chat API DONE; frontend chat UI wiring DONE;
