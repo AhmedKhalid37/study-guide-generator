@@ -21,16 +21,31 @@ MAX_COMPANION_WARNINGS = 25
 MAX_COMPANION_LOG_LINES = 50
 MAX_COMPANION_LOG_LINE_CHARS = 500
 MAX_START_BODY_BYTES = 16 * 1024
+MAX_PROFILES = 50
 
 _START_FIELDS = {"model_id", "profile_id", "parameters"}
 _STOP_FIELDS = {"grace_seconds"}
 _RESTART_FIELDS = {"reuse_last", "model_id", "profile_id", "parameters"}
+_SAFE_START_PARAMETER_NAMES = {
+    "port",
+    "ctx_size",
+    "gpu_layers",
+    "threads",
+    "parallel",
+    "cache_type_k",
+    "cache_type_v",
+    "flash_attention",
+    "mmap",
+}
 _START_PARAMETER_BOUNDS = {
     "port": (1024, 65535),
     "ctx_size": (512, 131072),
     "gpu_layers": (0, 999),
     "threads": (1, 256),
+    "parallel": (1, 32),
 }
+_START_PARAMETER_ENUMS = {"cache_type_k", "cache_type_v"}
+_START_PARAMETER_BOOLEANS = {"flash_attention", "mmap"}
 _SERVER_STATES = {"stopped", "starting", "running", "already_running", "not_running", "error", "crashed", "unknown"}
 _PROCESS_ERROR_CATEGORIES = {
     "bad_request",
@@ -41,6 +56,7 @@ _PROCESS_ERROR_CATEGORIES = {
     "invalid_parameters",
     "executable_missing",
     "permission_denied",
+    "executable_not_allowed",
     "port_in_use",
     "model_load_failed",
     "model_may_be_too_large",
@@ -97,6 +113,7 @@ _SAFE_ERROR_MESSAGES = {
     "invalid_parameters": "Local model server parameters are invalid.",
     "executable_missing": "Configured local model server executable was not found.",
     "permission_denied": "Configured local model server executable is not runnable.",
+    "executable_not_allowed": "Configured local model server executable is not usable.",
     "port_in_use": "Requested local model server port is already in use.",
     "model_load_failed": "Local model server could not load the selected model.",
     "model_may_be_too_large": "Selected local model may be too large for available memory.",
@@ -234,6 +251,17 @@ def _empty_server_status(config: CompanionBridgeConfig, category: str | None) ->
         "started_at": None,
         "error": _safe_error(category) if category else None,
         "log_tail": [],
+    }
+
+
+def _empty_profiles(config: CompanionBridgeConfig, category: str | None) -> dict[str, Any]:
+    return {
+        "ok": True,
+        "configured": config.configured,
+        "reachable": False,
+        "profiles": [],
+        "warnings": [],
+        "error": _safe_error(category) if category else None,
     }
 
 
@@ -510,7 +538,7 @@ def get_companion_status() -> dict[str, Any]:
 
     capabilities = payload.get("capabilities")
     safe_capabilities = [
-        value for value in capabilities if isinstance(value, str) and value == "scan"
+        value for value in capabilities if isinstance(value, str) and value in {"scan", "server_profiles"}
     ] if isinstance(capabilities, list) else []
     status.update(
         {
@@ -567,6 +595,129 @@ def scan_companion_library() -> dict[str, Any]:
     return _library_from_payload(config, payload)
 
 
+def _sanitize_parameter_schema(raw: Any, defaults: dict[str, Any]) -> dict[str, Any] | None:
+    if not isinstance(raw, dict):
+        return None
+    param_type = raw.get("type")
+    if param_type not in {"integer", "boolean", "enum"}:
+        return None
+    item: dict[str, Any] = {"type": param_type}
+    label = _safe_str(raw.get("label"), max_len=120)
+    if label:
+        item["label"] = _redact_text(label, max_len=120)
+    help_text = _safe_str(raw.get("help"), max_len=500)
+    if help_text:
+        item["help"] = _redact_text(help_text, max_len=500)
+    if isinstance(raw.get("required"), bool):
+        item["required"] = raw["required"]
+
+    if param_type == "integer":
+        minimum = raw.get("min")
+        maximum = raw.get("max")
+        default = raw.get("default")
+        if (
+            isinstance(minimum, int)
+            and not isinstance(minimum, bool)
+            and isinstance(maximum, int)
+            and not isinstance(maximum, bool)
+            and minimum <= maximum
+            and isinstance(default, int)
+            and not isinstance(default, bool)
+            and minimum <= default <= maximum
+        ):
+            item.update({"min": minimum, "max": maximum, "default": default})
+        else:
+            return None
+    elif param_type == "boolean":
+        default = raw.get("default")
+        if not isinstance(default, bool):
+            return None
+        item["default"] = default
+    else:
+        allowed = raw.get("allowed_values")
+        default = raw.get("default")
+        if not isinstance(allowed, list) or not isinstance(default, str):
+            return None
+        safe_allowed = [
+            value
+            for value in allowed
+            if isinstance(value, str) and value and re.fullmatch(r"[A-Za-z0-9_.:-]{1,40}", value)
+        ][:32]
+        if default not in safe_allowed:
+            return None
+        item["allowed_values"] = safe_allowed
+        item["default"] = default
+    defaults["_last"] = item["default"]
+    return item
+
+
+def _profiles_from_payload(config: CompanionBridgeConfig, payload: dict[str, Any]) -> dict[str, Any]:
+    if payload.get("ok") is not True:
+        return _empty_profiles(config, "companion_error")
+    raw_profiles = payload.get("profiles")
+    if not isinstance(raw_profiles, list):
+        return _empty_profiles(config, "companion_error")
+    profiles: list[dict[str, Any]] = []
+    seen: set[str] = set()
+    for raw in raw_profiles[:MAX_PROFILES]:
+        if not isinstance(raw, dict):
+            continue
+        profile_id = _safe_identifier(raw.get("id"), max_len=80)
+        if not profile_id or profile_id in seen:
+            continue
+        parameters_raw = raw.get("parameters")
+        if not isinstance(parameters_raw, dict):
+            continue
+        default_parameters: dict[str, Any] = {}
+        parameters: dict[str, Any] = {}
+        for name, param_raw in parameters_raw.items():
+            if name not in _SAFE_START_PARAMETER_NAMES:
+                continue
+            marker: dict[str, Any] = {}
+            schema = _sanitize_parameter_schema(param_raw, marker)
+            if schema is None:
+                continue
+            parameters[name] = schema
+            default_parameters[name] = marker["_last"]
+        profile: dict[str, Any] = {
+            "id": profile_id,
+            "display_name": _redact_text(_safe_str(raw.get("display_name"), max_len=120) or profile_id, max_len=120),
+            "description": _redact_text(_safe_str(raw.get("description"), max_len=500) or "", max_len=500),
+            "type": "llama_server" if raw.get("type") == "llama_server" else "fake_test" if raw.get("type") == "fake_test" else "unknown",
+            "test_profile": raw.get("test_profile") is True,
+            "runnable": raw.get("runnable") is True,
+            "runnable_reason": _normalize_error_category(raw.get("runnable_reason")) if raw.get("runnable_reason") else None,
+            "default_parameters": default_parameters,
+            "parameters": parameters,
+            "warnings": [
+                _redact_text(item, max_len=500)
+                for item in raw.get("warnings", [])
+                if isinstance(item, str) and _redact_text(item, max_len=500)
+            ][:8],
+        }
+        profiles.append(profile)
+        seen.add(profile_id)
+    return {
+        "ok": True,
+        "configured": True,
+        "reachable": True,
+        "profiles": profiles,
+        "warnings": _sanitize_warnings([{"message": item} for item in payload.get("warnings", []) if isinstance(item, str)]),
+        "error": None,
+    }
+
+
+def get_companion_server_profiles() -> dict[str, Any]:
+    config = get_companion_bridge_config()
+    if not config.configured:
+        return _empty_profiles(config, "companion_config")
+    try:
+        payload = _http_json_unix(config, "GET", "/profiles")
+    except CompanionClientError as exc:
+        return _empty_profiles(config, exc.category)
+    return _profiles_from_payload(config, payload)
+
+
 def _validate_start_payload(payload: Any) -> tuple[dict[str, Any] | None, str | None]:
     if not isinstance(payload, dict):
         return None, "request body must be a JSON object"
@@ -586,11 +737,11 @@ def _validate_start_payload(payload: Any) -> tuple[dict[str, Any] | None, str | 
         raw_parameters = {}
     if not isinstance(raw_parameters, dict):
         return None, "parameters must be an object"
-    unknown_parameters = sorted(set(raw_parameters) - set(_START_PARAMETER_BOUNDS))
+    unknown_parameters = sorted(set(raw_parameters) - _SAFE_START_PARAMETER_NAMES)
     if unknown_parameters:
         return None, f"unknown parameter: {unknown_parameters[0]}"
 
-    parameters: dict[str, int] = {}
+    parameters: dict[str, Any] = {}
     for name, (minimum, maximum) in _START_PARAMETER_BOUNDS.items():
         if name not in raw_parameters:
             continue
@@ -599,6 +750,20 @@ def _validate_start_payload(payload: Any) -> tuple[dict[str, Any] | None, str | 
             return None, f"{name} must be an integer"
         if value < minimum or value > maximum:
             return None, f"{name} is outside the allowed range"
+        parameters[name] = value
+    for name in _START_PARAMETER_BOOLEANS:
+        if name not in raw_parameters:
+            continue
+        value = raw_parameters[name]
+        if not isinstance(value, bool):
+            return None, f"{name} must be a boolean"
+        parameters[name] = value
+    for name in _START_PARAMETER_ENUMS:
+        if name not in raw_parameters:
+            continue
+        value = raw_parameters[name]
+        if not isinstance(value, str) or not re.fullmatch(r"[A-Za-z0-9_.:-]{1,40}", value):
+            return None, f"{name} must be an allowed string"
         parameters[name] = value
     return {"model_id": model_id, "profile_id": profile_id, "parameters": parameters}, None
 

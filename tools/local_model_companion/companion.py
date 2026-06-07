@@ -79,6 +79,30 @@ class CompanionState:
             )
         return _public_server_status(get_managed_server_status(self.process_manager))
 
+    def server_profiles(self) -> dict[str, object]:
+        if self.process_manager is None:
+            return {
+                "ok": True,
+                "configured": False,
+                "profiles": [],
+                "warnings": ["Real profile requires explicit companion config."],
+                "error": {"category": "process_error", "message": "process manager is not configured"},
+            }
+        profiles = [
+            profile.safe_metadata()
+            for profile in sorted(self.process_manager.profiles.values(), key=lambda item: item.profile_id)
+        ]
+        warnings = []
+        if not profiles:
+            warnings.append("Real profile requires explicit companion config.")
+        return {
+            "ok": True,
+            "configured": True,
+            "profiles": profiles,
+            "warnings": warnings,
+            "error": None,
+        }
+
     def start_server(self, payload: dict[str, object]) -> dict[str, object]:
         if self.process_manager is None:
             return _public_server_status(
@@ -234,7 +258,7 @@ class CompanionRequestHandler(BaseHTTPRequestHandler):
                     "ok": True,
                     "version": COMPANION_SCAN_VERSION,
                     "platform": platform.system().lower(),
-                    "capabilities": ["scan"],
+                    "capabilities": ["scan", "server_profiles"],
                 },
             )
             return
@@ -243,6 +267,9 @@ class CompanionRequestHandler(BaseHTTPRequestHandler):
             return
         if self.path == "/server/status":
             self._write_json(200, self.server.state.server_status())
+            return
+        if self.path == "/profiles":
+            self._write_json(200, self.server.state.server_profiles())
             return
         self._write_json(404, {"ok": False, "error": {"code": "not_found", "message": "not found"}})
 
@@ -292,8 +319,12 @@ def _launch_profiles_from_config(config: CompanionConfig) -> list[LaunchProfile]
                     real_llama_server_profile(
                         item.id,
                         item.executable,
+                        display_name=item.display_name,
+                        description=item.description,
                         host=item.host or "127.0.0.1",
                         default_parameters=item.default_parameters or {},
+                        parameter_schema=item.parameter_schema or {},
+                        warnings=item.warnings,
                         readiness_timeout_seconds=item.readiness_timeout_seconds or 30.0,
                     )
                 )
@@ -364,6 +395,7 @@ def _public_server_status(payload: dict[str, object]) -> dict[str, object]:
             "invalid_parameters",
             "executable_missing",
             "permission_denied",
+            "executable_not_allowed",
             "port_in_use",
             "model_load_failed",
             "model_may_be_too_large",

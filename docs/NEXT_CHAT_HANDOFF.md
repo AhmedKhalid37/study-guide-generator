@@ -10,13 +10,42 @@
 - **Trunk includes:** `af0ec0e` (Ask Slice 1 design), `2634f63` (Ask Slice 2 context
   inventory), `a29a405` (Ask Slice 3 context preparation), and the inserted Ask
   workspace shell, on top of the validated LMM group and prior feature groups.
-- **Active work branch:** `lmm-phase2g5-real-llama-validation` — Local Model
-  Manager Phase 2G5 real Linux `llama-server` validation/lifecycle hardening.
-  **NEXT = Phase 2G6 real-profile UI/defaults polish: expose configured real
-  profiles safely, avoid unsafe `gpu_layers=999` defaults for large models, and
-  keep Provider Settings writes out unless explicitly confirmed.**
+- **Active work branch:** `lmm-phase2g6-real-profile-controls` — Local Model
+  Manager Phase 2G6 real-profile UI/defaults + safe parameter controls.
+  **NEXT = operator docs / optional preset-file import into the same whitelist
+  schema; app-suggested settings stay deferred until more real validation.**
 
 ## What just landed
+- **Local Model Manager Phase 2G6 — real-profile UI/defaults + safe parameter
+  controls** (branch `lmm-phase2g6-real-profile-controls`). Added companion
+  `GET /profiles` and backend `GET /api/local-model/server/profiles` safe DTOs.
+  Profile metadata exposes only ids, display names/descriptions, real/test
+  marker, runnable boolean/reason, configured defaults, typed schema, and
+  warnings; it never exposes executable paths, model paths, token/socket details,
+  raw argv, or a companion config dump. Companion JSON profiles now support
+  arbitrary safe `llama_server` ids such as `cpu_safe`/`gpu_balanced`,
+  `display_name`, `description`, `warnings`, `default_parameters`, and optional
+  `parameter_schema`. Missing/non-executable configured profiles remain visible
+  as `runnable:false` with safe reasons like `executable_missing`.
+  Start/restart payloads remain `{model_id, profile_id, parameters}` only.
+  Backend rejects unknown top-level fields and unknown parameter names before
+  forwarding; companion validates against the selected profile schema. Supported
+  whitelist parameters are `port`, `ctx_size`, `gpu_layers`, `threads`,
+  `parallel`, `cache_type_k`, `cache_type_v`, `flash_attention`, and `mmap`;
+  argv mapping is centralized and no free-form flags/args/command/model_path/
+  executable fields are accepted. The Local Models Managed Server UI now fetches
+  profiles from the backend, picks the safest runnable profile in memory
+  (`cpu_safe`, then first runnable non-test, then `fake_test`), renders typed
+  number/checkbox/select controls from the selected schema, builds safe payloads
+  only, and has a **Use profile defaults** reset. UI copy states high GPU layers
+  can OOM, CPU is safer but slower, Provider Settings are not changed, and the
+  controls affect only the companion-managed server. Manual command helper
+  fallback remains. `.ini` preset import and app-suggested settings are deferred;
+  future presets must import into the same whitelist schema. Scope preserved: no
+  Provider Settings writes, Ask changes, permanent Docker Compose changes,
+  browser storage, direct companion frontend calls, token/socket/path/raw argv
+  exposure, host-gateway TCP, Docker socket, privileged container, host PID
+  namespace, model download manager, or Windows/macOS support.
 - **Local Model Manager Phase 2G5 — real Linux llama-server validation and
   lifecycle hardening** (branch `lmm-phase2g5-real-llama-validation`). Companion/
   backend hardening plus validation harness. Added explicit-config real profiles

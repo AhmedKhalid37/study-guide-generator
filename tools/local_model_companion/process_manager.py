@@ -246,8 +246,10 @@ class ManagedServerProcessManager:
 
     def _profile(self, profile_id: str) -> LaunchProfile:
         profile = self.profiles.get(profile_id)
-        if profile is None or not profile.runnable:
+        if profile is None:
             raise ProcessManagerError("invalid_profile", "unknown or disabled launch profile")
+        if not profile.runnable:
+            raise ProcessManagerError(profile.runnable_reason or "invalid_profile", "launch profile is not runnable")
         return profile
 
     def _resolve_model(
@@ -298,7 +300,7 @@ class ManagedServerProcessManager:
         profile: LaunchProfile,
         executable: Path,
         model_path: Path,
-        params: dict[str, int | None],
+        params: dict[str, int | bool | str | None],
     ) -> list[str]:
         values = {
             "executable": str(executable),
@@ -317,6 +319,10 @@ class ManagedServerProcessManager:
             if rendered == "":
                 raise ProcessManagerError("invalid_parameter", "profile rendered an empty argv token")
             argv.append(rendered)
+        for mapping in profile.argv_mappings:
+            if mapping.name not in params:
+                raise ProcessManagerError("invalid_profile", "profile argv mapping references an unknown parameter")
+            argv.extend(mapping.render(params[mapping.name]))
         if not argv or argv[0] != str(executable):
             raise ProcessManagerError("invalid_profile", "profile argv must start with the configured executable")
         return argv

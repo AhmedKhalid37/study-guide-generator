@@ -39,6 +39,7 @@ from pipeline.job_manager import (
 )
 from pipeline.local_model_companion_client import (
     get_companion_library,
+    get_companion_server_profiles,
     get_companion_server_status,
     get_companion_status,
     restart_companion_server,
@@ -503,6 +504,13 @@ async def local_model_server_status() -> dict[str, Any]:
     # Phase 2G3 backend bridge only: ask the host companion for process status over
     # the server-configured Unix socket. The backend does no process control itself.
     return await run_in_threadpool(get_companion_server_status)
+
+
+@app.get("/api/local-model/server/profiles")
+async def local_model_server_profiles() -> dict[str, Any]:
+    # Safe profile metadata only: no executable paths, model paths, argv,
+    # companion token, or socket details are exposed.
+    return await run_in_threadpool(get_companion_server_profiles)
 
 
 @app.post("/api/local-model/server/start")

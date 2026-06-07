@@ -321,11 +321,11 @@ root-relative path. It does not expose absolute host paths in model records.
 ```jsonc
 {
   "model_id": "opaque_companion_model_id",
-  "profile_id": "gpu_default",
+  "profile_id": "cpu_safe",
   "parameters": {
-    "ctx_size": 8192,
-    "gpu_layers": 999,
-    "port": 8080,
+    "ctx_size": 4096,
+    "gpu_layers": 0,
+    "port": 18080,
     "threads": 8
   }
 }
@@ -1010,13 +1010,12 @@ Allowed states:
 ```jsonc
 {
   "model_id": "opaque_companion_model_id",
-  "profile_id": "gpu_default",
+  "profile_id": "cpu_safe",
   "parameters": {
-    "port": 8080,
-    "ctx_size": 8192,
-    "gpu_layers": 999,
-    "threads": null,
-    "batch_size": null
+    "port": 18080,
+    "ctx_size": 4096,
+    "gpu_layers": 0,
+    "threads": 8
   }
 }
 ```
@@ -1035,13 +1034,12 @@ Allowed states:
   "managed": true,
   "model_id": "opaque_companion_model_id",
   "root_id": "default",
-  "profile_id": "gpu_default",
-  "port": 8080,
+  "profile_id": "cpu_safe",
+  "port": 18080,
   "params": {
-    "ctx_size": 8192,
-    "gpu_layers": 999,
-    "threads": null,
-    "batch_size": null
+    "ctx_size": 4096,
+    "gpu_layers": 0,
+    "threads": 8
   },
   "started_at": "2026-06-06T12:00:00Z",
   "last_error": null
@@ -1093,8 +1091,8 @@ Allowed states:
 ```jsonc
 {
   "model_id": "opaque_companion_model_id",
-  "profile_id": "gpu_default",
-  "parameters": { "port": 8080, "ctx_size": 8192, "gpu_layers": 999 }
+  "profile_id": "cpu_safe",
+  "parameters": { "port": 18080, "ctx_size": 4096, "gpu_layers": 0 }
 }
 ```
 
@@ -1137,9 +1135,9 @@ Initial profiles:
 
 | Profile | Purpose | Defaults | Bounds |
 | --- | --- | --- | --- |
-| `gpu_default` | Normal GPU/offload launch | `port: 8080`, `ctx_size: 8192`, `gpu_layers: 999`, `threads: null`, `batch_size: null` | `port: 1024-65535`, `ctx_size: 512-131072`, `gpu_layers: 0-999`, `threads: 1-256`, `batch_size: 1-4096` |
-| `cpu` | CPU-only launch | `port: 8080`, `ctx_size: 4096`, `gpu_layers: 0`, `threads: null`, `batch_size: null` | same port/thread/batch bounds; `ctx_size: 512-65536`; `gpu_layers: 0` only |
-| `low_memory` | Later constrained profile | `port: 8080`, `ctx_size: 2048`, `gpu_layers: 0`, `threads: null`, `batch_size: 128` | may be added later after validation; absent profiles are rejected |
+| `cpu_safe` | CPU-only launch | `port: 18080`, `ctx_size: 4096`, `gpu_layers: 0`, `threads: 8` | `port: 1024-65535`, `ctx_size: 512-131072`, `gpu_layers: 0-999`, `threads: 1-256` |
+| `gpu_balanced` | Partial GPU/offload launch | `port: 18081`, `ctx_size: 4096`, `gpu_layers: 20`, `threads: 8`, `parallel: 1` | same integer bounds; exact optional enum values come from profile schema |
+| `low_memory` | Later constrained profile | `port: 18082`, `ctx_size: 2048`, lower `gpu_layers`, `threads: 8` | may be added later after validation; absent profiles are rejected |
 
 Example argv shape:
 
@@ -1696,9 +1694,9 @@ Example explicit companion config:
       "executable": "/home/user/llama.cpp/build/bin/llama-server",
       "host": "0.0.0.0",
       "default_parameters": {
-        "port": 8080,
-        "ctx_size": 8192,
-        "gpu_layers": 999,
+        "port": 18080,
+        "ctx_size": 4096,
+        "gpu_layers": 0,
         "threads": 8
       }
     }
@@ -1818,3 +1816,153 @@ configured real profiles safely, avoid unsafe `gpu_layers=999` defaults for larg
 models, add safer presets such as CPU and low-memory GPU, and defer
 advanced/manual controls. Provider Settings writes remain out of scope unless
 explicitly confirmed.
+
+## 24. Phase 2G6 Real-Profile Metadata And Safe Parameter Controls
+
+Phase 2G6 turns the Phase 2G5 real-runtime discovery into a practical
+configuration-driven UI flow. The source of truth is companion config/profile
+metadata; the frontend does not invent executable paths, model paths, shell
+commands, raw flags, or app-suggested settings.
+
+Endpoints:
+
+- Companion host API: `GET /profiles`
+- Backend bridge API: `GET /api/local-model/server/profiles`
+
+Both endpoints expose safe DTOs only:
+
+- profile id
+- display name and description
+- type (`llama_server` or `fake_test`)
+- `test_profile`
+- `runnable` and safe `runnable_reason`
+- `default_parameters`
+- typed parameter schema
+- warnings
+
+They must not expose:
+
+- executable paths
+- absolute model paths
+- raw argv
+- shell commands
+- companion token/socket details
+- raw companion config dumps
+
+JSON companion profiles may now define arbitrary safe llama-server profile ids
+such as `cpu_safe`, `gpu_balanced`, and `low_memory`, with explicit display
+metadata, defaults, warnings, and optional schema constraints. Example:
+
+```json
+{
+  "profiles": {
+    "cpu_safe": {
+      "type": "llama_server",
+      "display_name": "CPU safe",
+      "description": "Slow but reliable CPU launch.",
+      "executable": "/usr/bin/llama-server",
+      "default_parameters": {
+        "port": 18080,
+        "ctx_size": 4096,
+        "gpu_layers": 0,
+        "threads": 8,
+        "parallel": 1
+      },
+      "warnings": ["CPU mode is slower but safer."]
+    },
+    "gpu_balanced": {
+      "type": "llama_server",
+      "display_name": "GPU balanced",
+      "description": "Partial offload for 16GB GPUs.",
+      "executable": "/usr/bin/llama-server",
+      "default_parameters": {
+        "port": 18081,
+        "ctx_size": 4096,
+        "gpu_layers": 20,
+        "threads": 8,
+        "parallel": 1,
+        "flash_attention": true,
+        "mmap": true
+      }
+    }
+  }
+}
+```
+
+Supported whitelist parameters:
+
+| Parameter | Type | Notes |
+| --- | --- | --- |
+| `port` | integer | Bounded local port, 1024-65535. |
+| `ctx_size` | integer | Context window; larger values use more memory. |
+| `gpu_layers` | integer | Allows 0; very high values can OOM on large models. |
+| `threads` | integer | CPU worker threads. |
+| `parallel` | integer | Concurrent llama-server slots. |
+| `cache_type_k` | enum | Values must come from the configured allow-list. |
+| `cache_type_v` | enum | Values must come from the configured allow-list. |
+| `flash_attention` | boolean | Adds the safe flash-attention flag only when true. |
+| `mmap` | boolean | Adds `--no-mmap` only when false. |
+
+Start/restart payloads remain:
+
+```json
+{
+  "model_id": "gguf_...",
+  "profile_id": "cpu_safe",
+  "parameters": {
+    "ctx_size": 4096,
+    "gpu_layers": 0,
+    "threads": 8,
+    "parallel": 1
+  }
+}
+```
+
+Omitted parameters use profile defaults. Unknown parameters, invalid types,
+out-of-bounds integers, enum values outside the selected profile allow-list, and
+string booleans are rejected. Backend rejects unsafe top-level fields and
+unknown parameter names before forwarding; companion performs final selected
+profile schema validation even if the backend is bypassed or stale.
+
+Frontend behavior:
+
+- Load profile metadata from the backend only.
+- Default to the safest runnable in-memory profile: `cpu_safe`, then first
+  runnable non-test profile, then `fake_test`.
+- Show a profile selector and typed controls only for the selected profile
+  schema.
+- Use number inputs for integers, checkboxes for booleans, and selects for enums.
+- Provide **Use profile defaults** reset.
+- Explain that high GPU layers can cause OOM, CPU is safer but slower, Provider
+  Settings are unchanged, and controls affect only the companion-managed server.
+- Keep the manual command helper fallback.
+
+Preset status:
+
+- `.ini` preset-file import is deferred.
+- Future preset import must parse into the same whitelist schema; no arbitrary
+  flags, shell fragments, environment expansion, or frontend-supplied preset
+  paths.
+- App-suggested settings are deferred until more real validation exists.
+
+2G5 validation context remains important:
+
+- CPU real validation passed with `ctx_size=4096`, `gpu_layers=0`, `threads=8`.
+- Full GPU/offload with `gpu_layers=999` failed safely as
+  `model_may_be_too_large` / CUDA OOM.
+- Therefore Phase 2G6 defaults must not use `gpu_layers=999` for general
+  real-profile UI fixtures.
+
+Explicit non-goals preserved in Phase 2G6:
+
+- No Provider Settings writes.
+- No Ask changes.
+- No permanent Docker Compose changes.
+- No model download manager.
+- No host-gateway TCP, Docker socket, privileged container, or host PID
+  namespace.
+- No browser `localStorage`/`sessionStorage`.
+- No raw token/socket/absolute host path/raw argv exposure.
+- No free-form command input, arbitrary flags, raw shell commands, or arbitrary
+  JSON editor.
+- No Windows/macOS process support.

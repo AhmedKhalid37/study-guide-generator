@@ -236,17 +236,33 @@ flashcards with CSV / Anki / Quizlet export.
   failed safely before readiness, was classified as `model_may_be_too_large`, and
   showed CUDA OOM / failed CUDA allocation in logs. High-GPU-offload validation
   has not passed; practical GPU defaults still need follow-up because
-  `gpu_layers=999` can be too aggressive for large models on 16GB VRAM. There is
+  `gpu_layers=999` can be too aggressive for large models on 16GB VRAM. Phase
+  2G6 adds safe profile/default metadata and UI controls: companion
+  `GET /profiles` and backend `GET /api/local-model/server/profiles` expose only
+  safe DTO fields (profile ids, display metadata, real/test marker, runnable
+  boolean/reason, defaults, typed schema, warnings) with no executable path,
+  model path, token/socket, raw argv, or config dump. Configured JSON
+  `llama_server` profiles may use safe ids such as `cpu_safe` and
+  `gpu_balanced`, explicit defaults, and optional schema constraints. Backend and
+  companion start/restart validation remains whitelist-only for
+  `port`, `ctx_size`, `gpu_layers`, `threads`, `parallel`, `cache_type_k`,
+  `cache_type_v`, `flash_attention`, and `mmap`; omitted values use profile
+  defaults and unknown parameters are rejected. The Local Models Managed Server
+  UI fetches backend profiles, picks the safest runnable in-memory profile,
+  renders typed controls only from the selected schema, and offers **Use profile
+  defaults** reset. It states high GPU layers can OOM, CPU is safer but slower,
+  Provider Settings are not changed, and controls affect only the
+  companion-managed process. `.ini` preset import and app-suggested settings are
+  deferred; future presets must import into the same whitelist schema. There is
   still no permanent Docker Compose mount, Provider Settings write, Ask change,
   dependency addition, local provider base-URL/model behavior change, direct
   companion frontend call, shell/free-form args UI, browser storage, token/socket
   exposure in UI, direct Docker host process control, direct host filesystem scan,
   automatic restart loop, model download manager, multi-server pool,
   Windows/macOS process control, or absolute host path/raw argv rendering. Next
-  recommended slice is Phase 2G6 real-profile UI/defaults polish: safely expose
-  configured real profiles, avoid unsafe `gpu_layers=999` defaults for large
-  models, add CPU and low-memory GPU presets, and keep Provider Settings writes
-  out unless explicitly confirmed.
+  recommended slice is operator docs and optional preset-file import into the
+  same whitelist schema; app-suggested settings remain deferred until more real
+  validation exists.
 - **Ask Your Guide — IN PROGRESS (Slice 1 design DONE; Slice 2 backend context
   inventory DONE; Slice 3 backend context preparation / chunking DONE; inserted
   workspace shell DONE; backend local chat API DONE; frontend chat UI wiring DONE;

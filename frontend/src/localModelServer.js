@@ -1,9 +1,9 @@
-// Pure helpers for Local Model Manager Phase 2G4 managed-server controls.
+// Pure helpers for Local Model Manager Phase 2G6 managed-server controls.
 //
 // This frontend slice builds only a safe companion-bridge payload from the saved
-// selected library model plus fixed typed defaults. It never accepts runnable
-// binary details, filesystem locations, free-form process flags, raw connection
-// details, or arbitrary browser JSON.
+// selected library model plus backend-sanitized profile schemas. It never accepts
+// runnable binary details, filesystem locations, free-form process flags, raw
+// connection details, or arbitrary browser JSON.
 
 export const SERVER_STOPPED = "stopped";
 export const SERVER_RUNNING = "running";
@@ -19,10 +19,22 @@ export const SAFE_TEST_PROFILE_ID = "fake_test";
 
 export const SAFE_SERVER_DEFAULTS = Object.freeze({
   port: 18080,
-  ctx_size: 2048,
+  ctx_size: 4096,
   gpu_layers: 0,
-  threads: 2,
+  threads: 8,
 });
+
+export const SAFE_PARAMETER_NAMES = Object.freeze([
+  "port",
+  "ctx_size",
+  "gpu_layers",
+  "threads",
+  "parallel",
+  "cache_type_k",
+  "cache_type_v",
+  "flash_attention",
+  "mmap",
+]);
 
 const KNOWN_STATES = new Set([
   SERVER_STOPPED,
@@ -42,7 +54,7 @@ const ERROR_LABELS = {
   port_in_use: "The requested port is already in use.",
   invalid_parameters: "The launch parameters were rejected.",
   unknown_model: "The saved selected model is not available in the companion library.",
-  unknown_profile: "The test launch profile is not available.",
+  unknown_profile: "The launch profile is not available.",
   executable_missing: "The configured server executable was not found.",
   permission_denied: "The configured server executable is not runnable.",
   companion_config: "Companion is not configured.",
@@ -70,19 +82,138 @@ function boundedInt(value, fallback, min, max) {
   return Math.min(Math.max(value, min), max);
 }
 
-export function buildLocalModelServerStartPayload(selection, overrides = {}) {
+function safeText(value, fallback = "", maxLen = 240) {
+  if (typeof value !== "string") return fallback;
+  return value.replace(/\0/g, "").trim().slice(0, maxLen) || fallback;
+}
+
+function normalizeParameterSchema(name, schema) {
+  if (!SAFE_PARAMETER_NAMES.includes(name) || !schema || typeof schema !== "object") return null;
+  const type = schema.type;
+  if (!["integer", "boolean", "enum"].includes(type)) return null;
+  const normalized = {
+    name,
+    type,
+    label: safeText(schema.label, name.replaceAll("_", " "), 120),
+    help: safeText(schema.help, "", 500),
+    required: schema.required === true,
+  };
+  if (type === "integer") {
+    if (!Number.isInteger(schema.min) || !Number.isInteger(schema.max) || schema.min > schema.max) return null;
+    if (!Number.isInteger(schema.default) || schema.default < schema.min || schema.default > schema.max) return null;
+    normalized.min = schema.min;
+    normalized.max = schema.max;
+    normalized.default = schema.default;
+    return normalized;
+  }
+  if (type === "boolean") {
+    if (typeof schema.default !== "boolean") return null;
+    normalized.default = schema.default;
+    return normalized;
+  }
+  const allowed = Array.isArray(schema.allowed_values)
+    ? schema.allowed_values.filter((item) => typeof item === "string" && /^[A-Za-z0-9_.:-]{1,40}$/.test(item))
+    : [];
+  if (!allowed.includes(schema.default)) return null;
+  normalized.allowed_values = allowed;
+  normalized.default = schema.default;
+  return normalized;
+}
+
+export function normalizeLocalModelServerProfile(raw) {
+  if (!raw || typeof raw !== "object") return null;
+  const id = safeIdentifier(raw.id, 80);
+  if (!id) return null;
+  const rawParameters = raw.parameters && typeof raw.parameters === "object" ? raw.parameters : {};
+  const parameters = {};
+  for (const name of SAFE_PARAMETER_NAMES) {
+    const schema = normalizeParameterSchema(name, rawParameters[name]);
+    if (schema) parameters[name] = schema;
+  }
+  if (Object.keys(parameters).length === 0) return null;
+  return {
+    id,
+    display_name: safeText(raw.display_name, id, 120),
+    description: safeText(raw.description, "", 500),
+    type: raw.type === "fake_test" ? "fake_test" : raw.type === "llama_server" ? "llama_server" : "unknown",
+    test_profile: raw.test_profile === true,
+    runnable: raw.runnable === true,
+    runnable_reason: typeof raw.runnable_reason === "string" ? raw.runnable_reason : null,
+    default_parameters: localModelServerProfileDefaults({ parameters }),
+    parameters,
+    warnings: Array.isArray(raw.warnings)
+      ? raw.warnings.filter((item) => typeof item === "string" && item.trim()).map((item) => safeText(item, "", 500)).slice(0, 8)
+      : [],
+  };
+}
+
+export function localModelServerProfiles(data) {
+  if (!data || typeof data !== "object" || !Array.isArray(data.profiles)) return [];
+  const seen = new Set();
+  const profiles = [];
+  for (const item of data.profiles) {
+    const profile = normalizeLocalModelServerProfile(item);
+    if (!profile || seen.has(profile.id)) continue;
+    seen.add(profile.id);
+    profiles.push(profile);
+  }
+  return profiles;
+}
+
+export function localModelServerProfileDefaults(profile) {
+  const defaults = {};
+  const parameters = profile?.parameters && typeof profile.parameters === "object" ? profile.parameters : {};
+  for (const name of SAFE_PARAMETER_NAMES) {
+    if (parameters[name]) defaults[name] = parameters[name].default;
+  }
+  return defaults;
+}
+
+export function safestRunnableServerProfile(profiles) {
+  const list = Array.isArray(profiles) ? profiles : [];
+  const runnable = list.filter((profile) => profile?.runnable === true);
+  return (
+    runnable.find((profile) => profile.id === "cpu_safe") ||
+    runnable.find((profile) => !profile.test_profile) ||
+    runnable.find((profile) => profile.id === SAFE_TEST_PROFILE_ID) ||
+    null
+  );
+}
+
+export function profileById(profiles, profileId) {
+  const id = safeIdentifier(profileId, 80);
+  if (!id || !Array.isArray(profiles)) return null;
+  return profiles.find((profile) => profile.id === id) || null;
+}
+
+export function coerceProfileParameterValue(schema, value) {
+  if (!schema || typeof schema !== "object") return undefined;
+  if (value === undefined || value === null || value === "") return schema.default;
+  if (schema.type === "integer") {
+    const parsed = typeof value === "number" ? value : Number(value);
+    if (!Number.isInteger(parsed)) return schema.default;
+    return boundedInt(parsed, schema.default, schema.min, schema.max);
+  }
+  if (schema.type === "boolean") return value === true;
+  if (schema.type === "enum") return schema.allowed_values.includes(value) ? value : schema.default;
+  return undefined;
+}
+
+export function buildLocalModelServerStartPayload(selection, profile, overrides = {}) {
   const modelId = safeIdentifier(selection?.id || selection?.model_id);
   if (!modelId) return null;
-  const defaults = SAFE_SERVER_DEFAULTS;
+  const selectedProfile = normalizeLocalModelServerProfile(profile);
+  if (!selectedProfile || !selectedProfile.runnable) return null;
+  const parameters = {};
+  for (const name of SAFE_PARAMETER_NAMES) {
+    const schema = selectedProfile.parameters[name];
+    if (!schema) continue;
+    parameters[name] = coerceProfileParameterValue(schema, overrides[name]);
+  }
   return {
     model_id: modelId,
-    profile_id: SAFE_TEST_PROFILE_ID,
-    parameters: {
-      port: boundedInt(overrides.port, defaults.port, 1024, 65535),
-      ctx_size: boundedInt(overrides.ctx_size, defaults.ctx_size, 512, 131072),
-      gpu_layers: boundedInt(overrides.gpu_layers, defaults.gpu_layers, 0, 999),
-      threads: boundedInt(overrides.threads, defaults.threads, 1, 256),
-    },
+    profile_id: selectedProfile.id,
+    parameters,
   };
 }
 

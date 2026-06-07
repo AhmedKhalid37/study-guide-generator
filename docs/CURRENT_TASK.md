@@ -5,67 +5,59 @@
 
 ---
 
-## NEXT — LMM Phase 2G5 real Linux llama-server validation/hardening DONE.
+## NEXT — LMM Phase 2G6 real-profile UI/defaults DONE.
 
-- **Local Model Manager Phase 2G5 — real Linux `llama-server` profile support
-  and lifecycle hardening is DONE** on branch
-  `lmm-phase2g5-real-llama-validation`.
-- **Real profile support:** the companion can build explicit Linux real profiles
-  `llama_cpp_gpu_default` / `llama_server_gpu_default` only from companion config.
-  There is no default real executable. The configured executable is canonicalized
-  and must exist and be executable; model paths resolve only from approved-root
-  scanned model ids; requests still provide only `model_id`, whitelisted
-  `profile_id`, and typed bounded params (`port`, `ctx_size`, `gpu_layers`,
-  `threads`). Argv is centralized, array-only, and never `shell=True`.
-- **Lifecycle semantics:** `starting` is persisted after spawn and before
-  readiness. `running` means `/v1/models` readiness succeeded. Failed launches
-  become stable `error`/`crashed` states; there is no automatic restart loop.
-  Real profiles poll `http://127.0.0.1:<port>/v1/models` with bounded timeout and
-  interval, and timeout cleanup stops the just-started child.
-- **Hardening:** companion launches use a new Linux session/process group and
-  stop only a verified tracked process group. PID reuse/foreign/stale identity is
-  not killed. Logs go to companion-owned bounded files and API tails are bounded
-  and redacted. Safe categories now include `executable_missing`,
-  `permission_denied`, `port_in_use`, `model_load_failed`,
-  `model_may_be_too_large`, `readiness_timeout`, `process_start_failed`, and
-  `process_crashed`.
-- **Bridge/UI safety:** backend server lifecycle DTOs whitelist the new states
-  and categories and keep token/socket/absolute host path/raw argv out of
-  responses. Frontend copy displays the new states/categories but still uses the
-  existing fake-safe UI payload; no advanced flags UI was added.
-- **Validation harness:** added
-  `test_scripts/validate_lmm_real_llama_server.py`. It requires explicit
-  `LMM_REAL_LLAMA_SERVER_BIN`, `LMM_REAL_MODEL_ROOT`, and
-  `LMM_REAL_MODEL_ID` or `LMM_REAL_MODEL_PATTERN`/`LMM_REAL_MODEL_FILENAME`.
-  Optional env: `LMM_REAL_PORT`, `LMM_REAL_CTX_SIZE`,
-  `LMM_REAL_GPU_LAYERS`, `LMM_REAL_THREADS`, `LMM_REAL_READINESS_TIMEOUT`.
-  Missing env skips with exit 0. When configured, it creates a temporary
-  companion config/socket, scans the approved root, starts real `llama-server`,
-  verifies `/v1/models`, stops, verifies port release, checks redaction, and
-  cleans up.
+- **Local Model Manager Phase 2G6 — real-profile UI/defaults + safe parameter
+  controls is DONE** on branch `lmm-phase2g6-real-profile-controls`.
+- **Companion profiles endpoint:** added `GET /profiles` on the
+  token-authenticated Unix-socket companion API. It returns safe profile metadata
+  only: ids, display names, descriptions, profile type, test/real marker,
+  runnable boolean, safe runnable reason, default parameter values, typed
+  parameter schema, and warnings. It does not expose executable paths, model
+  paths, raw argv, token/socket details, or config dumps.
+- **Backend profiles route:** added `GET /api/local-model/server/profiles`.
+  The bridge calls companion `/profiles`, sanitizes/redacts all profile metadata,
+  and rejects invalid companion shapes. Start/restart validation now rejects
+  unknown safe-parameter names and supports typed integers, booleans, and enum
+  strings before forwarding; companion still performs final selected-profile
+  schema validation.
+- **Config/profile defaults:** companion JSON profiles can now include arbitrary
+  safe llama-server profile ids, `type: "llama_server"`, display metadata,
+  warnings, `default_parameters`, and optional `parameter_schema`. Real
+  executable paths remain companion-private and explicit-config only. Missing or
+  non-executable configured profiles appear as `runnable:false` with safe reasons
+  such as `executable_missing` or `permission_denied`.
+- **Supported parameters:** `port`, `ctx_size`, `gpu_layers`, `threads`,
+  `parallel`, `cache_type_k`, `cache_type_v`, `flash_attention`, and `mmap`.
+  Argv mapping is centralized and whitelist-only; no free-form flags, command
+  strings, shell fragments, executable path, model path, or arbitrary args are
+  accepted from UI/backend requests. Omitted parameters use profile defaults.
+- **Frontend UI:** Local Models > Managed Server now loads backend profile
+  metadata, chooses the safest runnable in-memory profile (`cpu_safe`, then first
+  runnable non-test, then `fake_test`), shows a profile selector, renders typed
+  controls from the selected profile schema, and provides **Use profile
+  defaults** reset. The UI explains high GPU layers can OOM, CPU mode is safer
+  but slower, Provider Settings are not changed, and controls affect only the
+  companion-managed server. Manual command helper fallback remains.
+- **Preset scope:** `.ini` preset-file import is explicitly deferred. This slice
+  implements JSON/config-backed explicit profile defaults and the shared
+  whitelist schema that future preset import must target. App-suggested settings
+  remain deferred.
 - **Scope preserved:** no Provider Settings writes, no Ask changes, no permanent
-  Docker Compose changes, no host-gateway TCP, no Docker socket, no privileged
-  container, no host PID namespace, no browser storage, no model download manager,
-  no automatic restart loop, no multi-server pool, and no Windows/macOS process
-  control. Ollama/simple-local-model remains a possible later path only.
-- **Real validation results:** focused fake and real-profile lifecycle tests
-  passed, and operator-run real Linux `llama-server` lifecycle validation passed
-  in CPU mode. With `/usr/bin/llama-server`,
-  `/mnt/ai/llm-models/gemma-4-26B-A4B-it-UD-Q4_K_M.gguf`, port `18080`,
-  `ctx_size=4096`, `gpu_layers=0`, and `threads=8`,
-  `test_scripts/validate_lmm_real_llama_server.py` launched real
-  `llama-server`, reached `/v1/models`, stopped cleanly, and verified cleanup.
-- **GPU/offload stress result:** the full-offload attempt with the same binary
-  and model on port `8080`, `ctx_size=8192`, `gpu_layers=999`, and `threads=8`
-  failed safely before readiness. It was classified as `model_may_be_too_large`;
-  logs showed CUDA OOM / failed CUDA allocation. This confirms the lifecycle
-  hardening detects model-load failure instead of reporting `running`. This does
-  **not** mean high-GPU-offload validation passed.
-- **Recommended next slice:** Phase 2G6 real-profile UI/defaults polish: expose
-  configured real profiles safely, avoid unsafe `gpu_layers=999` defaults for
-  large models on 16GB VRAM, add safer presets such as CPU and low-memory GPU,
-  and defer advanced/manual controls. Still no Provider Settings writes unless
-  explicitly confirmed.
+  Docker Compose changes, no model download manager, no host-gateway TCP, no
+  Docker socket, no privileged container, no host PID namespace, no browser
+  localStorage/sessionStorage, no direct companion frontend call, no
+  token/socket/absolute host path/raw argv exposure, and no Windows/macOS support.
+- **2G5 validation context retained:** CPU real validation passed with
+  `/usr/bin/llama-server`, `ctx_size=4096`, `gpu_layers=0`, `threads=8`; full GPU
+  offload with `gpu_layers=999` failed safely as
+  `model_may_be_too_large` / CUDA OOM. 2G6 avoids `999` as a default.
+- **Recommended next slice:** real-profile operator docs and optional preset-file
+  import into the same whitelist schema, followed by carefully validated
+  low-memory/GPU profile examples. Do not add app-suggested settings until more
+  real validation exists.
+
+## Previous — LMM Phase 2G5 real Linux llama-server validation/hardening DONE.
 
 ## Previous — LMM Phase 2G4 Local Models managed-server UI DONE.
 

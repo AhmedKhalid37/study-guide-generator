@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
 import {
   AlertTriangle,
   Check,
@@ -18,6 +18,7 @@ import {
   getLocalModelCommandProfile,
   getLocalModelLibrary,
   getLocalModelLibrarySelection,
+  getLocalModelServerProfiles,
   getLocalModelServerStatus,
   getLocalModelStatus,
   restartLocalModelServer,
@@ -77,10 +78,15 @@ import {
   SAFE_TEST_PROFILE_ID,
   buildLocalModelServerStartPayload,
   buildLocalModelServerStopPayload,
+  coerceProfileParameterValue,
+  localModelServerProfileDefaults,
+  localModelServerProfiles,
   localModelServerErrorMessage,
   localModelServerIsManagedRunning,
   localModelServerStatusLabel,
   normalizeLocalModelServerState,
+  profileById as serverProfileById,
+  safestRunnableServerProfile,
 } from "../localModelServer";
 
 // Local Models status panel. The local provider status remains detection-only;
@@ -160,6 +166,11 @@ export default function LocalModelsPanel({ onEditLocalProvider }) {
   const [serverAction, setServerAction] = useState(null);
   const [serverRequestError, setServerRequestError] = useState(null);
   const [serverMessage, setServerMessage] = useState(null);
+  const [serverProfilesData, setServerProfilesData] = useState(null);
+  const [serverProfilesLoading, setServerProfilesLoading] = useState(true);
+  const [serverProfilesRequestError, setServerProfilesRequestError] = useState(null);
+  const [selectedServerProfileId, setSelectedServerProfileId] = useState(null);
+  const [serverParameterValues, setServerParameterValues] = useState({});
 
   const fetchStatus = useCallback((probe) => {
     const call = probe ? checkLocalModelStatus : getLocalModelStatus;
@@ -267,6 +278,24 @@ export default function LocalModelsPanel({ onEditLocalProvider }) {
   useEffect(() => {
     fetchServerStatus();
   }, [fetchServerStatus]);
+
+  const fetchServerProfiles = useCallback(() => {
+    setServerProfilesLoading(true);
+    setServerProfilesRequestError(null);
+    return getLocalModelServerProfiles()
+      .then((data) => setServerProfilesData(data))
+      .catch((err) => {
+        setServerProfilesData(null);
+        setServerProfilesRequestError(
+          err?.message || "Managed server profiles are unavailable on this backend version."
+        );
+      })
+      .finally(() => setServerProfilesLoading(false));
+  }, []);
+
+  useEffect(() => {
+    fetchServerProfiles();
+  }, [fetchServerProfiles]);
 
   // Load the static command-helper profiles once. A failure (e.g. an older backend
   // without the endpoint) simply leaves commandData null → the helper hides; it is
@@ -386,10 +415,68 @@ export default function LocalModelsPanel({ onEditLocalProvider }) {
   }, []);
 
   const savedServerSelection = normalizeLibrarySelection(librarySelectionData);
-  const serverStartPayload = buildLocalModelServerStartPayload(savedServerSelection);
+  const serverProfiles = useMemo(() => localModelServerProfiles(serverProfilesData), [serverProfilesData]);
+  const selectedServerProfile =
+    serverProfileById(serverProfiles, selectedServerProfileId) ||
+    safestRunnableServerProfile(serverProfiles);
+  const serverStartPayload = buildLocalModelServerStartPayload(
+    savedServerSelection,
+    selectedServerProfile,
+    serverParameterValues
+  );
+
+  useEffect(() => {
+    const safest = safestRunnableServerProfile(serverProfiles);
+    const current = serverProfileById(serverProfiles, selectedServerProfileId);
+    if (!current && safest) {
+      setSelectedServerProfileId(safest.id);
+    }
+  }, [selectedServerProfileId, serverProfiles]);
+
+  useEffect(() => {
+    if (!selectedServerProfile) {
+      setServerParameterValues({});
+      return;
+    }
+    setServerParameterValues(localModelServerProfileDefaults(selectedServerProfile));
+  }, [selectedServerProfile?.id]);
+
+  const onSelectServerProfile = useCallback(
+    (profileId) => {
+      const profile = serverProfileById(serverProfiles, profileId);
+      if (!profile) return;
+      setSelectedServerProfileId(profile.id);
+      setServerParameterValues(localModelServerProfileDefaults(profile));
+      setServerMessage(null);
+    },
+    [serverProfiles]
+  );
+
+  const onChangeServerParameter = useCallback(
+    (name, value) => {
+      const schema = selectedServerProfile?.parameters?.[name];
+      if (!schema) return;
+      setServerParameterValues((current) => ({
+        ...current,
+        [name]: coerceProfileParameterValue(schema, value),
+      }));
+    },
+    [selectedServerProfile]
+  );
+
+  const onResetServerParameters = useCallback(() => {
+    if (!selectedServerProfile) return;
+    setServerParameterValues(localModelServerProfileDefaults(selectedServerProfile));
+    setServerMessage("Profile defaults restored.");
+  }, [selectedServerProfile]);
+
   const runServerAction = useCallback(
     (action) => {
-      const startPayload = buildLocalModelServerStartPayload(savedServerSelection);
+      const startPayload = buildLocalModelServerStartPayload(
+        savedServerSelection,
+        selectedServerProfile,
+        serverParameterValues
+      );
       let call = null;
       let payload = null;
       if (action === "start") {
@@ -422,7 +509,7 @@ export default function LocalModelsPanel({ onEditLocalProvider }) {
           fetchServerStatus().finally(() => fetchStatus(false));
         });
     },
-    [fetchServerStatus, fetchStatus, savedServerSelection]
+    [fetchServerStatus, fetchStatus, savedServerSelection, selectedServerProfile, serverParameterValues]
   );
 
   return (
@@ -578,11 +665,21 @@ export default function LocalModelsPanel({ onEditLocalProvider }) {
               companionLoading={companionLoading}
               selection={savedServerSelection}
               startPayload={serverStartPayload}
+              profiles={serverProfiles}
+              profilesLoading={serverProfilesLoading}
+              profilesRequestError={serverProfilesRequestError}
+              selectedProfile={selectedServerProfile}
+              selectedProfileId={selectedServerProfile?.id || selectedServerProfileId}
+              parameterValues={serverParameterValues}
               status={serverStatus}
               loading={serverLoading}
               action={serverAction}
               requestError={serverRequestError}
               message={serverMessage}
+              onSelectProfile={onSelectServerProfile}
+              onChangeParameter={onChangeServerParameter}
+              onResetParameters={onResetServerParameters}
+              onRefreshProfiles={fetchServerProfiles}
               onRefresh={fetchServerStatus}
               onStart={() => runServerAction("start")}
               onStop={() => runServerAction("stop")}
@@ -816,11 +913,21 @@ function ManagedServerSection({
   companionLoading,
   selection,
   startPayload,
+  profiles,
+  profilesLoading,
+  profilesRequestError,
+  selectedProfile,
+  selectedProfileId,
+  parameterValues,
   status,
   loading,
   action,
   requestError,
   message,
+  onSelectProfile,
+  onChangeParameter,
+  onResetParameters,
+  onRefreshProfiles,
   onRefresh,
   onStart,
   onStop,
@@ -828,19 +935,28 @@ function ManagedServerSection({
 }) {
   const companionAvailable = companionStateKey === COMPANION_REACHABLE;
   const hasSelection = !!selection?.id && !!startPayload;
+  const hasRunnableProfile = !!selectedProfile?.runnable;
+  const hasProfiles = profiles.length > 0;
   const managedRunning = localModelServerIsManagedRunning(status);
   const state = normalizeLocalModelServerState(status);
   const statusLabel = loading ? "Checking..." : localModelServerStatusLabel(status);
   const statusError = localModelServerErrorMessage(status);
   const busy = !!action;
-  const canStart = companionAvailable && hasSelection && !busy && !companionLoading;
+  const canStart = companionAvailable && hasSelection && hasRunnableProfile && !busy && !companionLoading && !profilesLoading;
   const canStop = companionAvailable && managedRunning && !busy && !companionLoading;
-  const canRestart = companionAvailable && hasSelection && managedRunning && !busy && !companionLoading;
+  const canRestart = companionAvailable && hasSelection && hasRunnableProfile && managedRunning && !busy && !companionLoading && !profilesLoading;
   const selectedName = selection?.display_name || selection?.filename || selection?.id || "No selected model";
   const port = startPayload?.parameters?.port ?? SAFE_SERVER_DEFAULTS.port;
+  const profileLabel = selectedProfile?.display_name || selectedProfileId || "No profile";
+  const profileWarnings = selectedProfile?.warnings || [];
+  const parameterEntries = selectedProfile?.parameters
+    ? Object.entries(selectedProfile.parameters).filter(([, schema]) => schema && typeof schema === "object")
+    : [];
 
   let disabledCopy = null;
   if (!companionAvailable) disabledCopy = "Companion must be reachable before managed controls are enabled.";
+  else if (!hasProfiles) disabledCopy = "No companion launch profiles are configured.";
+  else if (!hasRunnableProfile) disabledCopy = "Selected launch profile is unavailable.";
   else if (!hasSelection) disabledCopy = "Choose and remember a library model before starting the managed server.";
   else if (!managedRunning) disabledCopy = "Stop and restart are enabled only for a companion-managed running server.";
 
@@ -850,12 +966,19 @@ function ManagedServerSection({
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-2">
             <strong className="text-[12.5px] text-[#E8EAF0]">Managed Server</strong>
-            <span className="rounded-full border border-[#FCD34D]/30 bg-[#FCD34D]/10 px-2 py-0.5 text-[10px] uppercase tracking-wide text-[#FCD34D]">
-              {SAFE_TEST_PROFILE_ID} validation profile only
-            </span>
+            {selectedProfile?.test_profile && (
+              <span className="rounded-full border border-[#FCD34D]/30 bg-[#FCD34D]/10 px-2 py-0.5 text-[10px] uppercase tracking-wide text-[#FCD34D]">
+                {SAFE_TEST_PROFILE_ID} validation profile
+              </span>
+            )}
+            {selectedProfile && !selectedProfile.runnable && (
+              <span className="rounded-full border border-[#FCA5A5]/30 bg-[#FCA5A5]/10 px-2 py-0.5 text-[10px] uppercase tracking-wide text-[#FCA5A5]">
+                Profile unavailable
+              </span>
+            )}
           </div>
           <p className="mt-1 text-[11.5px] leading-5 text-[#9098A8]">
-            This controls only the companion-managed test/server process.
+            This controls only the companion-managed server process and does not change Provider Settings.
           </p>
         </div>
         <span className={`inline-flex h-[24px] shrink-0 items-center gap-1 whitespace-nowrap rounded-full px-2.5 text-[10.5px] ${PILL_TONE[serverTone(status, companionAvailable)]}`}>
@@ -881,17 +1004,99 @@ function ManagedServerSection({
         <Metric label="Port" value={String(status?.port || port)} />
       </div>
 
+      <div className="mt-3 grid gap-3 lg:grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)]">
+        <div className="rounded-lg border border-white/10 bg-black/20 p-2.5">
+          <label className="mb-1.5 block text-[10.5px] font-medium uppercase tracking-wide text-[#9098A8]" htmlFor="managed-server-profile">
+            Launch profile
+          </label>
+          <div className="flex gap-2">
+            <select
+              id="managed-server-profile"
+              className="min-h-[34px] min-w-0 flex-1 rounded-lg border border-white/10 bg-[#0F1421] px-2 text-[11.5px] text-[#E8EAF0]"
+              value={selectedProfileId || ""}
+              disabled={profilesLoading || busy || profiles.length === 0}
+              onChange={(event) => onSelectProfile(event.target.value)}
+            >
+              {profiles.length === 0 ? (
+                <option value="">No profiles configured</option>
+              ) : (
+                profiles.map((profile) => (
+                  <option key={profile.id} value={profile.id}>
+                    {profile.display_name}{profile.runnable ? "" : " (unavailable)"}
+                  </option>
+                ))
+              )}
+            </select>
+            <button
+              type="button"
+              className="sg-ghost-button shrink-0"
+              onClick={onRefreshProfiles}
+              disabled={profilesLoading || busy}
+              title="Refresh configured launch profiles"
+            >
+              {profilesLoading ? <Loader2 size={14} className="animate-spin" /> : <RefreshCw size={14} />}
+            </button>
+          </div>
+          {selectedProfile?.description && (
+            <p className="mt-2 text-[11px] leading-4 text-[#9098A8]">{selectedProfile.description}</p>
+          )}
+          {selectedProfile?.runnable_reason && !selectedProfile.runnable && (
+            <p className="mt-2 text-[11px] leading-4 text-[#FCD34D]">
+              Reason: {selectedProfile.runnable_reason}
+            </p>
+          )}
+          {profilesRequestError && (
+            <p className="mt-2 text-[11px] leading-4 text-[#FCD34D]">{profilesRequestError}</p>
+          )}
+        </div>
+
+        <div className="rounded-lg border border-white/10 bg-black/20 p-2.5">
+          <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+            <span className="text-[10.5px] font-medium uppercase tracking-wide text-[#9098A8]">
+              Profile parameters
+            </span>
+            <button
+              type="button"
+              className="sg-ghost-button"
+              onClick={onResetParameters}
+              disabled={!selectedProfile || busy}
+              title="Restore configured profile defaults"
+            >
+              <RefreshCw size={13} />
+              <span className="ml-1.5">Use profile defaults</span>
+            </button>
+          </div>
+          {parameterEntries.length === 0 ? (
+            <p className="text-[11.5px] leading-5 text-[#6B7185]">
+              Companion profile metadata is unavailable.
+            </p>
+          ) : (
+            <div className="grid gap-2 sm:grid-cols-2">
+              {parameterEntries.map(([name, schema]) => (
+                <ProfileParameterControl
+                  key={name}
+                  name={name}
+                  schema={schema}
+                  value={parameterValues[name]}
+                  disabled={busy || !selectedProfile?.runnable}
+                  onChange={onChangeParameter}
+                />
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
+
       <div className="mt-3 rounded-lg border border-white/10 bg-black/20 p-2.5">
         <span className="mb-1.5 block text-[10.5px] font-medium uppercase tracking-wide text-[#9098A8]">
           Start payload preview
         </span>
         <dl className="grid gap-x-3 gap-y-1 text-[11px] leading-4 text-[#9098A8] sm:grid-cols-2">
           <SafeDetail label="Selected model" value={selectedName} />
-          <SafeDetail label="Profile" value={`${SAFE_TEST_PROFILE_ID} only`} />
-          <SafeDetail label="Port" value={String(SAFE_SERVER_DEFAULTS.port)} />
-          <SafeDetail label="Context" value={String(SAFE_SERVER_DEFAULTS.ctx_size)} />
-          <SafeDetail label="GPU layers" value={String(SAFE_SERVER_DEFAULTS.gpu_layers)} />
-          <SafeDetail label="Threads" value={String(SAFE_SERVER_DEFAULTS.threads)} />
+          <SafeDetail label="Profile" value={profileLabel} />
+          {Object.entries(startPayload?.parameters || localModelServerProfileDefaults(selectedProfile)).map(([name, value]) => (
+            <SafeDetail key={name} label={name.replaceAll("_", " ")} value={String(value)} />
+          ))}
         </dl>
       </div>
 
@@ -932,6 +1137,12 @@ function ManagedServerSection({
         <p>Starts companion-managed server only.</p>
         <p>Stops only the companion-managed server. Manual servers are not stopped by this button.</p>
         <p>Provider Settings are not changed.</p>
+        <p>High GPU layers can fail with out-of-memory errors on large models.</p>
+        <p>CPU mode is safer but slower.</p>
+        <p>Only configured profile settings are editable here.</p>
+        {profileWarnings.map((warning) => (
+          <p key={warning}>{warning}</p>
+        ))}
       </div>
 
       {disabledCopy && (
@@ -944,6 +1155,56 @@ function ManagedServerSection({
       )}
       {message && <p className="mt-2 text-[11px] leading-4 text-[#6B7185]">{message}</p>}
     </section>
+  );
+}
+
+function ProfileParameterControl({ name, schema, value, disabled, onChange }) {
+  const controlId = `managed-param-${name}`;
+  const current = value ?? schema.default;
+  return (
+    <label className="block rounded-lg border border-white/10 bg-white/[0.03] p-2" htmlFor={controlId}>
+      <span className="block text-[11px] font-medium text-[#D4D4D8]">{schema.label}</span>
+      {schema.type === "integer" && (
+        <input
+          id={controlId}
+          type="number"
+          min={schema.min}
+          max={schema.max}
+          step="1"
+          value={current}
+          disabled={disabled}
+          onChange={(event) => onChange(name, event.target.value)}
+          className="mt-1 h-8 w-full rounded-lg border border-white/10 bg-[#0F1421] px-2 text-[11.5px] text-[#E8EAF0]"
+        />
+      )}
+      {schema.type === "boolean" && (
+        <span className="mt-1 flex h-8 items-center gap-2 text-[11.5px] text-[#E8EAF0]">
+          <input
+            id={controlId}
+            type="checkbox"
+            checked={current === true}
+            disabled={disabled}
+            onChange={(event) => onChange(name, event.target.checked)}
+            className="h-4 w-4 accent-[#86EFAC]"
+          />
+          Enabled
+        </span>
+      )}
+      {schema.type === "enum" && (
+        <select
+          id={controlId}
+          value={current}
+          disabled={disabled}
+          onChange={(event) => onChange(name, event.target.value)}
+          className="mt-1 h-8 w-full rounded-lg border border-white/10 bg-[#0F1421] px-2 text-[11.5px] text-[#E8EAF0]"
+        >
+          {schema.allowed_values.map((item) => (
+            <option key={item} value={item}>{item}</option>
+          ))}
+        </select>
+      )}
+      {schema.help && <span className="mt-1 block text-[10.5px] leading-4 text-[#6B7185]">{schema.help}</span>}
+    </label>
   );
 }
 

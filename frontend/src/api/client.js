@@ -211,6 +211,10 @@ export function getLocalModelServerStatus() {
   return requestJson("/api/local-model/server/status");
 }
 
+export function getLocalModelServerProfiles() {
+  return requestJson("/api/local-model/server/profiles");
+}
+
 export function startLocalModelServer(payload) {
   return requestJson("/api/local-model/server/start", {
     method: "POST",

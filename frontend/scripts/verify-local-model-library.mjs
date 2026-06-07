@@ -34,10 +34,14 @@ import {
   SAFE_TEST_PROFILE_ID,
   buildLocalModelServerStartPayload,
   buildLocalModelServerStopPayload,
+  coerceProfileParameterValue,
+  localModelServerProfileDefaults,
+  localModelServerProfiles,
   localModelServerErrorMessage,
   localModelServerIsManagedRunning,
   localModelServerStatusLabel,
   normalizeLocalModelServerState,
+  safestRunnableServerProfile,
 } from "../src/localModelServer.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -161,13 +165,64 @@ check("size formatter", formatModelSize(5 * 1024 * 1024 * 1024) === "5 GB");
 check("modified formatter tolerates garbage", formatModelModifiedAt("not-a-date") === "not-a-date");
 
 // Managed server payload/status helpers.
-const startPayload = buildLocalModelServerStartPayload(normalized);
+const cpuProfile = {
+  id: "cpu_safe",
+  display_name: "CPU safe",
+  description: "Slow but reliable CPU launch.",
+  type: "llama_server",
+  test_profile: false,
+  runnable: true,
+  default_parameters: { port: 18080, ctx_size: 4096, gpu_layers: 0, threads: 8, parallel: 1 },
+  parameters: {
+    port: { type: "integer", min: 1024, max: 65535, default: 18080, label: "Port", help: "Local port." },
+    ctx_size: { type: "integer", min: 512, max: 131072, default: 4096, label: "Context", help: "Memory sensitive." },
+    gpu_layers: { type: "integer", min: 0, max: 999, default: 0, label: "GPU layers", help: "High values may OOM." },
+    threads: { type: "integer", min: 1, max: 256, default: 8, label: "Threads", help: "CPU threads." },
+    parallel: { type: "integer", min: 1, max: 32, default: 1, label: "Parallel", help: "Concurrent slots." },
+    cache_type_k: { type: "enum", allowed_values: ["f16", "q8_0"], default: "f16", label: "K cache", help: "Allow-list only." },
+    flash_attention: { type: "boolean", default: false, label: "Flash attention", help: "Profile controlled." },
+  },
+  warnings: ["CPU mode is slower but safer."],
+  executable: "/tmp/secret",
+};
+const fakeProfile = {
+  ...cpuProfile,
+  id: SAFE_TEST_PROFILE_ID,
+  display_name: "Fake test",
+  type: "fake_test",
+  test_profile: true,
+  default_parameters: { port: 18080, ctx_size: 2048, gpu_layers: 0, threads: 2 },
+  parameters: {
+    port: { type: "integer", min: 1024, max: 65535, default: 18080, label: "Port", help: "" },
+    ctx_size: { type: "integer", min: 512, max: 131072, default: 2048, label: "Context", help: "" },
+    gpu_layers: { type: "integer", min: 0, max: 999, default: 0, label: "GPU layers", help: "" },
+    threads: { type: "integer", min: 1, max: 256, default: 2, label: "Threads", help: "" },
+  },
+};
+const profilesResponse = { ok: true, configured: true, reachable: true, profiles: [fakeProfile, cpuProfile] };
+const normalizedProfiles = localModelServerProfiles(profilesResponse);
+const selectedCpu = safestRunnableServerProfile(normalizedProfiles);
+const startPayload = buildLocalModelServerStartPayload(normalized, selectedCpu, {
+  port: 18180,
+  ctx_size: 4096,
+  gpu_layers: 0,
+  threads: 8,
+  parallel: 1,
+  cache_type_k: "q8_0",
+  flash_attention: true,
+});
+check("profiles normalize and drop unsafe executable field", normalizedProfiles.length === 2 && !JSON.stringify(normalizedProfiles).includes("/tmp/secret"));
+check("safest runnable profile prefers cpu_safe", selectedCpu?.id === "cpu_safe");
 check("start payload exists for saved selection", startPayload?.model_id === "gguf_1");
-check("start payload uses safe test profile", startPayload?.profile_id === SAFE_TEST_PROFILE_ID && SAFE_TEST_PROFILE_ID === "fake_test");
+check("start payload uses selected safe profile", startPayload?.profile_id === "cpu_safe");
 check("start payload includes only allowed top-level fields", JSON.stringify(Object.keys(startPayload).sort()) === JSON.stringify(["model_id", "parameters", "profile_id"]));
-check("start payload includes only allowed parameter fields", JSON.stringify(Object.keys(startPayload.parameters).sort()) === JSON.stringify(["ctx_size", "gpu_layers", "port", "threads"]));
-check("start payload uses fixed defaults", JSON.stringify(startPayload.parameters) === JSON.stringify(SAFE_SERVER_DEFAULTS));
-check("start payload rejects invalid selection", buildLocalModelServerStartPayload({ id: "../bad" }) === null);
+check("start payload includes only selected profile parameter fields", JSON.stringify(Object.keys(startPayload.parameters).sort()) === JSON.stringify(["cache_type_k", "ctx_size", "flash_attention", "gpu_layers", "parallel", "port", "threads"]));
+check("start payload uses typed overrides", startPayload.parameters.port === 18180 && startPayload.parameters.cache_type_k === "q8_0" && startPayload.parameters.flash_attention === true);
+check("profile defaults are explicit and safe", localModelServerProfileDefaults(selectedCpu).gpu_layers === 0 && SAFE_SERVER_DEFAULTS.gpu_layers === 0);
+check("integer controls coerce within bounds", coerceProfileParameterValue(selectedCpu.parameters.parallel, 99) === 32);
+check("enum controls reject unlisted values", coerceProfileParameterValue(selectedCpu.parameters.cache_type_k, "bad") === "f16");
+check("start payload rejects invalid selection", buildLocalModelServerStartPayload({ id: "../bad" }, selectedCpu) === null);
+check("start payload rejects unavailable profile", buildLocalModelServerStartPayload(normalized, { ...selectedCpu, runnable: false }) === null);
 check("stop payload is bounded grace only", JSON.stringify(buildLocalModelServerStopPayload()) === JSON.stringify({ grace_seconds: 5 }));
 check("running status label", localModelServerStatusLabel({ configured: true, reachable: true, state: "running", managed: true }) === "Running");
 check("already_running status label", localModelServerStatusLabel({ configured: true, reachable: true, state: "already_running", managed: true }) === "Already running");
@@ -181,7 +236,7 @@ check("unmanaged running is not stoppable", localModelServerIsManagedRunning({ s
 check("port conflict error copy", localModelServerErrorMessage({ error: { category: "port_in_use" } }) === "The requested port is already in use.");
 check("invalid params error copy", localModelServerErrorMessage({ error: { category: "invalid_parameters" } }) === "The launch parameters were rejected.");
 check("unknown model error copy", localModelServerErrorMessage({ error: { category: "unknown_model" } }) === "The saved selected model is not available in the companion library.");
-check("unknown profile error copy", localModelServerErrorMessage({ error: { category: "unknown_profile" } }) === "The test launch profile is not available.");
+check("unknown profile error copy", localModelServerErrorMessage({ error: { category: "unknown_profile" } }) === "The launch profile is not available.");
 check("readiness timeout error copy", localModelServerErrorMessage({ error: { category: "readiness_timeout" } }) === "The managed server did not become ready in time.");
 check("model too large error copy", localModelServerErrorMessage({ error: { category: "model_may_be_too_large" } }) === "The selected model may be too large for available memory.");
 check("model load failure error copy", localModelServerErrorMessage({ error: { category: "model_load_failed" } }) === "The selected model could not be loaded.");
@@ -196,6 +251,7 @@ check("selection GET helper path", /function getLocalModelLibrarySelection\(\)[\
 check("selection POST helper path and method", /function saveLocalModelLibrarySelection\(selection\)[\s\S]*requestJson\("\/api\/local-model\/library\/selection", \{[\s\S]*method: "POST"/.test(clientSource));
 check("selection DELETE helper path and method", /function clearLocalModelLibrarySelection\(\)[\s\S]*requestJson\("\/api\/local-model\/library\/selection", \{ method: "DELETE" \}\)/.test(clientSource));
 check("server status helper path", /function getLocalModelServerStatus\(\)[\s\S]*requestJson\("\/api\/local-model\/server\/status"\)/.test(clientSource));
+check("server profiles helper path", /function getLocalModelServerProfiles\(\)[\s\S]*requestJson\("\/api\/local-model\/server\/profiles"\)/.test(clientSource));
 check("server start helper path and POST", /function startLocalModelServer\(payload\)[\s\S]*requestJson\("\/api\/local-model\/server\/start", \{[\s\S]*method: "POST"/.test(clientSource));
 check("server stop helper path and POST", /function stopLocalModelServer\(payload\)[\s\S]*requestJson\("\/api\/local-model\/server\/stop", \{[\s\S]*method: "POST"/.test(clientSource));
 check("server restart helper path and POST", /function restartLocalModelServer\(payload\)[\s\S]*requestJson\("\/api\/local-model\/server\/restart", \{[\s\S]*method: "POST"/.test(clientSource));
@@ -229,14 +285,18 @@ check("no raw HTML rendering", !/(dangerouslySetInnerHTML)/.test(librarySection 
 check("no connection detail strings in new UI slice", !/(Authorization|Bearer|LMM_COMPANION|socket|token)/.test(librarySection + managedServerSection + helperSource + serverHelperSource));
 check("no free-form command args UI", !/(textarea|argv|args|shell flags|arbitrary JSON)/.test(managedServerSection + serverHelperSource));
 check("managed server section is present", managedServerSection.includes("Managed Server"));
+check("profile selector is present", managedServerSection.includes("Launch profile") && panelSource.includes("getLocalModelServerProfiles"));
+check("typed profile controls are present", managedServerSection.includes('type="number"') && managedServerSection.includes('type="checkbox"') && managedServerSection.includes("schema.allowed_values"));
+check("reset to profile defaults exists", managedServerSection.includes("Use profile defaults"));
 check("start disabled without selected model", managedServerSection.includes("!hasSelection") && managedServerSection.includes("disabled={!canStart}"));
 check("manual helper fallback remains", panelSource.includes("How to start llama-server (manual)") && panelSource.includes("CommandHelper"));
 check("stop copy says companion-managed only", managedServerSection.includes("Stops only the companion-managed server."));
 check("provider settings unchanged copy present", managedServerSection.includes("Provider Settings are not changed."));
 check("start copy says companion-managed only", managedServerSection.includes("Starts companion-managed server only."));
 check("restart uses explicit selected-model payload", panelSource.includes("call = restartLocalModelServer") && panelSource.includes("payload = startPayload") && !managedServerSection.includes("reuse_last"));
-check("start payload is built from saved selection", panelSource.includes("savedServerSelection = normalizeLibrarySelection(librarySelectionData)") && panelSource.includes("buildLocalModelServerStartPayload(savedServerSelection)"));
+check("start payload is built from saved selection and profile", panelSource.includes("savedServerSelection = normalizeLibrarySelection(librarySelectionData)") && panelSource.includes("selectedServerProfile"));
 check("start payload JSON has no unsafe fields", !/(executable|model_path|command|args|--|absolute_path|secret_value)/.test(JSON.stringify(startPayload)));
+check("no gpu_layers 999 default in UI fixture", !/default:\s*999|gpu_layers:\s*999/.test(serverHelperSource + panelSource));
 check("no raw absolute path rendering", !/\/home\/|\/tmp\/|[A-Za-z]:\\\\/.test(managedServerSection + serverHelperSource));
 
 if (failed) {
