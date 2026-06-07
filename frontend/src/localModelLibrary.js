@@ -136,6 +136,28 @@ export function libraryRootsConfigured(data) {
   return Number.isSafeInteger(count) && count >= 0 ? count : 0;
 }
 
+export function libraryRootSummaries(data) {
+  const list = data?.roots;
+  if (!Array.isArray(list)) return [];
+  const seen = new Set();
+  const roots = [];
+  for (const item of list) {
+    if (!item || typeof item !== "object") continue;
+    const id = safeText(item.id, 120);
+    if (!id || !/^[A-Za-z0-9._:-]+$/.test(id) || seen.has(id)) continue;
+    seen.add(id);
+    const summary = {
+      id,
+      recursive: item.recursive === true,
+    };
+    if (Number.isSafeInteger(item.model_count) && item.model_count >= 0) {
+      summary.model_count = item.model_count;
+    }
+    roots.push(summary);
+  }
+  return roots;
+}
+
 export function libraryWarnings(data) {
   const list = data?.warnings;
   if (!Array.isArray(list)) return [];

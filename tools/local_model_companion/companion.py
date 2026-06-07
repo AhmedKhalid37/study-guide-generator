@@ -13,7 +13,7 @@ from pathlib import Path
 from typing import Any
 
 from .config import ConfigError, CompanionConfig, load_config
-from .model_library import COMPANION_SCAN_VERSION, ScanLimits, scan_models
+from .model_library import COMPANION_SCAN_VERSION, ScanLimits, root_summaries, scan_models
 from .process_manager import (
     ManagedServerProcessManager,
     get_managed_server_status,
@@ -65,6 +65,7 @@ class CompanionState:
             "models": self.models,
             "last_scan_at": self.last_scan_at,
             "roots_configured": len(self.config.approved_roots),
+            "roots": root_summaries(self.config.approved_roots, self.models),
             "warnings": self.last_warnings,
         }
 

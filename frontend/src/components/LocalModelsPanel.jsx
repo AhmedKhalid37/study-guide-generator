@@ -66,6 +66,7 @@ import {
   formatModelSize,
   libraryModelCount,
   libraryModels,
+  libraryRootSummaries,
   libraryRootsConfigured,
   librarySelectionPreview,
   librarySelectionStale,
@@ -351,6 +352,7 @@ export default function LocalModelsPanel({ onEditLocalProvider }) {
   const librarySelectedModel = selectedLibraryModel(libraryData, selectedLibraryModelId);
   const libraryCount = libraryModelCount(libraryData);
   const libraryRoots = libraryRootsConfigured(libraryData);
+  const rootSummaries = libraryRootSummaries(libraryData);
   const warnings = libraryWarnings(libraryData);
   const savedLibrarySelection = normalizeLibrarySelection(librarySelectionData);
   const selectionPreview = librarySelectionPreview(librarySelectionData);
@@ -639,6 +641,7 @@ export default function LocalModelsPanel({ onEditLocalProvider }) {
               libraryModels={libraryModelList}
               libraryCount={libraryCount}
               libraryRoots={libraryRoots}
+              rootSummaries={rootSummaries}
               warnings={warnings}
               scanning={scanningLibrary}
               scanMessage={scanMessage}
@@ -752,6 +755,7 @@ function ModelLibrarySection({
   libraryModels,
   libraryCount,
   libraryRoots,
+  rootSummaries,
   warnings,
   scanning,
   scanMessage,
@@ -781,6 +785,7 @@ function ModelLibrarySection({
     : "Never";
   const chosenName = savedSelection?.display_name || savedSelection?.filename || "—";
   const hasPendingChoice = !!selectedModel && selectedModel.id !== savedSelection?.id;
+  const canScan = companionStateKey === COMPANION_REACHABLE && companionScanCapable && !scanning;
 
   return (
     <section className="mt-4 rounded-lg border border-white/10 bg-white/[0.02] p-3">
@@ -793,7 +798,7 @@ function ModelLibrarySection({
             </span>
           </div>
           <p className="mt-1 text-[11.5px] leading-5 text-[#9098A8]">
-            Approved GGUF folder discovery with app-side selected-model metadata.
+            Approved GGUF folders are configured in the host companion config.
           </p>
         </div>
         <span
@@ -806,7 +811,7 @@ function ModelLibrarySection({
           type="button"
           className="sg-ghost-button shrink-0"
           onClick={onScan}
-          disabled={scanning}
+          disabled={!canScan}
           title="Ask the companion to rescan approved folders"
         >
           {scanning ? <Loader2 size={14} className="animate-spin" /> : <RefreshCw size={14} />}
@@ -822,6 +827,8 @@ function ModelLibrarySection({
       </div>
 
       <p className="mt-3 text-[11.5px] leading-5 text-[#9098A8]">{statusCopy}</p>
+      {rootSummaries.length > 0 && <RootSummaryList roots={rootSummaries} />}
+      {companionStateKey === COMPANION_UNCONFIGURED && <CompanionSetupGuide />}
       {(libraryRequestError || selectionRequestError) && (
         <p className="mt-2 break-words text-[11.5px] leading-5 text-[#FCD34D]">
           {libraryRequestError || selectionRequestError}
@@ -836,6 +843,7 @@ function ModelLibrarySection({
           model={savedSelection}
           preview={selectionPreview}
           stale={selectionStale}
+          companionStateKey={companionStateKey}
           saving={selectionSaving}
           onClear={onClearSelection}
         />
@@ -978,7 +986,7 @@ function ManagedServerSection({
             )}
           </div>
           <p className="mt-1 text-[11.5px] leading-5 text-[#9098A8]">
-            This controls only the companion-managed server process and does not change Provider Settings.
+            Start/stop controls require a configured host companion.
           </p>
         </div>
         <span className={`inline-flex h-[24px] shrink-0 items-center gap-1 whitespace-nowrap rounded-full px-2.5 text-[10.5px] ${PILL_TONE[serverTone(status, companionAvailable)]}`}>
@@ -1014,7 +1022,7 @@ function ManagedServerSection({
               id="managed-server-profile"
               className="min-h-[34px] min-w-0 flex-1 rounded-lg border border-white/10 bg-[#0F1421] px-2 text-[11.5px] text-[#E8EAF0]"
               value={selectedProfileId || ""}
-              disabled={profilesLoading || busy || profiles.length === 0}
+              disabled={!companionAvailable || profilesLoading || busy || profiles.length === 0}
               onChange={(event) => onSelectProfile(event.target.value)}
             >
               {profiles.length === 0 ? (
@@ -1031,7 +1039,7 @@ function ManagedServerSection({
               type="button"
               className="sg-ghost-button shrink-0"
               onClick={onRefreshProfiles}
-              disabled={profilesLoading || busy}
+              disabled={!companionAvailable || profilesLoading || busy}
               title="Refresh configured launch profiles"
             >
               {profilesLoading ? <Loader2 size={14} className="animate-spin" /> : <RefreshCw size={14} />}
@@ -1048,6 +1056,11 @@ function ManagedServerSection({
           {profilesRequestError && (
             <p className="mt-2 text-[11px] leading-4 text-[#FCD34D]">{profilesRequestError}</p>
           )}
+          {!hasProfiles && !profilesLoading && (
+            <p className="mt-2 text-[11px] leading-4 text-[#9098A8]">
+              No profiles are configured. Launch profiles come from companion config or preset files.
+            </p>
+          )}
         </div>
 
         <div className="rounded-lg border border-white/10 bg-black/20 p-2.5">
@@ -1059,7 +1072,7 @@ function ManagedServerSection({
               type="button"
               className="sg-ghost-button"
               onClick={onResetParameters}
-              disabled={!selectedProfile || busy}
+              disabled={!companionAvailable || !selectedProfile || busy}
               title="Restore configured profile defaults"
             >
               <RefreshCw size={13} />
@@ -1078,7 +1091,7 @@ function ManagedServerSection({
                   name={name}
                   schema={schema}
                   value={parameterValues[name]}
-                  disabled={busy || !selectedProfile?.runnable}
+                  disabled={!companionAvailable || busy || !selectedProfile?.runnable}
                   onChange={onChangeParameter}
                 />
               ))}
@@ -1134,6 +1147,7 @@ function ManagedServerSection({
       </div>
 
       <div className="mt-3 space-y-1 text-[11px] leading-4 text-[#6B7185]">
+        <p>These buttons control only the companion-managed process.</p>
         <p>Starts companion-managed server only.</p>
         <p>Stops only the companion-managed server. Manual servers are not stopped by this button.</p>
         <p>Provider Settings are not changed.</p>
@@ -1243,7 +1257,7 @@ function companionStatusCopy(state, requestError, errorMessage, scanCapable) {
       : "Companion is reachable; scan capability was not reported.";
   }
   if (state === COMPANION_UNCONFIGURED) {
-    return "Companion is not configured on the backend. Configure it server-side to use approved-folder discovery.";
+    return "Approved GGUF folders are configured in the host companion config. The web app cannot safely browse your whole PC or pick host folders directly.";
   }
   if (state === COMPANION_OFFLINE) {
     return "Companion is configured but not reachable. Cached library data may be empty or stale.";
@@ -1257,7 +1271,7 @@ function companionStatusCopy(state, requestError, errorMessage, scanCapable) {
 function EmptyLibraryState({ state, roots, requestError }) {
   let copy = "No GGUF models discovered yet.";
   if (requestError) copy = "Cached model library is unavailable on this backend.";
-  else if (state === COMPANION_UNCONFIGURED) copy = "No companion configured for approved-folder discovery.";
+  else if (state === COMPANION_UNCONFIGURED) copy = "Configure the companion and scan approved folder(s) to show all GGUF models.";
   else if (state === COMPANION_OFFLINE) copy = "Companion is not reachable; no cached models are available.";
   else if (state === COMPANION_AUTH_FAILED) copy = "Companion auth failed; no cached models are available.";
   else if (roots === 0) copy = "No approved folders are configured on the companion.";
@@ -1268,8 +1282,63 @@ function EmptyLibraryState({ state, roots, requestError }) {
   );
 }
 
-function ChosenLibraryModel({ model, preview, stale, saving, onClear }) {
+function RootSummaryList({ roots }) {
+  return (
+    <div className="mt-3 rounded-lg border border-white/10 bg-black/20 p-2.5">
+      <span className="mb-1.5 block text-[10.5px] font-medium uppercase tracking-wide text-[#9098A8]">
+        Configured approved roots
+      </span>
+      <div className="flex flex-wrap gap-1.5">
+        {roots.map((root) => (
+          <span
+            key={root.id}
+            className="inline-flex items-center gap-1.5 rounded-full border border-white/10 bg-white/[0.04] px-2 py-1 text-[10.5px] text-[#D4D4D8]"
+          >
+            {root.id}
+            <span className="text-[#6B7185]">
+              {root.recursive ? "recursive" : "top level"} · {root.model_count ?? 0} models
+            </span>
+          </span>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function CompanionSetupGuide() {
+  const template = `{
+  "approved_roots": [
+    {
+      "id": "models",
+      "path": "/mnt/ai/llm-models",
+      "recursive": true
+    }
+  ],
+  "token": "replace-with-local-token",
+  "process_runtime_dir": "/tmp/lmm-companion-runtime"
+}`;
+  return (
+    <div className="mt-3 rounded-lg border border-[#FCD34D]/20 bg-[#FCD34D]/[0.04] p-3">
+      <strong className="block text-[12px] text-[#FCD34D]">Companion setup required</strong>
+      <ul className="mt-2 space-y-1 text-[11.5px] leading-5 text-[#D4D4D8]">
+        <li>Approved GGUF folders are configured in the host companion config.</li>
+        <li>The web app cannot safely browse your whole PC or pick host folders directly.</li>
+        <li>Configure approved_roots in the companion config, then restart the companion and click Scan.</li>
+        <li>Manual server mode still works without the companion.</li>
+      </ul>
+      <span className="mt-3 block text-[10.5px] font-medium uppercase tracking-wide text-[#9098A8]">
+        Example/edit-me config template
+      </span>
+      <pre className="mt-1 overflow-x-auto rounded-lg border border-white/10 bg-black/30 p-2.5 text-[11px] leading-5 text-[#E8EAF0]">
+        <code className="whitespace-pre-wrap break-all font-mono">{template}</code>
+      </pre>
+    </div>
+  );
+}
+
+function ChosenLibraryModel({ model, preview, stale, companionStateKey, saving, onClear }) {
   const name = model.display_name || model.filename || model.relative_path || model.id;
+  const unconfigured = companionStateKey === COMPANION_UNCONFIGURED;
   return (
     <div className="mt-3 rounded-lg border border-[#86EFAC]/20 bg-[#86EFAC]/[0.04] p-3">
       <div className="flex flex-wrap items-start gap-2">
@@ -1279,7 +1348,12 @@ function ChosenLibraryModel({ model, preview, stale, saving, onClear }) {
             <span className="rounded-full border border-[#86EFAC]/30 bg-[#86EFAC]/10 px-2 py-0.5 text-[10px] uppercase tracking-wide text-[#86EFAC]">
               Chosen library model
             </span>
-            {stale && (
+            {unconfigured && (
+              <span className="rounded-full border border-[#FCD34D]/30 bg-[#FCD34D]/10 px-2 py-0.5 text-[10px] uppercase tracking-wide text-[#FCD34D]">
+                Saved selected model
+              </span>
+            )}
+            {stale && !unconfigured && (
               <span className="rounded-full border border-[#FCD34D]/30 bg-[#FCD34D]/10 px-2 py-0.5 text-[10px] uppercase tracking-wide text-[#FCD34D]">
                 Saved but not in current library
               </span>
@@ -1293,11 +1367,18 @@ function ChosenLibraryModel({ model, preview, stale, saving, onClear }) {
             <SafeDetail label="Modified" value={formatModelModifiedAt(model.modified_at)} />
             <SafeDetail label="Selected" value={formatModelModifiedAt(model.selected_at)} />
           </dl>
-          {stale && (
+          {unconfigured ? (
             <p className="mt-2 text-[11px] leading-4 text-[#FCD34D]">
-              Scan approved folder(s) again if this model moved or was removed.
+              This is a saved selected model from a previous validation or session.
+              It is not currently confirmed by a live library scan because the companion is unconfigured.
+              Configure the companion and scan approved folder(s) to show all GGUF models.
             </p>
-          )}
+          ) : stale ? (
+            <p className="mt-2 text-[11px] leading-4 text-[#FCD34D]">
+              Saved but not in current scan. The file may have moved, been renamed,
+              or the approved root may need rescanning.
+            </p>
+          ) : null}
         </div>
         <button
           type="button"

@@ -5,44 +5,48 @@
 
 ---
 
-## NEXT — LMM Phase 2G8 real configured-profile E2E validation DONE.
+## NEXT — LMM Phase 2G9 approved-folder setup UX polish DONE.
 
-- **Local Model Manager Phase 2G8 is DONE** on branch
-  `lmm-phase2g8-real-profile-e2e-validation`.
-- **Harness added:** `test_scripts/validate_lmm_real_profile_e2e.py` validates
-  the actual configured-profile path: temporary host companion config/runtime,
-  Unix socket mount into the Docker app through a temporary Compose override,
-  backend `GET /api/local-model/companion/status`, `POST /api/local-model/library/scan`,
-  `GET /api/local-model/server/profiles`, `POST /api/local-model/library/selection`,
-  `POST /api/local-model/server/start`, polling `GET /api/local-model/server/status`,
-  `POST /api/local-model/server/stop`, and port-release/redaction checks.
-- **Real E2E validation passed:** operator env selected
-  `gemma-4-26B-A4B-it-UD-Q4_K_M.gguf` from `/mnt/ai/llm-models` with
-  `/usr/bin/llama-server`, `LMM_REAL_PORT=18080`,
-  `LMM_REAL_CTX_SIZE=4096`, `LMM_REAL_GPU_LAYERS=0`, and
-  `LMM_REAL_THREADS=8`. The backend/companion path reached `running`
-  readiness via `/v1/models`, stopped cleanly, and released the port.
-- **Skip behavior verified:** with required real env absent,
-  `python test_scripts/validate_lmm_real_profile_e2e.py` exits 0 with a clear
-  `SKIP` message before Docker work.
-- **Safety verified:** backend responses contained no token, socket path,
-  absolute model root or executable path, Authorization header, full URL, or raw
-  argv. Returned model paths were root-relative only. The harness uses no
-  Provider Settings writes, skips `/api/local-model/status` rather than
-  repointing the local provider, restores the local model selection store after
-  validation, and leaves no committed Docker changes.
-- **GPU validation remains separate:** the earlier `gpu_layers=999` stress run
-  failed safely as `model_may_be_too_large` / CUDA OOM; do not claim GPU
-  validation passed.
-- **Scope preserved:** no app-suggested settings, AI recommendations, Provider
-  Settings writes, Ask changes, permanent Docker Compose changes, frontend UI
-  changes, model download manager, host-gateway TCP, Docker socket, privileged
-  container, host PID namespace, browser storage, direct companion frontend
-  call, token/socket/absolute host path/raw argv exposure, or Windows/macOS
-  implementation.
-- **Recommended next slice:** packaging/runtime-service docs for running the
-  companion reliably, or a separately approved settings-recommendation design.
-  App-suggested settings remain deferred.
+- **Local Model Manager Phase 2G9 is DONE** on branch
+  `lmm-phase2g9-runtime-setup-polish`.
+- **Manual command helper presets changed:** the default profile is now
+  CPU-safe (`-c 4096 -ngl 0 --threads 8`), with GPU balanced
+  (`-c 4096 -ngl 20 --threads 8`) and low-memory
+  (`-c 2048 -ngl 0 --threads 8`) presets. Full offload `-ngl 999` remains only
+  as an advanced profile explicitly labeled risky / may OOM, and is not the
+  default.
+- **Setup UX clarified:** Local Models now explains that approved GGUF folders
+  come from the host companion config, the browser app cannot safely browse the
+  whole PC or pick host folders directly, operators must configure
+  `approved_roots`, restart the companion, then scan, and manual server mode
+  still works without the companion. A compact example/edit-me JSON config block
+  uses placeholders only.
+- **Stale selection copy clarified:** when the companion is unconfigured and a
+  saved selected model exists, the UI says it is a saved selection from a
+  previous validation/session and is not confirmed by a live scan. When the
+  companion is configured but the model is absent from the current library, the
+  UI says it is saved but not in the current scan and may need rescanning.
+- **Safe root/status display:** companion/backend library payloads may now
+  include path-free root summaries (`id`, `recursive`, `model_count`) and the UI
+  displays them when available. Absolute root paths, socket paths, tokens, and
+  raw argv are not exposed.
+- **Managed Server setup copy clarified:** controls remain disabled when the
+  companion/profile is unavailable, explain they only control the
+  companion-managed process, do not stop manual servers, and do not change
+  Provider Settings. No-profile copy points to companion config/preset files.
+- **Validation basis:** Phase 2G5/2G8 CPU-safe validation passed with
+  `gpu_layers=0`, `ctx_size=4096`, `threads=8`; full GPU/offload
+  `gpu_layers=999` failed safely as CUDA OOM / `model_may_be_too_large` and is
+  not a default.
+- **Scope preserved:** no true browser folder picker, no companion config write
+  endpoint, no frontend-provided host path accepted by backend/companion, no
+  Provider Settings writes, no Ask changes, no permanent Docker Compose changes,
+  no model download manager, no app-suggested settings, no browser storage, no
+  token/socket/raw absolute path/raw argv exposure, no free-form flags UI, and
+  no whole-PC scan.
+- **Recommended next slice:** packaging/runtime-service docs and a guided
+  operator startup flow for running the host companion reliably. A future
+  approve-root flow still needs a separate host-companion design.
 
 ## Previous — LMM Phase 2G7 operator setup docs + safe preset import DONE.
 

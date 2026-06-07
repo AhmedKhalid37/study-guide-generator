@@ -999,27 +999,11 @@ LOCAL_COMMAND_MODEL_PLACEHOLDER = "/path/to/model.gguf"
 # above — there is no free-form input. To add a profile, add a static entry here.
 _LOCAL_COMMAND_PROFILES: tuple[dict[str, Any], ...] = (
     {
-        "id": "llama_server_default",
-        "label": "llama-server default (GPU offload)",
+        "id": "llama_server_cpu_safe",
+        "label": "CPU safe",
         "description": (
-            "OpenAI-compatible server with full GPU offload. Best when you have a "
-            "supported GPU; falls back gracefully if some layers don't fit."
-        ),
-        "binary": "llama-server",
-        "argv_template": [
-            "-m", "{model_path}",
-            "--host", "0.0.0.0",
-            "--port", "8080",
-            "-c", "8192",
-            "--n-gpu-layers", "999",
-        ],
-    },
-    {
-        "id": "llama_server_cpu",
-        "label": "llama-server (CPU only)",
-        "description": (
-            "OpenAI-compatible server with no GPU offload. Use when you have no "
-            "supported GPU; expect slower generation."
+            "OpenAI-compatible server with no GPU offload. This is the safest "
+            "default after real validation and should run on CPU-only hosts."
         ),
         "binary": "llama-server",
         "argv_template": [
@@ -1027,6 +1011,58 @@ _LOCAL_COMMAND_PROFILES: tuple[dict[str, Any], ...] = (
             "--host", "0.0.0.0",
             "--port", "8080",
             "-c", "4096",
+            "-ngl", "0",
+            "--threads", "8",
+        ],
+    },
+    {
+        "id": "llama_server_gpu_balanced",
+        "label": "GPU balanced",
+        "description": (
+            "Moderate GPU offload for hosts with available VRAM. If this fails, "
+            "switch back to CPU safe or low memory."
+        ),
+        "binary": "llama-server",
+        "argv_template": [
+            "-m", "{model_path}",
+            "--host", "0.0.0.0",
+            "--port", "8080",
+            "-c", "4096",
+            "-ngl", "20",
+            "--threads", "8",
+        ],
+    },
+    {
+        "id": "llama_server_low_memory",
+        "label": "Low memory",
+        "description": (
+            "Smaller context and CPU-only launch for constrained RAM/VRAM setups."
+        ),
+        "binary": "llama-server",
+        "argv_template": [
+            "-m", "{model_path}",
+            "--host", "0.0.0.0",
+            "--port", "8080",
+            "-c", "2048",
+            "-ngl", "0",
+            "--threads", "8",
+        ],
+    },
+    {
+        "id": "llama_server_full_offload_risky",
+        "label": "Advanced full offload (risky / may OOM)",
+        "description": (
+            "Attempts full GPU offload. Large models may fail with CUDA out-of-memory; "
+            "this is not the default."
+        ),
+        "binary": "llama-server",
+        "argv_template": [
+            "-m", "{model_path}",
+            "--host", "0.0.0.0",
+            "--port", "8080",
+            "-c", "4096",
+            "-ngl", "999",
+            "--threads", "8",
         ],
     },
 )

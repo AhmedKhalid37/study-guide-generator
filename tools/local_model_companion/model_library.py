@@ -120,6 +120,25 @@ def _model_id(root_id: str, relative_path: str) -> str:
     return f"gguf_{digest}"
 
 
+def root_summaries(
+    roots: list[ApprovedRoot] | tuple[ApprovedRoot, ...],
+    models: list[dict[str, object]],
+) -> list[dict[str, object]]:
+    counts: dict[str, int] = {}
+    for model in models:
+        root_id = model.get("root_id")
+        if isinstance(root_id, str):
+            counts[root_id] = counts.get(root_id, 0) + 1
+    return [
+        {
+            "id": root.id,
+            "recursive": bool(root.recursive),
+            "model_count": counts.get(root.id, 0),
+        }
+        for root in roots
+    ]
+
+
 def _record_for_candidate(
     root: ApprovedRoot,
     root_path: Path,
@@ -256,6 +275,7 @@ def scan_models(
             "models": [],
             "scanned_roots": 0,
             "roots_configured": len(config.approved_roots),
+            "roots": root_summaries(list(config.approved_roots), []),
             "files_inspected": 0,
             "rejected_count": 0,
             "warnings": warnings.payload(),
@@ -308,6 +328,7 @@ def scan_models(
         "models": models,
         "scanned_roots": scanned_roots,
         "roots_configured": len(config.approved_roots),
+        "roots": root_summaries(list(config.approved_roots), models),
         "files_inspected": inspected,
         "rejected_count": rejected,
         "warnings": warnings.payload(),

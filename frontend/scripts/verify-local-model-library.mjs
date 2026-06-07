@@ -21,6 +21,7 @@ import {
   isSafeRelativePath,
   libraryModelCount,
   libraryModels,
+  libraryRootSummaries,
   libraryRootsConfigured,
   librarySelectionPreview,
   librarySelectionStale,
@@ -103,6 +104,7 @@ const library = {
   models: [model, model],
   model_count: 99,
   roots_configured: 1,
+  roots: [{ id: "default", recursive: true, model_count: 1 }, { id: "/bad/root", recursive: true, model_count: 99 }],
   warnings: [
     {
       code: "root_missing",
@@ -153,6 +155,7 @@ check("libraryModels dedupes", libraryModels(library).length === 1);
 check("libraryModelCount prefers backend count", libraryModelCount(library) === 99);
 check("libraryModelCount falls back", libraryModelCount({ models: [model] }) === 1);
 check("libraryRootsConfigured reads count", libraryRootsConfigured(library) === 1);
+check("libraryRootSummaries keeps safe root metadata only", libraryRootSummaries(library).length === 1 && libraryRootSummaries(library)[0].id === "default" && libraryRootSummaries(library)[0].recursive === true && libraryRootSummaries(library)[0].model_count === 1);
 check("warnings keep safe relative path", libraryWarnings(library)[0].relative_path === "safe/model.gguf");
 check("warnings drop unsafe relative path", libraryWarnings(library)[1].relative_path === undefined);
 check("selected model lookup uses current library", selectedLibraryModel(library, "gguf_1")?.display_name === "Gemma 4 Q4");
@@ -260,6 +263,7 @@ check("server restart helper path and POST", /function restartLocalModelServer\(
 const panelSource = fs.readFileSync(path.join(root, "src/components/LocalModelsPanel.jsx"), "utf8");
 const helperSource = fs.readFileSync(path.join(root, "src/localModelLibrary.js"), "utf8");
 const serverHelperSource = fs.readFileSync(path.join(root, "src/localModelServer.js"), "utf8");
+const backendCommandSource = fs.readFileSync(path.join(root, "..", "pipeline/provider_config.py"), "utf8");
 const librarySection = panelSource.slice(
   panelSource.indexOf("function ModelLibrarySection"),
   panelSource.indexOf("function Metric")
@@ -268,12 +272,23 @@ const managedServerSection = panelSource.slice(
   panelSource.indexOf("function ManagedServerSection"),
   panelSource.indexOf("function CompanionStateIcon")
 );
+const cpuSafeCommandSection = backendCommandSource.slice(
+  backendCommandSource.indexOf('"id": "llama_server_cpu_safe"'),
+  backendCommandSource.indexOf('"id": "llama_server_gpu_balanced"')
+);
 check("Model Library section is present", librarySection.includes("Model Library"));
 check("scan button label is present", librarySection.includes("Scan approved folder(s)"));
+check("scan disabled unless companion scan-capable", librarySection.includes("disabled={!canScan}") && librarySection.includes("companionScanCapable"));
 check("scan flow calls local scan helper", panelSource.includes("scanLocalModelLibrary") && panelSource.includes("fetchLibrary(true)"));
 check("selected model UI state exists", panelSource.includes("selectedLibraryModelId") && panelSource.includes("setSelectedLibraryModelId"));
 check("persisted selected model display exists", librarySection.includes("Chosen library model") && librarySection.includes("Remember selected model"));
-check("stale selected model display exists", librarySection.includes("Saved but not in current library") && librarySection.includes("Scan approved folder(s) again"));
+check("stale selected model display exists", librarySection.includes("Saved but not in current scan") && librarySection.includes("approved root may need rescanning"));
+check("unconfigured stale copy distinguishes saved selection", librarySection.includes("This is a saved selected model from a previous validation or session.") && librarySection.includes("not currently confirmed by a live library scan because the companion is unconfigured"));
+check("approved roots setup copy exists", librarySection.includes("Approved GGUF folders are configured in the host companion config.") && librarySection.includes("cannot safely browse your whole PC or pick host folders directly") && librarySection.includes("Configure approved_roots in the companion config"));
+check("manual server mode still works copy exists", librarySection.includes("Manual server mode still works without the companion."));
+check("setup config template uses placeholders", librarySection.includes("\"token\": \"replace-with-local-token\"") && librarySection.includes("\"path\": \"/mnt/ai/llm-models\"") && librarySection.includes("Example/edit-me config template"));
+check("setup config template does not expose socket or Authorization", !/(Authorization|Bearer|socket)/.test(librarySection));
+check("root summary display is path-free", librarySection.includes("Configured approved roots") && librarySection.includes("recursive") && librarySection.includes("model_count") && !librarySection.includes("root.path"));
 check("clear selection flow exists", librarySection.includes("Clear selection") && panelSource.includes("clearLocalModelLibrarySelection"));
 check("selection save flow calls selection API", panelSource.includes("saveLocalModelLibrarySelection") && panelSource.includes("model_id: librarySelectedModel.id"));
 check("saved selection preview exists", librarySection.includes("Saved selection preview"));
@@ -282,22 +297,30 @@ check("no Provider Settings calls in managed server section", !/(updateProviderS
 check("no Ask calls in managed server section", !/\/api\/ask|sendAskSessionMessage|createAskSession|prepareAskJobContext/.test(managedServerSection + serverHelperSource));
 check("no browser storage in new library/server files", !/(localStorage|sessionStorage)/.test(librarySection + managedServerSection + helperSource + serverHelperSource));
 check("no raw HTML rendering", !/(dangerouslySetInnerHTML)/.test(librarySection + managedServerSection + helperSource + serverHelperSource));
-check("no connection detail strings in new UI slice", !/(Authorization|Bearer|LMM_COMPANION|socket|token)/.test(librarySection + managedServerSection + helperSource + serverHelperSource));
+check("no real connection detail strings in new UI slice", !/(Authorization|Bearer|LMM_COMPANION|socket|sk-[A-Za-z0-9]|tok-[A-Za-z0-9])/.test(librarySection + managedServerSection + helperSource + serverHelperSource));
 check("no free-form command args UI", !/(textarea|argv|args|shell flags|arbitrary JSON)/.test(managedServerSection + serverHelperSource));
 check("managed server section is present", managedServerSection.includes("Managed Server"));
 check("profile selector is present", managedServerSection.includes("Launch profile") && panelSource.includes("getLocalModelServerProfiles"));
+check("managed profile controls disabled when companion unavailable", managedServerSection.includes("disabled={!companionAvailable || profilesLoading || busy || profiles.length === 0}") && managedServerSection.includes("disabled={!companionAvailable || busy || !selectedProfile?.runnable}"));
 check("typed profile controls are present", managedServerSection.includes('type="number"') && managedServerSection.includes('type="checkbox"') && managedServerSection.includes("schema.allowed_values"));
 check("reset to profile defaults exists", managedServerSection.includes("Use profile defaults"));
 check("start disabled without selected model", managedServerSection.includes("!hasSelection") && managedServerSection.includes("disabled={!canStart}"));
 check("manual helper fallback remains", panelSource.includes("How to start llama-server (manual)") && panelSource.includes("CommandHelper"));
+check("manual helper default is CPU safe", cpuSafeCommandSection.includes('"-ngl", "0"') && cpuSafeCommandSection.includes('"--threads", "8"') && /"profile": profiles\[0\]/.test(backendCommandSource));
+check("manual helper has GPU balanced preset", backendCommandSource.includes('"id": "llama_server_gpu_balanced"') && backendCommandSource.includes('"-ngl", "20"'));
+check("manual helper has low-memory preset", backendCommandSource.includes('"id": "llama_server_low_memory"') && backendCommandSource.includes('"-c", "2048"'));
+check("full offload is explicitly risky and not first", backendCommandSource.includes('"id": "llama_server_full_offload_risky"') && backendCommandSource.includes("risky / may OOM") && backendCommandSource.indexOf("llama_server_full_offload_risky") > backendCommandSource.indexOf("llama_server_cpu_safe"));
+check("manual helper default no longer uses gpu 999", !/("-ngl", "999"|"--n-gpu-layers", "999")/.test(cpuSafeCommandSection));
 check("stop copy says companion-managed only", managedServerSection.includes("Stops only the companion-managed server."));
 check("provider settings unchanged copy present", managedServerSection.includes("Provider Settings are not changed."));
+check("managed setup copy explains companion requirement", managedServerSection.includes("Start/stop controls require a configured host companion.") && managedServerSection.includes("These buttons control only the companion-managed process."));
+check("no profiles copy explains companion config presets", managedServerSection.includes("Launch profiles come from companion config or preset files."));
 check("start copy says companion-managed only", managedServerSection.includes("Starts companion-managed server only."));
 check("restart uses explicit selected-model payload", panelSource.includes("call = restartLocalModelServer") && panelSource.includes("payload = startPayload") && !managedServerSection.includes("reuse_last"));
 check("start payload is built from saved selection and profile", panelSource.includes("savedServerSelection = normalizeLibrarySelection(librarySelectionData)") && panelSource.includes("selectedServerProfile"));
 check("start payload JSON has no unsafe fields", !/(executable|model_path|command|args|--|absolute_path|secret_value)/.test(JSON.stringify(startPayload)));
 check("no gpu_layers 999 default in UI fixture", !/default:\s*999|gpu_layers:\s*999/.test(serverHelperSource + panelSource));
-check("no raw absolute path rendering", !/\/home\/|\/tmp\/|[A-Za-z]:\\\\/.test(managedServerSection + serverHelperSource));
+check("no raw absolute path rendering outside placeholder setup", !/\/home\/|[A-Za-z]:\\\\/.test(managedServerSection + serverHelperSource + librarySection.replace("/mnt/ai/llm-models", "").replace("/tmp/lmm-companion-runtime", "")));
 
 if (failed) {
   console.error(`\n${failed} local-model-library check(s) failed.`);

@@ -10,13 +10,36 @@
 - **Trunk includes:** `af0ec0e` (Ask Slice 1 design), `2634f63` (Ask Slice 2 context
   inventory), `a29a405` (Ask Slice 3 context preparation), and the inserted Ask
   workspace shell, on top of the validated LMM group and prior feature groups.
-- **Active work branch:** `lmm-phase2g8-real-profile-e2e-validation` — Local
-  Model Manager Phase 2G8 real configured-profile E2E validation.
+- **Active work branch:** `lmm-phase2g9-runtime-setup-polish` — Local Model
+  Manager Phase 2G9 approved-folder setup UX + safe manual helper defaults.
   **NEXT = validation / review, then packaging/runtime-service docs or a
-  separately approved settings-recommendation design. App-suggested settings
+  separately designed host-companion approve-root flow. App-suggested settings
   remain deferred.**
 
 ## What just landed
+- **Local Model Manager Phase 2G9 — approved-folder setup UX + safe manual
+  helper defaults** (branch `lmm-phase2g9-runtime-setup-polish`). Manual command
+  helper defaults are now CPU-safe first (`-c 4096 -ngl 0 --threads 8`), with
+  GPU balanced (`-c 4096 -ngl 20 --threads 8`) and low-memory
+  (`-c 2048 -ngl 0 --threads 8`) presets. Full offload `-ngl 999` remains only
+  as an advanced profile labeled risky / may OOM and is not default. The Local
+  Models UI now explains that approved GGUF folders come from host companion
+  config, the web app cannot safely browse the whole PC or pick host folders
+  directly, operators must configure `approved_roots`, restart the companion,
+  then scan, and manual server mode still works without the companion. The setup
+  template uses placeholder values only. Saved-selection copy distinguishes an
+  unconfigured companion (saved model from a previous validation/session, not
+  confirmed by live scan) from a configured scan where the file is missing.
+  Companion/backend library payloads may include path-free root summaries
+  (`id`, `recursive`, `model_count`), which the UI displays without root paths.
+  Managed Server copy now states controls require a configured host companion,
+  affect only companion-managed processes, do not stop manual servers, and do
+  not change Provider Settings; missing profiles point to companion config or
+  preset files. Scope preserved: no true browser folder picker, no companion
+  config writes, no frontend-provided host path, no Provider Settings writes, no
+  Ask changes, no permanent Docker changes, no model download manager, no
+  app-suggested settings, no browser storage, no token/socket/absolute host
+  path/raw argv exposure, no free-form flags UI, and no whole-PC scan.
 - **Local Model Manager Phase 2G8 — real configured-profile E2E validation**
   (branch `lmm-phase2g8-real-profile-e2e-validation`). Added
   `test_scripts/validate_lmm_real_profile_e2e.py`, a live/manual harness for

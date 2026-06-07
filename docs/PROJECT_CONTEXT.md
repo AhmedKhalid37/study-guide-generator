@@ -279,7 +279,17 @@ flashcards with CSV / Anki / Quizlet export.
   root-relative model paths only. GPU validation remains separate: the earlier
   `gpu_layers=999` stress run failed safely as `model_may_be_too_large` / CUDA
   OOM and is not a passed GPU validation. App-suggested settings remain
-  deferred. There is still no permanent Docker Compose mount, Provider Settings
+  deferred. Phase 2G9 polishes setup UX and manual helper defaults: the command
+  helper defaults to CPU safe (`-c 4096 -ngl 0 --threads 8`), adds GPU balanced
+  and low-memory presets, and keeps full offload `-ngl 999` only as an advanced
+  risky / may OOM option. The Local Models UI explains that approved GGUF
+  folders come from host companion config, not a browser folder picker; the web
+  app cannot safely browse the whole PC or pick host folders directly; operators
+  configure `approved_roots`, restart the companion, then scan; and manual
+  server mode still works without the companion. Saved selected models are
+  clearly labeled as stale/unconfirmed when the companion is unconfigured, and
+  path-free root summaries (`id`, `recursive`, `model_count`) are displayed when
+  the backend has them. There is still no permanent Docker Compose mount, Provider Settings
   write, Ask change, dependency addition, local provider base-URL/model behavior
   change, direct companion frontend call, host-gateway TCP, shell/free-form args
   UI, browser storage, token/socket exposure in UI, direct Docker host process

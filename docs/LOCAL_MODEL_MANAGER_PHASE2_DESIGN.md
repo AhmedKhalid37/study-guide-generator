@@ -1,6 +1,6 @@
 # LOCAL_MODEL_MANAGER_PHASE2_DESIGN.md - Host companion and approved GGUF library
 
-> **Status: Phase 2G8 real configured-profile E2E validation complete.** Phase 2A
+> **Status: Phase 2G9 approved-folder setup UX polish complete.** Phase 2A
 > established the host-companion boundary.
 > Phase 2B adds a Linux-first, stdlib-only host companion prototype under
 > `tools/local_model_companion/` for approved-folder GGUF scanning and a
@@ -36,7 +36,12 @@
 > `gemma-4-26B-A4B-it-UD-Q4_K_M.gguf`, `port=18080`, `ctx_size=4096`,
 > `gpu_layers=0`, and `threads=8`: the backend path reached `/v1/models`,
 > stopped cleanly, and released the port. GPU validation remains separate and
-> has not passed.
+> has not passed. Phase 2G9 updates the Local Models setup UX and manual command
+> helper defaults: approved folders are explicitly presented as companion-config
+> `approved_roots`, not a browser folder picker; saved selections are labeled as
+> unconfirmed when the companion is unconfigured; CPU-safe/balanced/low-memory
+> manual presets replace full-offload as the visible default; and safe root
+> summaries expose only root id, recursive flag, and model count.
 > There is still no production Docker Compose mount, Provider Settings write, Ask
 > change, dependency addition, local provider base-URL/model behavior change,
 > direct companion frontend call, host-gateway TCP, Docker socket, privileged
@@ -604,6 +609,9 @@ safe response fields.
 - **Phase 2G8:** DONE. Live/manual real configured-profile E2E validation
   through companion -> Docker backend -> Local Models backend flow; CPU-safe
   operator profile passed, GPU validation remains separate.
+- **Phase 2G9:** DONE. Approved-folder setup UX polish and safe manual helper
+  defaults; no browser folder picker, no companion config writes, no Provider
+  Settings/Ask/Docker changes.
 - **Later:** packaging/signing and cross-platform installers.
 
 Each slice must preserve the boundary: Docker backend talks to the companion; the
@@ -2145,3 +2153,51 @@ Scope preserved:
   namespace.
 - No free-form flags, raw token/socket/absolute host path/raw argv exposure, or
   direct companion frontend call.
+
+## 27. Phase 2G9 Approved-Folder Setup UX + Safe Manual Defaults
+
+Phase 2G9 is UI/docs/test polish after real validation proved CPU-safe settings
+work and full GPU/offload `gpu_layers=999` can fail safely with CUDA OOM /
+`model_may_be_too_large` on a large 26B GGUF model.
+
+Changes:
+
+- Manual command helper defaults are CPU-safe first:
+  `llama-server -m /path/to/model.gguf --host 0.0.0.0 --port 8080 -c 4096 -ngl 0 --threads 8`.
+- Additional helper presets are GPU balanced (`-c 4096 -ngl 20 --threads 8`)
+  and low memory (`-c 2048 -ngl 0 --threads 8`).
+- Full offload `-ngl 999` is retained only as an advanced option labeled
+  risky / may OOM and is not the default.
+- Local Models setup copy states that approved GGUF folders come from host
+  companion config (`approved_roots`), not from a browser folder picker. The app
+  cannot safely browse the whole PC or pick host folders directly.
+- The unconfigured state tells operators to edit companion config, restart the
+  companion, and click Scan. Manual server mode remains available without the
+  companion.
+- The setup template uses placeholder values only and does not expose real
+  tokens, sockets, backend paths, or operator-specific roots.
+- Saved selected model copy distinguishes "saved from a previous
+  validation/session and not confirmed by a live scan" from "configured
+  companion, but saved model is not in the current scan."
+- Companion/backend library payloads may include path-free root summaries:
+  root id, recursive flag, and model count. Absolute root paths are not returned
+  to the frontend.
+- Managed Server copy explains that controls require a configured host
+  companion, control only companion-managed processes, do not stop manual
+  servers, do not change Provider Settings, and profiles come from companion
+  config or preset files.
+
+Non-goals preserved:
+
+- No arbitrary browser folder picker.
+- No companion config write endpoint.
+- No frontend-provided host path accepted by backend/companion.
+- No Provider Settings writes.
+- No Ask changes.
+- No permanent Docker Compose changes.
+- No model download manager.
+- No app-suggested settings or AI-generated recommendations.
+- No browser localStorage/sessionStorage.
+- No token/socket/raw absolute host path/raw argv exposure.
+- No free-form flags UI.
+- No whole-PC scan.

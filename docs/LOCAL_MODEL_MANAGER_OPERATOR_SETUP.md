@@ -9,6 +9,11 @@ real `llama-server` profiles, optional `.ini` preset import, and the Docker
 Unix-socket bridge. The app does not suggest hardware settings yet; profile
 defaults are operator-owned and whitelist-validated.
 
+The web app does not implement a true browser folder picker for host GGUF
+folders. Approved folders currently come from the host companion config
+(`approved_roots`). Configure that file, restart the companion, then use Scan in
+Local Models.
+
 ## 1. Find llama-server
 
 If `llama-server` is on `PATH`:
@@ -117,6 +122,9 @@ Notes:
 - `gpu_layers=999` is not a safe general default. Phase 2G5 proved it can fail
   safely as `model_may_be_too_large` / CUDA OOM on a large model.
 - These defaults are examples, not app-generated recommendations.
+- The Local Models setup screen may show a compact edit-me template with
+  `/mnt/ai/llm-models` and `/tmp/lmm-companion-runtime` placeholders. Replace
+  them with your own host paths; the UI does not write this config.
 
 Start the companion from the repo root:
 
@@ -308,7 +316,30 @@ repointing the local provider. It also verifies no token, socket path, absolute
 model root or executable path, Authorization header, full URL, or raw argv leaks
 through backend responses, and that returned model paths are root-relative only.
 
-## 7. Troubleshooting
+## 7. Local Models Setup UX
+
+When the companion is unconfigured, the Local Models page explains:
+
+- approved GGUF folders are configured in the host companion config;
+- the web app cannot safely browse the whole PC or pick host folders directly;
+- configure `approved_roots`, restart the companion, then click Scan;
+- manual server mode still works without the companion.
+
+The manual command helper defaults are safe examples:
+
+```bash
+llama-server -m /path/to/model.gguf --host 0.0.0.0 --port 8080 -c 4096 -ngl 0 --threads 8
+llama-server -m /path/to/model.gguf --host 0.0.0.0 --port 8080 -c 4096 -ngl 20 --threads 8
+llama-server -m /path/to/model.gguf --host 0.0.0.0 --port 8080 -c 2048 -ngl 0 --threads 8
+```
+
+Full offload `-ngl 999` may appear only as an advanced risky option and is not
+the default. If the page shows one saved selected model while the companion is
+unconfigured, that model may be a saved selection from a previous validation or
+session, not the current scanned library. Configure the companion and scan to
+show all GGUF models.
+
+## 8. Troubleshooting
 
 `companion_config` / unconfigured:
 Set `LMM_COMPANION_SOCKET` and `LMM_COMPANION_TOKEN` for the Docker backend, and
@@ -349,7 +380,7 @@ Executable missing / permission denied:
 Re-check `command -v llama-server`, `readlink -f /proc/<pid>/exe`, and execute
 permissions. The executable path belongs in companion JSON, not preset files.
 
-## 8. Scope
+## 9. Scope
 
 Current scope:
 
@@ -366,6 +397,7 @@ Deferred:
 - Ask behavior changes;
 - permanent Docker Compose changes;
 - model downloads;
+- browser folder picker / host approve-root flow;
 - host-gateway TCP;
 - Docker socket, privileged container, or host PID namespace;
 - Windows/macOS implementation;

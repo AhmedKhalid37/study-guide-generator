@@ -40,31 +40,45 @@ const data = {
   in_docker: true,
   base_url_host: "host.docker.internal",
   profile: {
-    id: "llama_server_default",
-    label: "llama-server default (GPU offload)",
-    description: "Full GPU offload.",
+    id: "llama_server_cpu_safe",
+    label: "CPU safe",
+    description: "CPU-only safe default.",
     command:
-      "llama-server -m /path/to/model.gguf --host 0.0.0.0 --port 8080 -c 8192 --n-gpu-layers 999",
+      "llama-server -m /path/to/model.gguf --host 0.0.0.0 --port 8080 -c 4096 -ngl 0 --threads 8",
     argv: [
       "llama-server", "-m", "/path/to/model.gguf", "--host", "0.0.0.0",
-      "--port", "8080", "-c", "8192", "--n-gpu-layers", "999",
+      "--port", "8080", "-c", "4096", "-ngl", "0", "--threads", "8",
     ],
     placeholders: { model_path: "/path/to/model.gguf" },
     warnings: ["Edit the model path before running.", "Run this on your host machine."],
   },
   profiles: [
     {
-      id: "llama_server_default",
-      label: "llama-server default (GPU offload)",
+      id: "llama_server_cpu_safe",
+      label: "CPU safe",
       command:
-        "llama-server -m /path/to/model.gguf --host 0.0.0.0 --port 8080 -c 8192 --n-gpu-layers 999",
+        "llama-server -m /path/to/model.gguf --host 0.0.0.0 --port 8080 -c 4096 -ngl 0 --threads 8",
       argv: ["llama-server", "-m", "/path/to/model.gguf"],
       warnings: ["Edit the model path before running."],
     },
     {
-      id: "llama_server_cpu",
-      label: "llama-server (CPU only)",
-      command: "llama-server -m /path/to/model.gguf --host 0.0.0.0 --port 8080 -c 4096",
+      id: "llama_server_gpu_balanced",
+      label: "GPU balanced",
+      command: "llama-server -m /path/to/model.gguf --host 0.0.0.0 --port 8080 -c 4096 -ngl 20 --threads 8",
+      argv: ["llama-server", "-m", "/path/to/model.gguf"],
+      warnings: [],
+    },
+    {
+      id: "llama_server_low_memory",
+      label: "Low memory",
+      command: "llama-server -m /path/to/model.gguf --host 0.0.0.0 --port 8080 -c 2048 -ngl 0 --threads 8",
+      argv: ["llama-server", "-m", "/path/to/model.gguf"],
+      warnings: [],
+    },
+    {
+      id: "llama_server_full_offload_risky",
+      label: "Advanced full offload (risky / may OOM)",
+      command: "llama-server -m /path/to/model.gguf --host 0.0.0.0 --port 8080 -c 4096 -ngl 999 --threads 8",
       argv: ["llama-server", "-m", "/path/to/model.gguf"],
       warnings: [],
     },
@@ -91,21 +105,21 @@ check(
 );
 
 // ── profiles list + selection ─────────────────────────────────────────────────
-check("commandProfiles returns both usable profiles", commandProfiles(data).length === 2);
+check("commandProfiles returns all usable profiles", commandProfiles(data).length === 4);
 check("commandProfiles tolerates missing", commandProfiles({}).length === 0);
 check(
   "commandProfiles drops garbage entries",
   commandProfiles({ profiles: [null, { id: "ok", command: "run" }, { id: "no-cmd" }] }).length === 1
 );
-check("defaultProfile prefers the DTO profile", defaultProfile(data).id === "llama_server_default");
+check("defaultProfile prefers the DTO profile", defaultProfile(data).id === "llama_server_cpu_safe");
 check(
   "defaultProfile falls back to first usable when profile missing",
-  defaultProfile({ profiles: data.profiles }).id === "llama_server_default"
+  defaultProfile({ profiles: data.profiles }).id === "llama_server_cpu_safe"
 );
 check("defaultProfile is null when nothing usable", defaultProfile({}) === null);
-check("profileById resolves the CPU profile", profileById(data, "llama_server_cpu").id === "llama_server_cpu");
-check("profileById falls back to default on unknown id", profileById(data, "nope").id === "llama_server_default");
-check("profileById falls back to default on null id", profileById(data, null).id === "llama_server_default");
+check("profileById resolves the balanced GPU profile", profileById(data, "llama_server_gpu_balanced").id === "llama_server_gpu_balanced");
+check("profileById falls back to default on unknown id", profileById(data, "nope").id === "llama_server_cpu_safe");
+check("profileById falls back to default on null id", profileById(data, null).id === "llama_server_cpu_safe");
 
 // ── copy availability gating ──────────────────────────────────────────────────
 check("commandAvailable true for a real profile", commandAvailable(defaultProfile(data)) === true);
@@ -118,7 +132,14 @@ const cmd = defaultProfile(data).command;
 check("command contains the placeholder model path", cmd.includes("/path/to/model.gguf"));
 check("command contains --host 0.0.0.0", cmd.includes("--host 0.0.0.0"));
 check("command contains --port 8080", cmd.includes("--port 8080"));
+check("command contains CPU-safe gpu layers", cmd.includes("-ngl 0"));
+check("command contains --threads 8", cmd.includes("--threads 8"));
 check("command starts with llama-server", cmd.startsWith("llama-server "));
+check("default command does not use full offload", !/(--n-gpu-layers|-ngl)\s+999/.test(cmd));
+check("CPU safe preset exists", commandProfiles(data).some((p) => p.label === "CPU safe" && /-ngl\s+0/.test(p.command)));
+check("GPU balanced preset exists", commandProfiles(data).some((p) => p.label === "GPU balanced" && /-ngl\s+20/.test(p.command)));
+check("low-memory preset exists", commandProfiles(data).some((p) => p.label === "Low memory" && /-c\s+2048/.test(p.command)));
+check("full offload option is explicit risky and not default", commandProfiles(data).some((p) => /risky \/ may OOM/.test(p.label) && /-ngl\s+999/.test(p.command)) && defaultProfile(data).id !== "llama_server_full_offload_risky");
 check(
   "command is deterministic (same DTO → same string)",
   defaultProfile(data).command === defaultProfile(data).command

@@ -413,6 +413,42 @@ def _sanitize_warnings(items: Any) -> list[dict[str, Any]]:
     return warnings
 
 
+_SAFE_ROOT_ID_RE = re.compile(r"^[A-Za-z0-9._:-]{1,120}$")
+
+
+def _sanitize_root_summary(item: Any) -> dict[str, Any] | None:
+    if not isinstance(item, dict):
+        return None
+    root_id = _safe_str(item.get("id"), max_len=120)
+    if not root_id or not _SAFE_ROOT_ID_RE.fullmatch(root_id):
+        return None
+    summary: dict[str, Any] = {
+        "id": root_id,
+        "recursive": item.get("recursive") is True,
+    }
+    model_count = _safe_int(item.get("model_count"))
+    if model_count is not None:
+        summary["model_count"] = model_count
+    return summary
+
+
+def _sanitize_root_summaries(items: Any) -> list[dict[str, Any]]:
+    if not isinstance(items, list):
+        return []
+    summaries: list[dict[str, Any]] = []
+    seen: set[str] = set()
+    for item in items[:100]:
+        summary = _sanitize_root_summary(item)
+        if not summary:
+            continue
+        root_id = str(summary["id"])
+        if root_id in seen:
+            continue
+        seen.add(root_id)
+        summaries.append(summary)
+    return summaries
+
+
 def _sanitize_models(items: Any) -> list[dict[str, Any]]:
     if not isinstance(items, list):
         return []
@@ -560,6 +596,7 @@ def _library_from_payload(config: CompanionBridgeConfig, payload: dict[str, Any]
         return _empty_library(config, "companion_error")
     models = _sanitize_models(payload.get("models"))
     roots_configured = _safe_int(payload.get("roots_configured"))
+    roots = _sanitize_root_summaries(payload.get("roots"))
     return {
         "ok": True,
         "configured": True,
@@ -568,6 +605,7 @@ def _library_from_payload(config: CompanionBridgeConfig, payload: dict[str, Any]
         "model_count": len(models),
         "last_scan_at": _safe_str(payload.get("last_scan_at"), max_len=80),
         "roots_configured": roots_configured if roots_configured is not None else 0,
+        "roots": roots,
         "warnings": _sanitize_warnings(payload.get("warnings")),
         "error": None,
     }
