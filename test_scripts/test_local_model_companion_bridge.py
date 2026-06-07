@@ -330,15 +330,15 @@ def run() -> int:
             detail=", ".join(term for term in forbidden_bridge_terms if term in bridge_source),
         )
         api_source = (Path(__file__).resolve().parents[1] / "api" / "server.py").read_text(encoding="utf-8")
-        forbidden_routes = (
+        expected_process_routes = (
             '"/api/local-model/server/start"',
             '"/api/local-model/server/stop"',
             '"/api/local-model/server/restart"',
         )
         check(
-            "safety-source: no local-model start/stop/restart FastAPI routes",
-            all(route not in api_source for route in forbidden_routes),
-            detail=", ".join(route for route in forbidden_routes if route in api_source),
+            "safety-source: process-control FastAPI routes exist only after Phase 2G3",
+            all(route in api_source for route in expected_process_routes),
+            detail=", ".join(route for route in expected_process_routes if route not in api_source),
         )
 
         try:

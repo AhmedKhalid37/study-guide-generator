@@ -18,6 +18,53 @@ COMPANION_TIMEOUT_ENV = "LMM_COMPANION_TIMEOUT_SECONDS"
 DEFAULT_COMPANION_TIMEOUT_SECONDS = 3.0
 MAX_COMPANION_BODY_BYTES = 2 * 1024 * 1024
 MAX_COMPANION_WARNINGS = 25
+MAX_COMPANION_LOG_LINES = 50
+MAX_COMPANION_LOG_LINE_CHARS = 500
+MAX_START_BODY_BYTES = 16 * 1024
+
+_START_FIELDS = {"model_id", "profile_id", "parameters"}
+_STOP_FIELDS = {"grace_seconds"}
+_RESTART_FIELDS = {"reuse_last", "model_id", "profile_id", "parameters"}
+_START_PARAMETER_BOUNDS = {
+    "port": (1024, 65535),
+    "ctx_size": (512, 131072),
+    "gpu_layers": (0, 999),
+    "threads": (1, 256),
+}
+_SERVER_STATES = {"stopped", "running", "already_running", "not_running", "unknown"}
+_PROCESS_ERROR_CATEGORIES = {
+    "bad_request",
+    "not_running",
+    "already_running",
+    "unknown_model",
+    "unknown_profile",
+    "invalid_parameters",
+    "port_in_use",
+    "process_start_failed",
+    "process_stop_failed",
+    "stale_process",
+    "process_error",
+}
+_BRIDGE_ERROR_CATEGORIES = {
+    "companion_config",
+    "companion_offline",
+    "companion_auth",
+    "companion_timeout",
+    "companion_error",
+}
+_ERROR_CATEGORY_ALIASES = {
+    "unauthorized": "companion_auth",
+    "invalid_profile": "unknown_profile",
+    "invalid_parameter": "invalid_parameters",
+    "launch_failed": "process_start_failed",
+    "executable_missing": "process_start_failed",
+    "executable_not_allowed": "process_start_failed",
+    "stale_pid": "stale_process",
+    "identity_uncertain": "stale_process",
+    "stop_failed": "process_stop_failed",
+    "stop_timeout": "process_stop_failed",
+    "model_outside_approved_root": "unknown_model",
+}
 
 _MODEL_FIELDS = (
     "id",
@@ -37,6 +84,17 @@ _SAFE_ERROR_MESSAGES = {
     "companion_auth": "Local model companion authentication failed.",
     "companion_timeout": "Local model companion request timed out.",
     "companion_error": "Local model companion returned an invalid response.",
+    "bad_request": "Local model server request is invalid.",
+    "not_running": "Local model server is not running.",
+    "already_running": "Local model server is already running.",
+    "unknown_model": "Local model is not available in the companion library.",
+    "unknown_profile": "Local model launch profile is not available.",
+    "invalid_parameters": "Local model server parameters are invalid.",
+    "port_in_use": "Requested local model server port is already in use.",
+    "process_start_failed": "Local model server failed to start.",
+    "process_stop_failed": "Local model server failed to stop.",
+    "stale_process": "Local model server process state is stale.",
+    "process_error": "Local model server process state is unavailable.",
 }
 
 
@@ -59,10 +117,29 @@ class CompanionClientError(RuntimeError):
 
 
 def _safe_error(category: str) -> dict[str, str]:
+    category = _normalize_error_category(category)
     return {
         "category": category,
         "message": _SAFE_ERROR_MESSAGES.get(category, _SAFE_ERROR_MESSAGES["companion_error"]),
     }
+
+
+def _safe_process_error(category: Any, message: Any = None) -> dict[str, str]:
+    category = _normalize_error_category(category)
+    if category not in _BRIDGE_ERROR_CATEGORIES and category not in _PROCESS_ERROR_CATEGORIES:
+        category = "process_error"
+    safe_message = _redact_text(message, max_len=MAX_COMPANION_LOG_LINE_CHARS) if isinstance(message, str) else None
+    return {
+        "category": category,
+        "message": safe_message or _SAFE_ERROR_MESSAGES.get(category, _SAFE_ERROR_MESSAGES["process_error"]),
+    }
+
+
+def _normalize_error_category(category: Any) -> str:
+    if not isinstance(category, str):
+        return "companion_error"
+    safe_category = re.sub(r"[^a-zA-Z0-9_.-]", "_", category.strip())[:80]
+    return _ERROR_CATEGORY_ALIASES.get(safe_category, safe_category) if safe_category else "companion_error"
 
 
 def _timeout_from_env(value: str | None) -> float:
@@ -117,6 +194,30 @@ def _empty_library(config: CompanionBridgeConfig, category: str | None) -> dict[
     }
 
 
+def _empty_server_status(config: CompanionBridgeConfig, category: str | None) -> dict[str, Any]:
+    return {
+        "ok": True,
+        "configured": config.configured,
+        "reachable": False,
+        "state": "unknown",
+        "managed": False,
+        "model_id": None,
+        "profile_id": None,
+        "port": None,
+        "started_at": None,
+        "error": _safe_error(category) if category else None,
+        "log_tail": [],
+    }
+
+
+def _bad_server_request(message: str) -> dict[str, Any]:
+    config = get_companion_bridge_config()
+    return {
+        **_empty_server_status(config, None),
+        "error": _safe_process_error("bad_request", message),
+    }
+
+
 def _is_safe_relative(value: str) -> bool:
     if not value or "\x00" in value:
         return False
@@ -142,6 +243,16 @@ def _safe_model_text(value: Any, max_len: int = 240) -> str | None:
         return None
     redacted = _redact_text(safe_value, max_len=max_len)
     return redacted or None
+
+
+def _safe_identifier(value: Any, *, max_len: int) -> str | None:
+    text = _safe_str(value, max_len=max_len * 2)
+    if text is None or "/" in text or "\\" in text or "\x00" in text:
+        return None
+    redacted = _redact_text(text, max_len=max_len)
+    if not redacted or "[redacted-" in redacted:
+        return None
+    return redacted
 
 
 def _safe_int(value: Any) -> int | None:
@@ -191,11 +302,15 @@ _AUTH_RE = re.compile(r"authorization\s*:\s*bearer\s+[^\s\"']+", re.IGNORECASE)
 _TOKEN_RE = re.compile(r"\b(?:sk|tok|token)[-_][A-Za-z0-9._-]{8,}\b")
 _POSIX_PATH_RE = re.compile(r"(?<![\w.-])/(?:[\w .@+-]+/)+[\w .@+-]+")
 _WIN_PATH_RE = re.compile(r"\b[A-Za-z]:\\(?:[^\\/:*?\"<>|\r\n]+\\?)+")
+_ARGV_RE = re.compile(r"\bargv\b\s*[:=]\s*\[[^\]]*\]", re.IGNORECASE)
+_ARG_FLAG_RE = re.compile(r"(?<![\w-])--[A-Za-z0-9][A-Za-z0-9_-]*")
 
 
 def _redact_text(value: str, max_len: int = 240) -> str:
     redacted = _AUTH_RE.sub("[redacted-auth]", value)
     redacted = _URL_RE.sub("[redacted-url]", redacted)
+    redacted = _ARGV_RE.sub("[redacted-argv]", redacted)
+    redacted = _ARG_FLAG_RE.sub("[redacted-arg]", redacted)
     redacted = _TOKEN_RE.sub("[redacted-token]", redacted)
     redacted = _POSIX_PATH_RE.sub("[redacted-path]", redacted)
     redacted = _WIN_PATH_RE.sub("[redacted-path]", redacted)
@@ -260,19 +375,34 @@ def _sanitize_models(items: Any) -> list[dict[str, Any]]:
     return models
 
 
-def _http_json_unix(config: CompanionBridgeConfig, method: str, path: str) -> dict[str, Any]:
+def _http_json_unix(
+    config: CompanionBridgeConfig,
+    method: str,
+    path: str,
+    body: dict[str, Any] | None = None,
+) -> dict[str, Any]:
     if not config.socket_path or not config.token:
         raise CompanionClientError("companion_config")
+
+    body_bytes = b""
+    if body is not None:
+        try:
+            body_bytes = json.dumps(body, separators=(",", ":"), sort_keys=True).encode("utf-8")
+        except (TypeError, ValueError) as exc:
+            raise CompanionClientError("bad_request") from exc
+        if len(body_bytes) > MAX_START_BODY_BYTES:
+            raise CompanionClientError("bad_request")
 
     request = (
         f"{method} {path} HTTP/1.1\r\n"
         "Host: local-model-companion\r\n"
         f"Authorization: Bearer {config.token}\r\n"
         "Accept: application/json\r\n"
+        "Content-Type: application/json\r\n"
         "Connection: close\r\n"
-        "Content-Length: 0\r\n"
+        f"Content-Length: {len(body_bytes)}\r\n"
         "\r\n"
-    ).encode("utf-8")
+    ).encode("utf-8") + body_bytes
 
     sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
     sock.settimeout(config.timeout_seconds)
@@ -320,6 +450,8 @@ def _http_json_unix(config: CompanionBridgeConfig, method: str, path: str) -> di
     status_code = int(parts[1])
     if status_code in (401, 403):
         raise CompanionClientError("companion_auth", status_code=status_code)
+    if status_code == 400:
+        raise CompanionClientError("bad_request", status_code=status_code)
     if status_code < 200 or status_code >= 300:
         raise CompanionClientError("companion_error", status_code=status_code)
     try:
@@ -406,3 +538,165 @@ def scan_companion_library() -> dict[str, Any]:
     except CompanionClientError as exc:
         return _empty_library(config, exc.category)
     return _library_from_payload(config, payload)
+
+
+def _validate_start_payload(payload: Any) -> tuple[dict[str, Any] | None, str | None]:
+    if not isinstance(payload, dict):
+        return None, "request body must be a JSON object"
+    unknown = sorted(set(payload) - _START_FIELDS)
+    if unknown:
+        return None, f"unknown field: {unknown[0]}"
+
+    model_id = _safe_identifier(payload.get("model_id"), max_len=240)
+    if model_id is None:
+        return None, "model_id is required"
+    profile_id = _safe_identifier(payload.get("profile_id"), max_len=80)
+    if profile_id is None:
+        return None, "profile_id is required"
+
+    raw_parameters = payload.get("parameters", {})
+    if raw_parameters is None:
+        raw_parameters = {}
+    if not isinstance(raw_parameters, dict):
+        return None, "parameters must be an object"
+    unknown_parameters = sorted(set(raw_parameters) - set(_START_PARAMETER_BOUNDS))
+    if unknown_parameters:
+        return None, f"unknown parameter: {unknown_parameters[0]}"
+
+    parameters: dict[str, int] = {}
+    for name, (minimum, maximum) in _START_PARAMETER_BOUNDS.items():
+        if name not in raw_parameters:
+            continue
+        value = raw_parameters[name]
+        if isinstance(value, bool) or not isinstance(value, int):
+            return None, f"{name} must be an integer"
+        if value < minimum or value > maximum:
+            return None, f"{name} is outside the allowed range"
+        parameters[name] = value
+    return {"model_id": model_id, "profile_id": profile_id, "parameters": parameters}, None
+
+
+def _validate_stop_payload(payload: Any) -> tuple[dict[str, Any] | None, str | None]:
+    if not isinstance(payload, dict):
+        return None, "request body must be a JSON object"
+    unknown = sorted(set(payload) - _STOP_FIELDS)
+    if unknown:
+        return None, f"unknown field: {unknown[0]}"
+    value = payload.get("grace_seconds", 5)
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        return None, "grace_seconds must be a number"
+    if value < 0 or value > 30:
+        return None, "grace_seconds must be between 0 and 30"
+    return {"grace_seconds": value}, None
+
+
+def _validate_restart_payload(payload: Any) -> tuple[dict[str, Any] | None, str | None]:
+    if not isinstance(payload, dict):
+        return None, "request body must be a JSON object"
+    unknown = sorted(set(payload) - _RESTART_FIELDS)
+    if unknown:
+        return None, f"unknown field: {unknown[0]}"
+    has_explicit = any(field in payload for field in _START_FIELDS)
+    reuse_last = payload.get("reuse_last")
+    if reuse_last is not None and not isinstance(reuse_last, bool):
+        return None, "reuse_last must be a boolean"
+    if has_explicit and reuse_last:
+        return None, "restart accepts either explicit start payload or reuse_last"
+    if reuse_last is True:
+        return {"reuse_last": True}, None
+    if has_explicit:
+        return _validate_start_payload({key: payload[key] for key in _START_FIELDS if key in payload})
+    return None, "restart requires explicit start payload or reuse_last"
+
+
+def _server_status_from_payload(config: CompanionBridgeConfig, payload: dict[str, Any]) -> dict[str, Any]:
+    if payload.get("ok") is not True:
+        error = payload.get("error") if isinstance(payload.get("error"), dict) else {}
+        return {
+            **_empty_server_status(config, None),
+            "configured": True,
+            "reachable": True,
+            "error": _safe_process_error(
+                error.get("category") or error.get("code") or "companion_error",
+                error.get("message"),
+            ),
+        }
+
+    state = payload.get("state")
+    safe_state = state if isinstance(state, str) and state in _SERVER_STATES else "unknown"
+    error = payload.get("error")
+    safe_error = None
+    if isinstance(error, dict):
+        safe_error = _safe_process_error(
+            error.get("category") or error.get("code") or "process_error",
+            error.get("message"),
+        )
+
+    log_tail: list[str] = []
+    raw_tail = payload.get("log_tail")
+    if isinstance(raw_tail, str):
+        log_tail = [
+            _redact_text(line, max_len=MAX_COMPANION_LOG_LINE_CHARS)
+            for line in raw_tail.splitlines()[-MAX_COMPANION_LOG_LINES:]
+        ]
+    elif isinstance(raw_tail, list):
+        log_tail = [
+            _redact_text(line, max_len=MAX_COMPANION_LOG_LINE_CHARS)
+            for line in raw_tail
+            if isinstance(line, str)
+        ][-MAX_COMPANION_LOG_LINES:]
+
+    port = payload.get("port")
+    safe_port = port if isinstance(port, int) and not isinstance(port, bool) and 0 < port <= 65535 else None
+    return {
+        "ok": True,
+        "configured": True,
+        "reachable": True,
+        "state": safe_state,
+        "managed": bool(payload.get("managed")),
+        "model_id": _safe_model_text(payload.get("model_id"), max_len=240),
+        "profile_id": _safe_identifier(payload.get("profile_id"), max_len=80),
+        "port": safe_port,
+        "started_at": _safe_model_text(payload.get("started_at"), max_len=80),
+        "error": safe_error,
+        "log_tail": [line for line in log_tail if line],
+    }
+
+
+def _call_server_endpoint(method: str, path: str, body: dict[str, Any] | None = None) -> dict[str, Any]:
+    config = get_companion_bridge_config()
+    if not config.configured:
+        return _empty_server_status(config, "companion_config")
+    try:
+        payload = _http_json_unix(config, method, path, body)
+    except CompanionClientError as exc:
+        return _empty_server_status(config, exc.category)
+    return _server_status_from_payload(config, payload)
+
+
+def get_companion_server_status() -> dict[str, Any]:
+    return _call_server_endpoint("GET", "/server/status")
+
+
+def start_companion_server(payload: Any) -> dict[str, Any]:
+    safe_payload, error = _validate_start_payload(payload)
+    if error is not None:
+        return _bad_server_request(error)
+    assert safe_payload is not None
+    return _call_server_endpoint("POST", "/server/start", safe_payload)
+
+
+def stop_companion_server(payload: Any) -> dict[str, Any]:
+    safe_payload, error = _validate_stop_payload(payload)
+    if error is not None:
+        return _bad_server_request(error)
+    assert safe_payload is not None
+    return _call_server_endpoint("POST", "/server/stop", safe_payload)
+
+
+def restart_companion_server(payload: Any) -> dict[str, Any]:
+    safe_payload, error = _validate_restart_payload(payload)
+    if error is not None:
+        return _bad_server_request(error)
+    assert safe_payload is not None
+    return _call_server_endpoint("POST", "/server/restart", safe_payload)

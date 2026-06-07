@@ -112,7 +112,7 @@ flashcards with CSV / Anki / Quizlet export.
   cannot safely manage host processes. Provider config edits stay on Provider
   Settings (no second writer). See `DECISIONS.md`.
 - **Local Model Manager Phase 2 direction — HOST COMPANION + APPROVED GGUF LIBRARY
-  + START/STOP CONTRACT IN PROGRESS.** Phase 2A is documented in
+  + START/STOP BRIDGE IN PROGRESS.** Phase 2A is documented in
   `docs/LOCAL_MODEL_MANAGER_PHASE2_DESIGN.md`; Phase 2B adds the scanning-only host
   companion prototype under `tools/local_model_companion/`; Phase 2C adds the
   read-only Docker backend bridge; Phase 2D adds the frontend model-library picker
@@ -120,8 +120,10 @@ flashcards with CSV / Anki / Quizlet export.
   model as app-side metadata only. Phase 2F is docs-only and defines the future
   safe start/stop/restart contract. Phase 2G1 adds companion-private process
   lifecycle internals with a fake/safe test executable only. Phase 2G2 exposes
-  those internals through companion-local Unix-socket HTTP endpoints only. Future
-  in-app model start/stop must go
+  those internals through companion-local Unix-socket HTTP endpoints only. Phase
+  2G3 adds the Docker FastAPI backend bridge routes for companion server
+  status/start/stop/restart, still with no frontend UI. Future in-app model
+  start/stop must go
   through React UI -> Docker FastAPI backend -> Unix-socket-first,
   token-authenticated host companion. For the current Linux Docker deployment,
   companion control assumes a Unix domain socket mounted into the backend
@@ -166,9 +168,9 @@ flashcards with CSV / Anki / Quizlet export.
   flow, and a non-runnable future-launch preview that carries model id/filename/
   root-relative path/root id plus a `gpu_default` profile placeholder. The
   command-profile response also carries this selected-model metadata/preview.
-  Phase 2F adds the durable design contract for future companion endpoints
+  Phase 2F adds the durable design contract for companion endpoints
   `GET /server/status`, `POST /server/start`, `POST /server/stop`, and
-  `POST /server/restart`; future backend bridge routes
+  `POST /server/restart`; backend bridge routes
   `GET /api/local-model/server/status`, `POST /api/local-model/server/start`,
   `POST /api/local-model/server/stop`, and
   `POST /api/local-model/server/restart`; and future UI controls. Start must
@@ -197,15 +199,22 @@ flashcards with CSV / Anki / Quizlet export.
   top-level request fields, and return safe DTOs without token, socket path,
   absolute model path, executable path, raw argv, Authorization, or full URL
   leaks. The companion config may include `process_runtime_dir` and
-  `profiles.fake_test.executable`; there is no default real executable. There is
-  still
-  no permanent Docker Compose mount, Provider Settings write, Ask change,
-  dependency addition, local provider base-URL/model behavior change, backend
-  bridge start/stop, frontend UI, real `llama-server` launch, shell/free-form
-  args, browser storage, token/socket exposure, or absolute host path rendering.
-  Next recommended slice is Phase 2G3 backend bridge for server
-  status/start/stop/restart, still no frontend UI, or a hardening slice if
-  validation surfaces issues.
+  `profiles.fake_test.executable`; there is no default real executable. Phase 2G3
+  adds FastAPI routes `GET /api/local-model/server/status`,
+  `POST /api/local-model/server/start`, `POST /api/local-model/server/stop`, and
+  `POST /api/local-model/server/restart`. The backend uses the existing
+  stdlib Unix-socket bridge with server-side bearer auth, forwards only typed
+  safe payload fields (`model_id`, `profile_id`, `port`, `ctx_size`,
+  `gpu_layers`, `threads`, `grace_seconds`, or `reuse_last`), rejects unknown
+  fields before socket forwarding, and returns only whitelisted/redacted server
+  status DTO fields. There is still no permanent Docker Compose mount, Provider
+  Settings write, Ask change, dependency addition, local provider base-URL/model
+  behavior change, frontend UI, real `llama-server` launch, shell/free-form args,
+  browser storage, token/socket exposure, direct Docker host process control,
+  direct host filesystem scan, or absolute host path/raw argv rendering. Next
+  recommended slice is Phase 2G4 Local Models UI controls for start/stop/restart,
+  still fake/safe validation only; alternatively do live real `llama-server`
+  validation first if the operator wants runtime proof before UI.
 - **Ask Your Guide — IN PROGRESS (Slice 1 design DONE; Slice 2 backend context
   inventory DONE; Slice 3 backend context preparation / chunking DONE; inserted
   workspace shell DONE; backend local chat API DONE; frontend chat UI wiring DONE;

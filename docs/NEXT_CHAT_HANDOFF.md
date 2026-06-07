@@ -10,12 +10,43 @@
 - **Trunk includes:** `af0ec0e` (Ask Slice 1 design), `2634f63` (Ask Slice 2 context
   inventory), `a29a405` (Ask Slice 3 context preparation), and the inserted Ask
   workspace shell, on top of the validated LMM group and prior feature groups.
-- **Active work branch:** `lmm-phase2g2-companion-process-api` — Local Model
-  Manager Phase 2G2 companion Unix-socket HTTP process-control endpoints.
-  **NEXT = Phase 2G3 backend bridge for server status/start/stop/restart, still
-  no frontend UI, or a hardening slice if validation surfaces issues.**
+- **Active work branch:** `lmm-phase2g3-backend-process-bridge` — Local Model
+  Manager Phase 2G3 FastAPI backend bridge for companion
+  status/start/stop/restart.
+  **NEXT = Phase 2G4 Local Models UI controls for start/stop/restart, still
+  fake/safe validation only; alternatively Phase 2G4 live real `llama-server`
+  validation first if the operator wants runtime proof before UI.**
 
 ## What just landed
+- **Local Model Manager Phase 2G3 — backend process bridge** (branch
+  `lmm-phase2g3-backend-process-bridge`). Added backend-only FastAPI routes
+  `GET /api/local-model/server/status`, `POST /api/local-model/server/start`,
+  `POST /api/local-model/server/stop`, and
+  `POST /api/local-model/server/restart`. The bridge extends
+  `pipeline/local_model_companion_client.py` to call companion Unix-socket
+  endpoints `GET /server/status`, `POST /server/start`, `POST /server/stop`, and
+  `POST /server/restart` with server-side `Authorization: Bearer <token>` from
+  `LMM_COMPANION_TOKEN`, socket path from `LMM_COMPANION_SOCKET`, and optional
+  `LMM_COMPANION_TIMEOUT_SECONDS`. Start forwards only `model_id`, `profile_id`,
+  and typed bounded params (`port`, `ctx_size`, `gpu_layers`, `threads`); stop
+  forwards only bounded `grace_seconds`; restart forwards either explicit start
+  payload or `{reuse_last: true}`. Unknown top-level fields and unknown parameter
+  fields are rejected as safe `bad_request` DTOs before any socket request.
+  Responses are whitelisted to `ok`, `configured`, `reachable`, `state`,
+  `managed`, `model_id`, `profile_id`, `port`, `started_at`, `error`, and
+  bounded/redacted `log_tail`; pid, params, executable path, private model path,
+  raw argv, token, socket path, Authorization, absolute host paths, full URLs,
+  tracebacks, and low-level socket details are not returned. No frontend UI,
+  Docker Compose change, Provider Settings write, Ask change, local provider
+  base URL/model behavior change, direct host filesystem scan, direct host
+  process control, host-gateway TCP, Docker socket, privileged container, host
+  PID namespace, subprocess/shell execution in the backend bridge, real
+  `llama-server` validation, or free-form command args were added. New focused
+  test: `test_scripts/test_local_model_companion_process_bridge.py`. Validation
+  passed across the requested backend/frontend suites, compileall, frontend
+  build, `git diff --check`, and Compose config. Manual fake-companion live
+  validation through `http://127.0.0.1:8000` passed with a temporary `/tmp`
+  Compose override; the app was restored afterward with committed Compose only.
 - **Local Model Manager Phase 2G2 — companion HTTP process API** (branch
   `lmm-phase2g2-companion-process-api`). Added host-companion-only Unix-socket
   endpoints `GET /server/status`, `POST /server/start`, `POST /server/stop`, and

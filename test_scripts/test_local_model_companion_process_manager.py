@@ -314,12 +314,14 @@ def run() -> int:
             api_source = (Path(__file__).resolve().parents[1] / "api" / "server.py").read_text(encoding="utf-8")
             companion_source = inspect.getsource(companion)
             check(
-                "routes: no FastAPI start/stop/restart routes",
-                all(route not in api_source for route in (
+                "routes: FastAPI process bridge routes are outside process manager",
+                all(route in api_source for route in (
+                    "/api/local-model/server/status",
                     "/api/local-model/server/start",
                     "/api/local-model/server/stop",
                     "/api/local-model/server/restart",
-                )),
+                ))
+                and "/api/local-model/server/" not in manager_source,
             )
             check(
                 "routes: companion HTTP process endpoints delegate to process manager",

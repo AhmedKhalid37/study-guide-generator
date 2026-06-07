@@ -437,13 +437,14 @@ def run() -> int:
             pm_source = inspect.getsource(process_manager)
             profile_source = inspect.getsource(profiles)
             check(
-                "scope: no backend FastAPI start/stop/restart routes added",
-                all(route not in api_source for route in (
+                "scope: backend bridge routes are present outside companion HTTP handler",
+                all(route in api_source for route in (
                     "/api/local-model/server/status",
                     "/api/local-model/server/start",
                     "/api/local-model/server/stop",
                     "/api/local-model/server/restart",
-                )),
+                ))
+                and "/api/local-model/server/" not in companion_source,
             )
             check(
                 "scope: no frontend start/stop UI/routes added",

@@ -1,6 +1,6 @@
 # LOCAL_MODEL_MANAGER_PHASE2_DESIGN.md - Host companion and approved GGUF library
 
-> **Status: Phase 2G2 companion HTTP process API complete.** Phase 2A
+> **Status: Phase 2G3 backend process bridge complete.** Phase 2A
 > established the host-companion boundary.
 > Phase 2B adds a Linux-first, stdlib-only host companion prototype under
 > `tools/local_model_companion/` for approved-folder GGUF scanning and a
@@ -17,11 +17,12 @@
 > companion-private process-management internals under
 > `tools/local_model_companion/` and validates them only with a fake/safe test
 > executable. Phase 2G2 exposes those internals on the companion's own
-> Unix-socket HTTP API.
+> Unix-socket HTTP API. Phase 2G3 exposes those companion process endpoints
+> through safe FastAPI backend bridge routes only.
 > There is still no production Docker Compose mount, Provider Settings write, Ask
 > change, dependency addition, local provider base-URL/model behavior change,
-> backend bridge start/stop route, frontend UI, model execution, or real
-> `llama-server` start/stop/restart behavior.
+> frontend UI, model execution, or real `llama-server` start/stop/restart
+> validation.
 
 ---
 
@@ -456,9 +457,10 @@ POST /api/local-model/server/restart
 ```
 
 Phase 2C implemented the first three read-only/library endpoints. Phase 2E adds
-selection metadata endpoints under `/library/selection`. The start/stop/restart
-endpoints above remain future Phase 2G implementation targets and are not
-registered in FastAPI by Phase 2F.
+selection metadata endpoints under `/library/selection`. Phase 2G3 implements the
+server status/start/stop/restart backend bridge routes above. They delegate only
+to the companion Unix socket; the Docker backend does not directly inspect,
+start, stop, signal, or adopt host processes.
 
 Backend rules:
 
@@ -563,9 +565,14 @@ safe response fields.
   executable only; no companion HTTP start/stop API, backend bridge, or UI.
 - **Phase 2G2:** DONE. Companion HTTP server endpoints for process status/start/
   stop/restart using the internal manager; still no backend bridge or UI.
-- **Phase 2G3:** backend bridge for server status/start/stop/restart; no UI.
-- **Phase 2G4:** Local Models UI start/stop/restart controls.
-- **Phase 2G5:** live Linux validation with real `llama-server`.
+- **Phase 2G3:** DONE. Backend bridge for server status/start/stop/restart; no
+  UI, Docker change, Provider Settings write, Ask change, or real
+  `llama-server` validation.
+- **Phase 2G4:** Local Models UI start/stop/restart controls, still fake/safe
+  validation only, or live real `llama-server` validation first if the operator
+  wants runtime proof before UI.
+- **Phase 2G5:** live Linux validation with real `llama-server` if not done
+  before UI.
 - **Phase 2G6:** hardening/security pass.
 - **Later:** packaging/signing and cross-platform installers.
 
@@ -1227,8 +1234,6 @@ Stale or reused PID handling:
 
 ### Backend Bridge Contract for Phase 2G
 
-Future backend routes:
-
 ```text
 GET  /api/local-model/server/status
 POST /api/local-model/server/start
@@ -1236,19 +1241,39 @@ POST /api/local-model/server/stop
 POST /api/local-model/server/restart
 ```
 
+Phase 2G3 implements these backend routes. They use the same Phase 2C bridge
+configuration: server-side `LMM_COMPANION_SOCKET`, `LMM_COMPANION_TOKEN`, and
+optional `LMM_COMPANION_TIMEOUT_SECONDS`.
+
 Backend rules:
 
 - Reads companion token/socket config server-side only.
-- Forwards only typed payloads matching the companion contract.
-- Redacts companion responses before returning them to the frontend.
-- Returns safe normalized errors.
+- Uses a stdlib Unix-socket HTTP client with bounded timeout/body size.
+- Sends `Authorization: Bearer <token>` only server-side.
+- Forwards only typed payloads matching the companion contract:
+  `model_id`, `profile_id`, `parameters.port`, `parameters.ctx_size`,
+  `parameters.gpu_layers`, `parameters.threads`, `grace_seconds`, or
+  `reuse_last`.
+- Rejects unknown top-level fields and unknown parameter fields with safe
+  `bad_request` DTOs before opening the companion socket.
+- Redacts and whitelists companion responses before returning them to the
+  frontend.
+- Returns safe normalized errors:
+  `companion_config`, `companion_offline`, `companion_auth`,
+  `companion_timeout`, `companion_error`, `bad_request`, `not_running`,
+  `already_running`, `unknown_model`, `unknown_profile`, `invalid_parameters`,
+  `port_in_use`, `process_start_failed`, `process_stop_failed`,
+  `stale_process`, and `process_error`.
 - Never accepts free-form command args, shell strings, executable paths, raw model
   paths, environment blocks, or arbitrary flags.
 - Never exposes the companion token, socket path, Authorization header, raw host
-  paths, or raw companion connection details.
+  paths, raw argv, pid, executable path, private model path, full URLs,
+  tracebacks, low-level socket details, or raw companion connection details.
 - Does not write Provider Settings unless a later explicit confirmed slice adds
   that behavior.
 - Does not change Ask.
+- Does not change the local provider base URL/model or write any provider config.
+- Does not call subprocess, shell, Docker, or host process APIs.
 
 ### UI Contract for Phase 2G
 
@@ -1462,6 +1487,93 @@ Explicit non-goals preserved in Phase 2G2:
 - No host-gateway TCP, Docker socket, privileged container, or host PID namespace.
 - No shell execution or free-form command args.
 
-Next recommended slice is **Phase 2G3: backend bridge for companion server
-status/start/stop/restart**, still no frontend UI. If validation surfaces
-process-identity or redaction issues, do a hardening slice first.
+## 21. Phase 2G3 Backend Process Bridge
+
+Phase 2G3 implements only the Docker FastAPI backend bridge to the companion's
+existing process endpoints. It adds no frontend UI and no Docker/Provider
+Settings/Ask/runtime configuration changes.
+
+Backend routes:
+
+- `GET /api/local-model/server/status`
+- `POST /api/local-model/server/start`
+- `POST /api/local-model/server/stop`
+- `POST /api/local-model/server/restart`
+
+The bridge extends `pipeline/local_model_companion_client.py` instead of adding a
+second transport. It uses the Phase 2C server-side companion configuration:
+`LMM_COMPANION_SOCKET`, `LMM_COMPANION_TOKEN`, and optional
+`LMM_COMPANION_TIMEOUT_SECONDS`. All calls use the stdlib Unix-socket HTTP
+client, include the bearer token only server-side, enforce bounded timeout/body
+size, and normalize socket/auth/timeout/malformed-response failures to safe
+categories.
+
+Request validation is backend-side and typed:
+
+- Start accepts only `model_id`, `profile_id`, and `parameters`.
+- Start parameters accept only `port`, `ctx_size`, `gpu_layers`, and `threads`
+  with bounded integer values matching the fake test profile.
+- Stop accepts only `grace_seconds`, bounded from 0 to 30.
+- Restart accepts either the explicit start payload or `{ "reuse_last": true }`.
+- Unknown top-level fields, unknown parameter fields, executable paths, model
+  paths, command strings, args arrays, shell flags, environment blocks, and other
+  free-form values are rejected before any companion socket request is sent.
+
+Response validation is also backend-side. The frontend receives only:
+
+- `ok`
+- `configured`
+- `reachable`
+- `state`
+- `managed`
+- `model_id`
+- `profile_id`
+- `port`
+- `started_at`
+- `error`
+- `log_tail`
+
+The bridge drops or redacts companion `pid`, params, executable/private model
+paths, raw argv, raw socket paths, bearer tokens, Authorization headers, full
+URLs, tracebacks, low-level socket details, and absolute host paths. Companion
+process categories are mapped into the allowed frontend-safe set:
+`not_running`, `already_running`, `unknown_model`, `unknown_profile`,
+`invalid_parameters`, `port_in_use`, `process_start_failed`,
+`process_stop_failed`, `stale_process`, and `process_error`; bridge failures use
+`companion_config`, `companion_offline`, `companion_auth`, `companion_timeout`,
+`companion_error`, or `bad_request`.
+
+Explicit non-goals preserved in Phase 2G3:
+
+- No frontend start/stop/restart UI.
+- No Docker Compose changes or permanent companion socket mount.
+- No Provider Settings writes.
+- No Ask changes.
+- No local provider base URL/model change.
+- No real `llama-server` validation.
+- No direct Docker host process control.
+- No direct Docker host filesystem scanning.
+- No host-gateway TCP, Docker socket, privileged container, or host PID namespace.
+- No subprocess, shell execution, Docker commands, or host process APIs in the
+  backend bridge.
+- No free-form command args.
+- No raw companion token/socket path/absolute host path/Authorization/full
+  URL/raw argv exposure.
+
+New validation:
+
+- `test_scripts/test_local_model_companion_process_bridge.py` covers
+  unconfigured/offline/auth/timeout/malformed companion states, successful fake
+  Unix-socket requests, Authorization header presence server-side, safe
+  start/stop/restart payload forwarding, redaction, validation rejection before
+  socket forwarding, route registration, no Provider Settings writes, no Ask
+  changes, no frontend start/stop UI/routes, and no backend subprocess/shell/
+  direct host control.
+- Existing Phase 2C, 2E, and 2G2 tests were updated so their historical
+  no-backend-route assertions now recognize the Phase 2G3 bridge while preserving
+  their original safety boundaries.
+
+Next recommended slice is **Phase 2G4: Local Models UI controls for
+start/stop/restart**, still fake/safe validation only. If the operator wants
+runtime proof before UI, do live real `llama-server` validation first as the next
+Phase 2G4 slice instead.

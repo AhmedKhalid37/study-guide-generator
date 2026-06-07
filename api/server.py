@@ -39,8 +39,12 @@ from pipeline.job_manager import (
 )
 from pipeline.local_model_companion_client import (
     get_companion_library,
+    get_companion_server_status,
     get_companion_status,
+    restart_companion_server,
     scan_companion_library,
+    start_companion_server,
+    stop_companion_server,
 )
 from pipeline.local_model_library_selection import (
     LocalModelLibrarySelectionError,
@@ -494,6 +498,37 @@ async def scan_local_model_library() -> dict[str, Any]:
     return await run_in_threadpool(scan_companion_library)
 
 
+@app.get("/api/local-model/server/status")
+async def local_model_server_status() -> dict[str, Any]:
+    # Phase 2G3 backend bridge only: ask the host companion for process status over
+    # the server-configured Unix socket. The backend does no process control itself.
+    return await run_in_threadpool(get_companion_server_status)
+
+
+@app.post("/api/local-model/server/start")
+async def start_local_model_server(request: Request) -> dict[str, Any]:
+    # Accepts only model_id/profile_id/typed launch parameters. Validation and
+    # redaction live in the bridge client; provider settings are untouched.
+    payload = await _safe_json_payload(request)
+    return await run_in_threadpool(start_companion_server, payload)
+
+
+@app.post("/api/local-model/server/stop")
+async def stop_local_model_server(request: Request) -> dict[str, Any]:
+    # Delegates stop to the companion. No Docker host process control is performed
+    # by the backend bridge.
+    payload = await _safe_json_payload(request)
+    return await run_in_threadpool(stop_companion_server, payload)
+
+
+@app.post("/api/local-model/server/restart")
+async def restart_local_model_server(request: Request) -> dict[str, Any]:
+    # Delegates restart to the companion with either an explicit start payload or
+    # reuse_last=true. The backend owns no process lifecycle state.
+    payload = await _safe_json_payload(request)
+    return await run_in_threadpool(restart_companion_server, payload)
+
+
 @app.get("/api/local-model/library/selection")
 async def get_local_model_library_selection() -> dict[str, Any]:
     # Phase 2E selected-library-model handoff. App-side metadata only: no provider
@@ -518,6 +553,13 @@ async def delete_local_model_library_selection() -> dict[str, Any]:
     # Clears only the Phase 2E app-side selection file. Provider Settings and the
     # local provider runtime behavior are intentionally unchanged.
     return await run_in_threadpool(clear_library_model_selection)
+
+
+async def _safe_json_payload(request: Request) -> Any:
+    try:
+        return await request.json()
+    except json.JSONDecodeError:
+        return None
 
 
 @app.get("/api/styles")
