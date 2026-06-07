@@ -219,7 +219,7 @@ profiles. They do not write Provider Settings and do not affect Ask.
 
 ## 6. Real Validation Harness
 
-Harness:
+Direct companion lifecycle harness:
 
 ```bash
 python test_scripts/validate_lmm_real_llama_server.py
@@ -258,6 +258,55 @@ reached `/v1/models`, stopped cleanly, and verified cleanup. A full offload
 stress run with `gpu_layers=999` on a large model failed safely as
 `model_may_be_too_large` / CUDA OOM; that is expected to happen on some
 hardware/model combinations and is not a passed high-offload validation.
+
+Configured-profile E2E harness:
+
+```bash
+python test_scripts/validate_lmm_real_profile_e2e.py
+```
+
+Required env:
+
+- `LMM_REAL_LLAMA_SERVER_BIN`
+- `LMM_REAL_MODEL_ROOT`
+- one of `LMM_REAL_MODEL_ID` or `LMM_REAL_MODEL_PATTERN`
+- `LMM_REAL_PORT`
+- `LMM_REAL_CTX_SIZE`
+- `LMM_REAL_GPU_LAYERS`
+- `LMM_REAL_THREADS`
+
+Optional env:
+
+- `LMM_REAL_PARALLEL`
+- `LMM_REAL_CACHE_TYPE_K`
+- `LMM_REAL_CACHE_TYPE_V`
+- `LMM_REAL_FLASH_ATTENTION`
+- `LMM_REAL_MMAP`
+- `LMM_REAL_READINESS_TIMEOUT`
+- `LMM_REAL_BACKEND_TIMEOUT`
+
+CPU-safe E2E proof example:
+
+```bash
+LMM_REAL_LLAMA_SERVER_BIN=/usr/bin/llama-server \
+LMM_REAL_MODEL_ROOT=/mnt/ai/llm-models \
+LMM_REAL_MODEL_PATTERN=gemma-4-26B-A4B-it-UD-Q4_K_M.gguf \
+LMM_REAL_PORT=18080 \
+LMM_REAL_CTX_SIZE=4096 \
+LMM_REAL_GPU_LAYERS=0 \
+LMM_REAL_THREADS=8 \
+python test_scripts/validate_lmm_real_profile_e2e.py
+```
+
+Phase 2G8 configured-profile E2E validation passed with those values. The
+harness proved the actual companion -> Docker backend -> Local Models backend
+flow: scan, safe profile metadata, selected model handoff, managed start,
+readiness via `/v1/models`, managed stop, and port release. It uses only a
+temporary Compose override and restores Docker with committed Compose only. It
+does not write Provider Settings and skips `/api/local-model/status` rather than
+repointing the local provider. It also verifies no token, socket path, absolute
+model root or executable path, Authorization header, full URL, or raw argv leaks
+through backend responses, and that returned model paths are root-relative only.
 
 ## 7. Troubleshooting
 

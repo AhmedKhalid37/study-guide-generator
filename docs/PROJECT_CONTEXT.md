@@ -260,13 +260,32 @@ flashcards with CSV / Anki / Quizlet export.
   `llama_server` profiles. Unknown keys, duplicate ids, `DEFAULT` values,
   invalid ints/bools/enums/ranges, env expansion, shell/path-like text,
   command/args/shell/model_path/executable/free-form flag keys are rejected.
-  App-suggested settings remain deferred. There is still no permanent Docker
-  Compose mount, Provider Settings write, Ask change, dependency addition, local
-  provider base-URL/model behavior change, direct companion frontend call,
-  shell/free-form args UI, browser storage, token/socket exposure in UI, direct
-  Docker host process control, direct host filesystem scan, automatic restart
-  loop, model download manager, multi-server pool, Windows/macOS process control,
-  or absolute host path/raw argv rendering.
+  Phase 2G8 adds `test_scripts/validate_lmm_real_profile_e2e.py`, a live/manual
+  harness that proves an explicit configured real profile through the actual
+  companion -> Docker backend -> Local Models backend flow. It creates only
+  temporary companion config/runtime/socket files and a temporary Compose
+  override mounting the runtime/socket directory, then calls backend companion
+  status, library scan, server profiles, library selection, server start,
+  server status polling, and server stop. Missing explicit real env exits 0 as a
+  clear skip. Operator-run real E2E validation passed with
+  `/usr/bin/llama-server`, `/mnt/ai/llm-models`,
+  `gemma-4-26B-A4B-it-UD-Q4_K_M.gguf`, `port=18080`, `ctx_size=4096`,
+  `gpu_layers=0`, and `threads=8`: the backend/companion path reached
+  `/v1/models`, stopped cleanly, and released the port. The harness skips
+  `/api/local-model/status` rather than writing Provider Settings to repoint the
+  local provider, snapshots/restores the app-side selected-model store, restores
+  Docker with committed Compose only, and checks for no token/socket/absolute
+  model root/executable path/Authorization/full URL/raw argv leaks plus
+  root-relative model paths only. GPU validation remains separate: the earlier
+  `gpu_layers=999` stress run failed safely as `model_may_be_too_large` / CUDA
+  OOM and is not a passed GPU validation. App-suggested settings remain
+  deferred. There is still no permanent Docker Compose mount, Provider Settings
+  write, Ask change, dependency addition, local provider base-URL/model behavior
+  change, direct companion frontend call, host-gateway TCP, shell/free-form args
+  UI, browser storage, token/socket exposure in UI, direct Docker host process
+  control, direct host filesystem scan, automatic restart loop, model download
+  manager, multi-server pool, Windows/macOS process control, or absolute host
+  path/raw argv rendering.
 - **Ask Your Guide — IN PROGRESS (Slice 1 design DONE; Slice 2 backend context
   inventory DONE; Slice 3 backend context preparation / chunking DONE; inserted
   workspace shell DONE; backend local chat API DONE; frontend chat UI wiring DONE;

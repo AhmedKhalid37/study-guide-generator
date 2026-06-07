@@ -10,12 +10,43 @@
 - **Trunk includes:** `af0ec0e` (Ask Slice 1 design), `2634f63` (Ask Slice 2 context
   inventory), `a29a405` (Ask Slice 3 context preparation), and the inserted Ask
   workspace shell, on top of the validated LMM group and prior feature groups.
-- **Active work branch:** `lmm-phase2g7-profile-presets-docs` — Local Model
-  Manager Phase 2G7 operator setup docs + safe `.ini` profile preset import.
-  **NEXT = validation / review, then a separate explicit slice for any real
-  settings recommendation work. App-suggested settings remain deferred.**
+- **Active work branch:** `lmm-phase2g8-real-profile-e2e-validation` — Local
+  Model Manager Phase 2G8 real configured-profile E2E validation.
+  **NEXT = validation / review, then packaging/runtime-service docs or a
+  separately approved settings-recommendation design. App-suggested settings
+  remain deferred.**
 
 ## What just landed
+- **Local Model Manager Phase 2G8 — real configured-profile E2E validation**
+  (branch `lmm-phase2g8-real-profile-e2e-validation`). Added
+  `test_scripts/validate_lmm_real_profile_e2e.py`, a live/manual harness for
+  the actual configured-profile path: temporary explicit companion config,
+  temporary companion runtime/socket, host companion, temporary Compose override
+  mounting only that runtime/socket directory into the Docker app, and backend
+  calls through `http://127.0.0.1:8000`. The harness requires explicit
+  `LMM_REAL_LLAMA_SERVER_BIN`, `LMM_REAL_MODEL_ROOT`, model id/pattern,
+  `LMM_REAL_PORT`, `LMM_REAL_CTX_SIZE`, `LMM_REAL_GPU_LAYERS`, and
+  `LMM_REAL_THREADS`; missing env exits 0 with a clear skip before Docker work.
+  It calls companion status, library scan, server profiles, library selection,
+  server start, server status polling, server stop, verifies port release, and
+  checks redaction/root-relative paths. It skips `/api/local-model/status`
+  rather than writing Provider Settings to repoint the local provider, snapshots
+  and restores the app-side local-model selection file, and restores/stops Docker
+  with committed Compose only. Operator-run real E2E passed with
+  `/usr/bin/llama-server`, `LMM_REAL_MODEL_ROOT=/mnt/ai/llm-models`,
+  `LMM_REAL_MODEL_PATTERN=gemma-4-26B-A4B-it-UD-Q4_K_M.gguf`,
+  `LMM_REAL_PORT=18080`, `LMM_REAL_CTX_SIZE=4096`,
+  `LMM_REAL_GPU_LAYERS=0`, and `LMM_REAL_THREADS=8`: the backend/companion path
+  selected the real profile/model, reached `running` readiness via `/v1/models`,
+  stopped cleanly, and released the port. Redaction passed: no token, socket
+  path, absolute model root/executable path, Authorization header, full URL, or
+  raw argv in backend responses; model paths were root-relative only. GPU
+  validation remains separate: the earlier `gpu_layers=999` run failed safely as
+  `model_may_be_too_large` / CUDA OOM and is not a passed GPU validation. Scope
+  preserved: no Provider Settings writes, Ask changes, permanent Docker changes,
+  host-gateway TCP, Docker socket, privileged container, host PID namespace,
+  model download manager, direct companion frontend call, or settings
+  recommendations.
 - **Local Model Manager Phase 2G7 — operator setup docs + safe preset import**
   (branch `lmm-phase2g7-profile-presets-docs`). Added
   `docs/LOCAL_MODEL_MANAGER_OPERATOR_SETUP.md`, a Linux-first setup guide for

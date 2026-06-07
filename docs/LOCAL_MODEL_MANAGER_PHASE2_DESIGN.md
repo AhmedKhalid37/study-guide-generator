@@ -1,6 +1,6 @@
 # LOCAL_MODEL_MANAGER_PHASE2_DESIGN.md - Host companion and approved GGUF library
 
-> **Status: Phase 2G7 operator setup docs + safe preset import complete.** Phase 2A
+> **Status: Phase 2G8 real configured-profile E2E validation complete.** Phase 2A
 > established the host-companion boundary.
 > Phase 2B adds a Linux-first, stdlib-only host companion prototype under
 > `tools/local_model_companion/` for approved-folder GGUF scanning and a
@@ -29,7 +29,14 @@
 > passed. Phase 2G6 adds safe profile metadata, a profile selector, and typed
 > schema-driven controls without app-suggested settings. Phase 2G7 adds
 > `docs/LOCAL_MODEL_MANAGER_OPERATOR_SETUP.md` and optional `.ini` profile-default
-> import from explicit companion config into the same whitelist schema.
+> import from explicit companion config into the same whitelist schema. Phase
+> 2G8 adds a live/manual real configured-profile E2E harness through the actual
+> companion -> Docker backend -> Local Models backend path. Operator-run E2E
+> validation passed in CPU-safe mode with `/usr/bin/llama-server`,
+> `gemma-4-26B-A4B-it-UD-Q4_K_M.gguf`, `port=18080`, `ctx_size=4096`,
+> `gpu_layers=0`, and `threads=8`: the backend path reached `/v1/models`,
+> stopped cleanly, and released the port. GPU validation remains separate and
+> has not passed.
 > There is still no production Docker Compose mount, Provider Settings write, Ask
 > change, dependency addition, local provider base-URL/model behavior change,
 > direct companion frontend call, host-gateway TCP, Docker socket, privileged
@@ -594,6 +601,9 @@ safe response fields.
 - **Phase 2G7:** DONE. Linux-first operator setup docs plus optional safe `.ini`
   profile-default import from explicit companion config into the existing
   whitelist/schema path; no app-suggested settings.
+- **Phase 2G8:** DONE. Live/manual real configured-profile E2E validation
+  through companion -> Docker backend -> Local Models backend flow; CPU-safe
+  operator profile passed, GPU validation remains separate.
 - **Later:** packaging/signing and cross-platform installers.
 
 Each slice must preserve the boundary: Docker backend talks to the companion; the
@@ -2060,3 +2070,78 @@ Scope preserved:
 - No host-gateway TCP, Docker socket, privileged container, or host PID
   namespace.
 - No token/socket/absolute path/raw argv exposure through public DTOs.
+
+## 26. Phase 2G8 Real Configured-Profile E2E Validation
+
+Phase 2G8 adds a live/manual validation harness for the path the UI/backend use
+for real configured profiles:
+
+```text
+host companion -> mounted Unix socket -> Docker FastAPI backend -> Local Models backend routes
+```
+
+Harness:
+
+- `test_scripts/validate_lmm_real_profile_e2e.py`
+- Requires explicit operator env:
+  `LMM_REAL_LLAMA_SERVER_BIN`, `LMM_REAL_MODEL_ROOT`,
+  `LMM_REAL_MODEL_ID` or `LMM_REAL_MODEL_PATTERN`, `LMM_REAL_PORT`,
+  `LMM_REAL_CTX_SIZE`, `LMM_REAL_GPU_LAYERS`, `LMM_REAL_THREADS`.
+- Optional env:
+  `LMM_REAL_PARALLEL`, `LMM_REAL_CACHE_TYPE_K`, `LMM_REAL_CACHE_TYPE_V`,
+  `LMM_REAL_FLASH_ATTENTION`, `LMM_REAL_MMAP`,
+  `LMM_REAL_READINESS_TIMEOUT`, `LMM_REAL_BACKEND_TIMEOUT`.
+- Missing required env exits 0 with a clear `SKIP` message before Docker work.
+- Creates a temporary approved-root companion config, runtime dir, Unix socket,
+  and Compose override. The override mounts only the temporary runtime/socket
+  directory and sets backend-only `LMM_COMPANION_SOCKET`,
+  `LMM_COMPANION_TOKEN`, and `LMM_COMPANION_TIMEOUT_SECONDS`.
+- Calls backend routes on `http://127.0.0.1:8000`:
+  `GET /api/local-model/companion/status`,
+  `POST /api/local-model/library/scan`,
+  `GET /api/local-model/server/profiles`,
+  `POST /api/local-model/library/selection`,
+  `POST /api/local-model/server/start`,
+  polling `GET /api/local-model/server/status`,
+  and `POST /api/local-model/server/stop`.
+- Skips `/api/local-model/status` because proving that endpoint against the same
+  port would require Provider Settings writes to repoint the local provider.
+- Snapshots and restores the app-side selected-model store after validation.
+- Restores/stops Docker with committed Compose only and removes temporary files.
+
+Operator-run result:
+
+- Passed with `/usr/bin/llama-server`,
+  `LMM_REAL_MODEL_ROOT=/mnt/ai/llm-models`,
+  `LMM_REAL_MODEL_PATTERN=gemma-4-26B-A4B-it-UD-Q4_K_M.gguf`,
+  `LMM_REAL_PORT=18080`, `LMM_REAL_CTX_SIZE=4096`,
+  `LMM_REAL_GPU_LAYERS=0`, and `LMM_REAL_THREADS=8`.
+- The backend/companion path selected the real model/profile, started the
+  managed server, reached `running` readiness via `/v1/models`, stopped cleanly,
+  and released port `18080`.
+- Redaction passed: backend responses contained no companion token, socket path,
+  absolute model root, executable path, Authorization header, full URL, or raw
+  argv. Returned model paths were root-relative only.
+- GPU validation remains separate. The prior `gpu_layers=999` stress run failed
+  safely as `model_may_be_too_large` / CUDA OOM and is not a passed GPU
+  validation.
+
+Focused tests added:
+
+- `test_scripts/test_lmm_real_profile_e2e_harness.py`
+- Covers skip behavior with missing env, generated companion config unsafe-field
+  checks, temporary Compose output redaction, helper leak checks, no committed
+  Docker writes, no Provider Settings writes, and no Ask changes.
+
+Scope preserved:
+
+- No AI-recommended settings or app-suggested settings.
+- No Provider Settings writes.
+- No Ask changes.
+- No permanent Docker Compose changes.
+- No model download manager.
+- No Windows/macOS support.
+- No host-gateway TCP, Docker socket, privileged container, or host PID
+  namespace.
+- No free-form flags, raw token/socket/absolute host path/raw argv exposure, or
+  direct companion frontend call.

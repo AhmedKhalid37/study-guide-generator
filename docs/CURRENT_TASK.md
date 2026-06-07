@@ -5,38 +5,46 @@
 
 ---
 
-## NEXT — LMM Phase 2G7 operator setup docs + safe preset import DONE.
+## NEXT — LMM Phase 2G8 real configured-profile E2E validation DONE.
 
-- **Local Model Manager Phase 2G7 is DONE** on branch
-  `lmm-phase2g7-profile-presets-docs`.
-- **Operator docs added:** `docs/LOCAL_MODEL_MANAGER_OPERATOR_SETUP.md` covers
-  Linux-first setup, finding `llama-server`, approved model roots, companion
-  JSON examples, process runtime dir, token handling, safe CPU / low-memory GPU /
-  balanced GPU profiles, Unix socket Docker mount concept, backend env vars,
-  real validation harness usage, troubleshooting, and platform scope.
-- **Optional `.ini` import implemented:** `tools/local_model_companion/config.py`
-  parses preset files with stdlib `configparser` and interpolation disabled.
-  Preset paths are companion-side JSON only (`profile_preset_files`), and the
-  executable remains in JSON (`llama_server_executable`). Imported sections
-  become normal `llama_server` profiles in the same whitelist schema used by
-  JSON profiles.
-- **Preset safety:** unknown keys are rejected; duplicate ids, `DEFAULT` values,
-  invalid int/bool/enum/range values, environment expansion, shell/path-like
-  text, command/args/shell/model_path/executable/free-form flag keys are
-  rejected. CPU safe and GPU balanced defaults avoid `gpu_layers=999`.
-- **2G5 validation context retained:** CPU real validation passed with
-  `/usr/bin/llama-server`, `ctx_size=4096`, `gpu_layers=0`, `threads=8`; full
-  offload with `gpu_layers=999` failed safely as `model_may_be_too_large` /
-  CUDA OOM.
+- **Local Model Manager Phase 2G8 is DONE** on branch
+  `lmm-phase2g8-real-profile-e2e-validation`.
+- **Harness added:** `test_scripts/validate_lmm_real_profile_e2e.py` validates
+  the actual configured-profile path: temporary host companion config/runtime,
+  Unix socket mount into the Docker app through a temporary Compose override,
+  backend `GET /api/local-model/companion/status`, `POST /api/local-model/library/scan`,
+  `GET /api/local-model/server/profiles`, `POST /api/local-model/library/selection`,
+  `POST /api/local-model/server/start`, polling `GET /api/local-model/server/status`,
+  `POST /api/local-model/server/stop`, and port-release/redaction checks.
+- **Real E2E validation passed:** operator env selected
+  `gemma-4-26B-A4B-it-UD-Q4_K_M.gguf` from `/mnt/ai/llm-models` with
+  `/usr/bin/llama-server`, `LMM_REAL_PORT=18080`,
+  `LMM_REAL_CTX_SIZE=4096`, `LMM_REAL_GPU_LAYERS=0`, and
+  `LMM_REAL_THREADS=8`. The backend/companion path reached `running`
+  readiness via `/v1/models`, stopped cleanly, and released the port.
+- **Skip behavior verified:** with required real env absent,
+  `python test_scripts/validate_lmm_real_profile_e2e.py` exits 0 with a clear
+  `SKIP` message before Docker work.
+- **Safety verified:** backend responses contained no token, socket path,
+  absolute model root or executable path, Authorization header, full URL, or raw
+  argv. Returned model paths were root-relative only. The harness uses no
+  Provider Settings writes, skips `/api/local-model/status` rather than
+  repointing the local provider, restores the local model selection store after
+  validation, and leaves no committed Docker changes.
+- **GPU validation remains separate:** the earlier `gpu_layers=999` stress run
+  failed safely as `model_may_be_too_large` / CUDA OOM; do not claim GPU
+  validation passed.
 - **Scope preserved:** no app-suggested settings, AI recommendations, Provider
   Settings writes, Ask changes, permanent Docker Compose changes, frontend UI
   changes, model download manager, host-gateway TCP, Docker socket, privileged
   container, host PID namespace, browser storage, direct companion frontend
   call, token/socket/absolute host path/raw argv exposure, or Windows/macOS
   implementation.
-- **Recommended next slice:** no automatic recommendations yet. Future LMM work
-  should be explicit and narrow: more live validation, packaging/runtime-service
-  docs, or a separately approved settings-recommendation design.
+- **Recommended next slice:** packaging/runtime-service docs for running the
+  companion reliably, or a separately approved settings-recommendation design.
+  App-suggested settings remain deferred.
+
+## Previous — LMM Phase 2G7 operator setup docs + safe preset import DONE.
 
 ## Previous — LMM Phase 2G5 real Linux llama-server validation/hardening DONE.
 
