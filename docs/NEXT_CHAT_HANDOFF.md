@@ -10,12 +10,36 @@
 - **Trunk includes:** `af0ec0e` (Ask Slice 1 design), `2634f63` (Ask Slice 2 context
   inventory), `a29a405` (Ask Slice 3 context preparation), and the inserted Ask
   workspace shell, on top of the validated LMM group and prior feature groups.
-- **Active work branch:** `lmm-phase2g6-real-profile-controls` — Local Model
-  Manager Phase 2G6 real-profile UI/defaults + safe parameter controls.
-  **NEXT = operator docs / optional preset-file import into the same whitelist
-  schema; app-suggested settings stay deferred until more real validation.**
+- **Active work branch:** `lmm-phase2g7-profile-presets-docs` — Local Model
+  Manager Phase 2G7 operator setup docs + safe `.ini` profile preset import.
+  **NEXT = validation / review, then a separate explicit slice for any real
+  settings recommendation work. App-suggested settings remain deferred.**
 
 ## What just landed
+- **Local Model Manager Phase 2G7 — operator setup docs + safe preset import**
+  (branch `lmm-phase2g7-profile-presets-docs`). Added
+  `docs/LOCAL_MODEL_MANAGER_OPERATOR_SETUP.md`, a Linux-first setup guide for
+  finding `llama-server`, choosing approved model roots, companion JSON config,
+  safe CPU / low-memory GPU / balanced GPU profile examples, Unix socket Docker
+  mount concept, backend env vars (`LMM_COMPANION_SOCKET`,
+  `LMM_COMPANION_TOKEN`, `LMM_COMPANION_TIMEOUT_SECONDS`), the real validation
+  harness, troubleshooting, and platform scope. Implemented optional `.ini`
+  profile-default import in `tools/local_model_companion/config.py` using stdlib
+  `configparser` with interpolation disabled. Preset file paths are explicit
+  companion JSON only via `profile_preset_files`; imported presets require
+  `llama_server_executable` in JSON and cannot supply executable paths. Imported
+  sections become normal `llama_server` profiles through the same whitelist path
+  used by JSON profiles. Unknown keys are rejected; duplicate ids, `DEFAULT`
+  values, invalid ints/bools/enums/ranges, env expansion, shell/path-like text,
+  and command/args/shell/model_path/executable/free-form flag keys are rejected.
+  CPU safe and GPU balanced preset defaults avoid `gpu_layers=999`; the Phase
+  2G5 record remains CPU validation passed, full offload `gpu_layers=999`
+  failed safely as `model_may_be_too_large` / CUDA OOM. Scope preserved: no
+  app-suggested settings, Provider Settings writes, Ask changes, permanent
+  Docker Compose changes, frontend UI changes, free-form flags, raw shell
+  command execution, model downloads, host-gateway TCP, Docker socket,
+  privileged container, host PID namespace, or token/socket/absolute path/raw
+  argv exposure.
 - **Local Model Manager Phase 2G6 — real-profile UI/defaults + safe parameter
   controls** (branch `lmm-phase2g6-real-profile-controls`). Added companion
   `GET /profiles` and backend `GET /api/local-model/server/profiles` safe DTOs.
@@ -40,8 +64,9 @@
   only, and has a **Use profile defaults** reset. UI copy states high GPU layers
   can OOM, CPU is safer but slower, Provider Settings are not changed, and the
   controls affect only the companion-managed server. Manual command helper
-  fallback remains. `.ini` preset import and app-suggested settings are deferred;
-  future presets must import into the same whitelist schema. Scope preserved: no
+  fallback remains. `.ini` preset import was deferred in G6 and implemented in
+  G7 through the same whitelist schema; app-suggested settings remain deferred.
+  Scope preserved: no
   Provider Settings writes, Ask changes, permanent Docker Compose changes,
   browser storage, direct companion frontend calls, token/socket/path/raw argv
   exposure, host-gateway TCP, Docker socket, privileged container, host PID

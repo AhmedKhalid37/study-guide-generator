@@ -5,57 +5,38 @@
 
 ---
 
-## NEXT — LMM Phase 2G6 real-profile UI/defaults DONE.
+## NEXT — LMM Phase 2G7 operator setup docs + safe preset import DONE.
 
-- **Local Model Manager Phase 2G6 — real-profile UI/defaults + safe parameter
-  controls is DONE** on branch `lmm-phase2g6-real-profile-controls`.
-- **Companion profiles endpoint:** added `GET /profiles` on the
-  token-authenticated Unix-socket companion API. It returns safe profile metadata
-  only: ids, display names, descriptions, profile type, test/real marker,
-  runnable boolean, safe runnable reason, default parameter values, typed
-  parameter schema, and warnings. It does not expose executable paths, model
-  paths, raw argv, token/socket details, or config dumps.
-- **Backend profiles route:** added `GET /api/local-model/server/profiles`.
-  The bridge calls companion `/profiles`, sanitizes/redacts all profile metadata,
-  and rejects invalid companion shapes. Start/restart validation now rejects
-  unknown safe-parameter names and supports typed integers, booleans, and enum
-  strings before forwarding; companion still performs final selected-profile
-  schema validation.
-- **Config/profile defaults:** companion JSON profiles can now include arbitrary
-  safe llama-server profile ids, `type: "llama_server"`, display metadata,
-  warnings, `default_parameters`, and optional `parameter_schema`. Real
-  executable paths remain companion-private and explicit-config only. Missing or
-  non-executable configured profiles appear as `runnable:false` with safe reasons
-  such as `executable_missing` or `permission_denied`.
-- **Supported parameters:** `port`, `ctx_size`, `gpu_layers`, `threads`,
-  `parallel`, `cache_type_k`, `cache_type_v`, `flash_attention`, and `mmap`.
-  Argv mapping is centralized and whitelist-only; no free-form flags, command
-  strings, shell fragments, executable path, model path, or arbitrary args are
-  accepted from UI/backend requests. Omitted parameters use profile defaults.
-- **Frontend UI:** Local Models > Managed Server now loads backend profile
-  metadata, chooses the safest runnable in-memory profile (`cpu_safe`, then first
-  runnable non-test, then `fake_test`), shows a profile selector, renders typed
-  controls from the selected profile schema, and provides **Use profile
-  defaults** reset. The UI explains high GPU layers can OOM, CPU mode is safer
-  but slower, Provider Settings are not changed, and controls affect only the
-  companion-managed server. Manual command helper fallback remains.
-- **Preset scope:** `.ini` preset-file import is explicitly deferred. This slice
-  implements JSON/config-backed explicit profile defaults and the shared
-  whitelist schema that future preset import must target. App-suggested settings
-  remain deferred.
-- **Scope preserved:** no Provider Settings writes, no Ask changes, no permanent
-  Docker Compose changes, no model download manager, no host-gateway TCP, no
-  Docker socket, no privileged container, no host PID namespace, no browser
-  localStorage/sessionStorage, no direct companion frontend call, no
-  token/socket/absolute host path/raw argv exposure, and no Windows/macOS support.
+- **Local Model Manager Phase 2G7 is DONE** on branch
+  `lmm-phase2g7-profile-presets-docs`.
+- **Operator docs added:** `docs/LOCAL_MODEL_MANAGER_OPERATOR_SETUP.md` covers
+  Linux-first setup, finding `llama-server`, approved model roots, companion
+  JSON examples, process runtime dir, token handling, safe CPU / low-memory GPU /
+  balanced GPU profiles, Unix socket Docker mount concept, backend env vars,
+  real validation harness usage, troubleshooting, and platform scope.
+- **Optional `.ini` import implemented:** `tools/local_model_companion/config.py`
+  parses preset files with stdlib `configparser` and interpolation disabled.
+  Preset paths are companion-side JSON only (`profile_preset_files`), and the
+  executable remains in JSON (`llama_server_executable`). Imported sections
+  become normal `llama_server` profiles in the same whitelist schema used by
+  JSON profiles.
+- **Preset safety:** unknown keys are rejected; duplicate ids, `DEFAULT` values,
+  invalid int/bool/enum/range values, environment expansion, shell/path-like
+  text, command/args/shell/model_path/executable/free-form flag keys are
+  rejected. CPU safe and GPU balanced defaults avoid `gpu_layers=999`.
 - **2G5 validation context retained:** CPU real validation passed with
-  `/usr/bin/llama-server`, `ctx_size=4096`, `gpu_layers=0`, `threads=8`; full GPU
-  offload with `gpu_layers=999` failed safely as
-  `model_may_be_too_large` / CUDA OOM. 2G6 avoids `999` as a default.
-- **Recommended next slice:** real-profile operator docs and optional preset-file
-  import into the same whitelist schema, followed by carefully validated
-  low-memory/GPU profile examples. Do not add app-suggested settings until more
-  real validation exists.
+  `/usr/bin/llama-server`, `ctx_size=4096`, `gpu_layers=0`, `threads=8`; full
+  offload with `gpu_layers=999` failed safely as `model_may_be_too_large` /
+  CUDA OOM.
+- **Scope preserved:** no app-suggested settings, AI recommendations, Provider
+  Settings writes, Ask changes, permanent Docker Compose changes, frontend UI
+  changes, model download manager, host-gateway TCP, Docker socket, privileged
+  container, host PID namespace, browser storage, direct companion frontend
+  call, token/socket/absolute host path/raw argv exposure, or Windows/macOS
+  implementation.
+- **Recommended next slice:** no automatic recommendations yet. Future LMM work
+  should be explicit and narrow: more live validation, packaging/runtime-service
+  docs, or a separately approved settings-recommendation design.
 
 ## Previous — LMM Phase 2G5 real Linux llama-server validation/hardening DONE.
 
@@ -2782,6 +2763,43 @@ parked on the `hardening` branch — not merged, not deleted.
       `provider_empty_response`. Headless Chromium verified the rebuilt browser shell
       is served; a full browser click/send replay was not automated in this repo.
 
+61. **Local Model Manager Phase 2G7 — operator setup docs + safe profile preset
+    import** — branch `lmm-phase2g7-profile-presets-docs`. Added
+    `docs/LOCAL_MODEL_MANAGER_OPERATOR_SETUP.md`, a Linux-first operator guide
+    covering how to find `llama-server` (`command -v llama-server`,
+    `readlink -f /proc/<pid>/exe`), approved model roots, companion JSON config,
+    process runtime dir, token handling, safe CPU / low-memory GPU / balanced GPU
+    profile examples, Unix socket Docker mount concept, backend env vars
+    (`LMM_COMPANION_SOCKET`, `LMM_COMPANION_TOKEN`,
+    `LMM_COMPANION_TIMEOUT_SECONDS`), the real validation harness
+    (`test_scripts/validate_lmm_real_llama_server.py`), troubleshooting, and
+    Linux-first platform scope.
+    - **Implemented optional `.ini` preset import** in
+      `tools/local_model_companion/config.py` using Python stdlib
+      `configparser` with interpolation disabled. Preset paths come only from
+      explicit companion JSON (`profile_preset_files`), never from the frontend.
+      Imported presets require `llama_server_executable` in companion JSON; the
+      preset file cannot set executable/model paths or commands. Imported
+      sections become normal `llama_server` profiles through the same whitelist
+      schema used by JSON profiles.
+    - **Rejected rather than ignored:** unknown preset keys, duplicate ids,
+      `DEFAULT` values, invalid int/bool/enum/range values, env expansion,
+      shell/path-like text, and command/args/shell/model_path/executable/
+      free-form flag keys. CPU safe and GPU balanced defaults avoid
+      `gpu_layers=999`.
+    - **Docs reconciled:** `PROJECT_CONTEXT.md`, `NEXT_CHAT_HANDOFF.md`,
+      `LOCAL_MODEL_MANAGER_PHASE2_DESIGN.md`, and `DECISIONS.md` now record that
+      CPU validation passed, full offload `gpu_layers=999` failed safely as
+      `model_may_be_too_large` / CUDA OOM, profile presets/defaults are
+      whitelist-based, app-suggested settings remain deferred, and `.ini` import
+      is implemented.
+    - **Scope preserved:** no app-suggested settings, AI-generated
+      recommendations, Provider Settings writes, Ask changes, permanent Docker
+      Compose changes, frontend UI changes, free-form flags, raw shell command
+      execution, model download manager, host-gateway TCP, Docker socket,
+      privileged container, host PID namespace, Windows/macOS implementation, or
+      token/socket/absolute path/raw argv exposure.
+
 ## NEXT (in order)
 
 > **Provider settings feature group is DONE through Slice 5** (DONE #32→#36):
@@ -2829,13 +2847,14 @@ parked on the `hardening` branch — not merged, not deleted.
 2. **Broader manual Ask UI validation / polish, only if a concrete issue surfaces.**
    The empty local-model response regression found during manual validation is now
    guarded and covered. Keep any follow-up narrow and bug-driven.
-3. **Local Model Manager — Phase 2 (host companion launcher) DESIGN-FIRST, optional.**
-   Only if the user wants **app-managed start/stop** later. Process control (start/stop
-   a host `llama-server`) **crosses the container boundary** (non-root uid 10001
-   container managing a host process) and is **deferred to a host companion** designed
-   in LMM Slice 5 — **direct Docker→host spawn is REJECTED** (design §2 Option D /
-   §13). Get sign-off before any companion code. Separate from the complete in-app
-   provider settings.
+3. **Local Model Manager — next real-setup slice, explicit only.**
+   Phase 2G7 completed operator docs and safe `.ini` preset import. App-suggested
+   settings remain deferred until more real validation exists. Any future LMM
+   work should stay explicit and narrow, for example additional live validation,
+   packaging/runtime-service docs, or a separately approved recommendations
+   design. Preserve the host companion boundary: no direct Docker→host spawn, no
+   Provider Settings writes, no Ask changes, no permanent Docker Compose changes,
+   no Docker socket/privileged/host-PID path.
 4. **Math/PDF font-size rationalization (cause C) — optional CSS-only
    investigation.** The remaining math/PDF fidelity slice; investigate the
    CSS-only font sizing before any change.

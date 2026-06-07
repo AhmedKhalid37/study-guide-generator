@@ -252,17 +252,21 @@ flashcards with CSV / Anki / Quizlet export.
   renders typed controls only from the selected schema, and offers **Use profile
   defaults** reset. It states high GPU layers can OOM, CPU is safer but slower,
   Provider Settings are not changed, and controls affect only the
-  companion-managed process. `.ini` preset import and app-suggested settings are
-  deferred; future presets must import into the same whitelist schema. There is
-  still no permanent Docker Compose mount, Provider Settings write, Ask change,
-  dependency addition, local provider base-URL/model behavior change, direct
-  companion frontend call, shell/free-form args UI, browser storage, token/socket
-  exposure in UI, direct Docker host process control, direct host filesystem scan,
-  automatic restart loop, model download manager, multi-server pool,
-  Windows/macOS process control, or absolute host path/raw argv rendering. Next
-  recommended slice is operator docs and optional preset-file import into the
-  same whitelist schema; app-suggested settings remain deferred until more real
-  validation exists.
+  companion-managed process. Phase 2G7 adds
+  `docs/LOCAL_MODEL_MANAGER_OPERATOR_SETUP.md` plus optional `.ini` profile
+  preset import from explicit companion JSON config. Preset paths are configured
+  server-side with `profile_preset_files`; the executable stays in JSON as
+  `llama_server_executable`; imported sections become normal whitelisted
+  `llama_server` profiles. Unknown keys, duplicate ids, `DEFAULT` values,
+  invalid ints/bools/enums/ranges, env expansion, shell/path-like text,
+  command/args/shell/model_path/executable/free-form flag keys are rejected.
+  App-suggested settings remain deferred. There is still no permanent Docker
+  Compose mount, Provider Settings write, Ask change, dependency addition, local
+  provider base-URL/model behavior change, direct companion frontend call,
+  shell/free-form args UI, browser storage, token/socket exposure in UI, direct
+  Docker host process control, direct host filesystem scan, automatic restart
+  loop, model download manager, multi-server pool, Windows/macOS process control,
+  or absolute host path/raw argv rendering.
 - **Ask Your Guide — IN PROGRESS (Slice 1 design DONE; Slice 2 backend context
   inventory DONE; Slice 3 backend context preparation / chunking DONE; inserted
   workspace shell DONE; backend local chat API DONE; frontend chat UI wiring DONE;

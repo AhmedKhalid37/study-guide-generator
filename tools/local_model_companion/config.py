@@ -2,11 +2,15 @@
 
 from __future__ import annotations
 
+import configparser
 import json
 import os
+import re
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
+
+from .profiles import SAFE_CACHE_TYPES, SAFE_PROFILE_ID_RE
 
 CONFIG_ENV_VAR = "LMM_COMPANION_CONFIG"
 TOKEN_ENV_VAR = "LMM_COMPANION_TOKEN"
@@ -77,6 +81,21 @@ SAFE_PROFILE_PARAMETER_NAMES = {
     "mmap",
 }
 
+SAFE_PROFILE_PARAMETER_BOUNDS = {
+    "port": (1024, 65535),
+    "ctx_size": (512, 131072),
+    "gpu_layers": (0, 999),
+    "threads": (1, 256),
+    "parallel": (1, 32),
+}
+SAFE_PRESET_PROFILE_KEYS = {
+    "display_name",
+    "description",
+    "type",
+    *SAFE_PROFILE_PARAMETER_NAMES,
+}
+SHELLISH_VALUE_RE = re.compile(r"(\$\(|[`;&|<>]|\b[A-Za-z]:\\|^/|(?<![\w-])--[A-Za-z0-9])")
+
 
 def _as_safe_defaults(value: Any, *, profile_id: str) -> dict[str, Any]:
     if value is None:
@@ -96,8 +115,128 @@ def _as_safe_defaults(value: Any, *, profile_id: str) -> dict[str, Any]:
                 raise ConfigError(f"profile {profile_id} default parameter {key} must be a boolean")
         elif key in {"cache_type_k", "cache_type_v"} and not isinstance(raw, str):
             raise ConfigError(f"profile {profile_id} default parameter {key} must be a string")
+        if key in SAFE_PROFILE_PARAMETER_BOUNDS:
+            minimum, maximum = SAFE_PROFILE_PARAMETER_BOUNDS[key]
+            if raw < minimum or raw > maximum:
+                raise ConfigError(f"profile {profile_id} default parameter {key} must be between {minimum} and {maximum}")
+        if key in {"cache_type_k", "cache_type_v"} and raw not in SAFE_CACHE_TYPES:
+            raise ConfigError(f"profile {profile_id} default parameter {key} is not allowed")
         defaults[key] = raw
     return defaults
+
+
+def _safe_preset_text(value: str, *, profile_id: str, field: str, max_len: int) -> str:
+    cleaned = value.replace("\x00", "").strip()
+    if not cleaned:
+        raise ConfigError(f"preset profile {profile_id} {field} must be non-empty")
+    if SHELLISH_VALUE_RE.search(cleaned) or "$" in cleaned:
+        raise ConfigError(f"preset profile {profile_id} {field} contains unsupported shell/path text")
+    return cleaned[:max_len]
+
+
+def _parse_preset_int(value: str, *, profile_id: str, key: str) -> int:
+    raw = value.strip()
+    if not re.fullmatch(r"-?[0-9]+", raw):
+        raise ConfigError(f"preset profile {profile_id} {key} must be an integer")
+    return int(raw, 10)
+
+
+def _parse_preset_bool(value: str, *, profile_id: str, key: str) -> bool:
+    raw = value.strip().lower()
+    if raw == "true":
+        return True
+    if raw == "false":
+        return False
+    raise ConfigError(f"preset profile {profile_id} {key} must be true or false")
+
+
+def _parse_preset_default(profile_id: str, key: str, value: str) -> int | bool | str:
+    if key in {"port", "ctx_size", "gpu_layers", "threads", "parallel"}:
+        return _parse_preset_int(value, profile_id=profile_id, key=key)
+    if key in {"flash_attention", "mmap"}:
+        return _parse_preset_bool(value, profile_id=profile_id, key=key)
+    if key in {"cache_type_k", "cache_type_v"}:
+        return _safe_preset_text(value, profile_id=profile_id, field=key, max_len=40)
+    raise ConfigError(f"preset profile {profile_id} has unsupported parameter: {key}")
+
+
+def _as_preset_paths(value: Any, *, config_dir: Path) -> tuple[Path, ...]:
+    if value is None:
+        return ()
+    if not isinstance(value, list):
+        raise ConfigError("profile_preset_files must be a list when provided")
+    paths: list[Path] = []
+    for index, raw in enumerate(value):
+        if not isinstance(raw, str) or not raw.strip():
+            raise ConfigError(f"profile_preset_files entry {index} must be a non-empty string")
+        item = Path(raw.strip()).expanduser()
+        if not item.is_absolute():
+            item = config_dir / item
+        paths.append(item.resolve(strict=False))
+    return tuple(paths)
+
+
+def _load_profile_presets(
+    preset_paths: tuple[Path, ...],
+    *,
+    executable: Path,
+    seen_profile_ids: set[str],
+) -> list[ProcessProfileConfig]:
+    imported: list[ProcessProfileConfig] = []
+    for preset_path in preset_paths:
+        try:
+            text = preset_path.read_text(encoding="utf-8")
+        except OSError as exc:
+            raise ConfigError(f"unable to read profile preset file: {exc}") from exc
+        parser = configparser.ConfigParser(interpolation=None)
+        try:
+            parser.read_string(text, source=str(preset_path))
+        except configparser.Error as exc:
+            raise ConfigError(f"invalid profile preset INI: {exc}") from exc
+        if parser.defaults():
+            raise ConfigError("profile preset DEFAULT values are not supported")
+
+        for profile_id in parser.sections():
+            if not SAFE_PROFILE_ID_RE.match(profile_id):
+                raise ConfigError(f"preset profile id is invalid: {profile_id}")
+            if profile_id in seen_profile_ids:
+                raise ConfigError(f"duplicate profile id: {profile_id}")
+            raw_items = {key: value for key, value in parser.items(profile_id, raw=True)}
+            unknown = sorted(set(raw_items) - SAFE_PRESET_PROFILE_KEYS)
+            if unknown:
+                raise ConfigError(f"preset profile {profile_id} has unknown key: {unknown[0]}")
+            raw_type = raw_items.get("type", "llama_server").strip()
+            if raw_type != "llama_server":
+                raise ConfigError(f"preset profile {profile_id} type is not supported")
+
+            defaults = {
+                key: _parse_preset_default(profile_id, key, value)
+                for key, value in raw_items.items()
+                if key in SAFE_PROFILE_PARAMETER_NAMES
+            }
+            safe_defaults = _as_safe_defaults(defaults, profile_id=profile_id)
+            display_name = (
+                _safe_preset_text(raw_items["display_name"], profile_id=profile_id, field="display_name", max_len=120)
+                if "display_name" in raw_items
+                else None
+            )
+            description = (
+                _safe_preset_text(raw_items["description"], profile_id=profile_id, field="description", max_len=1000)
+                if "description" in raw_items
+                else None
+            )
+            imported.append(
+                ProcessProfileConfig(
+                    id=profile_id,
+                    profile_type="llama_server",
+                    executable=executable,
+                    display_name=display_name,
+                    description=description,
+                    default_parameters=safe_defaults,
+                )
+            )
+            seen_profile_ids.add(profile_id)
+    return imported
 
 
 def _as_parameter_schema(value: Any, *, profile_id: str) -> dict[str, dict[str, Any]]:
@@ -232,9 +371,13 @@ def load_config(config_path: str | os.PathLike[str] | None = None) -> CompanionC
         raise ConfigError("profiles must be an object when provided")
 
     process_profiles: list[ProcessProfileConfig] = []
+    seen_profile_ids: set[str] = set()
     for profile_id, profile_data in raw_profiles.items():
         if not isinstance(profile_id, str) or not profile_id.strip():
             raise ConfigError("profile ids must be non-empty strings")
+        clean_profile_id = profile_id.strip()
+        if clean_profile_id in seen_profile_ids:
+            raise ConfigError(f"duplicate profile id: {clean_profile_id}")
         if not isinstance(profile_data, dict):
             raise ConfigError(f"profile {profile_id} must be an object")
         raw_type = profile_data.get("type", "fake_test" if profile_id == "fake_test" else "llama_server")
@@ -254,7 +397,7 @@ def load_config(config_path: str | os.PathLike[str] | None = None) -> CompanionC
             raise ConfigError(f"profile {profile_id} host must be a non-empty string when provided")
         process_profiles.append(
             ProcessProfileConfig(
-                id=profile_id.strip(),
+                id=clean_profile_id,
                 profile_type=raw_type,
                 executable=Path(executable).expanduser().resolve(strict=False),
                 display_name=raw_display_name.strip()[:120] if isinstance(raw_display_name, str) and raw_display_name.strip() else None,
@@ -267,6 +410,21 @@ def load_config(config_path: str | os.PathLike[str] | None = None) -> CompanionC
                     profile_data.get("readiness_timeout_seconds"),
                     field=f"profile {profile_id} readiness_timeout_seconds",
                 ),
+            )
+        )
+        seen_profile_ids.add(clean_profile_id)
+
+    preset_paths = _as_preset_paths(data.get("profile_preset_files"), config_dir=path.resolve(strict=False).parent)
+    if preset_paths:
+        raw_preset_executable = data.get("llama_server_executable")
+        if not isinstance(raw_preset_executable, str) or not raw_preset_executable.strip():
+            raise ConfigError("llama_server_executable must be provided when profile_preset_files is set")
+        preset_executable = Path(raw_preset_executable).expanduser().resolve(strict=False)
+        process_profiles.extend(
+            _load_profile_presets(
+                preset_paths,
+                executable=preset_executable,
+                seen_profile_ids=seen_profile_ids,
             )
         )
 

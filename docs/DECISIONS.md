@@ -1209,3 +1209,20 @@ checks. **Why:** real model loads can fail slowly or crash after spawn, and repo
 them as running would mislead the UI/backend; process-group tracking is needed to
 clean up real child processes without killing manually-started or reused-PID
 processes.
+
+## LMM Phase 2G7 `.ini` profile presets import defaults only into the whitelist schema (2026-06-07)
+Profile preset files are optional companion-side inputs, never frontend-provided.
+The companion JSON names preset files with `profile_preset_files` and supplies the
+shared `llama_server_executable`; preset files cannot provide executable paths,
+model paths, commands, args, shell fragments, environment expansion, or free-form
+flags. Imported sections become normal `llama_server` profiles through the same
+typed whitelist/profile schema used by JSON-backed profiles.
+
+Unknown preset keys are rejected rather than ignored. Integers, booleans, enums,
+ranges, duplicate ids, `DEFAULT` values, and shell/path-like text are rejected at
+config load. **Why:** rejecting unknown keys makes an operator typo or malicious
+preset obvious and keeps every imported value from becoming anything other than a
+typed bounded profile default. The slice also adds Linux-first operator setup docs;
+it does not add app-suggested settings, Provider Settings writes, Ask changes,
+permanent Docker changes, host-gateway TCP, Docker socket, privileged containers,
+host PID namespace, or token/socket/path/raw argv exposure.

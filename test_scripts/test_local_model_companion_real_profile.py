@@ -21,10 +21,10 @@ from typing import Any
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from tools.local_model_companion import companion  # noqa: E402
-from tools.local_model_companion.config import ApprovedRoot, CompanionConfig, load_config  # noqa: E402
+from tools.local_model_companion.config import ApprovedRoot, CompanionConfig, ConfigError, load_config  # noqa: E402
 from tools.local_model_companion.model_library import scan_models  # noqa: E402
 from tools.local_model_companion.process_manager import ManagedServerProcessManager  # noqa: E402
-from tools.local_model_companion.profiles import real_llama_server_profile  # noqa: E402
+from tools.local_model_companion.profiles import ProfileError, real_llama_server_profile  # noqa: E402
 
 results: list[tuple[str, bool]] = []
 _NEXT_PORT = 19100
@@ -48,6 +48,10 @@ def _free_port() -> int:
 def _write_executable(path: Path, body: str) -> None:
     path.write_text(body, encoding="utf-8")
     path.chmod(0o700)
+
+
+def _write_preset(path: Path, body: str) -> None:
+    path.write_text(body.strip() + "\n", encoding="utf-8")
 
 
 def _write_sleeping_server(path: Path) -> None:
@@ -115,7 +119,7 @@ def _profile(exe: Path, *, timeout: float = 1.5):
         "llama_cpp_gpu_default",
         exe,
         host="0.0.0.0",
-        default_parameters={"port": 8080, "ctx_size": 8192, "gpu_layers": 999, "threads": 8},
+        default_parameters={"port": 18080, "ctx_size": 4096, "gpu_layers": 20, "threads": 8},
         readiness_timeout_seconds=timeout,
     )
 
@@ -128,6 +132,33 @@ def _manager(base: Path, cfg: CompanionConfig, exe: Path, *, timeout: float = 1.
 
 def _start_payload(port: int) -> dict[str, int]:
     return {"port": port, "ctx_size": 4096, "gpu_layers": 1, "threads": 2}
+
+
+def _load_preset_config(tmp: Path, root: Path, exe: Path, preset_path: Path) -> CompanionConfig:
+    config_path = tmp / f"preset_config_{preset_path.stem}.json"
+    config_path.write_text(
+        json.dumps(
+            {
+                "approved_roots": [{"id": "models", "path": str(root), "recursive": True}],
+                "token": "local-test-token",
+                "process_runtime_dir": str(tmp / f"runtime-{preset_path.stem}"),
+                "llama_server_executable": str(exe),
+                "profile_preset_files": [str(preset_path)],
+            }
+        ),
+        encoding="utf-8",
+    )
+    return load_config(config_path)
+
+
+def _preset_rejected(tmp: Path, root: Path, exe: Path, name: str, body: str) -> bool:
+    preset_path = tmp / f"{name}.ini"
+    _write_preset(preset_path, body)
+    try:
+        _load_preset_config(tmp, root, exe, preset_path)
+    except ConfigError:
+        return True
+    return False
 
 
 def _pid_dead(pid: int, timeout: float = 3.0) -> bool:
@@ -194,13 +225,59 @@ def run() -> int:
                     "token": "local-test-token",
                     "process_runtime_dir": str(tmp / "runtime-from-config"),
                     "profiles": {
+                        "cpu_safe": {
+                            "type": "llama_server",
+                            "display_name": "CPU safe",
+                            "description": "Slow but reliable CPU launch.",
+                            "executable": str(ready_exe),
+                            "default_parameters": {
+                                "port": 18112,
+                                "ctx_size": 4096,
+                                "gpu_layers": 0,
+                                "threads": 8,
+                                "parallel": 1,
+                            },
+                            "warnings": ["CPU mode is slower but safer."],
+                        },
+                        "gpu_balanced": {
+                            "type": "llama_server",
+                            "display_name": "GPU balanced",
+                            "description": "Partial offload for 16GB GPUs.",
+                            "executable": str(ready_exe),
+                            "default_parameters": {
+                                "port": 18113,
+                                "ctx_size": 4096,
+                                "gpu_layers": 20,
+                                "threads": 8,
+                                "parallel": 1,
+                                "cache_type_k": "q8_0",
+                                "flash_attention": True,
+                                "mmap": True,
+                            },
+                            "parameter_schema": {
+                                "cache_type_k": {"allowed_values": ["f16", "q8_0"]},
+                                "flash_attention": {},
+                                "mmap": {},
+                            },
+                        },
+                        "missing_real": {
+                            "type": "llama_server",
+                            "display_name": "Missing real",
+                            "executable": str(tmp / "missing_real_llama_server"),
+                            "default_parameters": {
+                                "port": 18114,
+                                "ctx_size": 4096,
+                                "gpu_layers": 0,
+                                "threads": 8,
+                            },
+                        },
                         "llama_cpp_gpu_default": {
                             "executable": str(ready_exe),
                             "host": "0.0.0.0",
                             "default_parameters": {
-                                "port": 18112,
-                                "ctx_size": 8192,
-                                "gpu_layers": 999,
+                                "port": 18115,
+                                "ctx_size": 4096,
+                                "gpu_layers": 20,
                                 "threads": 8,
                             },
                             "readiness_timeout_seconds": 2,
@@ -213,6 +290,9 @@ def run() -> int:
         loaded = load_config(config_path)
         state = companion.CompanionState(loaded)
         configured_profile = state.process_manager.profiles.get("llama_cpp_gpu_default") if state.process_manager else None
+        cpu_profile = state.process_manager.profiles.get("cpu_safe") if state.process_manager else None
+        gpu_profile = state.process_manager.profiles.get("gpu_balanced") if state.process_manager else None
+        missing_profile = state.process_manager.profiles.get("missing_real") if state.process_manager else None
         check(
             "config: explicit real profile parses without default executable",
             configured_profile is not None
@@ -221,6 +301,182 @@ def run() -> int:
             and configured_profile.host == "0.0.0.0",
             detail=str(configured_profile),
         )
+        metadata = state.server_profiles()
+        metadata_blob = _blob(metadata)
+        check(
+            "profiles: safe metadata exposes configured ids without executable path",
+            metadata["ok"] is True
+            and {"cpu_safe", "gpu_balanced", "missing_real"}.issubset({item["id"] for item in metadata["profiles"]})
+            and str(ready_exe) not in metadata_blob
+            and str(tmp) not in metadata_blob
+            and "executable_path" not in metadata_blob,
+            detail=metadata_blob,
+        )
+        check(
+            "profiles: missing executable is runnable false without path leak",
+            missing_profile is not None
+            and missing_profile.runnable is False
+            and missing_profile.runnable_reason == "executable_missing"
+            and any(item["id"] == "missing_real" and item["runnable"] is False and item["runnable_reason"] == "executable_missing" for item in metadata["profiles"]),
+            detail=metadata_blob,
+        )
+        check(
+            "profiles: CPU safe and GPU balanced defaults avoid gpu_layers 999",
+            cpu_profile is not None
+            and gpu_profile is not None
+            and cpu_profile.parameter_map()["gpu_layers"].default == 0
+            and gpu_profile.parameter_map()["gpu_layers"].default == 20
+            and "999" not in _blob(cpu_profile.safe_metadata()["default_parameters"])
+            and "999" not in _blob(gpu_profile.safe_metadata()["default_parameters"]),
+            detail=str({"cpu": cpu_profile, "gpu": gpu_profile}),
+        )
+
+        assert gpu_profile is not None
+        try:
+            enum_bool_valid = gpu_profile.validate_parameters({"port": 18116, "cache_type_k": "f16", "flash_attention": False, "mmap": False})
+            enum_bool_ok = enum_bool_valid["cache_type_k"] == "f16" and enum_bool_valid["flash_attention"] is False and enum_bool_valid["mmap"] is False
+        except ProfileError:
+            enum_bool_ok = False
+            enum_bool_valid = {}
+        check("params: enum and boolean overrides accepted", enum_bool_ok, detail=str(enum_bool_valid))
+
+        invalid_enum = invalid_bool = False
+        try:
+            gpu_profile.validate_parameters({"cache_type_k": "not_allowed"})
+        except ProfileError:
+            invalid_enum = True
+        try:
+            gpu_profile.validate_parameters({"flash_attention": "true"})
+        except ProfileError:
+            invalid_bool = True
+        check("params: enum and boolean overrides rejected when invalid", invalid_enum and invalid_bool)
+
+        optional_argv = _manager(tmp / "optional_argv", cfg, ready_exe)._build_argv(
+            gpu_profile,
+            ready_exe.resolve(strict=True),
+            model.resolve(strict=True),
+            gpu_profile.validate_parameters({"port": 18117, "cache_type_k": "f16", "flash_attention": True, "mmap": False}),
+        )
+        check(
+            "argv: optional supported params map through centralized flags",
+            "--parallel" in optional_argv
+            and "--cache-type-k" in optional_argv
+            and "f16" in optional_argv
+            and "--flash-attn" in optional_argv
+            and "--no-mmap" in optional_argv,
+            detail=str(optional_argv),
+        )
+
+        preset_path = tmp / "safe_profiles.ini"
+        _write_preset(
+            preset_path,
+            """
+[cpu_safe_ini]
+display_name = CPU safe
+description = Slow but reliable CPU launch.
+type = llama_server
+port = 18080
+ctx_size = 4096
+gpu_layers = 0
+threads = 8
+parallel = 1
+flash_attention = false
+mmap = true
+
+[gpu_balanced_16gb]
+display_name = GPU balanced 16GB
+description = Partial offload profile for large models.
+type = llama_server
+port = 18081
+ctx_size = 4096
+gpu_layers = 20
+threads = 8
+parallel = 1
+cache_type_k = q8_0
+flash_attention = true
+mmap = true
+""",
+        )
+        preset_loaded = _load_preset_config(tmp, root, ready_exe, preset_path)
+        preset_state = companion.CompanionState(preset_loaded)
+        preset_profiles = preset_state.process_manager.profiles if preset_state.process_manager else {}
+        preset_cpu = preset_profiles.get("cpu_safe_ini")
+        preset_gpu = preset_profiles.get("gpu_balanced_16gb")
+        preset_metadata = preset_state.server_profiles()
+        preset_blob = _blob(preset_metadata)
+        check(
+            "presets: valid INI profiles import into safe metadata",
+            preset_cpu is not None
+            and preset_gpu is not None
+            and {item["id"] for item in preset_metadata["profiles"]} == {"cpu_safe_ini", "gpu_balanced_16gb"}
+            and str(ready_exe) not in preset_blob
+            and str(tmp) not in preset_blob
+            and "executable_path" not in preset_blob
+            and "argv" not in preset_blob,
+            detail=preset_blob,
+        )
+        check(
+            "presets: CPU safe and GPU balanced defaults are bounded and avoid 999",
+            preset_cpu is not None
+            and preset_gpu is not None
+            and preset_cpu.parameter_map()["gpu_layers"].default == 0
+            and preset_gpu.parameter_map()["gpu_layers"].default == 20
+            and preset_gpu.parameter_map()["flash_attention"].default is True
+            and preset_gpu.parameter_map()["mmap"].default is True
+            and "999" not in _blob(preset_cpu.safe_metadata()["default_parameters"])
+            and "999" not in _blob(preset_gpu.safe_metadata()["default_parameters"]),
+            detail=preset_blob,
+        )
+
+        bad_injections = [
+            ("preset_bad_args", "[bad]\ntype = llama_server\nargs = --bad\n"),
+            ("preset_bad_command", "[bad]\ntype = llama_server\ncommand = llama-server -m /tmp/x\n"),
+            ("preset_bad_shell", "[bad]\ntype = llama_server\nshell = true\n"),
+            ("preset_bad_model_path", "[bad]\ntype = llama_server\nmodel_path = /tmp/model.gguf\n"),
+            ("preset_bad_executable", "[bad]\ntype = llama_server\nexecutable = /bin/sh\n"),
+            ("preset_bad_flags", "[bad]\ntype = llama_server\nfree_flags = --flash-attn\n"),
+        ]
+        check(
+            "presets: command/args/shell/model_path/executable/free-form keys rejected",
+            all(_preset_rejected(tmp, root, ready_exe, name, body) for name, body in bad_injections),
+        )
+        bad_typed_values = [
+            ("preset_bad_int", "[bad]\ntype = llama_server\ngpu_layers = fast\n"),
+            ("preset_bad_range", "[bad]\ntype = llama_server\ngpu_layers = 1000\n"),
+            ("preset_bad_bool", "[bad]\ntype = llama_server\nflash_attention = yes\n"),
+            ("preset_bad_enum", "[bad]\ntype = llama_server\ncache_type_k = not_allowed\n"),
+        ]
+        check(
+            "presets: invalid int/bool/enum values rejected",
+            all(_preset_rejected(tmp, root, ready_exe, name, body) for name, body in bad_typed_values),
+        )
+        no_expansion_cases = [
+            ("preset_env_int", "[bad]\ntype = llama_server\ngpu_layers = $LMM_GPU_LAYERS\n"),
+            ("preset_env_text", "[bad]\ntype = llama_server\ndescription = ${HOME}\n"),
+            ("preset_shell_text", "[bad]\ntype = llama_server\ndisplay_name = $(id)\n"),
+        ]
+        check(
+            "presets: env expansion and shell fragments from values are rejected",
+            all(_preset_rejected(tmp, root, ready_exe, name, body) for name, body in no_expansion_cases),
+        )
+        missing_exe_config = tmp / "preset_missing_executable.json"
+        missing_exe_config.write_text(
+            json.dumps(
+                {
+                    "approved_roots": [{"id": "models", "path": str(root), "recursive": True}],
+                    "token": "local-test-token",
+                    "process_runtime_dir": str(tmp / "runtime-missing-preset-exe"),
+                    "profile_preset_files": [str(preset_path)],
+                }
+            ),
+            encoding="utf-8",
+        )
+        try:
+            load_config(missing_exe_config)
+            missing_exe_rejected = False
+        except ConfigError:
+            missing_exe_rejected = True
+        check("presets: executable stays in JSON companion config", missing_exe_rejected)
 
         injected = _manager(tmp / "inject", cfg, ready_exe).start_managed_server(
             model_id,
@@ -274,6 +530,21 @@ def run() -> int:
             ready_stop["state"] == "stopped" and _pid_dead(ready_pid),
             detail=str(ready_stop),
         )
+
+        defaults_mgr = _manager(tmp / "defaults", cfg, ready_exe)
+        defaults_mgr._readiness_succeeded = lambda port: True
+        defaults_port = _free_port()
+        defaults_start = defaults_mgr.start_managed_server(model_id, "llama_cpp_gpu_default", {"port": defaults_port})
+        defaults_state = json.loads(defaults_mgr.state_path.read_text(encoding="utf-8"))
+        check(
+            "params: profile defaults are applied when omitted",
+            defaults_start["state"] == "running"
+            and defaults_state["params"]["ctx_size"] == 4096
+            and defaults_state["params"]["gpu_layers"] == 20
+            and defaults_state["params"]["threads"] == 8,
+            detail=str(defaults_state.get("params")),
+        )
+        defaults_mgr.stop_managed_server(grace_seconds=2)
 
         delayed_mgr = _manager(tmp / "delayed", cfg, ready_exe, timeout=3.0)
         readiness_at = time.monotonic() + 0.4

@@ -1,6 +1,6 @@
 # LOCAL_MODEL_MANAGER_PHASE2_DESIGN.md - Host companion and approved GGUF library
 
-> **Status: Phase 2G5 real Linux llama-server validation/hardening complete.** Phase 2A
+> **Status: Phase 2G7 operator setup docs + safe preset import complete.** Phase 2A
 > established the host-companion boundary.
 > Phase 2B adds a Linux-first, stdlib-only host companion prototype under
 > `tools/local_model_companion/` for approved-folder GGUF scanning and a
@@ -26,7 +26,10 @@
 > harness. Operator-run real Linux `llama-server` lifecycle validation passed in
 > CPU mode; a full GPU/offload stress attempt failed safely before readiness with
 > CUDA OOM and `model_may_be_too_large`, so high-GPU-offload validation has not
-> passed and practical GPU defaults still need Phase 2G6 polish.
+> passed. Phase 2G6 adds safe profile metadata, a profile selector, and typed
+> schema-driven controls without app-suggested settings. Phase 2G7 adds
+> `docs/LOCAL_MODEL_MANAGER_OPERATOR_SETUP.md` and optional `.ini` profile-default
+> import from explicit companion config into the same whitelist schema.
 > There is still no production Docker Compose mount, Provider Settings write, Ask
 > change, dependency addition, local provider base-URL/model behavior change,
 > direct companion frontend call, host-gateway TCP, Docker socket, privileged
@@ -585,9 +588,12 @@ safe response fields.
   readiness polling, lifecycle hardening, safe error classification, and live
   validation harness. Operator-run CPU lifecycle validation passed; full
   GPU/offload stress failed safely with CUDA OOM and `model_may_be_too_large`.
-- **Phase 2G6:** real-profile UI/defaults polish: expose configured real
-  profiles safely, avoid unsafe `gpu_layers=999` defaults for large models, add
-  safer CPU and low-memory GPU presets, and defer advanced/manual controls.
+- **Phase 2G6:** DONE. Real-profile metadata and schema-driven UI controls:
+  configured profiles are exposed safely, unsafe `gpu_layers=999` defaults are
+  avoided in fixtures, and advanced/manual controls remain deferred.
+- **Phase 2G7:** DONE. Linux-first operator setup docs plus optional safe `.ini`
+  profile-default import from explicit companion config into the existing
+  whitelist/schema path; no app-suggested settings.
 - **Later:** packaging/signing and cross-platform installers.
 
 Each slice must preserve the boundary: Docker backend talks to the companion; the
@@ -1811,11 +1817,9 @@ Explicit non-goals preserved in Phase 2G5:
 - No Windows/macOS process support.
 - No Ollama/simple-local-model path in this slice.
 
-Next recommended slice is Phase 2G6 real-profile UI/defaults polish: expose
-configured real profiles safely, avoid unsafe `gpu_layers=999` defaults for large
-models, add safer presets such as CPU and low-memory GPU, and defer
-advanced/manual controls. Provider Settings writes remain out of scope unless
-explicitly confirmed.
+Phase 2G6 completed the real-profile metadata and typed-controls polish. Phase
+2G7 then added operator setup docs and optional safe `.ini` import. Provider
+Settings writes remain out of scope unless explicitly confirmed.
 
 ## 24. Phase 2G6 Real-Profile Metadata And Safe Parameter Controls
 
@@ -1939,10 +1943,10 @@ Frontend behavior:
 
 Preset status:
 
-- `.ini` preset-file import is deferred.
-- Future preset import must parse into the same whitelist schema; no arbitrary
-  flags, shell fragments, environment expansion, or frontend-supplied preset
-  paths.
+- `.ini` preset-file import is implemented in Phase 2G7.
+- Presets parse into the same whitelist schema; no arbitrary flags, shell
+  fragments, environment expansion, frontend-supplied preset paths, executable
+  paths, or model paths are allowed.
 - App-suggested settings are deferred until more real validation exists.
 
 2G5 validation context remains important:
@@ -1966,3 +1970,93 @@ Explicit non-goals preserved in Phase 2G6:
 - No free-form command input, arbitrary flags, raw shell commands, or arbitrary
   JSON editor.
 - No Windows/macOS process support.
+
+## 25. Phase 2G7 Operator Setup Docs And Safe Preset Import
+
+Phase 2G7 makes real local model setup easier without having the app suggest
+hardware settings. The operator remains responsible for executable paths,
+approved model roots, tokens, runtime dirs, and profile defaults.
+
+Operator documentation:
+
+- Added `docs/LOCAL_MODEL_MANAGER_OPERATOR_SETUP.md`.
+- Linux first; Windows/macOS remain deferred.
+- Covers finding `llama-server` with `command -v llama-server` and
+  `readlink -f /proc/<pid>/exe`.
+- Covers approved root selection, example companion JSON, runtime dir, token
+  handling, safe CPU / low-memory GPU / balanced GPU profile examples, Unix
+  socket Docker mount concept, backend env vars, live validation harness, and
+  troubleshooting.
+- Documents that Phase 2G5 CPU validation passed and the full
+  `gpu_layers=999` offload stress failed safely as `model_may_be_too_large` /
+  CUDA OOM.
+
+`.ini` preset import:
+
+- Implemented in `tools/local_model_companion/config.py` using Python stdlib
+  `configparser` with interpolation disabled.
+- Preset file paths are explicit companion JSON config only via
+  `profile_preset_files`; they are never frontend-provided.
+- Imported profiles use the same `ProcessProfileConfig` ->
+  `real_llama_server_profile` path as JSON-backed profiles.
+- The executable for imported presets stays in companion JSON via
+  `llama_server_executable`; preset files cannot provide executable paths.
+- Unknown keys are rejected, not ignored.
+- `DEFAULT` section values are rejected.
+- Duplicate imported/profile ids are rejected.
+- Values are typed and bounded before profile construction:
+  `port`, `ctx_size`, `gpu_layers`, `threads`, `parallel`,
+  `cache_type_k`, `cache_type_v`, `flash_attention`, and `mmap`.
+- Invalid integer, boolean, enum, out-of-range, environment-expansion, shell
+  fragment, command/path-like, and free-form flag values are rejected.
+- Rejected keys include command/launch concepts such as `command`, `args`,
+  `shell`, `model_path`, `executable`, and arbitrary free-form flag keys because
+  they are not in the whitelist.
+
+Example:
+
+```json
+{
+  "llama_server_executable": "/usr/bin/llama-server",
+  "profile_preset_files": ["/path/to/lmm-profiles.ini"]
+}
+```
+
+```ini
+[cpu_safe]
+display_name = CPU safe
+description = Slow but reliable CPU launch.
+type = llama_server
+port = 18080
+ctx_size = 4096
+gpu_layers = 0
+threads = 8
+parallel = 1
+flash_attention = false
+mmap = true
+
+[gpu_balanced_16gb]
+display_name = GPU balanced 16GB
+description = Partial offload profile for large models.
+type = llama_server
+port = 18081
+ctx_size = 4096
+gpu_layers = 20
+threads = 8
+parallel = 1
+flash_attention = true
+mmap = true
+```
+
+Scope preserved:
+
+- No app-suggested settings or AI-generated recommendations.
+- No Provider Settings writes.
+- No Ask changes.
+- No permanent Docker Compose changes.
+- No frontend UI changes.
+- No free-form flags or raw shell command execution.
+- No model download manager.
+- No host-gateway TCP, Docker socket, privileged container, or host PID
+  namespace.
+- No token/socket/absolute path/raw argv exposure through public DTOs.
