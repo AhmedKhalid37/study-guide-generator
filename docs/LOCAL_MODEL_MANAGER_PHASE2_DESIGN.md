@@ -1,7 +1,7 @@
 # LOCAL_MODEL_MANAGER_PHASE2_DESIGN.md - Host companion and approved GGUF library
 
-> **Status: Phase 2G10 runtime-service/operator packaging docs complete.** Phase 2A
-> established the host-companion boundary.
+> **Status: Phase 2G11 final hardening/regression complete; current safe Phase 2
+> milestone paused.** Phase 2A established the host-companion boundary.
 > Phase 2B adds a Linux-first, stdlib-only host companion prototype under
 > `tools/local_model_companion/` for approved-folder GGUF scanning and a
 > Unix-domain-socket API contract. Phase 2C adds a backend-only, read-only bridge
@@ -33,10 +33,13 @@
 > 2G8 adds a live/manual real configured-profile E2E harness through the actual
 > companion -> Docker backend -> Local Models backend path. Operator-run E2E
 > validation passed in CPU-safe mode with `/usr/bin/llama-server`,
+> `LMM_REAL_MODEL_ROOT=/mnt/ai/llm-models`,
 > `gemma-4-26B-A4B-it-UD-Q4_K_M.gguf`, `port=18080`, `ctx_size=4096`,
 > `gpu_layers=0`, and `threads=8`: the backend path reached `/v1/models`,
-> stopped cleanly, and released the port. GPU validation remains separate and
-> has not passed. Phase 2G9 updates the Local Models setup UX and manual command
+> stopped cleanly, and released the port. Full offload `gpu_layers=999` failed
+> safely with CUDA OOM / `model_may_be_too_large` on the 26B model and is not a
+> default. GPU validation remains separate and has not passed. Phase 2G9 updates
+> the Local Models setup UX and manual command
 > helper defaults: approved folders are explicitly presented as companion-config
 > `approved_roots`, not a browser folder picker; saved selections are labeled as
 > unconfirmed when the companion is unconfigured; CPU-safe/balanced/low-memory
@@ -46,11 +49,23 @@
 > `docs/LOCAL_MODEL_MANAGER_RUNTIME_SERVICE.md` and safe example companion
 > config, `.ini` presets, systemd user service, and temporary Docker override
 > files under `docs/examples/`.
+> Phase 2G11 adds `test_scripts/test_lmm_phase2_final_regression.py`, a
+> pure/offline harness covering runtime-service examples/placeholders, example
+> JSON/INI parsing through the companion loader, Compose/systemd template
+> boundaries, backend DTO redaction, CPU-safe defaults, risky-only
+> `gpu_layers=999` scope, no LMM Provider Settings writes, no Ask coupling, no
+> direct frontend companion calls, no production Compose companion mount/env,
+> companion-config-only approved roots, no browser folder picker, and safe
+> selected-model fields. After 2G11, the current safe LMM Phase 2 milestone is
+> complete/paused.
 > There is still no production Docker Compose mount, Provider Settings write, Ask
 > change, dependency addition, local provider base-URL/model behavior change,
 > direct companion frontend call, host-gateway TCP, Docker socket, privileged
 > container, host PID namespace, automatic restart loop, model download manager,
 > multi-server pool, or Windows/macOS process control.
+> Deferred future work remains: approve-root flow design/implementation,
+> app-suggested settings/recommendations, Ollama/simple-local-model path,
+> Windows/macOS packaging/support, and model downloads.
 
 ---
 

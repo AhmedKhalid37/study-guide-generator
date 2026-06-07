@@ -5,7 +5,43 @@
 
 ---
 
-## NEXT — LMM Phase 2G10 runtime-service/operator packaging docs DONE.
+## NEXT — LMM Phase 2G11 final hardening/regression DONE; Phase 2 paused.
+
+- **Local Model Manager Phase 2G11 is DONE** on branch
+  `lmm-phase2g11-final-hardening`.
+- **Current safe LMM Phase 2 milestone is complete/paused.** The implemented
+  Linux path remains: host companion, approved-root GGUF scanning,
+  Unix-socket-only backend bridge, model-library UI, selected-model handoff,
+  companion-managed server controls, real `llama-server` lifecycle hardening,
+  safe real-profile metadata/typed controls, `.ini` preset import, configured
+  real-profile E2E harness, runtime setup UX, and runtime-service/operator docs.
+- **Final offline regression harness added:**
+  `test_scripts/test_lmm_phase2_final_regression.py` validates runtime-service
+  example files/placeholders, JSON/INI parsing through the companion preset
+  loader, Compose/systemd template boundaries, backend/profile DTO redaction,
+  CPU-safe/manual helper defaults, risky-only `gpu_layers=999` scope, no LMM
+  Provider Settings writes, no Ask coupling, no direct frontend companion calls,
+  no permanent production Compose companion mount/env, companion-config-only
+  approved roots, no browser folder picker, and safe selected-model fields.
+- **Validation facts preserved:** CPU-safe real validation passed with
+  `/usr/bin/llama-server`, `LMM_REAL_MODEL_ROOT=/mnt/ai/llm-models`,
+  `gemma-4-26B-A4B-it-UD-Q4_K_M.gguf`, `port=18080`, `ctx_size=4096`,
+  `gpu_layers=0`, and `threads=8`. Full offload `gpu_layers=999` failed safely
+  with CUDA OOM / `model_may_be_too_large` on the 26B model and is not a default.
+- **Scope preserved:** tests/docs only; no production backend behavior change,
+  no frontend UI change, no Ask change, no Provider Settings write, no permanent
+  Docker Compose change, no installer/autostart behavior, no committed token,
+  no token/socket/absolute host model path/executable path/raw argv exposure, no
+  browser folder picker, no approve-root implementation, no model download
+  manager, and no app-suggested settings.
+- **Deferred after pause:** approve-root flow design and implementation,
+  app-suggested settings/recommendations, Ollama/simple-local-model path,
+  Windows/macOS packaging/support, and model downloads.
+- **Recommended next slice:** pause LMM Phase 2 and move to another planned area;
+  resume LMM only with a separately designed approve-root flow or packaging
+  slice.
+
+## Previous — LMM Phase 2G10 runtime-service/operator packaging docs DONE.
 
 - **Local Model Manager Phase 2G10 is DONE** on branch
   `lmm-phase2g10-runtime-service-docs`.
@@ -35,9 +71,6 @@
   permanent Docker Compose change, no actual installer, no app-installed system
   service, no committed token, no model download manager, and no app-suggested
   settings.
-- **Recommended next slice:** operator review / live dry-run of the documented
-  service flow, or a separately designed host-companion approve-root flow if
-  in-app root management is still desired.
 
 ## Previous — LMM Phase 2G9 approved-folder setup UX polish DONE.
 

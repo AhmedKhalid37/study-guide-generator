@@ -299,13 +299,30 @@ flashcards with CSV / Anki / Quizlet export.
   2G8 real-profile E2E env, troubleshooting, and the LMM security checklist.
   Templates use placeholders only (`/mnt/ai/llm-models`,
   `/usr/bin/llama-server`, `replace-with-local-token`) and keep tokens
-  server-side. There is still no permanent Docker Compose mount, Provider
-  Settings write, Ask change, dependency addition, local provider base-URL/model
-  behavior change, direct companion frontend call, host-gateway TCP,
-  shell/free-form args UI, browser storage, token/socket exposure in UI, direct
-  Docker host process control, direct host filesystem scan, automatic restart
-  loop, model download manager, multi-server pool, Windows/macOS process
-  control, or absolute host path/raw argv rendering.
+  server-side. Phase 2G11 adds the pure/offline final regression harness
+  `test_scripts/test_lmm_phase2_final_regression.py` and reconciles docs. It
+  verifies runtime-service examples/placeholders, example JSON/INI parsing
+  through the companion loader, Compose/systemd template boundaries, backend DTO
+  redaction, CPU-safe/balanced/low-memory defaults, risky-only
+  `gpu_layers=999` scope, no LMM Provider Settings writes, no Ask coupling, no
+  direct frontend companion calls, no production Compose companion mount/env,
+  companion-config-only approved roots, no browser folder picker, and safe
+  selected-model fields. **The current safe LMM Phase 2 milestone is
+  complete/paused after Phase 2G11.** CPU-safe real validation passed with
+  `/usr/bin/llama-server`, `LMM_REAL_MODEL_ROOT=/mnt/ai/llm-models`,
+  `gemma-4-26B-A4B-it-UD-Q4_K_M.gguf`, `port=18080`, `ctx_size=4096`,
+  `gpu_layers=0`, and `threads=8`; full offload `gpu_layers=999` failed safely
+  with CUDA OOM / `model_may_be_too_large` on the 26B model and is not a
+  default. Still deferred: approve-root flow design/implementation,
+  app-suggested settings/recommendations, Ollama/simple-local-model path,
+  Windows/macOS support/packaging, and model downloads. There is still no
+  permanent Docker Compose mount, Provider Settings write, Ask change,
+  dependency addition, local provider base-URL/model behavior change, direct
+  companion frontend call, host-gateway TCP, shell/free-form args UI, browser
+  storage, token/socket exposure in UI, direct Docker host process control,
+  direct host filesystem scan, automatic restart loop, model download manager,
+  multi-server pool, Windows/macOS process control, or absolute host path/raw
+  argv rendering.
 - **Ask Your Guide — IN PROGRESS (Slice 1 design DONE; Slice 2 backend context
   inventory DONE; Slice 3 backend context preparation / chunking DONE; inserted
   workspace shell DONE; backend local chat API DONE; frontend chat UI wiring DONE;

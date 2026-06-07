@@ -10,13 +10,33 @@
 - **Trunk includes:** `af0ec0e` (Ask Slice 1 design), `2634f63` (Ask Slice 2 context
   inventory), `a29a405` (Ask Slice 3 context preparation), and the inserted Ask
   workspace shell, on top of the validated LMM group and prior feature groups.
-- **Active work branch:** `lmm-phase2g10-runtime-service-docs` — Local Model
-  Manager Phase 2G10 companion runtime-service/operator packaging docs.
-  **NEXT = validation / review or live dry-run of the documented service flow,
-  then a separately designed host-companion approve-root flow if desired.
-  App-suggested settings remain deferred.**
+- **Active work branch:** `lmm-phase2g11-final-hardening` — Local Model Manager
+  Phase 2G11 final hardening/regression pass.
+  **NEXT = pause LMM Phase 2. Resume only with a separately designed
+  approve-root flow or packaging slice. App-suggested settings remain deferred.**
 
 ## What just landed
+- **Local Model Manager Phase 2G11 — final hardening/regression pass** (branch
+  `lmm-phase2g11-final-hardening`). Added the pure/offline final harness
+  `test_scripts/test_lmm_phase2_final_regression.py`. It validates the
+  runtime-service examples and placeholders, example JSON parsing, `.ini` preset
+  parsing through the companion loader, safe Compose/systemd template boundaries,
+  backend/server/profile DTO redaction, CPU-safe/balanced/low-memory manual
+  defaults, risky-only `gpu_layers=999` scope, no LMM Provider Settings writes,
+  no Ask coupling, no direct frontend companion calls, no production Compose
+  companion mount/env, companion-config-only approved roots, no browser folder
+  picker, and safe selected-model persistence. No production backend behavior,
+  frontend UI, Ask, Provider Settings, Docker Compose, installer/autostart,
+  model download, or settings-recommendation behavior changed. **The current
+  safe LMM Phase 2 milestone is complete/paused after 2G11.** Real validation
+  facts remain: CPU-safe validation passed with `/usr/bin/llama-server`,
+  `LMM_REAL_MODEL_ROOT=/mnt/ai/llm-models`,
+  `gemma-4-26B-A4B-it-UD-Q4_K_M.gguf`, `port=18080`, `ctx_size=4096`,
+  `gpu_layers=0`, and `threads=8`; full offload `gpu_layers=999` failed safely
+  with CUDA OOM / `model_may_be_too_large` on the 26B model and is not a
+  default. Deferred: approve-root flow design/implementation, app-suggested
+  settings/recommendations, Ollama/simple-local-model path, Windows/macOS
+  support/packaging, and model downloads.
 - **Local Model Manager Phase 2G10 — companion runtime-service/operator
   packaging docs** (branch `lmm-phase2g10-runtime-service-docs`). Added
   `docs/LOCAL_MODEL_MANAGER_RUNTIME_SERVICE.md` plus safe templates under
