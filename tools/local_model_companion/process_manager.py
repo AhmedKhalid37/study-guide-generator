@@ -1,7 +1,8 @@
 """Private process-control internals for the local model companion.
 
-Phase 2G1 exposes no HTTP route and launches no real llama-server profile. The
-only runnable profile is supplied by tests/config as a safe fake executable.
+Phase 2G5 supports explicit Linux llama-server profiles from companion config.
+The backend/frontend request can still supply only model id, profile id, and
+typed bounded parameters.
 """
 
 from __future__ import annotations
@@ -13,6 +14,7 @@ import signal
 import socket
 import subprocess
 import time
+from http.client import HTTPConnection
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
@@ -27,6 +29,7 @@ STATE_FILENAME = "managed_server_state.json"
 LOG_FILENAME = "managed_server.log"
 MAX_LOG_BYTES = 64 * 1024
 MAX_LOG_TAIL_BYTES = 4096
+READINESS_PATH = "/v1/models"
 
 
 @dataclass(frozen=True)
@@ -105,21 +108,19 @@ class ManagedServerProcessManager:
                 stderr=subprocess.STDOUT,
                 close_fds=True,
                 shell=False,
+                start_new_session=True,
             )
         except OSError as exc:
             log_handle.close()
-            return self._stopped_error("launch_failed", f"unable to launch executable: {exc.__class__.__name__}")
+            category = "permission_denied" if isinstance(exc, PermissionError) else "process_start_failed"
+            return self._error_status(category, f"unable to launch executable: {exc.__class__.__name__}")
 
         started_at = _now_iso()
-        time.sleep(0.05)
-        if process.poll() is not None:
-            process.wait(timeout=0)
-            log_handle.close()
-            return self._stopped_error("launch_failed", "managed process exited immediately")
-
-        state = {
+        process_group_id = self._process_group_id(process.pid)
+        starting_state = {
             "version": STATE_VERSION,
             "pid": process.pid,
+            "process_group_id": process_group_id,
             "model_id": model.model_id,
             "root_id": model.root_id,
             "profile_id": profile.profile_id,
@@ -131,9 +132,50 @@ class ManagedServerProcessManager:
             "process_start_ticks": self._proc_start_ticks(process.pid),
             "private_model_path": str(model.path),
             "argv_redacted": self._redacted_argv(argv, model.path),
-            "status": "running",
+            "status": "starting",
             "last_error": None,
             "log_path": str(self.log_path),
+            "requires_readiness": profile.requires_readiness,
+            "readiness_deadline_epoch": time.time() + profile.readiness_timeout_seconds,
+        }
+        self._write_state(starting_state)
+        time.sleep(0.05)
+        if process.poll() is not None:
+            process.wait(timeout=0)
+            log_handle.close()
+            state = {
+                **starting_state,
+                "status": "crashed",
+                "last_error": "managed process exited before readiness",
+                "last_error_category": self._classify_log_tail("process_crashed"),
+            }
+            self._write_state(state)
+            return self._safe_status(
+                state,
+                public_state="crashed",
+                error_category=str(state["last_error_category"]),
+            )
+
+        if profile.requires_readiness:
+            readiness = self._wait_for_readiness(process, port, profile)
+            if readiness is not None:
+                log_handle.close()
+                category, message, state_name = readiness
+                self._terminate_process_group(process.pid, process_group_id, grace_seconds=3.0)
+                state = {
+                    **starting_state,
+                    "status": state_name,
+                    "last_error": message,
+                    "last_error_category": category,
+                }
+                self._write_state(state)
+                return self._safe_status(state, public_state=state_name, error_category=category, error_message=message)
+
+        state = {
+            **starting_state,
+            "status": "running",
+            "last_error": None,
+            "last_error_category": None,
         }
         self._write_state(state)
         log_handle.close()
@@ -159,43 +201,11 @@ class ManagedServerProcessManager:
             self._clear_state()
             return self._status_payload("not_running", error_category="not_running")
 
-        timeout = max(0.1, min(float(grace_seconds), 30.0))
-        try:
-            os.kill(pid, signal.SIGTERM)
-        except ProcessLookupError:
-            self._clear_state()
-            return self._status_payload("stale_pid", error_category="stale_pid")
-        except OSError as exc:
-            return self._safe_status(state, public_state="unknown", error_category="stop_failed", error_message=exc.__class__.__name__)
-
-        deadline = time.monotonic() + timeout
-        while time.monotonic() < deadline:
-            if self._check_identity(state) == "dead":
-                self._reap_if_child(pid)
-                self._clear_state()
-                return self._status_payload("stopped")
-            time.sleep(0.05)
-
-        if self._check_identity(state) != "running":
-            next_state = {**state, "status": "unknown", "last_error": "tracked PID identity changed before force kill"}
-            self._write_state(next_state)
-            return self._safe_status(next_state, public_state="unknown", error_category="identity_uncertain")
-        try:
-            os.kill(pid, signal.SIGKILL)
-        except ProcessLookupError:
+        stopped, category = self._terminate_tracked_state(state, grace_seconds=max(0.1, min(float(grace_seconds), 30.0)))
+        if stopped:
             self._clear_state()
             return self._status_payload("stopped")
-        except OSError as exc:
-            return self._safe_status(state, public_state="unknown", error_category="stop_failed", error_message=exc.__class__.__name__)
-
-        deadline = time.monotonic() + 2.0
-        while time.monotonic() < deadline:
-            if self._check_identity(state) == "dead":
-                self._reap_if_child(pid)
-                self._clear_state()
-                return self._status_payload("stopped")
-            time.sleep(0.05)
-        return self._safe_status(state, public_state="unknown", error_category="stop_timeout")
+        return self._safe_status(state, public_state="unknown", error_category=category or "stop_timeout")
 
     def get_managed_server_status(self) -> dict[str, object]:
         self._ensure_runtime_dir()
@@ -204,8 +214,29 @@ class ManagedServerProcessManager:
             return self._status_payload("stopped")
         identity = self._check_identity(state)
         if identity == "running":
+            if state.get("status") == "starting":
+                return self._status_for_starting_process(state)
             return self._safe_status(state, public_state="running")
         if identity == "dead":
+            if state.get("status") in {"error", "crashed"}:
+                return self._safe_status(
+                    state,
+                    public_state=str(state.get("status")),
+                    error_category=_safe_str(state.get("last_error_category")) or "process_crashed",
+                )
+            if state.get("status") in {"starting", "running"} and _int_or_none(state.get("process_group_id")) is not None:
+                next_state = {
+                    **state,
+                    "status": "crashed",
+                    "last_error": "tracked process exited unexpectedly",
+                    "last_error_category": self._classify_log_tail("process_crashed"),
+                }
+                self._write_state(next_state)
+                return self._safe_status(
+                    next_state,
+                    public_state="crashed",
+                    error_category=_safe_str(next_state.get("last_error_category")) or "process_crashed",
+                )
             next_state = {**state, "status": "stopped", "last_error": "tracked process is no longer running"}
             self._write_state(next_state)
             return self._safe_status(next_state, public_state="stopped", error_category="stale_pid")
@@ -259,7 +290,7 @@ class ManagedServerProcessManager:
         except OSError as exc:
             raise ProcessManagerError("executable_not_allowed", "profile executable could not be resolved") from exc
         if not executable.is_file() or not os.access(executable, os.X_OK):
-            raise ProcessManagerError("executable_not_allowed", "profile executable is not executable")
+            raise ProcessManagerError("permission_denied", "profile executable is not executable")
         return executable
 
     def _build_argv(
@@ -272,6 +303,7 @@ class ManagedServerProcessManager:
         values = {
             "executable": str(executable),
             "model_path": str(model_path),
+            "host": profile.host or "127.0.0.1",
             **{name: "" if value is None else str(value) for name, value in params.items()},
         }
         argv: list[str] = []
@@ -289,6 +321,144 @@ class ManagedServerProcessManager:
             raise ProcessManagerError("invalid_profile", "profile argv must start with the configured executable")
         return argv
 
+    def _wait_for_readiness(
+        self,
+        process: subprocess.Popen[bytes],
+        port: int,
+        profile: LaunchProfile,
+    ) -> tuple[str, str, str] | None:
+        deadline = time.monotonic() + profile.readiness_timeout_seconds
+        interval = max(0.05, min(float(profile.readiness_interval_seconds), 2.0))
+        while time.monotonic() < deadline:
+            if process.poll() is not None:
+                try:
+                    process.wait(timeout=0)
+                except subprocess.TimeoutExpired:
+                    pass
+                category = self._classify_log_tail("process_crashed")
+                return category, "managed process exited before readiness", "crashed"
+            if self._readiness_succeeded(port):
+                return None
+            time.sleep(interval)
+        category = self._classify_log_tail("readiness_timeout")
+        if category == "readiness_timeout":
+            return category, "managed process did not become ready before timeout", "error"
+        return category, "managed process failed before readiness", "error"
+
+    def _readiness_succeeded(self, port: int) -> bool:
+        conn: HTTPConnection | None = None
+        try:
+            conn = HTTPConnection("127.0.0.1", int(port), timeout=1.0)
+            conn.request("GET", READINESS_PATH, headers={"Accept": "application/json"})
+            response = conn.getresponse()
+            response.read(64 * 1024)
+            return 200 <= int(response.status) < 300
+        except OSError:
+            return False
+        except Exception:
+            return False
+        finally:
+            if conn is not None:
+                try:
+                    conn.close()
+                except Exception:
+                    pass
+
+    def _status_for_starting_process(self, state: dict[str, Any]) -> dict[str, object]:
+        port = _int_or_none(state.get("port"))
+        if port is not None and state.get("requires_readiness") is True and self._readiness_succeeded(port):
+            next_state = {**state, "status": "running", "last_error": None, "last_error_category": None}
+            self._write_state(next_state)
+            return self._safe_status(next_state, public_state="running")
+
+        deadline_epoch = state.get("readiness_deadline_epoch")
+        if isinstance(deadline_epoch, (int, float)) and time.time() >= float(deadline_epoch):
+            category = self._classify_log_tail("readiness_timeout")
+            stopped, _ = self._terminate_tracked_state(state, grace_seconds=3.0)
+            next_state = {
+                **state,
+                "status": "error",
+                "last_error": "managed process did not become ready before timeout",
+                "last_error_category": category,
+            }
+            if stopped:
+                self._write_state(next_state)
+            return self._safe_status(
+                next_state,
+                public_state="error",
+                error_category=category,
+                error_message="managed process did not become ready before timeout",
+            )
+        return self._safe_status(state, public_state="starting")
+
+    def _terminate_tracked_state(self, state: dict[str, Any], *, grace_seconds: float) -> tuple[bool, str | None]:
+        if self._check_identity(state) != "running":
+            return False, "identity_uncertain"
+        pid = _int_or_none(state.get("pid"))
+        pgid = _int_or_none(state.get("process_group_id"))
+        if pid is None:
+            return True, None
+        return self._terminate_process_group(pid, pgid, grace_seconds=grace_seconds)
+
+    def _terminate_process_group(self, pid: int, pgid: int | None, *, grace_seconds: float) -> tuple[bool, str | None]:
+        target_group = pgid if pgid and pgid > 0 else pid
+        try:
+            current_group = os.getpgid(pid)
+        except ProcessLookupError:
+            return True, None
+        except OSError:
+            return False, "identity_uncertain"
+        if current_group != target_group:
+            return False, "identity_uncertain"
+
+        try:
+            os.killpg(target_group, signal.SIGTERM)
+        except ProcessLookupError:
+            return True, None
+        except OSError:
+            return False, "stop_failed"
+
+        deadline = time.monotonic() + max(0.1, min(float(grace_seconds), 30.0))
+        while time.monotonic() < deadline:
+            if self._pid_dead(pid):
+                self._reap_if_child(pid)
+                return True, None
+            time.sleep(0.05)
+
+        try:
+            if os.getpgid(pid) != target_group:
+                return False, "identity_uncertain"
+        except ProcessLookupError:
+            return True, None
+        except OSError:
+            return False, "identity_uncertain"
+        try:
+            os.killpg(target_group, signal.SIGKILL)
+        except ProcessLookupError:
+            return True, None
+        except OSError:
+            return False, "stop_failed"
+
+        deadline = time.monotonic() + 2.0
+        while time.monotonic() < deadline:
+            if self._pid_dead(pid):
+                self._reap_if_child(pid)
+                return True, None
+            time.sleep(0.05)
+        return False, "stop_timeout"
+
+    def _process_group_id(self, pid: int) -> int | None:
+        try:
+            return os.getpgid(pid)
+        except OSError:
+            return None
+
+    def _pid_dead(self, pid: int) -> bool:
+        proc = Path("/proc") / str(pid)
+        if not proc.exists():
+            return True
+        return self._proc_state(pid) == "Z"
+
     def _check_identity(self, state: dict[str, Any]) -> str:
         pid = _int_or_none(state.get("pid"))
         if pid is None or pid <= 0:
@@ -305,6 +475,13 @@ class ManagedServerProcessManager:
         expected_ticks = _int_or_none(state.get("process_start_ticks"))
         if current_ticks is not None and expected_ticks is not None and current_ticks != expected_ticks:
             return "foreign"
+        expected_group = _int_or_none(state.get("process_group_id"))
+        if expected_group is not None:
+            try:
+                if os.getpgid(pid) != expected_group:
+                    return "foreign"
+            except OSError:
+                return "identity_uncertain"
 
         expected_path = Path(expected_exe)
         cmdline = self._proc_cmdline(pid)
@@ -481,7 +658,7 @@ class ManagedServerProcessManager:
         return {
             "ok": True,
             "state": state,
-            "managed": state in {"running", "already_running"},
+            "managed": state in {"starting", "running", "already_running"},
             "model_id": model_id,
             "root_id": root_id,
             "profile_id": profile_id,
@@ -493,7 +670,10 @@ class ManagedServerProcessManager:
         }
 
     def _stopped_error(self, category: str, message: str) -> dict[str, object]:
-        return self._status_payload("stopped", error_category=category, error_message=message)
+        return self._error_status(category, message)
+
+    def _error_status(self, category: str, message: str) -> dict[str, object]:
+        return self._status_payload("error", error_category=category, error_message=message)
 
     def _safe_log_tail(self) -> str | None:
         try:
@@ -508,6 +688,40 @@ class ManagedServerProcessManager:
         if size > MAX_LOG_TAIL_BYTES and "\n" in text:
             text = text.split("\n", 1)[1]
         return _sanitize_text(text)[-MAX_LOG_TAIL_BYTES:]
+
+    def _classify_log_tail(self, default_category: str) -> str:
+        text = (self._safe_log_tail() or "").lower()
+        if any(
+            hint in text
+            for hint in (
+                "out of memory",
+                "cannot allocate memory",
+                "failed to allocate",
+                "cuda error",
+                "cuda malloc",
+                "vram",
+                "oom",
+            )
+        ):
+            return "model_may_be_too_large"
+        if any(
+            hint in text
+            for hint in (
+                "failed to load",
+                "error loading model",
+                "invalid gguf",
+                "bad gguf",
+                "not a gguf",
+                "llama_model_load",
+                "model load failed",
+            )
+        ):
+            return "model_load_failed"
+        if any(hint in text for hint in ("address already in use", "port already in use", "bind: address in use")):
+            return "port_in_use"
+        if any(hint in text for hint in ("permission denied", "operation not permitted")):
+            return "permission_denied"
+        return default_category
 
     def _redacted_argv(self, argv: list[str], model_path: Path) -> list[str]:
         redacted: list[str] = []

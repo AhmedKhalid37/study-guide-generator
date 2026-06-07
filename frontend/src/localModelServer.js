@@ -43,11 +43,17 @@ const ERROR_LABELS = {
   invalid_parameters: "The launch parameters were rejected.",
   unknown_model: "The saved selected model is not available in the companion library.",
   unknown_profile: "The test launch profile is not available.",
+  executable_missing: "The configured server executable was not found.",
+  permission_denied: "The configured server executable is not runnable.",
   companion_config: "Companion is not configured.",
   companion_offline: "Companion is offline.",
   companion_timeout: "Companion did not respond in time.",
   companion_auth: "Companion authentication failed.",
+  model_load_failed: "The selected model could not be loaded.",
+  model_may_be_too_large: "The selected model may be too large for available memory.",
+  readiness_timeout: "The managed server did not become ready in time.",
   process_start_failed: "The companion-managed process did not start.",
+  process_crashed: "The companion-managed process exited unexpectedly.",
   process_error: "Companion process state is unavailable.",
 };
 

@@ -20,7 +20,7 @@ from .process_manager import (
     start_managed_server,
     stop_managed_server,
 )
-from .profiles import LaunchProfile, fake_test_profile
+from .profiles import LaunchProfile, ProfileError, fake_test_profile, real_llama_server_profile
 
 MAX_JSON_BODY_BYTES = 64 * 1024
 MAX_HTTP_LOG_LINES = 50
@@ -32,9 +32,6 @@ RESTART_FIELDS = {"reuse_last", "model_id", "profile_id", "parameters"}
 ERROR_CATEGORY_MAP = {
     "invalid_profile": "unknown_profile",
     "invalid_parameter": "invalid_parameters",
-    "launch_failed": "process_start_failed",
-    "executable_missing": "process_start_failed",
-    "executable_not_allowed": "process_start_failed",
     "stale_pid": "stale_process",
     "identity_uncertain": "stale_process",
     "stop_failed": "process_stop_failed",
@@ -75,7 +72,7 @@ class CompanionState:
         if self.process_manager is None:
             return _public_server_status(
                 _status_payload(
-                    "stopped",
+                    "error",
                     error_category="process_error",
                     error_message="process manager is not configured",
                 )
@@ -289,6 +286,19 @@ def _launch_profiles_from_config(config: CompanionConfig) -> list[LaunchProfile]
     for item in config.profiles:
         if item.id == "fake_test":
             profiles.append(fake_test_profile(item.executable))
+        else:
+            try:
+                profiles.append(
+                    real_llama_server_profile(
+                        item.id,
+                        item.executable,
+                        host=item.host or "127.0.0.1",
+                        default_parameters=item.default_parameters or {},
+                        readiness_timeout_seconds=item.readiness_timeout_seconds or 30.0,
+                    )
+                )
+            except ProfileError:
+                continue
     return profiles
 
 
@@ -301,7 +311,7 @@ def _validate_start_payload(payload: dict[str, object], manager: ManagedServerPr
     if not isinstance(profile_id, str) or not profile_id.strip():
         return _status_payload("stopped", error_category="unknown_profile", error_message="profile_id is required")
     if profile_id not in manager.profiles:
-        return _status_payload("stopped", error_category="unknown_profile", error_message="unknown launch profile")
+        return _status_payload("error", error_category="unknown_profile", error_message="unknown launch profile")
     if parameters is None:
         parameters = {}
     if not isinstance(parameters, dict):
@@ -330,7 +340,7 @@ def _status_payload(
     return {
         "ok": True,
         "state": state,
-        "managed": state in {"running", "already_running"},
+        "managed": state in {"starting", "running", "already_running"},
         "model_id": None,
         "profile_id": None,
         "port": None,
@@ -352,8 +362,14 @@ def _public_server_status(payload: dict[str, object]) -> dict[str, object]:
             "unknown_model",
             "unknown_profile",
             "invalid_parameters",
+            "executable_missing",
+            "permission_denied",
             "port_in_use",
+            "model_load_failed",
+            "model_may_be_too_large",
+            "readiness_timeout",
             "process_start_failed",
+            "process_crashed",
             "process_stop_failed",
             "stale_process",
             "process_error",
@@ -378,7 +394,16 @@ def _public_server_status(payload: dict[str, object]) -> dict[str, object]:
 
 
 def _safe_state(value: object) -> str:
-    if isinstance(value, str) and value in {"stopped", "running", "already_running", "not_running", "unknown"}:
+    if isinstance(value, str) and value in {
+        "stopped",
+        "starting",
+        "running",
+        "already_running",
+        "not_running",
+        "error",
+        "crashed",
+        "unknown",
+    }:
         return value
     return "unknown"
 

@@ -44,6 +44,10 @@ class LaunchProfile:
     parameters: tuple[TypedParameter, ...]
     description: str = ""
     runnable: bool = True
+    host: str | None = None
+    requires_readiness: bool = False
+    readiness_timeout_seconds: float = 30.0
+    readiness_interval_seconds: float = 0.25
 
     def parameter_map(self) -> dict[str, TypedParameter]:
         return {item.name: item for item in self.parameters}
@@ -94,4 +98,61 @@ def fake_test_profile(executable_path: str | Path) -> LaunchProfile:
         ),
         description="Phase 2G1 fake executable test profile only.",
         runnable=True,
+    )
+
+
+REAL_LLAMA_SERVER_PROFILE_IDS = frozenset({"llama_cpp_gpu_default", "llama_server_gpu_default"})
+SAFE_LLAMA_HOSTS = frozenset({"127.0.0.1", "0.0.0.0", "localhost"})
+
+
+def real_llama_server_profile(
+    profile_id: str,
+    executable_path: str | Path,
+    *,
+    host: str = "127.0.0.1",
+    default_parameters: dict[str, int] | None = None,
+    readiness_timeout_seconds: float = 30.0,
+) -> LaunchProfile:
+    """Build an explicit Linux llama-server profile from companion config only."""
+
+    if profile_id not in REAL_LLAMA_SERVER_PROFILE_IDS:
+        raise ProfileError("unknown real llama-server profile id")
+    safe_host = host.strip() if isinstance(host, str) else ""
+    if safe_host not in SAFE_LLAMA_HOSTS:
+        raise ProfileError("profile host is not allowed")
+
+    defaults = dict(default_parameters or {})
+    specs = (
+        TypedParameter("port", "int", defaults.get("port", 8080), 1024, 65535),
+        TypedParameter("ctx_size", "int", defaults.get("ctx_size", 8192), 512, 131072),
+        TypedParameter("gpu_layers", "int", defaults.get("gpu_layers", 999), 0, 999),
+        TypedParameter("threads", "int", defaults.get("threads", 8), 1, 256),
+    )
+    for spec in specs:
+        spec.validate(spec.default)
+    return LaunchProfile(
+        profile_id=profile_id,
+        executable_path=Path(executable_path),
+        argv_template=(
+            "{executable}",
+            "-m",
+            "{model_path}",
+            "--host",
+            "{host}",
+            "--port",
+            "{port}",
+            "-c",
+            "{ctx_size}",
+            "-ngl",
+            "{gpu_layers}",
+            "--threads",
+            "{threads}",
+        ),
+        parameters=specs,
+        description="Explicit Linux llama.cpp llama-server profile.",
+        runnable=True,
+        host=safe_host,
+        requires_readiness=True,
+        readiness_timeout_seconds=max(1.0, min(float(readiness_timeout_seconds), 120.0)),
+        readiness_interval_seconds=0.25,
     )

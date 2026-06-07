@@ -214,14 +214,28 @@ flashcards with CSV / Anki / Quizlet export.
   `gpu_layers`, `threads`), stops only the companion-managed server with bounded
   `grace_seconds`, keeps selected-model preview and manual command helper
   fallback visible, and clearly states manual servers are not stopped and
-  Provider Settings are not changed. There is still no permanent Docker Compose
-  mount, Provider Settings write, Ask change, dependency addition, local provider
-  base-URL/model behavior change, direct companion frontend call, real
-  `llama-server` launch/validation, shell/free-form args UI, browser storage,
-  token/socket exposure in UI, direct Docker host process control, direct host
-  filesystem scan, or absolute host path/raw argv rendering. Next recommended
-  slice is Phase 2G5 live Linux validation with real `llama-server` and
-  hardening/runtime proof.
+  Provider Settings are not changed. Phase 2G5 adds explicit-config real Linux
+  `llama-server` profiles (`llama_cpp_gpu_default` /
+  `llama_server_gpu_default`) with no default executable, canonical executable
+  validation, approved-root model-id resolution only, centralized argv arrays,
+  `starting` vs `running` semantics, readiness polling against
+  `http://127.0.0.1:<port>/v1/models`, stable `error`/`crashed` states, bounded
+  log tails with safe OOM/load/readiness categories, no restart loop, and Linux
+  process-group stop after PID identity verification. The backend bridge
+  whitelists the new states/categories and has a tiny Unix-socket transport seam;
+  Unix socket remains the only implemented transport. Added
+  `test_scripts/validate_lmm_real_llama_server.py`, which skips without explicit
+  real env and otherwise starts a temporary companion, scans an approved root,
+  launches real `llama-server`, verifies `/v1/models`, stops, checks port release
+  and redaction, and cleans up. There is still no permanent Docker Compose mount,
+  Provider Settings write, Ask change, dependency addition, local provider
+  base-URL/model behavior change, direct companion frontend call, shell/free-form
+  args UI, browser storage, token/socket exposure in UI, direct Docker host
+  process control, direct host filesystem scan, automatic restart loop, model
+  download manager, multi-server pool, Windows/macOS process control, or absolute
+  host path/raw argv rendering. Next recommended slice is operator-run live
+  `llama-server` validation using the harness, then optional real-profile UI
+  design if requested.
 - **Ask Your Guide — IN PROGRESS (Slice 1 design DONE; Slice 2 backend context
   inventory DONE; Slice 3 backend context preparation / chunking DONE; inserted
   workspace shell DONE; backend local chat API DONE; frontend chat UI wiring DONE;

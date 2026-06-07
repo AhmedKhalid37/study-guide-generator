@@ -10,13 +10,45 @@
 - **Trunk includes:** `af0ec0e` (Ask Slice 1 design), `2634f63` (Ask Slice 2 context
   inventory), `a29a405` (Ask Slice 3 context preparation), and the inserted Ask
   workspace shell, on top of the validated LMM group and prior feature groups.
-- **Active work branch:** `lmm-phase2g4-process-ui` — Local Model Manager Phase
-  2G4 Local Models UI controls for companion-managed server lifecycle, still
-  fake/safe validation only.
-  **NEXT = Phase 2G5 live Linux validation with real `llama-server` and
-  hardening/runtime proof.**
+- **Active work branch:** `lmm-phase2g5-real-llama-validation` — Local Model
+  Manager Phase 2G5 real Linux `llama-server` validation/lifecycle hardening.
+  **NEXT = operator-run live `llama-server` proof with explicit env, then
+  optional real-profile UI design if requested.**
 
 ## What just landed
+- **Local Model Manager Phase 2G5 — real Linux llama-server validation and
+  lifecycle hardening** (branch `lmm-phase2g5-real-llama-validation`). Companion/
+  backend hardening plus validation harness. Added explicit-config real profiles
+  `llama_cpp_gpu_default` / `llama_server_gpu_default`; no default real
+  executable exists. Executable path comes only from companion config, is
+  canonicalized, and must be executable. Model path resolves only from approved
+  scanned model id. Requests still accept only whitelisted `profile_id`,
+  `model_id`, and typed bounded params (`port`, `ctx_size`, `gpu_layers`,
+  `threads`); no shell/free-form args/model_path/executable request fields.
+  Real argv is centralized as
+  `<exe> -m <model> --host <configured-safe-host> --port <port> -c <ctx_size>
+  -ngl <gpu_layers> --threads <threads>`.
+  Lifecycle now persists `starting` after spawn, promotes to `running` only after
+  host-side `GET http://127.0.0.1:<port>/v1/models`, and records stable
+  `error`/`crashed` states for failures. Launch failures do not auto-restart.
+  Child stdout/stderr are captured to bounded companion-owned logs; safe
+  categories include `executable_missing`, `permission_denied`, `port_in_use`,
+  `model_load_failed`, `model_may_be_too_large`, `readiness_timeout`,
+  `process_start_failed`, and `process_crashed`. Launch uses
+  `start_new_session=True`; stop targets only a verified tracked process group
+  after Linux `/proc` identity checks, and foreign/reused/uncertain PIDs are not
+  killed. Backend DTOs whitelist new states/categories, and frontend copy
+  displays them without adding advanced flags UI. Added
+  `test_scripts/validate_lmm_real_llama_server.py`; it skips without explicit
+  `LMM_REAL_LLAMA_SERVER_BIN`, `LMM_REAL_MODEL_ROOT`, and model id/pattern env,
+  and when configured starts a temporary companion, scans, launches real
+  `llama-server`, verifies `/v1/models`, stops, verifies port release/redaction,
+  and cleans up. Live real validation skipped here due missing explicit env.
+  Scope preserved: no Provider Settings writes, no Ask changes, no permanent
+  Docker Compose changes, no host-gateway TCP, Docker socket, privileged
+  container, host PID namespace, browser storage, automatic restart loop, model
+  download manager, multi-server pool, Windows/macOS process control, or
+  Ollama/simple-local-model implementation.
 - **Local Model Manager Phase 2G4 — Local Models managed-server UI controls**
   (branch `lmm-phase2g4-process-ui`). Frontend/client/tests/docs only. Added API
   helpers for the existing Phase 2G3 bridge:

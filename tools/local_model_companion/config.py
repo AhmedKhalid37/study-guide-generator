@@ -27,6 +27,9 @@ class ApprovedRoot:
 class ProcessProfileConfig:
     id: str
     executable: Path
+    host: str | None = None
+    default_parameters: dict[str, int] | None = None
+    readiness_timeout_seconds: float | None = None
 
 
 @dataclass(frozen=True)
@@ -44,6 +47,34 @@ def _as_bool(value: Any, default: bool = True) -> bool:
     if isinstance(value, bool):
         return value
     raise ConfigError("approved root recursive must be a boolean")
+
+
+def _as_optional_float(value: Any, *, field: str) -> float | None:
+    if value is None:
+        return None
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        raise ConfigError(f"{field} must be a number when provided")
+    parsed = float(value)
+    if parsed <= 0 or parsed > 120:
+        raise ConfigError(f"{field} must be between 0 and 120")
+    return parsed
+
+
+def _as_int_defaults(value: Any, *, profile_id: str) -> dict[str, int]:
+    if value is None:
+        return {}
+    if not isinstance(value, dict):
+        raise ConfigError(f"profile {profile_id} default_parameters must be an object")
+    allowed = {"port", "ctx_size", "gpu_layers", "threads"}
+    unknown = sorted(set(value) - allowed)
+    if unknown:
+        raise ConfigError(f"profile {profile_id} has unknown default parameter: {unknown[0]}")
+    defaults: dict[str, int] = {}
+    for key, raw in value.items():
+        if isinstance(raw, bool) or not isinstance(raw, int):
+            raise ConfigError(f"profile {profile_id} default parameter {key} must be an integer")
+        defaults[key] = raw
+    return defaults
 
 
 def _load_json(path: Path) -> dict[str, Any]:
@@ -131,10 +162,19 @@ def load_config(config_path: str | os.PathLike[str] | None = None) -> CompanionC
         executable = profile_data.get("executable")
         if not isinstance(executable, str) or not executable.strip():
             raise ConfigError(f"profile {profile_id} executable must be a non-empty string")
+        raw_host = profile_data.get("host")
+        if raw_host is not None and (not isinstance(raw_host, str) or not raw_host.strip()):
+            raise ConfigError(f"profile {profile_id} host must be a non-empty string when provided")
         process_profiles.append(
             ProcessProfileConfig(
                 id=profile_id.strip(),
                 executable=Path(executable).expanduser().resolve(strict=False),
+                host=raw_host.strip() if isinstance(raw_host, str) else None,
+                default_parameters=_as_int_defaults(profile_data.get("default_parameters"), profile_id=profile_id),
+                readiness_timeout_seconds=_as_optional_float(
+                    profile_data.get("readiness_timeout_seconds"),
+                    field=f"profile {profile_id} readiness_timeout_seconds",
+                ),
             )
         )
 

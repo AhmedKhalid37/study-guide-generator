@@ -1,6 +1,6 @@
 # LOCAL_MODEL_MANAGER_PHASE2_DESIGN.md - Host companion and approved GGUF library
 
-> **Status: Phase 2G4 Local Models managed-server UI complete.** Phase 2A
+> **Status: Phase 2G5 real Linux llama-server validation/hardening complete.** Phase 2A
 > established the host-companion boundary.
 > Phase 2B adds a Linux-first, stdlib-only host companion prototype under
 > `tools/local_model_companion/` for approved-folder GGUF scanning and a
@@ -20,11 +20,15 @@
 > Unix-socket HTTP API. Phase 2G3 exposes those companion process endpoints
 > through safe FastAPI backend bridge routes only. Phase 2G4 adds frontend UI
 > controls that call only those backend bridge routes with a saved selected model
-> id plus fixed typed `fake_test` defaults.
+> id plus fixed typed `fake_test` defaults. Phase 2G5 adds explicit-config real
+> Linux `llama-server` profiles, readiness polling against `/v1/models`, bounded
+> log/error classification, process-group stop hardening, and a live validation
+> harness.
 > There is still no production Docker Compose mount, Provider Settings write, Ask
 > change, dependency addition, local provider base-URL/model behavior change,
-> direct companion frontend call, model execution, or real `llama-server`
-> start/stop/restart validation.
+> direct companion frontend call, host-gateway TCP, Docker socket, privileged
+> container, host PID namespace, automatic restart loop, model download manager,
+> multi-server pool, or Windows/macOS process control.
 
 ---
 
@@ -574,8 +578,11 @@ safe response fields.
 - **Phase 2G4:** DONE. Local Models UI start/stop/restart controls, still
   fake/safe validation only; no backend routes, Docker changes, Provider
   Settings writes, Ask changes, or real `llama-server` validation.
-- **Phase 2G5:** live Linux validation with real `llama-server`.
-- **Phase 2G6:** hardening/security pass.
+- **Phase 2G5:** DONE. Explicit-config real Linux `llama-server` profiles,
+  readiness polling, lifecycle hardening, safe error classification, and live
+  validation harness.
+- **Phase 2G6:** operator-run live validation follow-up and optional real-profile
+  UI design, if requested.
 - **Later:** packaging/signing and cross-platform installers.
 
 Each slice must preserve the boundary: Docker backend talks to the companion; the
@@ -1658,6 +1665,126 @@ Validation added/updated:
   Authorization strings in UI source/fixtures, no raw absolute path rendering,
   and managed status/error normalization.
 
-Next recommended slice is **Phase 2G5: live Linux validation with real
-`llama-server` and hardening/runtime proof**. Keep Provider Settings and Ask
-unchanged unless a later explicit design changes that boundary.
+## 23. Phase 2G5 Real Linux llama-server Validation And Hardening
+
+Phase 2G5 implements Linux-first real-runtime support behind explicit companion
+config while preserving the Phase 2G safety boundary. Real launch is opt-in only:
+there is no default runnable real profile and no frontend/backend request can
+supply an executable path, model path, host, shell command, or free-form args.
+
+Configured real profiles:
+
+- `llama_cpp_gpu_default`
+- `llama_server_gpu_default`
+
+Example explicit companion config:
+
+```json
+{
+  "approved_roots": [
+    { "id": "models", "path": "/home/user/models", "recursive": true }
+  ],
+  "token": "local-test-token",
+  "process_runtime_dir": "/tmp/lmm-companion-runtime",
+  "profiles": {
+    "llama_cpp_gpu_default": {
+      "executable": "/home/user/llama.cpp/build/bin/llama-server",
+      "host": "0.0.0.0",
+      "default_parameters": {
+        "port": 8080,
+        "ctx_size": 8192,
+        "gpu_layers": 999,
+        "threads": 8
+      }
+    }
+  }
+}
+```
+
+Real profile argv is centralized in `tools/local_model_companion/profiles.py`:
+
+```text
+<configured-llama-server>
+  -m <resolved-approved-model-path>
+  --host <configured-safe-host>
+  --port <port>
+  -c <ctx_size>
+  -ngl <gpu_layers>
+  --threads <threads>
+```
+
+Lifecycle semantics:
+
+- `starting` means the child process was spawned and persisted, but readiness has
+  not succeeded.
+- `running` means host-side readiness polling succeeded against
+  `http://127.0.0.1:<port>/v1/models`.
+- `error` means validation, launch, or readiness failed safely.
+- `crashed` means the tracked process exited unexpectedly or before readiness.
+- Launch failures record stable state and do not auto-restart; the user/operator
+  must explicitly start again.
+
+Process safety:
+
+- Real/fake launches use `subprocess.Popen(..., shell=False,
+  start_new_session=True)`.
+- Stop targets only the tracked process group after PID identity checks.
+- Linux `/proc` checks include PID existence, zombie state, executable/cmdline
+  match, process start ticks, and process group id where recorded.
+- Foreign/reused/uncertain PIDs are not killed.
+- If the companion dies while a child survives, persisted state lets a restarted
+  companion verify identity before status/stop. Without verifiable state, it does
+  not adopt or kill foreign processes.
+
+Error/log handling:
+
+- stdout/stderr are captured to a companion-owned bounded log file.
+- API log tails are bounded and redacted.
+- Safe categories include `executable_missing`, `permission_denied`,
+  `port_in_use`, `model_load_failed`, `model_may_be_too_large`,
+  `readiness_timeout`, `process_start_failed`, and `process_crashed`.
+- API/backend/frontend DTOs must not expose tokens, Authorization headers,
+  socket paths, full URLs with credentials, absolute host model paths, raw argv,
+  executable paths, or unbounded logs.
+
+Backend/frontend behavior:
+
+- Backend `/api/local-model/server/*` routes pass through only whitelisted states
+  and categories.
+- The frontend displays new states/error copy but still uses the Phase 2G4
+  fake-safe managed-server UI payload. It does not add advanced flags UI and does
+  not write Provider Settings.
+- A tiny backend transport seam exists, but Linux Unix socket remains the only
+  implemented companion transport. Host-gateway TCP and named pipes remain
+  deferred.
+
+Live validation harness:
+
+- `test_scripts/validate_lmm_real_llama_server.py`
+- Required env: `LMM_REAL_LLAMA_SERVER_BIN`, `LMM_REAL_MODEL_ROOT`, and
+  `LMM_REAL_MODEL_ID` or `LMM_REAL_MODEL_PATTERN`/`LMM_REAL_MODEL_FILENAME`.
+- Optional env: `LMM_REAL_PORT`, `LMM_REAL_CTX_SIZE`,
+  `LMM_REAL_GPU_LAYERS`, `LMM_REAL_THREADS`, `LMM_REAL_READINESS_TIMEOUT`.
+- Missing env skips with exit 0.
+- When configured, it starts a temporary companion over a Unix socket, scans the
+  approved root, starts real `llama-server`, verifies `/v1/models`, checks
+  status, stops, verifies port release and redaction, and cleans up.
+
+Explicit non-goals preserved in Phase 2G5:
+
+- No Provider Settings writes.
+- No Ask changes.
+- No permanent Docker Compose changes.
+- No host-gateway TCP, Docker socket, privileged container, or host PID
+  namespace.
+- No browser storage.
+- No automatic restart loop.
+- No model download manager.
+- No multi-server pool.
+- No Windows/macOS process support.
+- No Ollama/simple-local-model path in this slice.
+
+Next recommended slice is operator-run live `llama-server` validation using the
+new harness, then a design pass for exposing configured real profiles in UI only
+if that can preserve the no-free-form-args and no-Provider-Settings-write
+boundaries.

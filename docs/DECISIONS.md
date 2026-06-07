@@ -1189,3 +1189,23 @@ Companion health checks poll the host model API, for example
 This operational state is not a Provider Settings source of truth, and no future
 start/stop slice may write Provider Settings or change Ask unless a later explicit
 decision and implementation slice says so.
+
+## LMM Phase 2G5 real launch is explicit-config only and readiness-gated (2026-06-07)
+Real Linux `llama-server` lifecycle support remains opt-in through explicit host
+companion config. The app ships no default runnable real executable path. A
+frontend/backend request can name only a whitelisted configured profile id, an
+approved-library model id, and typed bounded parameters; it can never provide an
+executable path, raw model path, shell command, free-form args, or environment block.
+**Why:** this preserves the Phase 2 host-process boundary while allowing real runtime
+validation on an operator machine.
+
+`running` now means the companion's host-side readiness probe succeeded against
+`http://127.0.0.1:<port>/v1/models`; successful `Popen` alone is only `starting`.
+Readiness timeout, early process exit, load failure, OOM-like logs, permission
+failure, missing executable, and port conflict become stable safe error/crash states
+with no automatic restart loop. Launch uses a new Linux process session/group, and
+stop signals only the verified process group the companion started after PID identity
+checks. **Why:** real model loads can fail slowly or crash after spawn, and reporting
+them as running would mislead the UI/backend; process-group tracking is needed to
+clean up real child processes without killing manually-started or reused-PID
+processes.

@@ -5,59 +5,57 @@
 
 ---
 
-## NEXT — LMM Phase 2G4 Local Models managed-server UI DONE.
+## NEXT — LMM Phase 2G5 real Linux llama-server validation/hardening DONE.
 
-- **Local Model Manager Phase 2G4 — Local Models UI start/stop/restart controls
-  is DONE** on branch `lmm-phase2g4-process-ui`. This is frontend/client/tests/
-  docs only, using the existing Phase 2G3 backend routes.
-- **Frontend API helpers added:** `getLocalModelServerStatus()` →
-  `GET /api/local-model/server/status`, `startLocalModelServer(payload)` →
-  `POST /api/local-model/server/start`, `stopLocalModelServer(payload)` →
-  `POST /api/local-model/server/stop`, and
-  `restartLocalModelServer(payload)` →
-  `POST /api/local-model/server/restart`. The frontend never calls the companion
-  directly.
-- **UI added:** the existing Local Models panel now includes a **Managed Server**
-  section. On load it fetches companion/library/selection state plus managed
-  server status, keeps the selected-model preview visible, and keeps the manual
-  command helper fallback visible. It renders companion unavailable/offline/auth
-  states, no saved selected model, stopped/running/already-running/not-running/
-  unknown-style server states, and safe error categories such as port conflict,
-  invalid params, unknown model/profile, companion offline, and auth failure.
-- **Start/restart payload shape:** start and restart use the saved selected
-  library model id plus fixed typed defaults only:
-  `{ model_id, profile_id: "fake_test", parameters: { port: 18080, ctx_size:
-  2048, gpu_layers: 0, threads: 2 } }`. The `fake_test` profile is labeled as a
-  validation/test profile only. Stop sends only `{ grace_seconds: 5 }`.
-- **Safety copy:** controls state "Starts companion-managed server only.",
-  "Stops only the companion-managed server. Manual servers are not stopped by
-  this button.", and "Provider Settings are not changed."
-- **Scope preserved:** no backend route additions, no Docker Compose changes, no
-  Provider Settings writes, no Ask changes, no local provider base URL/model
-  behavior change, no real `llama-server` validation, no host-gateway TCP, no
-  Docker socket, no privileged container, no host PID namespace, no browser
-  localStorage/sessionStorage, no direct companion frontend calls, no free-form
-  command args UI, no arbitrary JSON editor, no `dangerouslySetInnerHTML`, and no
-  token/socket/raw absolute path/raw argv exposure in the UI.
-- **Tests updated:** `frontend/scripts/verify-local-model-library.mjs` now covers
-  the new API helper paths/methods, allowed-only start payload shape, disallowed
-  unsafe fields, disabled start without saved selection, manual helper fallback,
-  companion-managed stop copy, no Provider Settings/Ask calls, no browser
-  storage, no raw HTML rendering, no token/socket/Authorization strings in the UI
-  source/fixtures, no raw absolute path rendering, and managed status/error
-  normalization.
-- **Validation:** frontend local-model library/status/command checks passed;
-  frontend build passed with the existing Vite large-chunk warning; requested
-  backend/process suites passed; `python -m compileall api pipeline tools`,
-  `git diff --check`, and `docker compose config >/tmp/compose-check.txt` exit 0
-  passed. Manual/live fake-companion validation through direct backend calls
-  passed 22/22 with a temporary Compose override: saved fake GGUF selection,
-  `server/start` returned running on `fake_test`, follow-up status returned
-  running, `server/stop` returned stopped, redaction checks passed, and the app
-  service was restored with the committed Compose file only.
-- **Recommended next slice:** Phase 2G5 live Linux validation with real
-  `llama-server` and hardening/runtime proof. Keep Provider Settings and Ask
-  unchanged unless a later explicit design changes that boundary.
+- **Local Model Manager Phase 2G5 — real Linux `llama-server` profile support
+  and lifecycle hardening is DONE** on branch
+  `lmm-phase2g5-real-llama-validation`.
+- **Real profile support:** the companion can build explicit Linux real profiles
+  `llama_cpp_gpu_default` / `llama_server_gpu_default` only from companion config.
+  There is no default real executable. The configured executable is canonicalized
+  and must exist and be executable; model paths resolve only from approved-root
+  scanned model ids; requests still provide only `model_id`, whitelisted
+  `profile_id`, and typed bounded params (`port`, `ctx_size`, `gpu_layers`,
+  `threads`). Argv is centralized, array-only, and never `shell=True`.
+- **Lifecycle semantics:** `starting` is persisted after spawn and before
+  readiness. `running` means `/v1/models` readiness succeeded. Failed launches
+  become stable `error`/`crashed` states; there is no automatic restart loop.
+  Real profiles poll `http://127.0.0.1:<port>/v1/models` with bounded timeout and
+  interval, and timeout cleanup stops the just-started child.
+- **Hardening:** companion launches use a new Linux session/process group and
+  stop only a verified tracked process group. PID reuse/foreign/stale identity is
+  not killed. Logs go to companion-owned bounded files and API tails are bounded
+  and redacted. Safe categories now include `executable_missing`,
+  `permission_denied`, `port_in_use`, `model_load_failed`,
+  `model_may_be_too_large`, `readiness_timeout`, `process_start_failed`, and
+  `process_crashed`.
+- **Bridge/UI safety:** backend server lifecycle DTOs whitelist the new states
+  and categories and keep token/socket/absolute host path/raw argv out of
+  responses. Frontend copy displays the new states/categories but still uses the
+  existing fake-safe UI payload; no advanced flags UI was added.
+- **Validation harness:** added
+  `test_scripts/validate_lmm_real_llama_server.py`. It requires explicit
+  `LMM_REAL_LLAMA_SERVER_BIN`, `LMM_REAL_MODEL_ROOT`, and
+  `LMM_REAL_MODEL_ID` or `LMM_REAL_MODEL_PATTERN`/`LMM_REAL_MODEL_FILENAME`.
+  Optional env: `LMM_REAL_PORT`, `LMM_REAL_CTX_SIZE`,
+  `LMM_REAL_GPU_LAYERS`, `LMM_REAL_THREADS`, `LMM_REAL_READINESS_TIMEOUT`.
+  Missing env skips with exit 0. When configured, it creates a temporary
+  companion config/socket, scans the approved root, starts real `llama-server`,
+  verifies `/v1/models`, stops, verifies port release, checks redaction, and
+  cleans up.
+- **Scope preserved:** no Provider Settings writes, no Ask changes, no permanent
+  Docker Compose changes, no host-gateway TCP, no Docker socket, no privileged
+  container, no host PID namespace, no browser storage, no model download manager,
+  no automatic restart loop, no multi-server pool, and no Windows/macOS process
+  control. Ollama/simple-local-model remains a possible later path only.
+- **Validation:** focused fake and real-profile lifecycle tests passed; live real
+  validation skipped in this environment because explicit real env vars were not
+  present.
+- **Recommended next slice:** operator-run live `llama-server` proof using the
+  new harness, then a design slice for safely exposing configured real profiles
+  in UI without adding free-form args or Provider Settings writes.
+
+## Previous — LMM Phase 2G4 Local Models managed-server UI DONE.
 
 ## Previous — LMM Phase 2G3 backend process bridge DONE.
 

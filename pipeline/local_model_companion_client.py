@@ -31,7 +31,7 @@ _START_PARAMETER_BOUNDS = {
     "gpu_layers": (0, 999),
     "threads": (1, 256),
 }
-_SERVER_STATES = {"stopped", "running", "already_running", "not_running", "unknown"}
+_SERVER_STATES = {"stopped", "starting", "running", "already_running", "not_running", "error", "crashed", "unknown"}
 _PROCESS_ERROR_CATEGORIES = {
     "bad_request",
     "not_running",
@@ -39,8 +39,14 @@ _PROCESS_ERROR_CATEGORIES = {
     "unknown_model",
     "unknown_profile",
     "invalid_parameters",
+    "executable_missing",
+    "permission_denied",
     "port_in_use",
+    "model_load_failed",
+    "model_may_be_too_large",
+    "readiness_timeout",
     "process_start_failed",
+    "process_crashed",
     "process_stop_failed",
     "stale_process",
     "process_error",
@@ -57,7 +63,6 @@ _ERROR_CATEGORY_ALIASES = {
     "invalid_profile": "unknown_profile",
     "invalid_parameter": "invalid_parameters",
     "launch_failed": "process_start_failed",
-    "executable_missing": "process_start_failed",
     "executable_not_allowed": "process_start_failed",
     "stale_pid": "stale_process",
     "identity_uncertain": "stale_process",
@@ -90,8 +95,14 @@ _SAFE_ERROR_MESSAGES = {
     "unknown_model": "Local model is not available in the companion library.",
     "unknown_profile": "Local model launch profile is not available.",
     "invalid_parameters": "Local model server parameters are invalid.",
+    "executable_missing": "Configured local model server executable was not found.",
+    "permission_denied": "Configured local model server executable is not runnable.",
     "port_in_use": "Requested local model server port is already in use.",
+    "model_load_failed": "Local model server could not load the selected model.",
+    "model_may_be_too_large": "Selected local model may be too large for available memory.",
+    "readiness_timeout": "Local model server did not become ready in time.",
     "process_start_failed": "Local model server failed to start.",
+    "process_crashed": "Local model server process exited unexpectedly.",
     "process_stop_failed": "Local model server failed to stop.",
     "stale_process": "Local model server process state is stale.",
     "process_error": "Local model server process state is unavailable.",
@@ -114,6 +125,22 @@ class CompanionClientError(RuntimeError):
         super().__init__(message or _SAFE_ERROR_MESSAGES.get(category, _SAFE_ERROR_MESSAGES["companion_error"]))
         self.category = category
         self.status_code = status_code
+
+
+class _UnixSocketTransport:
+    name = "unix_socket"
+
+    def open(self, config: CompanionBridgeConfig) -> socket.socket:
+        if not config.socket_path:
+            raise CompanionClientError("companion_config")
+        sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+        sock.settimeout(config.timeout_seconds)
+        return sock
+
+
+def _transport_for_config(config: CompanionBridgeConfig) -> _UnixSocketTransport:
+    # Linux Unix sockets are the only implemented companion transport in Phase 2G5.
+    return _UnixSocketTransport()
 
 
 def _safe_error(category: str) -> dict[str, str]:
@@ -404,8 +431,8 @@ def _http_json_unix(
         "\r\n"
     ).encode("utf-8") + body_bytes
 
-    sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
-    sock.settimeout(config.timeout_seconds)
+    transport = _transport_for_config(config)
+    sock = transport.open(config)
     chunks: list[bytes] = []
     try:
         sock.connect(config.socket_path)

@@ -182,6 +182,10 @@ check("port conflict error copy", localModelServerErrorMessage({ error: { catego
 check("invalid params error copy", localModelServerErrorMessage({ error: { category: "invalid_parameters" } }) === "The launch parameters were rejected.");
 check("unknown model error copy", localModelServerErrorMessage({ error: { category: "unknown_model" } }) === "The saved selected model is not available in the companion library.");
 check("unknown profile error copy", localModelServerErrorMessage({ error: { category: "unknown_profile" } }) === "The test launch profile is not available.");
+check("readiness timeout error copy", localModelServerErrorMessage({ error: { category: "readiness_timeout" } }) === "The managed server did not become ready in time.");
+check("model too large error copy", localModelServerErrorMessage({ error: { category: "model_may_be_too_large" } }) === "The selected model may be too large for available memory.");
+check("model load failure error copy", localModelServerErrorMessage({ error: { category: "model_load_failed" } }) === "The selected model could not be loaded.");
+check("process crash error copy", localModelServerErrorMessage({ error: { category: "process_crashed" } }) === "The companion-managed process exited unexpectedly.");
 
 // API helper paths/methods.
 const clientSource = fs.readFileSync(path.join(root, "src/api/client.js"), "utf8");
