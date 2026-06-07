@@ -66,8 +66,8 @@ def fake_test_profile(executable_path: str | Path) -> LaunchProfile:
     """Build the only runnable profile used by Phase 2G1 tests.
 
     The executable path is supplied by the test/companion config side, never by a
-    frontend/backend request. Real llama-server profiles are intentionally not
-    registered here in Phase 2G1.
+    frontend/backend request. Real server profiles are intentionally not
+    registered here in Phase 2G2.
     """
 
     return LaunchProfile(
@@ -81,10 +81,16 @@ def fake_test_profile(executable_path: str | Path) -> LaunchProfile:
             "{port}",
             "--ctx-size",
             "{ctx_size}",
+            "--gpu-layers",
+            "{gpu_layers}",
+            "--threads",
+            "{threads}",
         ),
         parameters=(
             TypedParameter("port", "int", 18080, 1024, 65535),
             TypedParameter("ctx_size", "int", 2048, 512, 131072),
+            TypedParameter("gpu_layers", "int", 0, 0, 999),
+            TypedParameter("threads", "int", 2, 1, 256),
         ),
         description="Phase 2G1 fake executable test profile only.",
         runnable=True,

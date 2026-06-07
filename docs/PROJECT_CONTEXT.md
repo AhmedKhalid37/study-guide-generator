@@ -119,8 +119,9 @@ flashcards with CSV / Anki / Quizlet export.
   in the existing Local Models panel; Phase 2E persists a selected discovered GGUF
   model as app-side metadata only. Phase 2F is docs-only and defines the future
   safe start/stop/restart contract. Phase 2G1 adds companion-private process
-  lifecycle internals with a fake/safe test executable only. Future in-app model
-  start/stop must go
+  lifecycle internals with a fake/safe test executable only. Phase 2G2 exposes
+  those internals through companion-local Unix-socket HTTP endpoints only. Future
+  in-app model start/stop must go
   through React UI -> Docker FastAPI backend -> Unix-socket-first,
   token-authenticated host companion. For the current Linux Docker deployment,
   companion control assumes a Unix domain socket mounted into the backend
@@ -187,14 +188,24 @@ flashcards with CSV / Anki / Quizlet export.
   approved-root scan records; argv arrays are built without shell execution;
   state is written atomically to a companion-owned runtime dir; and Linux `/proc`
   identity checks prevent killing stale/reused/foreign PIDs. Tests create a
-  temporary executable Python script and fake `.gguf` files only. There is still
+  temporary executable Python script and fake `.gguf` files only. Phase 2G2 adds
+  companion HTTP `GET /server/status`, `POST /server/start`,
+  `POST /server/stop`, and `POST /server/restart` on the companion Unix-socket
+  API using the existing token auth. These endpoints accept only typed safe JSON
+  (`model_id`, whitelisted `profile_id`, bounded params, `grace_seconds`, or
+  validated `reuse_last`), delegate to the process manager, reject unknown
+  top-level request fields, and return safe DTOs without token, socket path,
+  absolute model path, executable path, raw argv, Authorization, or full URL
+  leaks. The companion config may include `process_runtime_dir` and
+  `profiles.fake_test.executable`; there is no default real executable. There is
+  still
   no permanent Docker Compose mount, Provider Settings write, Ask change,
   dependency addition, local provider base-URL/model behavior change, backend
-  bridge start/stop, companion start/stop HTTP API, frontend UI, real
-  `llama-server` launch, shell/free-form args, browser storage, token/socket
-  exposure, or absolute host path rendering. Next recommended slice is Phase 2G2
-  companion HTTP server endpoints for process status/start/stop/restart, still no
-  backend bridge or UI.
+  bridge start/stop, frontend UI, real `llama-server` launch, shell/free-form
+  args, browser storage, token/socket exposure, or absolute host path rendering.
+  Next recommended slice is Phase 2G3 backend bridge for server
+  status/start/stop/restart, still no frontend UI, or a hardening slice if
+  validation surfaces issues.
 - **Ask Your Guide — IN PROGRESS (Slice 1 design DONE; Slice 2 backend context
   inventory DONE; Slice 3 backend context preparation / chunking DONE; inserted
   workspace shell DONE; backend local chat API DONE; frontend chat UI wiring DONE;

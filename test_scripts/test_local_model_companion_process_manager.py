@@ -65,6 +65,8 @@ parser = argparse.ArgumentParser()
 parser.add_argument("--model", required=True)
 parser.add_argument("--port", type=int, required=True)
 parser.add_argument("--ctx-size", type=int, required=True)
+parser.add_argument("--gpu-layers", type=int, required=True)
+parser.add_argument("--threads", type=int, required=True)
 args = parser.parse_args()
 running = True
 
@@ -304,7 +306,7 @@ def run() -> int:
             fake_profile = fake_test_profile(exe)
             check(
                 "profiles: no free-form args and typed bounded fake params only",
-                set(fake_profile.parameter_map()) == {"port", "ctx_size"}
+                set(fake_profile.parameter_map()) == {"port", "ctx_size", "gpu_layers", "threads"}
                 and "{model_path}" in fake_profile.argv_template
                 and "args" not in profile_source.lower(),
             )
@@ -320,8 +322,10 @@ def run() -> int:
                 )),
             )
             check(
-                "routes: no companion HTTP server start/stop/restart endpoints",
-                all(route not in companion_source for route in ("/server/start", "/server/stop", "/server/restart")),
+                "routes: companion HTTP process endpoints delegate to process manager",
+                all(route in companion_source for route in ("/server/start", "/server/stop", "/server/restart"))
+                and "subprocess.Popen(" not in companion_source
+                and "shell=True" not in companion_source,
             )
     finally:
         for pid in managed_pids:

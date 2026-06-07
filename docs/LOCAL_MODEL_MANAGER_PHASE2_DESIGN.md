@@ -1,6 +1,6 @@
 # LOCAL_MODEL_MANAGER_PHASE2_DESIGN.md - Host companion and approved GGUF library
 
-> **Status: Phase 2G1 companion process-control internals complete.** Phase 2A
+> **Status: Phase 2G2 companion HTTP process API complete.** Phase 2A
 > established the host-companion boundary.
 > Phase 2B adds a Linux-first, stdlib-only host companion prototype under
 > `tools/local_model_companion/` for approved-folder GGUF scanning and a
@@ -16,11 +16,12 @@
 > companion-managed `llama-server` start/stop/restart. Phase 2G1 adds
 > companion-private process-management internals under
 > `tools/local_model_companion/` and validates them only with a fake/safe test
-> executable.
+> executable. Phase 2G2 exposes those internals on the companion's own
+> Unix-socket HTTP API.
 > There is still no production Docker Compose mount, Provider Settings write, Ask
 > change, dependency addition, local provider base-URL/model behavior change,
-> backend bridge start/stop route, frontend UI, companion start/stop HTTP API,
-> model execution, or real `llama-server` start/stop/restart behavior.
+> backend bridge start/stop route, frontend UI, model execution, or real
+> `llama-server` start/stop/restart behavior.
 
 ---
 
@@ -560,8 +561,8 @@ safe response fields.
   `llama-server` process control; docs only, no routes or implementation.
 - **Phase 2G1:** DONE. Companion process-control internals with a fake/safe test
   executable only; no companion HTTP start/stop API, backend bridge, or UI.
-- **Phase 2G2:** companion HTTP server endpoints for process status/start/stop/
-  restart using the internal manager; still no backend bridge or UI.
+- **Phase 2G2:** DONE. Companion HTTP server endpoints for process status/start/
+  stop/restart using the internal manager; still no backend bridge or UI.
 - **Phase 2G3:** backend bridge for server status/start/stop/restart; no UI.
 - **Phase 2G4:** Local Models UI start/stop/restart controls.
 - **Phase 2G5:** live Linux validation with real `llama-server`.
@@ -1357,6 +1358,110 @@ Explicit non-goals preserved in Phase 2G1:
 - No host-gateway TCP, Docker socket, privileged container, or host PID
   namespace.
 
-Next recommended slice is **Phase 2G2: companion HTTP server endpoints for
-process status/start/stop/restart**, still no backend bridge or UI. If validation
-surfaces process-identity or redaction issues, do a hardening slice first.
+## 20. Phase 2G2 Companion HTTP Process API
+
+Phase 2G2 exposes the Phase 2G1 process manager through the host companion's own
+Unix-socket HTTP API only. The Docker FastAPI backend and React frontend still do
+not have start/stop/restart routes or controls.
+
+Added companion-local endpoints:
+
+- `GET /server/status`
+- `POST /server/start`
+- `POST /server/stop`
+- `POST /server/restart`
+
+All four endpoints use the existing companion bearer token auth and the existing
+Unix-domain-socket `BaseHTTPRequestHandler` server. The handlers parse bounded
+JSON request bodies, reject unknown top-level fields with `bad_request`, and
+delegate lifecycle operations to `ManagedServerProcessManager`. The HTTP handler
+code does not call `subprocess.Popen`.
+
+Request shapes:
+
+```json
+{
+  "model_id": "opaque-model-id",
+  "profile_id": "fake_test",
+  "parameters": {
+    "port": 8123,
+    "ctx_size": 4096,
+    "gpu_layers": 0,
+    "threads": 2
+  }
+}
+```
+
+```json
+{
+  "grace_seconds": 5
+}
+```
+
+```json
+{
+  "reuse_last": true
+}
+```
+
+`restart` prefers the explicit start payload. `reuse_last` is allowed only when
+prior launch metadata exists in the companion process and can still be validated.
+
+Safe response DTOs expose only:
+
+- `ok`
+- `state`
+- `managed`
+- `model_id`
+- `profile_id`
+- `port`
+- `started_at`
+- `error`
+- bounded/redacted `log_tail`
+
+Responses must not expose the companion token, socket path, absolute model path,
+executable path, raw argv, full command line, Authorization header text, or full
+URLs. Corrupt process state files return safe status/error DTOs instead of
+tracebacks.
+
+Companion config now supports optional process manager configuration:
+
+```json
+{
+  "approved_roots": [],
+  "token": "test-token",
+  "process_runtime_dir": "/tmp/lmm-companion-runtime",
+  "profiles": {
+    "fake_test": {
+      "executable": "/tmp/fake_server.py"
+    }
+  }
+}
+```
+
+There is still no default real executable and no default real `llama-server`
+profile. If profiles are configured without an explicit runtime dir, the runtime
+dir is safely derived beside the explicit config file.
+
+Phase 2G2 validation uses only a fake executable profile and fake `.gguf` files
+under temp approved roots. The focused process API test starts the real companion
+handler path where possible; in this sandbox Unix socket and TCP socket creation
+are denied, so it falls back to in-memory handler dispatch and monkeypatches only
+the test process manager's port probe. Production code still uses the Unix socket
+server and real port availability check.
+
+Explicit non-goals preserved in Phase 2G2:
+
+- No FastAPI backend server status/start/stop/restart routes.
+- No frontend start/stop/restart UI.
+- No Docker Compose changes.
+- No Provider Settings writes.
+- No Ask changes.
+- No backend bridge start/stop.
+- No real `llama-server` validation or launch profile.
+- No host-gateway TCP, Docker socket, privileged container, or host PID namespace.
+- No shell execution or free-form command args.
+
+Next recommended slice is **Phase 2G3: backend bridge for companion server
+status/start/stop/restart**, still no frontend UI. If validation surfaces
+process-identity or redaction issues, do a hardening slice first.

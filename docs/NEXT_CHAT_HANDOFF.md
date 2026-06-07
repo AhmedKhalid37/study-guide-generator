@@ -10,12 +10,35 @@
 - **Trunk includes:** `af0ec0e` (Ask Slice 1 design), `2634f63` (Ask Slice 2 context
   inventory), `a29a405` (Ask Slice 3 context preparation), and the inserted Ask
   workspace shell, on top of the validated LMM group and prior feature groups.
-- **Active work branch:** `lmm-phase2g1-companion-process-internals` — Local
-  Model Manager Phase 2G1 companion process-control internals with a fake/safe
-  test executable only. **NEXT = Phase 2G2 companion HTTP server endpoints for
-  process status/start/stop/restart, still no backend bridge or UI.**
+- **Active work branch:** `lmm-phase2g2-companion-process-api` — Local Model
+  Manager Phase 2G2 companion Unix-socket HTTP process-control endpoints.
+  **NEXT = Phase 2G3 backend bridge for server status/start/stop/restart, still
+  no frontend UI, or a hardening slice if validation surfaces issues.**
 
 ## What just landed
+- **Local Model Manager Phase 2G2 — companion HTTP process API** (branch
+  `lmm-phase2g2-companion-process-api`). Added host-companion-only Unix-socket
+  endpoints `GET /server/status`, `POST /server/start`, `POST /server/stop`, and
+  `POST /server/restart`, all behind the existing companion bearer token auth.
+  The HTTP handlers parse bounded JSON, reject unknown top-level fields with
+  `bad_request`, expose safe lifecycle categories, and delegate start/stop/status
+  to the Phase 2G1 process manager. Handlers do not call `subprocess.Popen`.
+  Start/restart explicit payloads accept only `model_id`, whitelisted
+  `profile_id`, and typed `parameters`; stop accepts only `grace_seconds`;
+  `reuse_last` restart is allowed only when prior launch metadata exists. The
+  companion config may now include `process_runtime_dir` and
+  `profiles.fake_test.executable`; no default real executable is configured.
+  HTTP DTOs expose only `ok`, `state`, `managed`, `model_id`, `profile_id`,
+  `port`, `started_at`, `error`, and bounded/redacted `log_tail`; token, socket
+  path, absolute host paths, executable path, raw argv, Authorization, and full
+  URLs are not returned. Tests use a temp fake executable and fake `.gguf` files
+  only; this sandbox denies Unix/TCP socket creation, so the new process API test
+  uses an in-memory handler fallback and monkeypatches only the test manager port
+  probe. No backend FastAPI server routes, frontend start/stop UI, Docker changes,
+  Provider Settings writes, Ask changes, backend bridge start/stop, real
+  `llama-server` validation, host-gateway TCP, Docker socket, privileged
+  container, host PID namespace, shell execution, or free-form command args were
+  added.
 - **Local Model Manager Phase 2G1 — companion process-control internals**
   (branch `lmm-phase2g1-companion-process-internals`). Added companion-private
   lifecycle code only: `tools/local_model_companion/profiles.py` defines typed,

@@ -5,7 +5,49 @@
 
 ---
 
-## NEXT — LMM Phase 2G1 companion process-control internals DONE.
+## NEXT — LMM Phase 2G2 companion HTTP process API DONE.
+
+- **Local Model Manager Phase 2G2 — companion Unix-socket HTTP process-control
+  endpoints is DONE** on branch `lmm-phase2g2-companion-process-api`.
+- **Endpoints added on the host companion only:** `GET /server/status`,
+  `POST /server/start`, `POST /server/stop`, and `POST /server/restart`. They use
+  the existing companion token auth and Unix-socket `BaseHTTPRequestHandler`
+  server. No FastAPI backend bridge routes or frontend controls were added.
+- **Request contract:** start/restart explicit payloads accept only `model_id`,
+  whitelisted `profile_id`, and typed `parameters`; stop accepts only
+  `grace_seconds`; restart also accepts `reuse_last` only when prior launch
+  metadata exists. Unknown top-level fields are rejected with `bad_request`.
+- **Process behavior:** HTTP handlers never call `subprocess.Popen` directly.
+  They validate JSON shape, resolve allowed `fake_test` profile config, and
+  delegate process lifecycle work to the Phase 2G1 manager. The test-only
+  `fake_test` profile now has bounded `port`, `ctx_size`, `gpu_layers`, and
+  `threads` params.
+- **Config extension:** companion config may include explicit
+  `process_runtime_dir` and `profiles.fake_test.executable`; if profiles are
+  present without an explicit runtime dir, runtime is safely derived beside the
+  explicit config file. There is no default real executable and no default real
+  `llama-server` launch.
+- **Safe DTOs:** HTTP responses expose only `ok`, `state`, `managed`, `model_id`,
+  `profile_id`, `port`, `started_at`, `error`, and bounded/redacted `log_tail`.
+  They do not expose token, socket path, absolute model path, executable path,
+  raw argv, full command line, Authorization, or full URLs. Corrupt state files
+  return safe status instead of tracebacks.
+- **Fake executable test strategy:** `test_local_model_companion_process_api.py`
+  uses a temp approved root with fake `.gguf`, a temp executable Python script,
+  and the real companion handler. This sandbox denies Unix socket and TCP socket
+  creation, so the test falls back to in-memory handler dispatch and monkeypatches
+  only the test manager port probe; production code still uses the real Unix
+  socket server and port preflight.
+- **Scope preserved:** no backend FastAPI start/stop/status/restart routes, no
+  frontend start/stop UI, no Docker Compose changes, no Provider Settings writes,
+  no Ask changes, no backend bridge start/stop, no real `llama-server` validation,
+  no host-gateway TCP, no Docker socket, no privileged container, no host PID
+  namespace, no shell execution, and no free-form command args.
+- **Recommended next slice:** Phase 2G3 backend bridge for companion server
+  status/start/stop/restart, still no frontend UI. If validation surfaces
+  lifecycle or redaction issues, do a hardening slice first.
+
+## Previous — LMM Phase 2G1 companion process-control internals DONE.
 
 - **Local Model Manager Phase 2G1 — companion process-control internals with
   fake/safe test executable only is DONE** on branch
@@ -15,33 +57,8 @@
   `tools/local_model_companion/process_manager.py` defines
   `ManagedServerProcessManager`, `start_managed_server`,
   `stop_managed_server`, and `get_managed_server_status`.
-- **Lifecycle behavior:** start resolves selected companion model ids against the
-  approved-root GGUF library, re-canonicalizes model paths under configured
-  roots, validates profile ids and typed params, validates executable existence
-  and execute permission, checks port availability, builds argv arrays only, and
-  launches via `subprocess.Popen(..., shell=False)`. Status verifies tracked PID
-  identity. Stop terminates only the tracked child after Linux `/proc` identity
-  checks and refuses stale/reused/foreign PIDs.
-- **Private state/logs:** active state lives in the companion-owned runtime dir as
-  `managed_server_state.json` with atomic writes. It records version, pid,
-  model/root/profile ids, port, typed params, `started_at`, executable
-  path/fingerprint metadata, process start ticks, private model path, redacted
-  argv metadata, status, last error, and log path. It stores no token. Logs are
-  written to `managed_server.log`; safe DTOs expose only bounded/redacted tails.
-- **Fake executable test strategy:** the focused test creates a temp approved
-  model root with fake `.gguf`, then creates a temp executable Python script that
-  stays alive, prints predictable output/redaction bait, handles SIGTERM, and is
-  cleaned up. The test monkeypatches port availability because this sandbox
-  blocks TCP sockets; the manager still implements real host port preflight.
-- **Scope preserved:** no FastAPI backend routes, no frontend UI, no Docker
-  Compose changes, no Provider Settings writes, no Ask changes, no backend bridge
-  start/stop, no companion HTTP `/server/start`, `/server/stop`, or
-  `/server/restart` endpoints, no real `llama-server` launch, no shell execution,
-  no free-form args, no host-gateway TCP, no Docker socket, no privileged
-  container, and no host PID namespace.
-- **Recommended next slice:** Phase 2G2 companion HTTP server endpoints for
-  process status/start/stop/restart, still no backend bridge or UI. If process
-  identity/redaction issues appear, do a hardening slice first.
+- **Recommended next slice was:** Phase 2G2 companion HTTP server endpoints for
+  process status/start/stop/restart, still no backend bridge or UI.
 
 ## Previous — LMM Phase 2F start/stop design review DONE.
 

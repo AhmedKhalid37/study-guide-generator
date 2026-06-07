@@ -505,6 +505,8 @@ class ManagedServerProcessManager:
         except OSError:
             return None
         text = data.decode("utf-8", errors="replace")
+        if size > MAX_LOG_TAIL_BYTES and "\n" in text:
+            text = text.split("\n", 1)[1]
         return _sanitize_text(text)[-MAX_LOG_TAIL_BYTES:]
 
     def _redacted_argv(self, argv: list[str], model_path: Path) -> list[str]:
@@ -573,4 +575,5 @@ def _sanitize_text(text: str) -> str:
     safe = re.sub(r"/(?:tmp|home|mnt|var|Users)/[^\s\"']+", "<path>", safe)
     safe = re.sub(r"tok-[A-Za-z0-9_.-]+", "<token>", safe)
     safe = re.sub(r"sk-[A-Za-z0-9_.-]+", "<token>", safe)
+    safe = re.sub(r"(?<!\S)--[A-Za-z0-9][A-Za-z0-9_-]*", "<arg>", safe)
     return safe

@@ -1,4 +1,4 @@
-"""Configuration loader for the scanning-only host companion prototype."""
+"""Configuration loader for the host companion prototype."""
 
 from __future__ import annotations
 
@@ -24,10 +24,18 @@ class ApprovedRoot:
 
 
 @dataclass(frozen=True)
+class ProcessProfileConfig:
+    id: str
+    executable: Path
+
+
+@dataclass(frozen=True)
 class CompanionConfig:
     approved_roots: tuple[ApprovedRoot, ...]
     token: str | None = None
     configured: bool = False
+    process_runtime_dir: Path | None = None
+    profiles: tuple[ProcessProfileConfig, ...] = ()
 
 
 def _as_bool(value: Any, default: bool = True) -> bool:
@@ -104,8 +112,42 @@ def load_config(config_path: str | os.PathLike[str] | None = None) -> CompanionC
     if config_token is not None and not isinstance(config_token, str):
         raise ConfigError("token must be a string when provided")
 
+    raw_runtime_dir = data.get("process_runtime_dir")
+    if raw_runtime_dir is not None and (not isinstance(raw_runtime_dir, str) or not raw_runtime_dir.strip()):
+        raise ConfigError("process_runtime_dir must be a non-empty string when provided")
+
+    raw_profiles = data.get("profiles", {})
+    if raw_profiles is None:
+        raw_profiles = {}
+    if not isinstance(raw_profiles, dict):
+        raise ConfigError("profiles must be an object when provided")
+
+    process_profiles: list[ProcessProfileConfig] = []
+    for profile_id, profile_data in raw_profiles.items():
+        if not isinstance(profile_id, str) or not profile_id.strip():
+            raise ConfigError("profile ids must be non-empty strings")
+        if not isinstance(profile_data, dict):
+            raise ConfigError(f"profile {profile_id} must be an object")
+        executable = profile_data.get("executable")
+        if not isinstance(executable, str) or not executable.strip():
+            raise ConfigError(f"profile {profile_id} executable must be a non-empty string")
+        process_profiles.append(
+            ProcessProfileConfig(
+                id=profile_id.strip(),
+                executable=Path(executable).expanduser().resolve(strict=False),
+            )
+        )
+
+    runtime_dir = None
+    if raw_runtime_dir:
+        runtime_dir = Path(raw_runtime_dir).expanduser().resolve(strict=False)
+    elif process_profiles:
+        runtime_dir = (path.resolve(strict=False).parent / ".lmm-companion-runtime").resolve(strict=False)
+
     return CompanionConfig(
         approved_roots=tuple(roots),
         token=env_token or config_token,
         configured=True,
+        process_runtime_dir=runtime_dir,
+        profiles=tuple(process_profiles),
     )
