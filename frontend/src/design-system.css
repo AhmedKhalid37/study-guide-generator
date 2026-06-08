@@ -77,6 +77,21 @@ body { overflow: hidden; }
 .scroll::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.13); border-radius: 999px; border: 2px solid var(--bg); }
 .scroll::-webkit-scrollbar-track { background: transparent; }
 
+/* Button reset — neutralises native chrome so any control can be a real
+   <button> and still pick up the component classes below. Declared up here so
+   it loses to the equal-specificity component classes (.nav-item, .icon-btn,
+   .btn-white, .assistant-pill, …), which are defined later and win the cascade. */
+.btn-reset {
+  appearance: none;
+  -webkit-appearance: none;
+  background: none;
+  border: 0;
+  font: inherit;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
 /* =========================================================================
    App shell
    ========================================================================= */
@@ -444,6 +459,10 @@ body { overflow: hidden; }
 .pill-red    .dot { background: var(--red); }
 .pill-indigo { background: var(--indigo-soft); color: #A5A8F8; font-weight: 600; }
 .pill-running { color: var(--green); font-size: 12.5px; font-weight: 500; }
+/* Quiet tone for the "valid" status — intentionally NOT green (no "Ready"
+   state exists in the shortcut vocabulary); valid shortcuts read as neutral. */
+.pill-quiet { background: rgba(255,255,255,0.06); color: var(--muted); }
+.pill-quiet .dot { background: var(--muted); }
 
 /* =========================================================================
    Generic buttons / inputs reused across screens
@@ -469,6 +488,11 @@ body { overflow: hidden; }
 .field::placeholder { color: var(--muted); }
 .field:focus { border-color: var(--card-border-2); }
 .field-label { font-size: 12.5px; color: var(--muted); margin-bottom: 9px; display:block; font-weight: 500; }
+/* Labelled-field wrapper (Field primitive): label + control + hint/error. */
+.field-group { display: block; }
+.field-group + .field-group { margin-top: 18px; }
+.field-hint { font-size: 12px; color: var(--muted); margin-top: 8px; line-height: 1.45; }
+.field-error { font-size: 12px; color: #FCA5A5; margin-top: 8px; line-height: 1.45; }
 
 /* chips */
 .chip {

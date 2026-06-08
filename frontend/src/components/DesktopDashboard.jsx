@@ -7,6 +7,7 @@ import ProviderSettingsWorkspace from "./ProviderSettingsWorkspace";
 import AskGuideWorkspace from "./AskGuideWorkspace";
 import HomeShortcuts from "./HomeShortcuts";
 import Icon from "./Icon";
+import Button, { IconButton } from "./Button";
 import { INPUT_TO_SOURCE } from "../shortcutMeta";
 import { getJobs } from "../api/client";
 
@@ -162,29 +163,11 @@ export default function DesktopDashboard() {
   );
 }
 
-// Activate a role="button" div with Enter/Space, mirroring native button keys.
-// The design-system control classes are authored for <div>s (no UA-chrome
-// reset), so the shell uses divs + this helper rather than native buttons.
-function keyActivate(handler) {
-  return (event) => {
-    if (event.key === "Enter" || event.key === " ") {
-      event.preventDefault();
-      handler(event);
-    }
-  };
-}
-
-function Toggle({ on, onToggle }) {
+// Presentational switch visual (a <div> so the .toggle box renders inside the
+// owning button); the surrounding button carries the interaction + aria.
+function Toggle({ on }) {
   return (
-    <div
-      className={`toggle ${on ? "on" : ""}`}
-      role="switch"
-      aria-checked={on}
-      aria-label="Dark mode"
-      tabIndex={0}
-      onClick={onToggle}
-      onKeyDown={keyActivate(onToggle)}
-    >
+    <div className={`toggle ${on ? "on" : ""}`} aria-hidden="true">
       <div className="knob" />
     </div>
   );
@@ -197,20 +180,17 @@ function Sidebar({ activeSection, onNavigate }) {
 
   const renderItem = (item) => {
     const active = item.id === activeSection;
-    const select = () => onNavigate(item.id);
     return (
-      <div
+      <Button
         key={item.id}
-        className={`nav-item ${active ? "active" : ""}`}
-        role="button"
-        tabIndex={0}
+        variant="bare"
+        className={`nav-item ${active ? "active" : ""}`.trim()}
         aria-current={active ? "page" : undefined}
-        onClick={select}
-        onKeyDown={keyActivate(select)}
+        onClick={() => onNavigate(item.id)}
       >
         {Icon[item.icon]()}
         <span>{item.label}</span>
-      </div>
+      </Button>
     );
   };
 
@@ -234,25 +214,26 @@ function Sidebar({ activeSection, onNavigate }) {
         <div className="nav-section">
           <div className="nav-label">Settings</div>
           {/* Help & Settings have no dedicated workspace yet — presentational rows. */}
-          <div className="nav-item" role="button" tabIndex={0}>
+          <Button variant="bare" className="nav-item">
             {Icon.help()}
             <span>Help</span>
-          </div>
-          <div
+          </Button>
+          {/* The whole row is the switch — no nested button. */}
+          <Button
+            variant="bare"
             className="nav-item"
-            role="button"
-            tabIndex={0}
+            role="switch"
+            aria-checked={dark}
             onClick={toggleDark}
-            onKeyDown={keyActivate(toggleDark)}
           >
             {Icon.moon()}
             <span>Dark Mode</span>
-            <Toggle on={dark} onToggle={(e) => { e.stopPropagation(); toggleDark(); }} />
-          </div>
-          <div className="nav-item" role="button" tabIndex={0}>
+            <Toggle on={dark} />
+          </Button>
+          <Button variant="bare" className="nav-item">
             {Icon.settings()}
             <span>Settings</span>
-          </div>
+          </Button>
         </div>
       </div>
 
@@ -264,16 +245,15 @@ function Sidebar({ activeSection, onNavigate }) {
           <div className="profile-mail">Local workspace</div>
         </div>
       </div>
-      <div className="signout" role="button" tabIndex={0}>
+      <Button variant="bare" className="signout">
         {Icon.signout()}
         <span>Sign Out</span>
-      </div>
+      </Button>
     </aside>
   );
 }
 
 function Topbar({ onNavigate }) {
-  const openAsk = () => onNavigate("ask");
   return (
     <header className="topbar">
       <div style={{ width: 1 }} />
@@ -283,12 +263,12 @@ function Topbar({ onNavigate }) {
         <span className="kbd">⌘ + F</span>
       </div>
       <div className="topbar-right">
-        <button type="button" className="assistant-pill" onClick={openAsk}>
+        <Button variant="assistant" onClick={() => onNavigate("ask")}>
           {Icon.sparkle()} Ask Guide
-        </button>
-        <div className="icon-btn" role="button" tabIndex={0} aria-label="History">{Icon.history()}</div>
-        <div className="icon-btn" role="button" tabIndex={0} aria-label="Messages">{Icon.mail()}</div>
-        <div className="icon-btn" role="button" tabIndex={0} aria-label="Notifications">{Icon.bell()}</div>
+        </Button>
+        <IconButton aria-label="History">{Icon.history()}</IconButton>
+        <IconButton aria-label="Messages">{Icon.mail()}</IconButton>
+        <IconButton aria-label="Notifications">{Icon.bell()}</IconButton>
       </div>
     </header>
   );
