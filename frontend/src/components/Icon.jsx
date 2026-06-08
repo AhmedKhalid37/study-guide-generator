@@ -65,6 +65,8 @@ export const Icon = {
   plus: (p) => <S {...p}><path d="M12 5v14M5 12h14" /></S>,
   check: (p) => <S {...p}><path d="m5 13 4 4 10-11" /></S>,
   arrowR: (p) => <S {...p}><path d="M5 12h14M13 6l6 6-6 6" /></S>,
+  chevronLeft: (p) => <S {...p}><path d="m15 6-6 6 6 6" /></S>,
+  chevronRight: (p) => <S {...p}><path d="m9 6 6 6-6 6" /></S>,
   zap: (p) => <S {...p}><path d="M13 2 4 14h7l-1 8 9-12h-7l1-8Z" /></S>,
   cpu: (p) => <S {...p}><rect x="6" y="6" width="12" height="12" rx="2" /><path d="M9.5 9.5h5v5h-5z" /><path d="M9 2v2M15 2v2M9 20v2M15 20v2M2 9h2M2 15h2M20 9h2M20 15h2" /></S>,
   cloud: (p) => <S {...p}><path d="M7 18a4 4 0 0 1-.5-7.97A6 6 0 0 1 18 9.5 3.5 3.5 0 0 1 17.5 18Z" /></S>,

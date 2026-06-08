@@ -48,6 +48,18 @@ const TOOL_ROUTES = {
   outline: { section: "builder", source: "llm" }
 };
 
+// Sidebar collapsed-state persistence. This is the real Vite app, so
+// localStorage is fine; reads/writes are guarded for private-mode browsers.
+const SIDEBAR_COLLAPSE_KEY = "gf:sidebar-collapsed";
+
+function readSidebarCollapsed() {
+  try {
+    return localStorage.getItem(SIDEBAR_COLLAPSE_KEY) === "1";
+  } catch {
+    return false;
+  }
+}
+
 export default function DesktopDashboard() {
   const [activeSection, setActiveSection] = useState("home");
   const [builderSource, setBuilderSource] = useState("llm");
@@ -61,6 +73,8 @@ export default function DesktopDashboard() {
   const [libraryView, setLibraryView] = useState(null);
   // Latest Builder setup snapshot, so the customize modal can "Capture from Builder".
   const [builderSetup, setBuilderSetup] = useState(null);
+  // Collapsed sidebar — local UI state only, persisted across reloads.
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(readSidebarCollapsed);
 
   useEffect(() => {
     let cancelled = false;
@@ -69,6 +83,16 @@ export default function DesktopDashboard() {
       cancelled = true;
     };
   }, [jobsRefreshKey]);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(SIDEBAR_COLLAPSE_KEY, sidebarCollapsed ? "1" : "0");
+    } catch {
+      // ignore (private mode / storage disabled) — state still works in-session
+    }
+  }, [sidebarCollapsed]);
+
+  const toggleSidebar = useCallback(() => setSidebarCollapsed((v) => !v), []);
 
   // Generic "New Guide" opens the AI/LLM mode by default; explicit shortcuts
   // (paste/upload/llm) still override by passing their source.
@@ -122,8 +146,13 @@ export default function DesktopDashboard() {
   }, []);
 
   return (
-    <div className="app">
-      <Sidebar activeSection={activeSection} onNavigate={setActiveSection} />
+    <div className={`app ${sidebarCollapsed ? "is-collapsed" : ""}`.trim()}>
+      <Sidebar
+        activeSection={activeSection}
+        onNavigate={setActiveSection}
+        collapsed={sidebarCollapsed}
+        onToggleCollapse={toggleSidebar}
+      />
       <div className="main">
         <Topbar onNavigate={setActiveSection} />
         <div className="content scroll">
@@ -173,10 +202,14 @@ function Toggle({ on }) {
   );
 }
 
-function Sidebar({ activeSection, onNavigate }) {
+function Sidebar({ activeSection, onNavigate, collapsed, onToggleCollapse }) {
   // The app is dark-only today; the toggle is presentational (slides locally)
   // until a real theme switch exists.
   const [dark, setDark] = useState(true);
+
+  // When collapsed, the label text is visually hidden (kept in the DOM as the
+  // accessible name); a native title surfaces it as a hover tooltip.
+  const tip = (label) => (collapsed ? label : undefined);
 
   const renderItem = (item) => {
     const active = item.id === activeSection;
@@ -186,6 +219,7 @@ function Sidebar({ activeSection, onNavigate }) {
         variant="bare"
         className={`nav-item ${active ? "active" : ""}`.trim()}
         aria-current={active ? "page" : undefined}
+        title={tip(item.label)}
         onClick={() => onNavigate(item.id)}
       >
         {Icon[item.icon]()}
@@ -201,6 +235,15 @@ function Sidebar({ activeSection, onNavigate }) {
       <div className="brand">
         <div className="brand-mark">{Icon.logo({ width: 30, height: 30 })}</div>
         <div className="brand-name">GuideForge</div>
+        <IconButton
+          className="sidebar-collapse"
+          aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"}
+          aria-expanded={!collapsed}
+          title={collapsed ? "Expand sidebar" : "Collapse sidebar"}
+          onClick={onToggleCollapse}
+        >
+          {collapsed ? Icon.chevronRight() : Icon.chevronLeft()}
+        </IconButton>
       </div>
 
       <div className="scroll" style={{ flex: "1 1 auto", margin: "0 -6px", padding: "0 6px" }}>
@@ -214,7 +257,7 @@ function Sidebar({ activeSection, onNavigate }) {
         <div className="nav-section">
           <div className="nav-label">Settings</div>
           {/* Help & Settings have no dedicated workspace yet — presentational rows. */}
-          <Button variant="bare" className="nav-item">
+          <Button variant="bare" className="nav-item" title={tip("Help")}>
             {Icon.help()}
             <span>Help</span>
           </Button>
@@ -224,13 +267,14 @@ function Sidebar({ activeSection, onNavigate }) {
             className="nav-item"
             role="switch"
             aria-checked={dark}
+            title={tip("Dark Mode")}
             onClick={toggleDark}
           >
             {Icon.moon()}
             <span>Dark Mode</span>
             <Toggle on={dark} />
           </Button>
-          <Button variant="bare" className="nav-item">
+          <Button variant="bare" className="nav-item" title={tip("Settings")}>
             {Icon.settings()}
             <span>Settings</span>
           </Button>
@@ -245,7 +289,7 @@ function Sidebar({ activeSection, onNavigate }) {
           <div className="profile-mail">Local workspace</div>
         </div>
       </div>
-      <Button variant="bare" className="signout">
+      <Button variant="bare" className="signout" title={tip("Sign Out")}>
         {Icon.signout()}
         <span>Sign Out</span>
       </Button>

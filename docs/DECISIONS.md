@@ -1252,3 +1252,25 @@ in later reskin slices, not here. The app is expected to look **partially
 restyled** at this stage. No second/global Claude stylesheet remained to remove —
 its former file (`src/styles.css`) was already overwritten by the design system
 before this slice and is renamed here to `src/design-system.css`.
+
+## Shell deviates from the reference: bigger nav labels + collapsible sidebar (Slice 3.5)
+Two intentional departures from the pixel-faithful reskin reference image, both
+shell-only (no route/API/workspace-logic change):
+
+- **Nav label size bumped** one step up the type scale — `.nav-item` font-size
+  `14.5px → 15.5px` (uppercase section labels `GENERAL`/`TOOLS · RESOURCES`/
+  `SETTINGS` deliberately left at 11px). **Why:** at 14.5px the primary nav read
+  slightly small against the new serif headings and topbar; 15.5px balances the
+  hierarchy without touching row height or icon gap.
+- **Collapsible sidebar added** — a chevron toggle in the brand row collapses the
+  rail to an icon-only `~72px` (`.app.is-collapsed` swaps `--sidebar-w`
+  `272px → 72px`, animated via a `grid-template-columns` transition). State lives
+  in `DesktopDashboard` (`useState`) and is persisted to `localStorage`
+  (`gf:sidebar-collapsed`, default expanded). Collapsed mode hides the wordmark
+  (logo kept), hides section labels (hairline divider instead), centers nav icons,
+  drops the dark-mode switch + profile text, and reduces Sign Out to its icon.
+  **Why:** the reference has no collapse affordance, but an icon rail is a standard
+  desktop-shell expectation and reclaims width for the workspaces. **Accessibility:**
+  collapsed labels stay in the DOM as visually-hidden (`sr-only`) text so each
+  control keeps its accessible name; a native `title` adds a hover tooltip; the
+  toggle carries `aria-label` + `aria-expanded`; the active item stays highlighted.
