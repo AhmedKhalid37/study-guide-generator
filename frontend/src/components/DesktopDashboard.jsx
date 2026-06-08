@@ -1,50 +1,36 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import {
-  BookOpenCheck,
-  Bot,
-  ChevronRight,
-  Download,
-  Folder,
-  Home,
-  Layers3,
-  Library,
-  PenLine,
-  Plus,
-  Sparkles,
-  Upload,
-  Wand2
-} from "lucide-react";
+import React, { useCallback, useEffect, useState } from "react";
 import BuilderWorkspace from "./BuilderWorkspace";
-import RecentJobsPanel from "./RecentJobsPanel";
 import StylesWorkspace from "./StylesWorkspace";
 import LibraryWorkspace from "./LibraryWorkspace";
 import ExportsWorkspace from "./ExportsWorkspace";
 import ProviderSettingsWorkspace from "./ProviderSettingsWorkspace";
 import AskGuideWorkspace from "./AskGuideWorkspace";
 import HomeShortcuts from "./HomeShortcuts";
+import Icon from "./Icon";
 import { INPUT_TO_SOURCE } from "../shortcutMeta";
 import { getJobs } from "../api/client";
-import {
-  BoltGlyph,
-  BookGlyph,
-  DocGlyph,
-  ListGlyph,
-  PDFGlyph,
-  SearchI,
-  SettingsI,
-  SparkleGlyph,
-  Tile,
-  UploadGlyph
-} from "./ClaudeIcons";
 
-const navItems = [
-  { id: "home", label: "Home", icon: Home },
-  { id: "builder", label: "Builder", icon: PenLine },
-  { id: "library", label: "Library", icon: Library },
-  { id: "ask", label: "Ask Guide", icon: BookOpenCheck },
-  { id: "styles", label: "Styles", icon: Layers3 },
-  { id: "models", label: "Models", icon: Bot },
-  { id: "exports", label: "Exports", icon: Download }
+// Sidebar nav, grouped to match the reskin reference. The ids and order are the
+// real activeSection ids consumed below — only the icon keys (resolved against
+// the Icon map) and the section grouping are presentational.
+const navSections = [
+  {
+    label: "General",
+    items: [
+      { id: "home", label: "Home", icon: "home" },
+      { id: "builder", label: "Builder", icon: "builder" },
+      { id: "library", label: "Library", icon: "library" },
+      { id: "ask", label: "Ask Guide", icon: "ask" }
+    ]
+  },
+  {
+    label: "Tools / Resources",
+    items: [
+      { id: "styles", label: "Styles", icon: "styles" },
+      { id: "models", label: "Models", icon: "models" },
+      { id: "exports", label: "Exports", icon: "exports" }
+    ]
+  }
 ];
 
 // Where each shortcut `tool` key routes. Tools without a dedicated page land on
@@ -135,157 +121,175 @@ export default function DesktopDashboard() {
   }, []);
 
   return (
-    <section className="sg mx-auto h-[calc(100vh-56px)] min-h-[820px] w-full max-w-[1920px]">
-      <ClaudeFrame activeSection={activeSection} onNavigate={setActiveSection} onNewGuide={() => openBuilder()}>
-        {activeSection === "home" && (
-          <HomeShortcuts
-            jobs={jobs}
-            jobsRefreshKey={jobsRefreshKey}
-            onActivateShortcut={handleActivateShortcut}
-            onNewGuide={() => openBuilder()}
-            onNavigate={setActiveSection}
-            currentBuilderSetup={builderSetup}
-          />
-        )}
-        {activeSection === "builder" && (
-          <BuilderWorkspace
-            initialSource={builderSource}
-            selectedStyle={selectedStyle}
-            onSelectStyle={setSelectedStyle}
-            latestJob={latestJob}
-            onJobCreated={handleJobCreated}
-            prefill={builderPrefill}
-            onReportSetup={setBuilderSetup}
-          />
-        )}
-        {activeSection === "models" && <ProviderSettingsWorkspace />}
-        {activeSection === "ask" && <AskGuideWorkspace />}
-        {activeSection === "styles" && (
-          <StylesWorkspace selectedStyle={selectedStyle} onSelectStyle={setSelectedStyle} onOpenBuilder={openBuilder} />
-        )}
-        {activeSection === "library" && (
-          <LibraryWorkspace refreshKey={jobsRefreshKey} onOpenBuilder={openBuilder} initialView={libraryView} />
-        )}
-        {activeSection === "exports" && <ExportsWorkspace refreshKey={jobsRefreshKey} onOpenBuilder={openBuilder} />}
-      </ClaudeFrame>
-    </section>
-  );
-}
-
-function ClaudeFrame({ activeSection, onNavigate, onNewGuide, children }) {
-  return (
-    <div className="sg-frame">
-      <AmbientBackdrop />
-      <div className="sg-frame-content">
-        <TitleBar />
-        <div className="sg-main-row">
-          <Sidebar activeSection={activeSection} onNavigate={onNavigate} onNewGuide={onNewGuide} />
-          <main className="sg-route">{children}</main>
+    <div className="app">
+      <Sidebar activeSection={activeSection} onNavigate={setActiveSection} />
+      <div className="main">
+        <Topbar onNavigate={setActiveSection} />
+        <div className="content scroll">
+          {activeSection === "home" && (
+            <HomeShortcuts
+              jobs={jobs}
+              jobsRefreshKey={jobsRefreshKey}
+              onActivateShortcut={handleActivateShortcut}
+              onNewGuide={() => openBuilder()}
+              onNavigate={setActiveSection}
+              currentBuilderSetup={builderSetup}
+            />
+          )}
+          {activeSection === "builder" && (
+            <BuilderWorkspace
+              initialSource={builderSource}
+              selectedStyle={selectedStyle}
+              onSelectStyle={setSelectedStyle}
+              latestJob={latestJob}
+              onJobCreated={handleJobCreated}
+              prefill={builderPrefill}
+              onReportSetup={setBuilderSetup}
+            />
+          )}
+          {activeSection === "models" && <ProviderSettingsWorkspace />}
+          {activeSection === "ask" && <AskGuideWorkspace />}
+          {activeSection === "styles" && (
+            <StylesWorkspace selectedStyle={selectedStyle} onSelectStyle={setSelectedStyle} onOpenBuilder={openBuilder} />
+          )}
+          {activeSection === "library" && (
+            <LibraryWorkspace refreshKey={jobsRefreshKey} onOpenBuilder={openBuilder} initialView={libraryView} />
+          )}
+          {activeSection === "exports" && <ExportsWorkspace refreshKey={jobsRefreshKey} onOpenBuilder={openBuilder} />}
         </div>
       </div>
     </div>
   );
 }
 
-function AmbientBackdrop() {
+// Activate a role="button" div with Enter/Space, mirroring native button keys.
+// The design-system control classes are authored for <div>s (no UA-chrome
+// reset), so the shell uses divs + this helper rather than native buttons.
+function keyActivate(handler) {
+  return (event) => {
+    if (event.key === "Enter" || event.key === " ") {
+      event.preventDefault();
+      handler(event);
+    }
+  };
+}
+
+function Toggle({ on, onToggle }) {
   return (
-    <>
-      <div className="sg-glow sg-glow-a"><div className="sg-glow-inner" /></div>
-      <div className="sg-glow sg-glow-b"><div className="sg-glow-inner" /></div>
-      <div className="sg-stars">
-        {[{ x: 20, y: 30 }, { x: 70, y: 65 }, { x: 85, y: 20 }, { x: 15, y: 75 }, { x: 45, y: 12 }, { x: 92, y: 78 }].map((star, index) => (
-          <span
-            key={index}
-            className="sg-star"
-            style={{ left: `${star.x}%`, top: `${star.y}%`, animationDelay: `${index * -1.2}s` }}
-          />
+    <div
+      className={`toggle ${on ? "on" : ""}`}
+      role="switch"
+      aria-checked={on}
+      aria-label="Dark mode"
+      tabIndex={0}
+      onClick={onToggle}
+      onKeyDown={keyActivate(onToggle)}
+    >
+      <div className="knob" />
+    </div>
+  );
+}
+
+function Sidebar({ activeSection, onNavigate }) {
+  // The app is dark-only today; the toggle is presentational (slides locally)
+  // until a real theme switch exists.
+  const [dark, setDark] = useState(true);
+
+  const renderItem = (item) => {
+    const active = item.id === activeSection;
+    const select = () => onNavigate(item.id);
+    return (
+      <div
+        key={item.id}
+        className={`nav-item ${active ? "active" : ""}`}
+        role="button"
+        tabIndex={0}
+        aria-current={active ? "page" : undefined}
+        onClick={select}
+        onKeyDown={keyActivate(select)}
+      >
+        {Icon[item.icon]()}
+        <span>{item.label}</span>
+      </div>
+    );
+  };
+
+  const toggleDark = () => setDark((v) => !v);
+
+  return (
+    <aside className="sidebar">
+      <div className="brand">
+        <div className="brand-mark">{Icon.logo({ width: 30, height: 30 })}</div>
+        <div className="brand-name">GuideForge</div>
+      </div>
+
+      <div className="scroll" style={{ flex: "1 1 auto", margin: "0 -6px", padding: "0 6px" }}>
+        {navSections.map((section) => (
+          <div className="nav-section" key={section.label}>
+            <div className="nav-label">{section.label}</div>
+            {section.items.map(renderItem)}
+          </div>
         ))}
-      </div>
-    </>
-  );
-}
 
-function TitleBar() {
-  return (
-    <header className="sg-titlebar">
-      <div className="sg-title-left">
-        <Tile size={20} radius={6}>
-          <span className="sg-book-page"><BookGlyph size={12} /></span>
-        </Tile>
-        <span>Study Guide Generator</span>
-      </div>
-      <div className="sg-commandbar">
-        <SearchI size={13} stroke="#9098A8" sw={2} />
-        <span>Search guides, styles, or paste a URL...</span>
-        <kbd>Ctrl + K</kbd>
-      </div>
-      <div className="sg-window-buttons" aria-hidden>
-        <button><span /></button>
-        <button><i /></button>
-        <button className="sg-close"><b /></button>
-      </div>
-    </header>
-  );
-}
-
-function Sidebar({ activeSection, onNavigate, onNewGuide }) {
-  const navRef = useRef(null);
-  const [barTop, setBarTop] = useState(0);
-  const activeIndex = navItems.findIndex((item) => item.id === activeSection);
-
-  useEffect(() => {
-    const nav = navRef.current;
-    if (!nav) return;
-    const row = nav.querySelectorAll("[data-side-row]")[activeIndex];
-    if (!row) return;
-    const navRect = nav.getBoundingClientRect();
-    const rowRect = row.getBoundingClientRect();
-    setBarTop(rowRect.top - navRect.top + rowRect.height / 2 - 9);
-  }, [activeIndex]);
-
-  return (
-    <aside className="sg-sidebar">
-      <div className="sg-sidebar-label">Workspace</div>
-      <button type="button" className="sg-sidebar-new sg-press-btn" onClick={onNewGuide}>
-        <Plus size={15} stroke="#1A1206" strokeWidth={2.5} />
-        New Guide
-      </button>
-      <nav ref={navRef} className="sg-sidebar-nav">
-        <span className="sg-side-bar" style={{ transform: `translate3d(-12px, ${barTop}px, 0)` }} />
-        {navItems.map((item) => {
-          const Icon = item.icon;
-          const active = item.id === activeSection;
-          return (
-            <button
-              key={item.id}
-              type="button"
-              data-side-row
-              onClick={() => onNavigate(item.id)}
-              className={`sg-side-row ${active ? "active" : ""}`}
-            >
-              <span className="sg-side-icon"><Icon size={18} /></span>
-              {item.label}
-            </button>
-          );
-        })}
-      </nav>
-      <div className="sg-sidebar-spacer" />
-      <div className="sg-storage-card">
-        <div>
-          <span>Library</span>
-          <span>On disk</span>
+        <div className="nav-section">
+          <div className="nav-label">Settings</div>
+          {/* Help & Settings have no dedicated workspace yet — presentational rows. */}
+          <div className="nav-item" role="button" tabIndex={0}>
+            {Icon.help()}
+            <span>Help</span>
+          </div>
+          <div
+            className="nav-item"
+            role="button"
+            tabIndex={0}
+            onClick={toggleDark}
+            onKeyDown={keyActivate(toggleDark)}
+          >
+            {Icon.moon()}
+            <span>Dark Mode</span>
+            <Toggle on={dark} onToggle={(e) => { e.stopPropagation(); toggleDark(); }} />
+          </div>
+          <div className="nav-item" role="button" tabIndex={0}>
+            {Icon.settings()}
+            <span>Settings</span>
+          </div>
         </div>
-        <div className="sg-storage-meter"><i /></div>
-        <p>Generated guides stay in the local jobs store.</p>
       </div>
-      <div className="sg-user-row">
-        <span>A</span>
+
+      <div className="profile-divider" />
+      <div className="profile">
+        <div className="avatar" />
         <div>
-          <strong>Ahmed</strong>
-          <em>Local workspace</em>
+          <div className="profile-name">Ahmed</div>
+          <div className="profile-mail">Local workspace</div>
         </div>
-        <SettingsI size={16} stroke="#6B7185" sw={2} />
+      </div>
+      <div className="signout" role="button" tabIndex={0}>
+        {Icon.signout()}
+        <span>Sign Out</span>
       </div>
     </aside>
+  );
+}
+
+function Topbar({ onNavigate }) {
+  const openAsk = () => onNavigate("ask");
+  return (
+    <header className="topbar">
+      <div style={{ width: 1 }} />
+      <div className="search">
+        {Icon.search()}
+        <input placeholder="Search guides, sources, quizzes…" />
+        <span className="kbd">⌘ + F</span>
+      </div>
+      <div className="topbar-right">
+        <button type="button" className="assistant-pill" onClick={openAsk}>
+          {Icon.sparkle()} Ask Guide
+        </button>
+        <div className="icon-btn" role="button" tabIndex={0} aria-label="History">{Icon.history()}</div>
+        <div className="icon-btn" role="button" tabIndex={0} aria-label="Messages">{Icon.mail()}</div>
+        <div className="icon-btn" role="button" tabIndex={0} aria-label="Notifications">{Icon.bell()}</div>
+      </div>
+    </header>
   );
 }
