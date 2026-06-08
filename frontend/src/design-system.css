@@ -245,18 +245,27 @@ body { overflow: hidden; }
   padding-top: 12px;
 }
 
-/* nav rows + sign out → centered icon only; the dark-mode switch hides */
+/* nav rows + sign out → centered icon only; the dark-mode switch hides.
+   Even vertical padding + horizontal centering keeps each row roughly square so
+   the enlarged collapsed icons sit centered and the active highlight frames them
+   cleanly. */
 .app.is-collapsed .nav-item {
   justify-content: center;
   gap: 0;
-  padding-left: 0;
-  padding-right: 0;
+  padding: 11px 0;
 }
 .app.is-collapsed .toggle { display: none; }
 .app.is-collapsed .signout {
   justify-content: center;
-  padding-left: 0;
-  padding-right: 0;
+  padding: 11px 0;
+}
+
+/* Bigger icons in the 72px rail (collapsed only — expanded stays 18px). Driven
+   by CSS, which already overrides the Icon component's 18px presentation attr. */
+.app.is-collapsed .nav-item svg,
+.app.is-collapsed .signout svg {
+  width: 23px;
+  height: 23px;
 }
 
 /* profile → avatar only */
