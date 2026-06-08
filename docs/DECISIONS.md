@@ -1226,3 +1226,29 @@ typed bounded profile default. The slice also adds Linux-first operator setup do
 it does not add app-suggested settings, Provider Settings writes, Ask changes,
 permanent Docker changes, host-gateway TCP, Docker socket, privileged containers,
 host PID namespace, or token/socket/path/raw argv exposure.
+
+## UI reskin: replace the Claude-style baseline with the new dark design system (2026-06-08)
+The visual baseline is moving off the Claude-style UI to a new dark design system
+("GuideForge"), captured as a token block (`:root`) plus component classes
+(`.panel`, `.stat-card`, `.item-card`, `.pill-*`, `.nav-item`, `.hero`, `.btn`,
+`.chip`, `.field`, …) in `frontend/src/design-system.css` (renamed from the former
+`src/styles.css`, which previously held the Claude-style global stylesheet).
+**This is a visual-only reskin: no route, API, state, or component-logic changes.**
+**Why:** a single owned design system in one file keeps colors/type/geometry
+consistent and makes `:root` the single source of truth — `tailwind.config.js`
+references `var(--…)` rather than re-typing hex, so Tailwind utilities and the
+component CSS can never drift.
+
+Slice 1 (this commit) is **foundation only**: install the fonts
+(`@fontsource-variable/newsreader`, `@fontsource-variable/inter`,
+`@fontsource/geist-mono`) and wire them + `design-system.css` into the entry
+(`main.jsx`); the `:root` `--serif`/`--sans` tokens lead with the
+`"… Variable"` family names the fontsource-variable packages actually register,
+keeping the plain/system names as fallbacks. `theme.extend` **adds** var-backed
+`colors`/`fontFamily`/`borderRadius` tokens but **retains** the legacy
+`navy`/`ember` palette and ember/navy shadows for now — removing them would inert
+~160 existing component class usages. The legacy palette is removed per-component
+in later reskin slices, not here. The app is expected to look **partially
+restyled** at this stage. No second/global Claude stylesheet remained to remove —
+its former file (`src/styles.css`) was already overwritten by the design system
+before this slice and is renamed here to `src/design-system.css`.
