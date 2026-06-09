@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef, useState } from "react";
+import React, { forwardRef, useCallback, useEffect, useImperativeHandle, useMemo, useRef, useState } from "react";
 import {
   AlertCircle,
   AlertTriangle,
@@ -48,6 +48,9 @@ import {
 } from "../api/client";
 import { buildStyleLookup, resolveStyle } from "../styleMeta";
 import { folderColor } from "../folderMeta";
+import Panel from "./Panel";
+import ItemCard from "./ItemCard";
+import ProviderPill from "./ProviderPill";
 
 const artifactLinks = [
   { name: "final.pdf", label: "PDF", key: "final_pdf", icon: Download },
@@ -96,7 +99,7 @@ function attachmentSummary(job) {
   };
 }
 
-export default function RecentJobsPanel({ refreshKey = 0, embedded = false, onSelectedJobChange }) {
+function RecentJobsPanel({ refreshKey = 0, embedded = false, onSelectedJobChange }, ref) {
   const [jobs, setJobs] = useState([]);
   const [selectedJobId, setSelectedJobId] = useState(null);
   const [selectedJob, setSelectedJob] = useState(null);
@@ -197,95 +200,73 @@ export default function RecentJobsPanel({ refreshKey = 0, embedded = false, onSe
     [availability]
   );
 
-  function openJobDetails(jobId) {
+  const openJobDetails = useCallback((jobId) => {
     setSelectedJobId(jobId);
     setDetailsOpen(true);
-  }
+  }, []);
+
+  // Let a parent (Home's Favorite Guides) open the SAME drawer for any job id —
+  // the job-load effect fetches it whether or not it is in the recent list.
+  useImperativeHandle(ref, () => ({ openJob: openJobDetails }), [openJobDetails]);
 
   const listPanel = (
-      <div className="rounded-2xl border border-white/10 bg-white/[0.035] p-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.05)] backdrop-blur-xl">
-        <div className="flex flex-col gap-2 border-b border-white/10 pb-4 sm:flex-row sm:items-end sm:justify-between">
-          <div>
-            <h2 className="text-xl font-extrabold text-white">Recent Guides</h2>
-          </div>
-          <button type="button" className="text-sm font-medium text-slate-300 hover:text-white">
-            View all
-          </button>
+    <Panel title="Recent Guides" action={<span className="panel-link">View all</span>}>
+      {loadingJobs && (
+        <div className="recent-state">
+          <Loader2 className="h-5 w-5 animate-spin" style={{ color: "var(--muted)" }} />
+          <span>Loading guides…</span>
         </div>
+      )}
 
-        {loadingJobs && (
-          <div className="flex min-h-48 items-center justify-center gap-3 text-slate-300">
-            <Loader2 className="h-5 w-5 animate-spin text-ember-500" />
-            <span>Loading jobs...</span>
-          </div>
-        )}
+      {!loadingJobs && jobsError && (
+        <div className="recent-state" style={{ color: "var(--red)" }}>
+          <AlertCircle className="h-5 w-5" />
+          <span>Could not load guides</span>
+        </div>
+      )}
 
-        {!loadingJobs && jobsError && (
-          <div className="flex min-h-48 items-center justify-center gap-3 text-red-200">
-            <AlertCircle className="h-5 w-5" />
-            <span>Could not load jobs</span>
-          </div>
-        )}
+      {!loadingJobs && !jobsError && jobs.length === 0 && (
+        <div className="recent-state">No guides yet</div>
+      )}
 
-        {!loadingJobs && !jobsError && jobs.length === 0 && (
-          <div className="flex min-h-48 items-center justify-center text-slate-400">
-            No jobs yet
-          </div>
-        )}
-
-        {!loadingJobs && !jobsError && jobs.length > 0 && (
-          <div className="mt-4 grid gap-3">
-            {jobs.map((job) => {
-              const selected = selectedJobId === job.id;
-              const providerModel = formatProviderModel(job);
-              const sources = attachmentSummary(job);
-              const jobStyle = resolveStyle(job.prompt_name, styleLookup);
-              const folder = jobFolder(job);
-              return (
-                <button
-                  key={job.id}
-                  type="button"
-                  onClick={() => openJobDetails(job.id)}
-                  className={`w-full rounded-xl border p-3 text-left transition ${
-                    selected
-                      ? "border-ember-500/60 bg-ember-500/[0.08]"
-                      : "border-white/10 bg-white/[0.035] hover:border-white/20 hover:bg-white/[0.055]"
-                  }`}
-                >
-                  <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                    <div className="min-w-0">
-                      <p className="truncate text-sm font-bold text-white">{jobTitle(job)}</p>
-                      <p className="mt-1 truncate text-xs text-slate-400">
-                        {[providerModel || "Study guide", job.created_at].filter(Boolean).join(" · ")}
-                      </p>
-                      {(jobStyle || folder || sources.count > 0) && (
-                        <div className="mt-2 flex flex-wrap gap-1.5">
-                          {jobStyle && <StylePill style={jobStyle} />}
-                          {folder && <FolderPill folder={folder} />}
-                          {sources.count > 0 && <AttachmentPill count={sources.count} />}
-                          {sources.count > 0 && sources.hasWarnings && <WarningPill count={sources.warningCount} />}
-                        </div>
-                      )}
-                    </div>
-                    <div className="flex items-center gap-3">
-                      <span
-                        className={`inline-flex w-fit rounded-full border px-2.5 py-1 text-xs font-bold ${statusClass(
-                          job.status
-                        )}`}
-                      >
-                        {job.status || "unknown"}
-                      </span>
-                      <span className="rounded-lg bg-white/[0.06] px-2.5 py-1 text-xs font-bold text-slate-300">
-                        PDF
-                      </span>
-                    </div>
-                  </div>
-                </button>
-              );
-            })}
-          </div>
-        )}
-      </div>
+      {!loadingJobs && !jobsError && jobs.length > 0 && (
+        <div className="col">
+          {jobs.map((job) => {
+            const selected = selectedJobId === job.id;
+            const providerModel = formatProviderModel(job);
+            const sources = attachmentSummary(job);
+            const jobStyle = resolveStyle(job.prompt_name, styleLookup);
+            // Truthful meta snippet from the list payload: non-terminal status
+            // (so failures stay visible), style, and source count.
+            const bits = [];
+            if (job.status && job.status !== "done") bits.push(job.status.replace(/_/g, " "));
+            if (jobStyle) bits.push(jobStyle.name);
+            if (sources.count > 0) bits.push(`${sources.count} source${sources.count === 1 ? "" : "s"}`);
+            const snippet = bits.join(" · ") || "Study guide";
+            return (
+              <ItemCard
+                key={job.id}
+                date={job.created_at}
+                title={jobTitle(job)}
+                description={snippet}
+                meta={providerModel ? <ProviderPill provider={providerModel} /> : null}
+                role="button"
+                tabIndex={0}
+                aria-current={selected ? "true" : undefined}
+                onClick={() => openJobDetails(job.id)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" || e.key === " ") {
+                    e.preventDefault();
+                    openJobDetails(job.id);
+                  }
+                }}
+                style={selected ? { borderColor: "var(--card-border-2)", background: "#1E1E22" } : undefined}
+              />
+            );
+          })}
+        </div>
+      )}
+    </Panel>
   );
 
   // After a successful retry the drawer closes and the jobs list refreshes via
@@ -2169,3 +2150,8 @@ function QuizQuestionCard({ item, index, answerVisible, onToggleAnswer, showAllA
     </div>
   );
 }
+
+// forwardRef wrapper so Home can imperatively open the job-details drawer for a
+// favorite guide (see useImperativeHandle above).
+const RecentJobsPanelWithRef = forwardRef(RecentJobsPanel);
+export default RecentJobsPanelWithRef;

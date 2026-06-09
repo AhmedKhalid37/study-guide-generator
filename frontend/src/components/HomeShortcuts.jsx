@@ -4,8 +4,6 @@ import {
   AlertTriangle,
   ArrowDown,
   ArrowUp,
-  Check,
-  ChevronRight,
   Copy,
   Download,
   Info,
@@ -15,7 +13,6 @@ import {
   PinOff,
   Plus,
   RotateCcw,
-  Search,
   Settings2,
   Trash2,
   Upload,
@@ -57,6 +54,15 @@ import {
 } from "../shortcutMeta";
 import RecentJobsPanel from "./RecentJobsPanel";
 import ShortcutInspector from "./ShortcutInspector";
+import StatusPill from "./StatusPill";
+import Panel from "./Panel";
+import Button from "./Button";
+import ItemCard from "./ItemCard";
+import ProviderPill from "./ProviderPill";
+import Icon from "./Icon";
+import deepseekMark from "../assets/providers/deepseek.svg";
+import qwenMark from "../assets/providers/qwen.svg";
+import localMark from "../assets/providers/local.svg";
 import {
   activationDecision,
   ACTIVATE_BLOCKED,
@@ -69,6 +75,35 @@ import {
   STATUS_DEGRADED,
   STATUS_VALID
 } from "../shortcutStatus";
+
+// Decorative provider marks for the hero badge cluster (no behaviour).
+const HERO_BADGES = [
+  { x: 28, y: 46, size: 116, src: deepseekMark },
+  { x: 53, y: 8, size: 132, src: qwenMark },
+  { x: 78, y: 40, size: 104, src: localMark },
+  { x: 44, y: 80, size: 84, ghost: true },
+  { x: 90, y: 6, size: 80, ghost: true },
+  { x: 92, y: 72, size: 96, ghost: true }
+];
+
+// Quick Launch pastel fills, cycled across the cards in order (the same four
+// design-system fills the stat cards used): bluegray → sage → cream → lavender.
+const PASTEL_FILLS = ["bluegray", "sage", "cream", "lavender"];
+const PASTEL_VAR = {
+  bluegray: "var(--pastel-bluegray)",
+  sage: "var(--pastel-sage)",
+  cream: "var(--pastel-cream)",
+  lavender: "var(--pastel-lavender)"
+};
+
+// How many Quick Launch cards are visible at once before the carousel arrows
+// page the rest into view.
+const QUICK_LAUNCH_PAGE = 6;
+
+// Provider / model label for a job (e.g. "deepseek / deepseek-chat").
+function jobProviderModel(job) {
+  return [job.provider, job.model].filter(Boolean).join(" / ");
+}
 
 const DEFAULT_COLOR = COLOR_CHOICES[0];
 
@@ -146,75 +181,38 @@ export default function HomeShortcuts({
 
   const pinned = useMemo(() => shortcuts.filter((s) => s.pinned), [shortcuts]);
 
+  // Favorite guides — derived ONLY from the jobs already passed to Home (no
+  // extra fetch). The lower-left panel lists these.
+  const favorites = useMemo(
+    () => (Array.isArray(jobs) ? jobs : []).filter((job) => job.favorite === true),
+    [jobs]
+  );
+
+  // Imperative handle to the embedded Recent Guides panel so the Favorite cards
+  // can open the SAME job-details drawer by reusing its openJobDetails — no
+  // second drawer and no extra fetch wiring.
+  const recentRef = useRef(null);
+  const openJobDetails = useCallback((jobId) => recentRef.current?.openJob(jobId), []);
+
   return (
-    <div className="sg-page sg-home">
-      <div className="sg-grid-glow" />
-      <div className="sg-page-head">
+    <div className="content-inner">
+      <Hero onGetStarted={() => onNewGuide?.()} />
+
+      <QuickLaunch
+        pinned={pinned}
+        loading={loading}
+        error={error}
+        onCustomize={() => setCustomizeOpen(true)}
+        onActivate={requestActivate}
+        onInspect={setInspecting}
+      />
+
+      <div className="split mt32">
+        <FavoriteGuidesPanel favorites={favorites} onOpenJob={openJobDetails} />
         <div>
-          <h1>Good evening, Ahmed</h1>
-          <p>What are you preparing today? Jump back in with a shortcut, or start fresh.</p>
-        </div>
-        <div className="flex flex-wrap items-center gap-2">
-          <button type="button" className="sg-ghost-button" onClick={() => onNavigate?.("library")}>
-            <Search size={14} className="mr-1.5 inline" />
-            Find Guide
-          </button>
-          <button type="button" className="sg-ghost-button" onClick={() => setCustomizeOpen(true)}>
-            <Settings2 size={14} className="mr-1.5 inline" />
-            Customize Shortcuts
-          </button>
-          <button type="button" className="sg-cta sg-press-btn" onClick={() => onNewGuide?.()}>
-            <Plus size={16} stroke="#1A1206" strokeWidth={2.6} />
-            New Guide
-          </button>
+          <RecentJobsPanel ref={recentRef} embedded refreshKey={jobsRefreshKey} />
         </div>
       </div>
-
-      <div className="sg-section-head">
-        <h2>Pinned shortcuts</h2>
-      </div>
-
-      {error && (
-        <div className="sg-style-alert mb-3">
-          <AlertCircle size={15} />
-          <span>{error}</span>
-        </div>
-      )}
-
-      {loading ? (
-        <div className="sg-command-grid">
-          {[0, 1, 2].map((i) => (
-            <div key={i} className="sg-command-card" style={{ opacity: 0.4 }} />
-          ))}
-        </div>
-      ) : pinned.length === 0 ? (
-        <div className="sg-empty-shortcuts">
-          <p>No pinned shortcuts yet.</p>
-          <button type="button" className="sg-ghost-button" onClick={() => setCustomizeOpen(true)}>
-            Customize shortcuts
-          </button>
-        </div>
-      ) : (
-        <div className="sg-command-grid">
-          {pinned.map((shortcut, index) => (
-            <ShortcutCard
-              key={shortcut.id}
-              shortcut={shortcut}
-              delay={index * 45}
-              onActivate={() => requestActivate(shortcut)}
-              onInspect={() => setInspecting(shortcut)}
-            />
-          ))}
-        </div>
-      )}
-
-      <div className="sg-section-head sg-recent-head">
-        <h2>Recent Guides</h2>
-        <button type="button" className="sg-ghost-button" onClick={() => onNavigate?.("library")}>
-          View all
-        </button>
-      </div>
-      <RecentJobsPanel embedded refreshKey={jobsRefreshKey} />
 
       {customizeOpen && (
         <CustomizeShortcutsModal
@@ -285,6 +283,32 @@ function topFindingMessages(shortcut, cap = 3) {
   return messages.slice(0, cap);
 }
 
+// Hero banner — decorative provider badge cluster + headline + Getting Started.
+function Hero({ onGetStarted }) {
+  return (
+    <div className="hero">
+      <div className="badge-cluster" aria-hidden="true">
+        {HERO_BADGES.map((badge, index) => (
+          <div
+            key={index}
+            className={`prov-badge ${badge.ghost ? "ghost" : "light"}`}
+            style={{ left: `${badge.x}%`, top: `${badge.y}%`, width: badge.size, height: badge.size }}
+          >
+            {badge.src && <img src={badge.src} alt="" className="prov-badge-mark" />}
+          </div>
+        ))}
+      </div>
+      <div className="hero-content">
+        <h1>Meet GuideForge — your exam-focused study guide builder</h1>
+        <p>Turn lecture decks, PDFs and notes into structured guides and quizzes — generated locally or with your connected models.</p>
+        <Button variant="bare" className="hero-cta" onClick={onGetStarted}>
+          {Icon.play()} Getting Started
+        </Button>
+      </div>
+    </div>
+  );
+}
+
 function DegradedActivationDialog({ shortcut, onContinue, onRepair, onCancel }) {
   const issues = issueCount(shortcut);
   const messages = topFindingMessages(shortcut);
@@ -293,44 +317,40 @@ function DegradedActivationDialog({ shortcut, onContinue, onRepair, onCancel }) 
   return (
     <div className="fixed inset-0 z-[70] flex items-center justify-center p-4">
       <button type="button" aria-label="Cancel" className="absolute inset-0 cursor-default bg-black/60" onClick={onCancel} />
-      <div role="dialog" aria-modal="true" className="relative w-full max-w-md rounded-2xl border border-white/10 bg-[#0B0F19] p-5 shadow-2xl">
+      <div role="dialog" aria-modal="true" className="dialog-card relative w-full max-w-md p-5">
         <div className="flex items-start gap-3">
-          <AlertTriangle className="mt-0.5 h-5 w-5 shrink-0 text-amber-400" />
+          <AlertTriangle className="mt-0.5 h-5 w-5 shrink-0" style={{ color: "var(--amber)" }} />
           <div className="min-w-0 flex-1">
-            <h2 className="text-sm font-bold text-white">
+            <h2 className="text-sm font-bold" style={{ color: "var(--text)" }}>
               Launch “{shortcut.name}”?
             </h2>
-            <p className="mt-1 inline-flex items-center gap-1.5 rounded-full border border-amber-400/30 bg-amber-400/10 px-2 py-0.5 text-[11px] font-semibold text-amber-200">
+            <p className="pill pill-amber mt-1">
               Needs attention{issues > 0 ? ` · ${issues} issue${issues === 1 ? "" : "s"} found` : ""}
             </p>
             {messages.length > 0 && (
-              <ul className="mt-2 flex flex-col gap-1 text-xs text-slate-300">
+              <ul className="mt-2 flex flex-col gap-1 text-xs" style={{ color: "var(--text-dim)" }}>
                 {messages.map((message, index) => (
                   <li key={index} className="flex items-start gap-1.5">
-                    <span className="mt-0.5 text-amber-400">•</span>
+                    <span className="mt-0.5" style={{ color: "var(--amber)" }}>•</span>
                     <span className="min-w-0">{message}</span>
                   </li>
                 ))}
                 {extra > 0 && (
-                  <li className="text-[11px] text-slate-500">+{extra} more in the inspector</li>
+                  <li className="text-[11px]" style={{ color: "var(--muted)" }}>+{extra} more in the inspector</li>
                 )}
               </ul>
             )}
-            <p className="mt-2 text-xs text-slate-400">
+            <p className="mt-2 text-xs" style={{ color: "var(--muted)" }}>
               You can continue, but some saved settings may be ignored or replaced by defaults.
             </p>
           </div>
         </div>
         <div className="mt-5 flex flex-wrap justify-end gap-2">
-          <button type="button" onClick={onCancel} className="inline-flex h-9 items-center rounded-lg border border-white/15 bg-white/[0.04] px-3.5 text-sm font-bold text-slate-200 hover:bg-white/[0.08]">
-            Cancel
-          </button>
-          <button type="button" onClick={onRepair} className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-sky-400/40 bg-sky-400/15 px-3.5 text-sm font-bold text-sky-100 hover:bg-sky-400/25">
+          <Button variant="ghost" onClick={onCancel}>Cancel</Button>
+          <Button variant="ghost" onClick={onRepair}>
             <Wrench size={14} /> Repair instead
-          </button>
-          <button type="button" autoFocus onClick={onContinue} className="inline-flex h-9 items-center rounded-lg border border-[#F97316]/50 bg-[#F97316]/80 px-3.5 text-sm font-bold text-white hover:bg-[#F97316]">
-            Continue anyway
-          </button>
+          </Button>
+          <Button variant="white" autoFocus onClick={onContinue}>Continue anyway</Button>
         </div>
       </div>
     </div>
@@ -343,19 +363,19 @@ function BrokenActivationDialog({ shortcut, onInspect, onCancel }) {
   return (
     <div className="fixed inset-0 z-[70] flex items-center justify-center p-4">
       <button type="button" aria-label="Cancel" className="absolute inset-0 cursor-default bg-black/60" onClick={onCancel} />
-      <div role="dialog" aria-modal="true" className="relative w-full max-w-md rounded-2xl border border-white/10 bg-[#0B0F19] p-5 shadow-2xl">
+      <div role="dialog" aria-modal="true" className="dialog-card relative w-full max-w-md p-5">
         <div className="flex items-start gap-3">
-          <AlertCircle className="mt-0.5 h-5 w-5 shrink-0 text-red-400" />
+          <AlertCircle className="mt-0.5 h-5 w-5 shrink-0" style={{ color: "var(--red)" }} />
           <div className="min-w-0 flex-1">
-            <h2 className="text-sm font-bold text-white">This shortcut is broken.</h2>
-            <p className="mt-1 text-xs text-slate-400">
+            <h2 className="text-sm font-bold" style={{ color: "var(--text)" }}>This shortcut is broken.</h2>
+            <p className="mt-1 text-xs" style={{ color: "var(--muted)" }}>
               “{shortcut.name}” can’t launch as saved. {hint}
             </p>
             {messages.length > 0 && (
-              <ul className="mt-2 flex flex-col gap-1 text-xs text-slate-300">
+              <ul className="mt-2 flex flex-col gap-1 text-xs" style={{ color: "var(--text-dim)" }}>
                 {messages.map((message, index) => (
                   <li key={index} className="flex items-start gap-1.5">
-                    <span className="mt-0.5 text-red-400">•</span>
+                    <span className="mt-0.5" style={{ color: "var(--red)" }}>•</span>
                     <span className="min-w-0">{message}</span>
                   </li>
                 ))}
@@ -364,12 +384,10 @@ function BrokenActivationDialog({ shortcut, onInspect, onCancel }) {
           </div>
         </div>
         <div className="mt-5 flex justify-end gap-2">
-          <button type="button" onClick={onCancel} className="inline-flex h-9 items-center rounded-lg border border-white/15 bg-white/[0.04] px-3.5 text-sm font-bold text-slate-200 hover:bg-white/[0.08]">
-            Cancel
-          </button>
-          <button type="button" autoFocus onClick={onInspect} className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-sky-400/40 bg-sky-400/15 px-3.5 text-sm font-bold text-sky-100 hover:bg-sky-400/25">
+          <Button variant="ghost" onClick={onCancel}>Cancel</Button>
+          <Button variant="white" autoFocus onClick={onInspect}>
             <Wrench size={14} /> Inspect / Repair
-          </button>
+          </Button>
         </div>
       </div>
     </div>
@@ -383,18 +401,126 @@ function shortcutEmoji(shortcut) {
   return "📝";
 }
 
-function ShortcutCard({ shortcut, delay, onActivate, onInspect }) {
-  const accent = shortcut.color || DEFAULT_COLOR;
-  // Activation gating stays on the LEGACY `valid` boolean so Home behaviour is
-  // byte-for-byte unchanged (DesktopDashboard owns the routing). The badge below
-  // is driven by the richer 3-tier validity.status and is purely informational.
+// ── Quick Launch carousel ─────────────────────────────────────────────────────
+//
+// The pinned shortcuts rendered as pastel cards in a horizontal carousel: up to
+// QUICK_LAUNCH_PAGE cards are visible at once and the arrow buttons page the
+// rest into view. Full launch behaviour (valid → launch, degraded → confirm,
+// broken → block) is unchanged — each card calls back into the parent's
+// requestActivate / inspect handlers exactly as before.
+function QuickLaunch({ pinned, loading, error, onCustomize, onActivate, onInspect }) {
+  const viewportRef = useRef(null);
+  const [atStart, setAtStart] = useState(true);
+  const [atEnd, setAtEnd] = useState(true);
+
+  // Derive arrow enablement from the live scroll position so an arrow disables
+  // once there is nothing further to reveal in that direction.
+  const syncArrows = useCallback(() => {
+    const el = viewportRef.current;
+    if (!el) return;
+    setAtStart(el.scrollLeft <= 1);
+    setAtEnd(el.scrollLeft + el.clientWidth >= el.scrollWidth - 1);
+  }, []);
+
+  useEffect(() => {
+    syncArrows();
+  }, [syncArrows, pinned.length, loading]);
+
+  const scrollByPage = useCallback((event, dir) => {
+    // Arrows live in the header (not over the cards), but stop propagation
+    // defensively so an arrow can never bubble into a card activation.
+    event.stopPropagation();
+    const el = viewportRef.current;
+    if (!el) return;
+    el.scrollBy({ left: dir * el.clientWidth, behavior: "smooth" });
+  }, []);
+
+  // Arrows only matter once there are more cards than fit on screen at once.
+  const hasOverflow = pinned.length > QUICK_LAUNCH_PAGE;
+
+  return (
+    <section className="mt32">
+      <div className="ql-head">
+        <div className="section-title">Quick Launch</div>
+        <div className="ql-head-actions">
+          {hasOverflow && (
+            <div className="ql-arrows">
+              <button
+                type="button"
+                className="ql-arrow"
+                aria-label="Show previous shortcuts"
+                disabled={atStart}
+                onClick={(e) => scrollByPage(e, -1)}
+              >
+                {Icon.chevronLeft()}
+              </button>
+              <button
+                type="button"
+                className="ql-arrow"
+                aria-label="Show more shortcuts"
+                disabled={atEnd}
+                onClick={(e) => scrollByPage(e, 1)}
+              >
+                {Icon.chevronRight()}
+              </button>
+            </div>
+          )}
+          <Button variant="bare" className="panel-link" onClick={onCustomize}>
+            Customize
+          </Button>
+        </div>
+      </div>
+
+      {error && <div className="launch-alert">{error}</div>}
+
+      {loading ? (
+        <div className="ql-track" aria-hidden="true">
+          {[0, 1, 2, 3].map((i) => (
+            <div key={i} className="ql-card ql-card-skeleton" />
+          ))}
+        </div>
+      ) : pinned.length === 0 ? (
+        <div className="launch-empty">
+          <p>No pinned shortcuts yet.</p>
+          <Button variant="ghost" onClick={onCustomize}>
+            Customize shortcuts
+          </Button>
+        </div>
+      ) : (
+        <div className="ql-viewport" ref={viewportRef} onScroll={syncArrows}>
+          <div
+            className="ql-track"
+            style={{ "--ql-cols": Math.min(pinned.length, QUICK_LAUNCH_PAGE) }}
+          >
+            {pinned.map((shortcut, index) => (
+              <LaunchCard
+                key={shortcut.id}
+                shortcut={shortcut}
+                fill={PASTEL_FILLS[index % PASTEL_FILLS.length]}
+                onActivate={() => onActivate(shortcut)}
+                onInspect={() => onInspect(shortcut)}
+              />
+            ))}
+          </div>
+        </div>
+      )}
+    </section>
+  );
+}
+
+// A single Quick Launch shortcut as a pastel card (title centred, details
+// left-aligned). Activation gating stays on the LEGACY `valid` boolean — the
+// parent's requestActivate owns the real routing — and the StatusPill is purely
+// informational, shown only for degraded/broken shortcuts.
+function LaunchCard({ shortcut, fill, onActivate, onInspect }) {
   const invalid = shortcut.valid === false;
   const typeLabel = TYPE_LABELS[shortcut.type] || shortcut.type;
   const reasonHint = invalid ? invalidHint(shortcut) : null;
   const status = shortcutStatus(shortcut);
   const badge = statusBadge(status);
-  // Valid shortcuts stay quiet (no badge); degraded/broken surface a chip.
+  // Valid shortcuts stay quiet (no pill); degraded/broken surface a StatusPill.
   const showBadge = status === STATUS_DEGRADED || status === STATUS_BROKEN;
+  const description = invalid ? reasonHint : shortcut.description || summarizePayload(shortcut);
 
   function handleInspect(event) {
     event.stopPropagation();
@@ -402,62 +528,93 @@ function ShortcutCard({ shortcut, delay, onActivate, onInspect }) {
     onInspect?.();
   }
 
+  const inspectKeys = (event) => {
+    if (event.key === "Enter" || event.key === " ") handleInspect(event);
+  };
+
   return (
     <button
       type="button"
-      className={`sg-command-card sg-press-btn ${invalid ? "sg-shortcut-invalid" : ""}`}
+      className="btn-reset ql-card"
+      style={{ background: PASTEL_VAR[fill] || PASTEL_VAR.bluegray }}
       onClick={onActivate}
-      style={{ "--accent": accent, animationDelay: `${delay}ms` }}
       title={invalid ? reasonHint : summarizePayload(shortcut)}
       aria-disabled={invalid ? "true" : undefined}
     >
-      <span className="sg-card-corner" />
-      <span className="sg-card-top">
-        <span className="sg-card-icon" style={{ fontSize: 24 }} aria-hidden>
-          {shortcutEmoji(shortcut)}
-        </span>
-        <span className="ml-auto inline-flex items-center gap-1.5">
+      <div className="ql-card-top">
+        <span className="ql-emoji" aria-hidden="true">{shortcutEmoji(shortcut)}</span>
+        <span className="row gap8">
           {showBadge && (
-            <span
+            <StatusPill
+              status={status}
+              className="ql-pill"
               role="button"
               tabIndex={0}
-              onClick={handleInspect}
-              onKeyDown={(e) => {
-                if (e.key === "Enter" || e.key === " ") handleInspect(e);
-              }}
-              className={`inline-flex cursor-pointer items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] font-semibold ${
-                STATUS_CHIP_CLASSES[status] || ""
-              }`}
               title={`${badge.label} — click to inspect`}
-            >
-              {status === STATUS_BROKEN ? <AlertCircle size={11} /> : <AlertTriangle size={11} />}
-              {badge.label}
-            </span>
+              onClick={handleInspect}
+              onKeyDown={inspectKeys}
+            />
           )}
           <span
+            className="ql-inspect"
             role="button"
             tabIndex={0}
             onClick={handleInspect}
-            onKeyDown={(e) => {
-              if (e.key === "Enter" || e.key === " ") handleInspect(e);
-            }}
-            className="grid h-6 w-6 cursor-pointer place-items-center rounded-lg text-slate-400 hover:bg-white/10 hover:text-white"
+            onKeyDown={inspectKeys}
             title="Inspect shortcut"
             aria-label="Inspect shortcut"
           >
-            <Info size={13} />
+            {Icon.eye()}
           </span>
         </span>
-      </span>
-      <strong>{shortcut.name}</strong>
-      <p>{invalid ? reasonHint : shortcut.description || summarizePayload(shortcut)}</p>
-      <span className="sg-card-bottom">
-        <em>{typeLabel}</em>
-        <i>
-          <ChevronRight size={14} />
-        </i>
-      </span>
+      </div>
+      <div className="ql-title">{shortcut.name}</div>
+      <div className="ql-desc">{description}</div>
+      <div className="ql-meta">
+        <span className="ql-type">{typeLabel}</span>
+        <span className="ql-go" aria-hidden="true">{Icon.chevronRight()}</span>
+      </div>
     </button>
+  );
+}
+
+// ── Favorite Guides panel ─────────────────────────────────────────────────────
+//
+// Lower-left panel: jobs already in hand that are flagged favorite, as clickable
+// ItemCards that open the shared job-details drawer. No new API calls.
+function FavoriteGuidesPanel({ favorites, onOpenJob }) {
+  if (!favorites || favorites.length === 0) {
+    return (
+      <Panel title="Favorite Guides">
+        <div className="recent-state">No favourite guides yet</div>
+      </Panel>
+    );
+  }
+  return (
+    <Panel title="Favorite Guides">
+      <div className="col">
+        {favorites.map((job) => {
+          const providerModel = jobProviderModel(job);
+          return (
+            <ItemCard
+              key={job.id}
+              date={job.created_at}
+              title={job.title || "Untitled study guide"}
+              meta={providerModel ? <ProviderPill provider={providerModel} /> : null}
+              role="button"
+              tabIndex={0}
+              onClick={() => onOpenJob?.(job.id)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" || e.key === " ") {
+                  e.preventDefault();
+                  onOpenJob?.(job.id);
+                }
+              }}
+            />
+          );
+        })}
+      </div>
+    </Panel>
   );
 }
 

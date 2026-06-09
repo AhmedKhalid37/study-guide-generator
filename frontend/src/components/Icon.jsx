@@ -64,6 +64,7 @@ export const Icon = {
   file: (p) => <S {...p}><path d="M6 3h8l5 5v13a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1Z" /><path d="M14 3v5h5" /></S>,
   plus: (p) => <S {...p}><path d="M12 5v14M5 12h14" /></S>,
   check: (p) => <S {...p}><path d="m5 13 4 4 10-11" /></S>,
+  star: (p) => <S {...p}><path d="m12 3.5 2.55 5.17 5.7.83-4.13 4.02.98 5.68L12 16.9l-5.1 2.3.98-5.68L3.75 9.5l5.7-.83z" /></S>,
   arrowR: (p) => <S {...p}><path d="M5 12h14M13 6l6 6-6 6" /></S>,
   chevronLeft: (p) => <S {...p}><path d="m15 6-6 6 6 6" /></S>,
   chevronRight: (p) => <S {...p}><path d="m9 6 6 6-6 6" /></S>,

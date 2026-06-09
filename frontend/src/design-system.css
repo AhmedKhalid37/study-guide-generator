@@ -600,3 +600,116 @@ body { overflow: hidden; }
 /* screen container — kept visible at all times (preview iframes throttle CSS
    animations when unfocused, which would otherwise freeze content at opacity:0) */
 .screen { opacity: 1; }
+
+/* =========================================================================
+   Home page (Slice 4)
+   ========================================================================= */
+/* hero provider mark inside a circular badge */
+.prov-badge-mark { width: 56%; height: 56%; object-fit: contain; }
+
+/* Quick Launch carousel — pastel shortcut cards in a horizontal scroller.
+   The header carries the title, paging arrows, and the Customize trigger. */
+.ql-head {
+  display: flex; align-items: center; justify-content: space-between;
+  gap: 14px; margin-bottom: 18px;
+}
+.ql-head-actions { display: flex; align-items: center; gap: 14px; }
+.ql-arrows { display: flex; align-items: center; gap: 8px; }
+.ql-arrow {
+  display: grid; place-items: center;
+  width: 34px; height: 34px;
+  border-radius: 10px;
+  border: 1px solid var(--card-border);
+  background: rgba(255,255,255,0.04);
+  color: var(--text-dim);
+  cursor: pointer;
+  transition: background .15s, color .15s, border-color .15s, opacity .15s;
+}
+.ql-arrow:hover:not(:disabled) { background: rgba(255,255,255,0.09); color: var(--text); border-color: var(--card-border-2); }
+.ql-arrow:disabled { opacity: 0.32; cursor: default; }
+.ql-arrow svg { width: 18px; height: 18px; }
+
+/* Viewport clips the track; the track scrolls horizontally and snaps per card.
+   Six cards fill the viewport at once. */
+.ql-viewport { overflow-x: auto; scrollbar-width: none; scroll-snap-type: x mandatory; }
+.ql-viewport::-webkit-scrollbar { display: none; }
+.ql-track { display: flex; gap: 16px; padding-bottom: 2px; }
+.ql-card {
+  /* --ql-cols (set per render = min(card count, 6)) lets ≤6 cards fill the row
+     while a 7th+ overflows into the scroller. */
+  flex: 0 0 calc((100% - (var(--ql-cols, 6) - 1) * 16px) / var(--ql-cols, 6));
+  scroll-snap-align: start;
+  display: flex; flex-direction: column;
+  min-height: 178px;
+  padding: 18px 18px 16px;
+  border-radius: var(--r-card);
+  color: var(--pastel-ink);
+  text-align: left;
+  transition: transform .15s, box-shadow .15s, opacity .15s;
+}
+.ql-card:hover { transform: translateY(-2px); box-shadow: 0 14px 30px rgba(0,0,0,0.28); }
+.ql-card[aria-disabled="true"] { opacity: 0.62; }
+.ql-card-skeleton { background: rgba(255,255,255,0.05); animation: none; }
+.ql-card-top { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; }
+.ql-emoji { font-size: 24px; line-height: 1; }
+.ql-pill { cursor: pointer; }
+/* Status pills must stay legible on the light pastel fills, so the dark-theme
+   translucent tones are overridden with darker ink text + a defining border. */
+.ql-pill { border: 1px solid rgba(21,24,28,0.10); }
+.ql-pill.pill-amber { background: rgba(217,119,6,0.18); color: #8a4f04; }
+.ql-pill.pill-amber .dot { background: #b45309; }
+.ql-pill.pill-red { background: rgba(220,38,38,0.16); color: #a11212; }
+.ql-pill.pill-red .dot { background: #c81e1e; }
+.ql-inspect {
+  display: grid; place-items: center;
+  width: 26px; height: 26px;
+  border-radius: 8px;
+  color: rgba(21,24,28,0.5); cursor: pointer;
+}
+.ql-inspect:hover { background: rgba(21,24,28,0.08); color: var(--pastel-ink); }
+.ql-inspect svg { width: 15px; height: 15px; }
+/* title centred a step larger than the inner item card; details left-aligned */
+.ql-title {
+  font-family: var(--serif);
+  font-size: 23px; font-weight: 500; letter-spacing: -0.01em;
+  text-align: center;
+  margin: 14px 0 7px;
+}
+.ql-desc {
+  font-size: 14.5px; line-height: 1.45;
+  color: rgba(21,24,28,0.66);
+  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.ql-meta { display: flex; align-items: center; justify-content: space-between; margin-top: auto; padding-top: 14px; }
+.ql-type { font-size: 13px; font-weight: 500; color: rgba(21,24,28,0.55); }
+.ql-go { display: inline-flex; color: rgba(21,24,28,0.45); }
+.ql-go svg { width: 16px; height: 16px; }
+.ql-card:hover .ql-go { color: var(--pastel-ink); }
+
+.launch-alert {
+  border: 1px solid var(--card-border);
+  background: var(--red-soft);
+  color: #FCA5A5;
+  border-radius: var(--r-inner);
+  padding: 11px 14px;
+  font-size: 13px;
+  margin-bottom: 14px;
+}
+.launch-empty { text-align: center; color: var(--muted); padding: 22px 0; }
+.launch-empty p { margin-bottom: 14px; }
+
+/* Recent Guides loading / error / empty states */
+.recent-state {
+  display: flex; align-items: center; justify-content: center; gap: 12px;
+  min-height: 160px;
+  color: var(--muted); font-size: 14px;
+}
+
+/* Activation dialogs (degraded / broken) share the dark card surface */
+.dialog-card {
+  border-radius: var(--r-card);
+  border: 1px solid var(--card-border);
+  background: var(--card);
+  box-shadow: 0 24px 60px rgba(0,0,0,0.5);
+}
