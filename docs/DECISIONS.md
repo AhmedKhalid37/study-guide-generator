@@ -1274,3 +1274,44 @@ shell-only (no route/API/workspace-logic change):
   collapsed labels stay in the DOM as visually-hidden (`sr-only`) text so each
   control keeps its accessible name; a native `title` adds a hover tooltip; the
   toggle carries `aria-label` + `aria-expanded`; the active item stays highlighted.
+
+## Larger default UI density baseline (Slice 5b)
+GuideForge intentionally ships a **larger default UI density / type scale**: at
+browser **100%** zoom the app now visually matches what it previously felt like at
+**125%** zoom. The base type scale in `design-system.css` was raised ~1.2× and the
+load-bearing control dimensions (sidebar width, nav/brand/toggle/avatar sizes,
+icon buttons, the Generate/progress button, and the collapsed icon rail) were
+bumped proportionally so nothing looks under-scaled against the larger text.
+
+**Why this mechanism (real values), not `transform: scale()` or CSS `zoom`:** the
+app shell is a full-bleed `100vw/100vh` grid. `transform: scale()` would blur
+text, leave the original (unscaled) box occupying layout space, and throw off
+hit-target/click coordinates. CSS `zoom` magnifies a `100vw/100vh` root past the
+viewport (horizontal/vertical overflow), breaks `position: fixed` overlays
+(modals/drawers), and distorts `vh`-based max-heights. Scaling the actual
+design-system font/control/spacing tokens keeps layout, overflow, fixed overlays,
+and hit targets correct.
+
+**Forward rule:** future reskin slices build **against this larger baseline** —
+do not shrink components back down to the pre-5b sizes to "fit" a reference image;
+re-derive spacing from the current density instead.
+
+## Tailwind utilities are inert in the built app — use real semantic CSS (Slice 5b)
+**Finding:** Tailwind utility classes (`flex`, `grid`, `h-12`, `object-contain`,
+`bg-[#…]`, etc.) produce **no CSS** in the running app. `design-system.css` is the
+only imported stylesheet and it contains **no `@tailwind base/components/utilities`
+directives**, so PostCSS/Tailwind never emit a utility layer into the built
+bundle (verified: the built `index-*.css` has zero `.flex`/`.grid`/`.object-contain`
+rules). Components authored purely in Tailwind utilities therefore render as raw,
+unstyled HTML (this is what made the pre-5b Job Details drawer / Customize
+Shortcuts modal / preset-logo `<img>` sizing look broken).
+
+**Why it matters:** the whole reskin runs on the semantic `sg-*`/component classes
+in `design-system.css`; leftover Tailwind utilities are dead weight, not styling.
+
+**Forward rule:** reskin work must use **real semantic CSS classes** in
+`design-system.css` (layout included — `display:flex/grid`, gaps, sizing), and must
+not assume any Tailwind utility "just works." Do **not** rely on Tailwind for new
+visual work unless the Tailwind pipeline is **deliberately restored** (add the
+`@tailwind` directives to an imported stylesheet + confirm the utility layer is
+emitted) as its own explicit, separately-reviewed slice.
