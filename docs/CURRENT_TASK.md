@@ -5,6 +5,25 @@
 
 ---
 
+## Slice 9 — Models workspace reskin DONE.
+
+- **Slice 9 (GuideForge UI reskin — Models workspace) is DONE.**
+  Visual/layout-only.
+- **Files changed:** `frontend/src/components/ProviderSettingsWorkspace.jsx`,
+  `frontend/src/components/LocalModelsPanel.jsx`, and
+  `frontend/src/design-system.css`.
+- **Preserved:** provider settings behavior, write-only API key behavior,
+  fetched-models review-only flow, Local Models status, command helper, model
+  library, managed-server safety behavior, handlers, state, endpoint paths, and
+  API payloads.
+- **Security preserved:** no raw keys, full URLs, companion tokens, socket paths,
+  absolute host paths, executable paths, or raw argv exposed.
+- **Verification:** build green, local-model status/command/library harnesses
+  green, `compileall` green, `git diff --check` clean, live browser pass,
+  `smoke_release.py` 28/28.
+
+---
+
 ## Slice 8 — Styles workspace reskin DONE.
 
 - **Slice 8 (GuideForge UI reskin — Styles workspace) is DONE.**

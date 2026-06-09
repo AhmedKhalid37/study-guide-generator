@@ -106,27 +106,27 @@ export default function ProviderSettingsWorkspace() {
   }, []);
 
   return (
-    <div className="sg-page">
+    <div className="sg-mdl">
       <div className="sg-page-head">
         <div>
           <h1>Providers</h1>
           <p>Configure providers, models, and sampling defaults. Keys stay server-side and are write-only.</p>
         </div>
         <button type="button" className="sg-ghost-button" onClick={load} disabled={loading}>
-          {loading ? <Loader2 size={14} className="animate-spin" /> : <RefreshCw size={14} />}
-          <span className="ml-1.5">Refresh</span>
+          {loading ? <Loader2 size={14} className="sg-spin" /> : <RefreshCw size={14} />}
+          <span>Refresh</span>
         </button>
       </div>
 
       {error && (
-        <div className="mb-6 flex items-start gap-3 rounded-xl border border-[#FCA5A5]/30 bg-[#FCA5A5]/[0.06] p-4">
-          <AlertTriangle size={18} className="mt-0.5 shrink-0 text-[#FCA5A5]" />
-          <div className="flex-1">
-            <strong className="block text-[13px] text-[#FCA5A5]">Couldn’t load provider settings</strong>
-            <p className="mt-1 text-[12px] leading-5 text-[#9098A8]">
+        <div className="sg-mdl-alert">
+          <AlertTriangle size={18} />
+          <div className="sg-mdl-alert-body">
+            <strong>Couldn’t load provider settings</strong>
+            <p>
               {error} The Builder still works from <code>/api/options</code>; you can retry below.
             </p>
-            <button type="button" className="sg-ghost-button mt-3" onClick={load}>
+            <button type="button" className="sg-ghost-button" onClick={load}>
               Retry
             </button>
           </div>
@@ -134,19 +134,19 @@ export default function ProviderSettingsWorkspace() {
       )}
 
       {loading && !view && (
-        <div className="flex items-center gap-2 text-[13px] text-[#9098A8]">
-          <Loader2 size={16} className="animate-spin" /> Loading provider settings…
+        <div className="sg-mdl-loading">
+          <Loader2 size={16} className="sg-spin" /> Loading provider settings…
         </div>
       )}
 
       {view && (
         <>
-          <div className="sg-default-card">
-            <span className="grid h-[42px] w-[42px] place-items-center rounded-[11px] bg-[#1E3A8A]/60">
+          <div className="sg-mdl-default">
+            <span className="sg-mdl-default-icon">
               <KeyRound size={18} />
             </span>
-            <div>
-              <span>Default provider</span>
+            <div className="sg-mdl-default-main">
+              <span className="sg-mdl-default-label">Default provider</span>
               <DefaultProviderSelect
                 value={view.default_provider || ""}
                 providers={providers}
@@ -158,20 +158,22 @@ export default function ProviderSettingsWorkspace() {
             </em>
           </div>
 
-          <div className="sg-section-head">
-            <h2>Providers</h2>
-            <span>Raw keys never leave the server</span>
-          </div>
+          <div>
+            <div className="sg-mdl-section-head">
+              <h2>Providers</h2>
+              <span>Raw keys never leave the server</span>
+            </div>
 
-          <div className="flex max-w-[860px] flex-col gap-3">
-            {providers.map((provider) => (
-              <ProviderSettingsCard
-                key={provider.id}
-                provider={provider}
-                isDefault={view.default_provider === provider.id}
-                onSaved={applyProvider}
-              />
-            ))}
+            <div className="sg-mdl-provider-list">
+              {providers.map((provider) => (
+                <ProviderSettingsCard
+                  key={provider.id}
+                  provider={provider}
+                  isDefault={view.default_provider === provider.id}
+                  onSaved={applyProvider}
+                />
+              ))}
+            </div>
           </div>
 
           <LocalModelsPanel
@@ -186,7 +188,7 @@ export default function ProviderSettingsWorkspace() {
 function DefaultProviderSelect({ value, providers, onChange }) {
   return (
     <select
-      className="sg-select mt-1 max-w-[260px]"
+      className="sg-select"
       value={value}
       onChange={(event) => onChange(event.target.value)}
     >
@@ -392,26 +394,26 @@ function ProviderSettingsCard({ provider, isDefault, onSaved }) {
         : "No key set — paste to add";
 
   return (
-    <div id={`provider-card-${provider.id}`} className="sg-provider-card sg-recent-row">
-      <div className="sg-provider-top">
-        <span>{provider.display_name.slice(0, 1)}</span>
-        <div className="min-w-0 flex-1">
-          <strong className="truncate">{provider.display_name}</strong>
-          <p className="truncate">
+    <div id={`provider-card-${provider.id}`} className="sg-mdl-card">
+      <div className="sg-mdl-card-top">
+        <span className="sg-mdl-avatar">{provider.display_name.slice(0, 1)}</span>
+        <div className="sg-mdl-card-headings">
+          <strong>{provider.display_name}</strong>
+          <p>
             {provider.kind || "cloud"}
             {isDefault ? " · default" : ""}
             {provider.base_url_host ? ` · ${provider.base_url_host}` : ""}
           </p>
           {/* Status sits in normal flow under the name — never pinned to the
               card's right edge, so it can't clip or overlap the icon. */}
-          <div className="mt-1.5">
+          <div className="sg-mdl-card-status">
             <StatusPill provider={provider} />
           </div>
         </div>
       </div>
 
       {provider.discovery_error && (
-        <p className="break-all text-[11.5px] leading-5 text-[#FCA5A5]">
+        <p className="sg-mdl-discovery-error">
           Discovery error: {provider.discovery_error}
         </p>
       )}
@@ -421,7 +423,7 @@ function ProviderSettingsCard({ provider, isDefault, onSaved }) {
         <input
           type="password"
           autoComplete="off"
-          className="sg-input h-9 w-full px-3 text-[13px]"
+          className="sg-mdl-input"
           placeholder={keyPlaceholder}
           value={draft.apiKey}
           onChange={set("apiKey")}
@@ -429,15 +431,15 @@ function ProviderSettingsCard({ provider, isDefault, onSaved }) {
         {provider.key_source === "store" ? (
           <button
             type="button"
-            className="mt-1.5 inline-flex items-center gap-1 text-[11.5px] text-[#FCA5A5] hover:underline disabled:opacity-50"
+            className="sg-mdl-link"
             onClick={handleClearKey}
             disabled={clearing}
           >
-            {clearing ? <Loader2 size={12} className="animate-spin" /> : <Trash2 size={12} />}
+            {clearing ? <Loader2 size={12} className="sg-spin" /> : <Trash2 size={12} />}
             {clearing ? "Clearing…" : "Clear saved key"}
           </button>
         ) : provider.key_source === "env" ? (
-          <p className="mt-1.5 text-[11px] leading-4 text-[#6B7185]">
+          <p className="sg-mdl-help dim">
             Using the .env fallback key — no saved key to clear. Paste a key above to save one in the app.
           </p>
         ) : null}
@@ -447,7 +449,7 @@ function ProviderSettingsCard({ provider, isDefault, onSaved }) {
       <Field label="Base URL override" hint={provider.base_url_host ? `current: ${provider.base_url_host}` : "using default"}>
         <input
           type="text"
-          className="sg-input h-9 w-full px-3 text-[13px]"
+          className="sg-mdl-input"
           placeholder="Leave blank to keep current"
           value={draft.baseUrl}
           onChange={set("baseUrl")}
@@ -456,7 +458,7 @@ function ProviderSettingsCard({ provider, isDefault, onSaved }) {
 
       {/* Default model */}
       <Field label="Default model">
-        <select className="sg-select" value={draft.defaultModel} onChange={set("defaultModel")}>
+        <select className="sg-mdl-select" value={draft.defaultModel} onChange={set("defaultModel")}>
           {models.length === 0 && <option value="">No models</option>}
           {models.map((m) => (
             <option key={m} value={m}>
@@ -468,26 +470,23 @@ function ProviderSettingsCard({ provider, isDefault, onSaved }) {
 
       {/* Custom models */}
       <Field label="Custom models">
-        <div className="flex flex-wrap gap-1.5">
+        <div className="sg-mdl-chips">
           {draft.customModels.length === 0 && (
-            <span className="text-[11.5px] text-[#6B7185]">None</span>
+            <span className="sg-mdl-chip-empty">None</span>
           )}
           {draft.customModels.map((m) => (
-            <span
-              key={m}
-              className="inline-flex h-[22px] items-center gap-1 rounded-full border border-white/10 bg-white/5 px-2 text-[10.5px] text-[#D4D4D8]"
-            >
+            <span key={m} className="sg-mdl-chip">
               {m}
-              <button type="button" className="text-[#9098A8] hover:text-[#FCA5A5]" onClick={() => removeCustomModel(m)}>
+              <button type="button" className="sg-mdl-chip-x" onClick={() => removeCustomModel(m)}>
                 <X size={11} />
               </button>
             </span>
           ))}
         </div>
-        <div className="mt-2 flex items-center gap-2">
+        <div className="sg-mdl-addrow">
           <input
             type="text"
-            className="sg-input h-9 flex-1 px-3 text-[13px]"
+            className="sg-mdl-input"
             placeholder="Add model id"
             value={draft.newCustomModel}
             onChange={set("newCustomModel")}
@@ -516,8 +515,8 @@ function ProviderSettingsCard({ provider, isDefault, onSaved }) {
           onClick={handleFetchModels}
           disabled={fetching}
         >
-          {fetching ? <Loader2 size={14} className="animate-spin" /> : <RefreshCw size={14} />}
-          <span className="ml-1.5">{fetching ? "Fetching…" : "Refresh models"}</span>
+          {fetching ? <Loader2 size={14} className="sg-spin" /> : <RefreshCw size={14} />}
+          <span>{fetching ? "Fetching…" : "Refresh models"}</span>
         </button>
         {fetchResult && (
           <FetchedModelsPanel
@@ -532,7 +531,7 @@ function ProviderSettingsCard({ provider, isDefault, onSaved }) {
       </Field>
 
       {/* Sampling + runtime */}
-      <div className="grid grid-cols-3 gap-2">
+      <div className="sg-mdl-axes">
         <NumField label="Temperature" value={draft.temperature} onChange={set("temperature")} step="0.1" min="0" max="2" />
         <NumField label="Top P" value={draft.topP} onChange={set("topP")} step="0.05" min="0" max="1" />
         <NumField label="Max tokens" value={draft.maxTokens} onChange={set("maxTokens")} step="1" min="1" />
@@ -540,7 +539,7 @@ function ProviderSettingsCard({ provider, isDefault, onSaved }) {
         <NumField label="Retries" value={draft.retryCount} onChange={set("retryCount")} step="1" min="0" max="10" />
         {provider.supports_thinking && (
           <Field label="Thinking">
-            <select className="sg-select" value={draft.thinking} onChange={set("thinking")}>
+            <select className="sg-mdl-select" value={draft.thinking} onChange={set("thinking")}>
               <option value="inherit">Provider default</option>
               <option value="on">On</option>
               <option value="off">Off</option>
@@ -551,19 +550,19 @@ function ProviderSettingsCard({ provider, isDefault, onSaved }) {
 
       {testResult && <TestChip result={testResult} />}
       {notice && (
-        <p className={`text-[11.5px] leading-5 ${notice.kind === "error" ? "text-[#FCA5A5]" : "text-[#86EFAC]"}`}>
+        <p className={`sg-mdl-notice ${notice.kind === "error" ? "error" : "ok"}`}>
           {notice.text}
         </p>
       )}
 
-      <div className="flex items-center gap-2">
-        <button type="button" className="sg-cta compact" onClick={handleSave} disabled={saving}>
-          {saving ? <Loader2 size={14} className="animate-spin" /> : <Check size={14} />}
+      <div className="sg-mdl-card-actions">
+        <button type="button" className="sg-btn-sm accent" onClick={handleSave} disabled={saving}>
+          {saving ? <Loader2 size={14} className="sg-spin" /> : <Check size={14} />}
           {saving ? "Saving…" : "Save"}
         </button>
-        <button type="button" className="sg-ghost-button" onClick={handleTest} disabled={testing}>
-          {testing ? <Loader2 size={14} className="animate-spin" /> : null}
-          <span className={testing ? "ml-1.5" : ""}>{testing ? "Testing…" : "Test connection"}</span>
+        <button type="button" className="sg-btn-sm" onClick={handleTest} disabled={testing}>
+          {testing ? <Loader2 size={14} className="sg-spin" /> : null}
+          <span>{testing ? "Testing…" : "Test connection"}</span>
         </button>
       </div>
     </div>
@@ -573,13 +572,7 @@ function ProviderSettingsCard({ provider, isDefault, onSaved }) {
 function StatusPill({ provider }) {
   const configured = Boolean(provider.configured);
   return (
-    <span
-      className={`inline-flex h-[22px] shrink-0 items-center gap-1 whitespace-nowrap rounded-full px-2 text-[10.5px] ${
-        configured
-          ? "border border-[#86EFAC]/30 bg-[#86EFAC]/10 text-[#86EFAC]"
-          : "border border-white/10 bg-white/5 text-[#9098A8]"
-      }`}
-    >
+    <span className={`sg-mdl-pill ${configured ? "is-ok" : "is-neutral"}`}>
       {configured ? <Check size={11} /> : <X size={11} />}
       {configured ? "Configured" : "Not configured"}
     </span>
@@ -589,22 +582,16 @@ function StatusPill({ provider }) {
 function TestChip({ result }) {
   const ok = Boolean(result.ok);
   return (
-    <div
-      className={`flex items-start gap-2 rounded-lg border p-2.5 text-[11.5px] leading-5 ${
-        ok
-          ? "border-[#86EFAC]/30 bg-[#86EFAC]/[0.06] text-[#86EFAC]"
-          : "border-[#FCA5A5]/30 bg-[#FCA5A5]/[0.06] text-[#FCA5A5]"
-      }`}
-    >
-      {ok ? <Check size={14} className="mt-0.5 shrink-0" /> : <AlertTriangle size={14} className="mt-0.5 shrink-0" />}
-      <div className="min-w-0">
-        <strong className="block">
+    <div className={`sg-mdl-callout ${ok ? "ok" : "error"}`}>
+      {ok ? <Check size={14} /> : <AlertTriangle size={14} />}
+      <div className="sg-mdl-callout-body">
+        <strong>
           {ok ? "Connection OK" : "Connection failed"}
           {result.category ? ` · ${result.category}` : ""}
           {Number.isFinite(result.latency_ms) ? ` · ${result.latency_ms}ms` : ""}
         </strong>
-        {result.message && <span className="block break-words text-[#9098A8]">{result.message}</span>}
-        {result.model && <span className="block text-[#6B7185]">model: {result.model}</span>}
+        {result.message && <span className="sg-mdl-callout-sub">{result.message}</span>}
+        {result.model && <span className="sg-mdl-callout-meta">model: {result.model}</span>}
       </div>
     </div>
   );
@@ -616,13 +603,13 @@ function FetchedModelsPanel({ result, newModels, knownModelSet, customModels, on
   if (!result.ok) {
     const err = result.error || {};
     return (
-      <div className="mt-2 flex items-start gap-2 rounded-lg border border-[#FCA5A5]/30 bg-[#FCA5A5]/[0.06] p-2.5 text-[11.5px] leading-5 text-[#FCA5A5]">
-        <AlertTriangle size={14} className="mt-0.5 shrink-0" />
-        <div className="min-w-0">
-          <strong className="block">
+      <div className="sg-mdl-callout error">
+        <AlertTriangle size={14} />
+        <div className="sg-mdl-callout-body">
+          <strong>
             Couldn’t fetch models{err.category ? ` · ${err.category}` : ""}
           </strong>
-          {err.message && <span className="block break-words text-[#9098A8]">{err.message}</span>}
+          {err.message && <span className="sg-mdl-callout-sub">{err.message}</span>}
         </div>
       </div>
     );
@@ -632,7 +619,7 @@ function FetchedModelsPanel({ result, newModels, knownModelSet, customModels, on
   // Calm empty state when the provider returned nothing.
   if (models.length === 0) {
     return (
-      <p className="mt-2 text-[11.5px] leading-5 text-[#6B7185]">
+      <p className="sg-mdl-help dim">
         No models returned. Nothing to add — your saved models are unchanged.
       </p>
     );
@@ -641,37 +628,30 @@ function FetchedModelsPanel({ result, newModels, knownModelSet, customModels, on
   const newCount = newModels.length;
 
   return (
-    <div className="mt-2 rounded-lg border border-white/10 bg-white/[0.03] p-2.5">
-      <div className="mb-2 flex items-center justify-between gap-2">
-        <span className="text-[11px] text-[#9098A8]">
+    <div className="sg-mdl-fetched">
+      <div className="sg-mdl-fetched-head">
+        <span>
           {models.length} fetched · {newCount} new
         </span>
         {newCount > 0 && (
-          <button
-            type="button"
-            className="inline-flex items-center gap-1 text-[11.5px] text-[#86EFAC] hover:underline"
-            onClick={onAddAll}
-          >
+          <button type="button" className="sg-mdl-link ok" onClick={onAddAll}>
             <Plus size={12} /> Add all new
           </button>
         )}
       </div>
-      <div className="flex flex-wrap gap-1.5">
+      <div className="sg-mdl-chips">
         {models.map((m) => {
           const added = customModels.includes(m);
           const known = knownModelSet.has(m);
           return (
-            <span
-              key={m}
-              className="inline-flex h-[22px] items-center gap-1 rounded-full border border-white/10 bg-white/5 px-2 text-[10.5px] text-[#D4D4D8]"
-            >
+            <span key={m} className="sg-mdl-chip">
               {m}
               {added || known ? (
-                <span className="text-[#6B7185]">{added ? "added" : "in list"}</span>
+                <span className="sg-mdl-chip-tag">{added ? "added" : "in list"}</span>
               ) : (
                 <button
                   type="button"
-                  className="inline-flex items-center text-[#86EFAC] hover:text-[#bbf7d0]"
+                  className="sg-mdl-chip-add"
                   title="Add to custom models"
                   onClick={() => onAdd(m)}
                 >
@@ -682,7 +662,7 @@ function FetchedModelsPanel({ result, newModels, knownModelSet, customModels, on
           );
         })}
       </div>
-      <p className="mt-2 text-[11px] leading-4 text-[#6B7185]">
+      <p className="sg-mdl-fetched-foot">
         Review only — added models are saved with the provider on <strong>Save</strong>.
       </p>
     </div>
@@ -691,10 +671,10 @@ function FetchedModelsPanel({ result, newModels, knownModelSet, customModels, on
 
 function Field({ label, hint, children }) {
   return (
-    <label className="block">
-      <span className="mb-1 flex items-center justify-between text-[11px] font-medium uppercase tracking-wide text-[#9098A8]">
+    <label className="sg-mdl-field">
+      <span className="sg-mdl-field-label">
         {label}
-        {hint && <em className="font-normal normal-case tracking-normal text-[#6B7185]">{hint}</em>}
+        {hint && <em>{hint}</em>}
       </span>
       {children}
     </label>
@@ -706,7 +686,7 @@ function NumField({ label, value, onChange, ...rest }) {
     <Field label={label}>
       <input
         type="number"
-        className="sg-input h-9 w-full px-3 text-[13px]"
+        className="sg-mdl-input"
         placeholder="—"
         value={value}
         onChange={onChange}

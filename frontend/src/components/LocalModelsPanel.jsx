@@ -102,13 +102,14 @@ import {
 // Providers cards above (the single writer). Designed to mount under the provider
 // list inside ProviderSettingsWorkspace.
 
-// Tone → pill classes, matching the dark/orange premium vocabulary used by the
-// provider StatusPill (green reachable / amber offline / grey neutral / red error).
+// Tone → pill modifier class. The selection LOGIC (which tone key applies) is
+// unchanged from the previous palette; only the resolved class is the GuideForge
+// semantic pill (green reachable / amber offline / grey neutral / red error).
 const PILL_TONE = {
-  reachable: "border border-[#86EFAC]/30 bg-[#86EFAC]/10 text-[#86EFAC]",
-  offline: "border border-[#FCD34D]/30 bg-[#FCD34D]/10 text-[#FCD34D]",
-  error: "border border-[#FCA5A5]/30 bg-[#FCA5A5]/10 text-[#FCA5A5]",
-  neutral: "border border-white/10 bg-white/5 text-[#9098A8]",
+  reachable: "is-ok",
+  offline: "is-warn",
+  error: "is-error",
+  neutral: "is-neutral",
 };
 
 const PILL_ICON = {
@@ -515,55 +516,53 @@ export default function LocalModelsPanel({ onEditLocalProvider }) {
   );
 
   return (
-    <div className="mt-8 max-w-[860px]">
-      <div className="sg-section-head">
+    <div className="sg-mdl-local">
+      <div className="sg-mdl-section-head">
         <h2>Local Models</h2>
         <span>Status · library · managed test server</span>
       </div>
 
-      <div className="rounded-2xl border border-white/10 bg-white/[0.03] p-4">
+      <div className="sg-mdl-local-card">
         {/* Header row: title + live status pill + Refresh */}
-        <div className="flex items-center gap-3">
-          <span className="grid h-[42px] w-[42px] shrink-0 place-items-center rounded-[11px] bg-[#7C3AED]/30 text-[#C4B5FD]">
+        <div className="sg-mdl-local-head">
+          <span className="sg-mdl-server-icon">
             <Server size={18} />
           </span>
-          <div className="min-w-0 flex-1">
-            <strong className="block text-[13px] text-[#E8EAF0]">Local OpenAI-compatible server</strong>
-            <p className="truncate text-[11.5px] text-[#9098A8]">
+          <div className="sg-mdl-local-head-main">
+            <strong>Local OpenAI-compatible server</strong>
+            <p>
               {host ? `host: ${host}` : "no base URL configured"}
               {inDocker ? " · app in Docker" : ""}
             </p>
           </div>
-          <span
-            className={`inline-flex h-[24px] shrink-0 items-center gap-1 whitespace-nowrap rounded-full px-2.5 text-[10.5px] ${PILL_TONE[tone]}`}
-          >
-            {loading ? <Loader2 size={11} className="animate-spin" /> : <PillIcon size={11} />}
+          <span className={`sg-mdl-pill ${PILL_TONE[tone]}`}>
+            {loading ? <Loader2 size={11} className="sg-spin" /> : <PillIcon size={11} />}
             {loading ? "Checking…" : STATE_LABEL[state]}
           </span>
           <button
             type="button"
-            className="sg-ghost-button shrink-0"
+            className="sg-ghost-button"
             onClick={() => fetchStatus(true)}
             disabled={loading || refreshing}
             title="Re-probe the local server (does not save settings or start anything)"
           >
-            {refreshing ? <Loader2 size={14} className="animate-spin" /> : <RefreshCw size={14} />}
-            <span className="ml-1.5">{refreshing ? "Checking…" : "Refresh status"}</span>
+            {refreshing ? <Loader2 size={14} className="sg-spin" /> : <RefreshCw size={14} />}
+            <span>{refreshing ? "Checking…" : "Refresh status"}</span>
           </button>
         </div>
 
         {requestError ? (
-          <div className="mt-4 flex items-start gap-2 rounded-lg border border-white/10 bg-white/[0.03] p-3 text-[11.5px] leading-5 text-[#9098A8]">
-            <CircleSlash size={14} className="mt-0.5 shrink-0" />
-            <div className="min-w-0">
-              <strong className="block text-[#D4D4D8]">Local model status unavailable</strong>
-              <span className="block break-words">{requestError}</span>
+          <div className="sg-mdl-infobox start">
+            <CircleSlash size={14} />
+            <div className="sg-mdl-infobox-body">
+              <strong>Local model status unavailable</strong>
+              <span>{requestError}</span>
             </div>
           </div>
         ) : (
           <>
             {/* Metrics strip */}
-            <div className="mt-4 grid grid-cols-2 gap-2 sm:grid-cols-4">
+            <div className="sg-mdl-metrics">
               <Metric label="Latency" value={latency === null ? "—" : `${latency} ms`} />
               <Metric label="Models" value={String(count)} />
               <Metric label="Default" value={defaultModel || "—"} />
@@ -572,40 +571,30 @@ export default function LocalModelsPanel({ onEditLocalProvider }) {
 
             {/* Error / offline message (already redacted server-side) */}
             {errorMessage && state !== STATE_REACHABLE && (
-              <p className="mt-3 break-words text-[11.5px] leading-5 text-[#FCD34D]">
-                {errorMessage}
-              </p>
+              <p className="sg-mdl-notice warn">{errorMessage}</p>
             )}
 
             {/* Discovered models — compact chips, bounded list */}
-            <div className="mt-4">
-              <span className="mb-1.5 block text-[11px] font-medium uppercase tracking-wide text-[#9098A8]">
-                Discovered models
-              </span>
+            <div>
+              <span className="sg-mdl-sublabel">Discovered models</span>
               {shown.length === 0 ? (
-                <p className="text-[11.5px] leading-5 text-[#6B7185]">
+                <p className="sg-mdl-help dim">
                   {state === STATE_REACHABLE
                     ? "Server reachable but no models reported."
                     : "None — start the server and Refresh."}
                 </p>
               ) : (
-                <div className="flex flex-wrap gap-1.5">
+                <div className="sg-mdl-chips">
                   {shown.map((m) => (
                     <span
                       key={m}
-                      className={`inline-flex h-[22px] items-center gap-1 rounded-full border px-2 text-[10.5px] ${
-                        m === selectedModel
-                          ? "border-[#86EFAC]/30 bg-[#86EFAC]/10 text-[#86EFAC]"
-                          : "border-white/10 bg-white/5 text-[#D4D4D8]"
-                      }`}
+                      className={`sg-mdl-chip ${m === selectedModel ? "is-selected" : ""}`}
                     >
                       {m}
                     </span>
                   ))}
                   {overflow > 0 && (
-                    <span className="inline-flex h-[22px] items-center rounded-full border border-white/10 bg-white/5 px-2 text-[10.5px] text-[#9098A8]">
-                      +{overflow} more
-                    </span>
+                    <span className="sg-mdl-chip">+{overflow} more</span>
                   )}
                 </div>
               )}
@@ -618,11 +607,11 @@ export default function LocalModelsPanel({ onEditLocalProvider }) {
 
             {/* Backend notes for reachable/error states (e.g. binding hints) */}
             {state !== STATE_OFFLINE && state !== STATE_NOT_CONFIGURED && notes.length > 0 && (
-              <ul className="mt-3 space-y-1 text-[11.5px] leading-5 text-[#9098A8]">
+              <ul className="sg-mdl-bullets">
                 {notes.map((note, i) => (
-                  <li key={i} className="flex gap-1.5">
-                    <span className="text-[#6B7185]">•</span>
-                    <span className="break-words">{note}</span>
+                  <li key={i}>
+                    <span className="sg-mdl-dot">•</span>
+                    <span>{note}</span>
                   </li>
                 ))}
               </ul>
@@ -707,34 +696,34 @@ export default function LocalModelsPanel({ onEditLocalProvider }) {
             )}
 
             {/* Actions: edit-link (single writer is Providers) + disabled planned */}
-            <div className="mt-4 flex flex-wrap items-center gap-2 border-t border-white/5 pt-4">
+            <div className="sg-mdl-foot-actions">
               <button
                 type="button"
                 className="sg-ghost-button"
                 onClick={onEditLocalProvider}
               >
                 <SettingsGlyph />
-                <span className="ml-1.5">{editAction?.label || "Edit local provider settings"}</span>
+                <span>{editAction?.label || "Edit local provider settings"}</span>
               </button>
               {plannedActions.map((action) => (
                 <span
                   key={action.id}
-                  className="inline-flex h-9 cursor-not-allowed items-center gap-1.5 rounded-lg border border-white/10 bg-white/[0.02] px-3 text-[12px] text-[#6B7185]"
+                  className="sg-mdl-planned"
                   title={action.reason || "Planned for a later slice."}
                   aria-disabled="true"
                 >
                   <Terminal size={13} />
                   {action.label}
-                  <span className="rounded-full border border-white/10 px-1.5 text-[10px] uppercase tracking-wide">
-                    Planned
-                  </span>
+                  <span className="sg-mdl-planned-tag">Planned</span>
                 </span>
               ))}
             </div>
-            <p className="mt-2 text-[11px] leading-4 text-[#6B7185]">
-              Local provider status is still detection-only. Managed Server controls use only
-              the companion backend bridge and do not edit the Local provider card above.
-            </p>
+            <div className="sg-mdl-disclaimer">
+              <p>
+                Local provider status is still detection-only. Managed Server controls use only
+                the companion backend bridge and do not edit the Local provider card above.
+              </p>
+            </div>
           </>
         )}
       </div>
@@ -788,54 +777,48 @@ function ModelLibrarySection({
   const canScan = companionStateKey === COMPANION_REACHABLE && companionScanCapable && !scanning;
 
   return (
-    <section className="mt-4 rounded-lg border border-white/10 bg-white/[0.02] p-3">
-      <div className="flex flex-wrap items-start gap-3">
-        <div className="min-w-0 flex-1">
-          <div className="flex flex-wrap items-center gap-2">
-            <strong className="text-[12.5px] text-[#E8EAF0]">Model Library</strong>
-            <span className="rounded-full border border-white/10 bg-white/[0.03] px-2 py-0.5 text-[10px] uppercase tracking-wide text-[#9098A8]">
-              Library discovery only
-            </span>
+    <section className="sg-mdl-subcard">
+      <div className="sg-mdl-subcard-head">
+        <div className="sg-mdl-subcard-head-main">
+          <div className="sg-mdl-subcard-title">
+            <strong>Model Library</strong>
+            <span className="sg-mdl-tag">Library discovery only</span>
           </div>
-          <p className="mt-1 text-[11.5px] leading-5 text-[#9098A8]">
-            Approved GGUF folders are configured in the host companion config.
-          </p>
+          <p>Approved GGUF folders are configured in the host companion config.</p>
         </div>
-        <span
-          className={`inline-flex h-[24px] shrink-0 items-center gap-1 whitespace-nowrap rounded-full px-2.5 text-[10.5px] ${PILL_TONE[badgeTone]}`}
-        >
-          {companionLoading ? <Loader2 size={11} className="animate-spin" /> : <CompanionStateIcon state={companionStateKey} />}
+        <span className={`sg-mdl-pill ${PILL_TONE[badgeTone]}`}>
+          {companionLoading ? <Loader2 size={11} className="sg-spin" /> : <CompanionStateIcon state={companionStateKey} />}
           {companionLoading ? "Checking…" : companionBadgeMeta.label}
         </span>
         <button
           type="button"
-          className="sg-ghost-button shrink-0"
+          className="sg-ghost-button"
           onClick={onScan}
           disabled={!canScan}
           title="Ask the companion to rescan approved folders"
         >
-          {scanning ? <Loader2 size={14} className="animate-spin" /> : <RefreshCw size={14} />}
-          <span className="ml-1.5">{scanning ? "Scanning…" : "Scan approved folder(s)"}</span>
+          {scanning ? <Loader2 size={14} className="sg-spin" /> : <RefreshCw size={14} />}
+          <span>{scanning ? "Scanning…" : "Scan approved folder(s)"}</span>
         </button>
       </div>
 
-      <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-4">
+      <div className="sg-mdl-metrics">
         <Metric label="Approved roots" value={String(libraryRoots)} />
         <Metric label="Cached models" value={String(libraryCount)} />
         <Metric label="Last scan" value={lastScan} />
         <Metric label="Chosen library model" value={selectionLoading ? "Loading…" : chosenName} />
       </div>
 
-      <p className="mt-3 text-[11.5px] leading-5 text-[#9098A8]">{statusCopy}</p>
+      <p className="sg-mdl-help">{statusCopy}</p>
       {rootSummaries.length > 0 && <RootSummaryList roots={rootSummaries} />}
       {companionStateKey === COMPANION_UNCONFIGURED && <CompanionSetupGuide />}
       {(libraryRequestError || selectionRequestError) && (
-        <p className="mt-2 break-words text-[11.5px] leading-5 text-[#FCD34D]">
+        <p className="sg-mdl-notice warn">
           {libraryRequestError || selectionRequestError}
         </p>
       )}
       {(scanMessage || selectionMessage) && (
-        <p className="mt-2 text-[11px] leading-4 text-[#6B7185]">{scanMessage || selectionMessage}</p>
+        <p className="sg-mdl-help dim">{scanMessage || selectionMessage}</p>
       )}
 
       {savedSelection && (
@@ -850,15 +833,13 @@ function ModelLibrarySection({
       )}
 
       {warnings.length > 0 && (
-        <div className="mt-3 rounded-lg border border-[#FCD34D]/20 bg-[#FCD34D]/[0.04] p-2.5">
-          <span className="mb-1 block text-[10.5px] font-medium uppercase tracking-wide text-[#FCD34D]">
-            Scan warnings
-          </span>
-          <ul className="space-y-1 text-[11px] leading-5 text-[#9098A8]">
+        <div className="sg-mdl-box warn">
+          <span className="sg-mdl-box-title">Scan warnings</span>
+          <ul className="sg-mdl-warnlist">
             {warnings.slice(0, 5).map((warning, i) => (
-              <li key={`${warning.code || "warning"}-${i}`} className="flex gap-1.5">
-                <AlertTriangle size={12} className="mt-1 shrink-0 text-[#FCD34D]" />
-                <span className="min-w-0 break-words">
+              <li key={`${warning.code || "warning"}-${i}`}>
+                <AlertTriangle size={12} />
+                <span>
                   {warning.message || warning.code || "Companion warning"}
                   {warning.root_id ? ` · root ${warning.root_id}` : ""}
                   {warning.relative_path ? ` · ${warning.relative_path}` : ""}
@@ -870,31 +851,29 @@ function ModelLibrarySection({
         </div>
       )}
 
-      <div className="mt-3">
-        {libraryLoading && !libraryData ? (
-          <div className="flex items-center gap-2 rounded-lg border border-white/10 bg-white/[0.03] p-3 text-[11.5px] text-[#9098A8]">
-            <Loader2 size={14} className="animate-spin" />
-            Loading cached library…
-          </div>
-        ) : libraryModels.length === 0 ? (
-          <EmptyLibraryState state={companionStateKey} roots={libraryRoots} requestError={libraryRequestError} />
-        ) : (
-          <div className="grid gap-2">
-            {libraryModels.map((model) => (
-              <LibraryModelButton
-                key={model.id}
-                model={model}
-                selected={model.id === selectedModelId}
-                persisted={model.id === savedSelection?.id}
-                onSelect={() => onSelectModel(model.id)}
-              />
-            ))}
-          </div>
-        )}
-      </div>
+      {libraryLoading && !libraryData ? (
+        <div className="sg-mdl-infobox row">
+          <Loader2 size={14} className="sg-spin" />
+          Loading cached library…
+        </div>
+      ) : libraryModels.length === 0 ? (
+        <EmptyLibraryState state={companionStateKey} roots={libraryRoots} requestError={libraryRequestError} />
+      ) : (
+        <div className="sg-mdl-modelgrid">
+          {libraryModels.map((model) => (
+            <LibraryModelButton
+              key={model.id}
+              model={model}
+              selected={model.id === selectedModelId}
+              persisted={model.id === savedSelection?.id}
+              onSelect={() => onSelectModel(model.id)}
+            />
+          ))}
+        </div>
+      )}
 
       {selectedModel && (
-        <div className="mt-3 flex flex-wrap items-center gap-2 border-t border-white/5 pt-3">
+        <div className="sg-mdl-foot-actions tight">
           <button
             type="button"
             className="sg-ghost-button"
@@ -902,12 +881,12 @@ function ModelLibrarySection({
             disabled={selectionSaving || !hasPendingChoice}
             title="Persist this selected library model as app-side metadata"
           >
-            {selectionSaving ? <Loader2 size={14} className="animate-spin" /> : <Check size={14} />}
-            <span className="ml-1.5">
+            {selectionSaving ? <Loader2 size={14} className="sg-spin" /> : <Check size={14} />}
+            <span>
               {hasPendingChoice ? "Remember selected model" : "Selected model remembered"}
             </span>
           </button>
-          <p className="min-w-[220px] flex-1 text-[11px] leading-4 text-[#6B7185]">
+          <p className="sg-mdl-foot-note">
             Provider Settings, Ask, and the local provider default are unchanged.
           </p>
         </div>
@@ -969,58 +948,56 @@ function ManagedServerSection({
   else if (!managedRunning) disabledCopy = "Stop and restart are enabled only for a companion-managed running server.";
 
   return (
-    <section className="mt-4 rounded-lg border border-white/10 bg-white/[0.02] p-3">
-      <div className="flex flex-wrap items-start gap-3">
-        <div className="min-w-0 flex-1">
-          <div className="flex flex-wrap items-center gap-2">
-            <strong className="text-[12.5px] text-[#E8EAF0]">Managed Server</strong>
+    <section className="sg-mdl-subcard">
+      <div className="sg-mdl-subcard-head">
+        <div className="sg-mdl-subcard-head-main">
+          <div className="sg-mdl-subcard-title">
+            <strong>Managed Server</strong>
             {selectedProfile?.test_profile && (
-              <span className="rounded-full border border-[#FCD34D]/30 bg-[#FCD34D]/10 px-2 py-0.5 text-[10px] uppercase tracking-wide text-[#FCD34D]">
+              <span className="sg-mdl-tag warn">
                 {SAFE_TEST_PROFILE_ID} validation profile
               </span>
             )}
             {selectedProfile && !selectedProfile.runnable && (
-              <span className="rounded-full border border-[#FCA5A5]/30 bg-[#FCA5A5]/10 px-2 py-0.5 text-[10px] uppercase tracking-wide text-[#FCA5A5]">
+              <span className="sg-mdl-tag error">
                 Profile unavailable
               </span>
             )}
           </div>
-          <p className="mt-1 text-[11.5px] leading-5 text-[#9098A8]">
-            Start/stop controls require a configured host companion.
-          </p>
+          <p>Start/stop controls require a configured host companion.</p>
         </div>
-        <span className={`inline-flex h-[24px] shrink-0 items-center gap-1 whitespace-nowrap rounded-full px-2.5 text-[10.5px] ${PILL_TONE[serverTone(status, companionAvailable)]}`}>
-          {loading ? <Loader2 size={11} className="animate-spin" /> : <ServerStateIcon state={state} companionAvailable={companionAvailable} />}
+        <span className={`sg-mdl-pill ${PILL_TONE[serverTone(status, companionAvailable)]}`}>
+          {loading ? <Loader2 size={11} className="sg-spin" /> : <ServerStateIcon state={state} companionAvailable={companionAvailable} />}
           {statusLabel}
         </span>
         <button
           type="button"
-          className="sg-ghost-button shrink-0"
+          className="sg-ghost-button"
           onClick={onRefresh}
           disabled={loading || busy}
           title="Refresh companion-managed server status"
         >
-          {loading ? <Loader2 size={14} className="animate-spin" /> : <RefreshCw size={14} />}
-          <span className="ml-1.5">Refresh managed status</span>
+          {loading ? <Loader2 size={14} className="sg-spin" /> : <RefreshCw size={14} />}
+          <span>Refresh managed status</span>
         </button>
       </div>
 
-      <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-4">
+      <div className="sg-mdl-metrics">
         <Metric label="State" value={statusLabel} />
         <Metric label="Managed" value={status?.managed === true ? "Yes" : "No"} />
         <Metric label="Model id" value={selection?.id || status?.model_id || "-"} />
         <Metric label="Port" value={String(status?.port || port)} />
       </div>
 
-      <div className="mt-3 grid gap-3 lg:grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)]">
-        <div className="rounded-lg border border-white/10 bg-black/20 p-2.5">
-          <label className="mb-1.5 block text-[10.5px] font-medium uppercase tracking-wide text-[#9098A8]" htmlFor="managed-server-profile">
+      <div className="sg-mdl-grid-2 managed">
+        <div className="sg-mdl-panel">
+          <label className="sg-mdl-panel-label" htmlFor="managed-server-profile">
             Launch profile
           </label>
-          <div className="flex gap-2">
+          <div className="sg-mdl-profile-row">
             <select
               id="managed-server-profile"
-              className="min-h-[34px] min-w-0 flex-1 rounded-lg border border-white/10 bg-[#0F1421] px-2 text-[11.5px] text-[#E8EAF0]"
+              className="sg-mdl-select"
               value={selectedProfileId || ""}
               disabled={!companionAvailable || profilesLoading || busy || profiles.length === 0}
               onChange={(event) => onSelectProfile(event.target.value)}
@@ -1037,54 +1014,52 @@ function ManagedServerSection({
             </select>
             <button
               type="button"
-              className="sg-ghost-button shrink-0"
+              className="sg-icon-button"
               onClick={onRefreshProfiles}
               disabled={!companionAvailable || profilesLoading || busy}
               title="Refresh configured launch profiles"
             >
-              {profilesLoading ? <Loader2 size={14} className="animate-spin" /> : <RefreshCw size={14} />}
+              {profilesLoading ? <Loader2 size={14} className="sg-spin" /> : <RefreshCw size={14} />}
             </button>
           </div>
           {selectedProfile?.description && (
-            <p className="mt-2 text-[11px] leading-4 text-[#9098A8]">{selectedProfile.description}</p>
+            <p className="sg-mdl-help">{selectedProfile.description}</p>
           )}
           {selectedProfile?.runnable_reason && !selectedProfile.runnable && (
-            <p className="mt-2 text-[11px] leading-4 text-[#FCD34D]">
+            <p className="sg-mdl-notice warn">
               Reason: {selectedProfile.runnable_reason}
             </p>
           )}
           {profilesRequestError && (
-            <p className="mt-2 text-[11px] leading-4 text-[#FCD34D]">{profilesRequestError}</p>
+            <p className="sg-mdl-notice warn">{profilesRequestError}</p>
           )}
           {!hasProfiles && !profilesLoading && (
-            <p className="mt-2 text-[11px] leading-4 text-[#9098A8]">
+            <p className="sg-mdl-help">
               No profiles are configured. Launch profiles come from companion config or preset files.
             </p>
           )}
         </div>
 
-        <div className="rounded-lg border border-white/10 bg-black/20 p-2.5">
-          <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
-            <span className="text-[10.5px] font-medium uppercase tracking-wide text-[#9098A8]">
-              Profile parameters
-            </span>
+        <div className="sg-mdl-panel">
+          <div className="sg-mdl-panel-headrow">
+            <span className="sg-mdl-panel-label">Profile parameters</span>
             <button
               type="button"
-              className="sg-ghost-button"
+              className="sg-btn-sm"
               onClick={onResetParameters}
               disabled={!companionAvailable || !selectedProfile || busy}
               title="Restore configured profile defaults"
             >
               <RefreshCw size={13} />
-              <span className="ml-1.5">Use profile defaults</span>
+              <span>Use profile defaults</span>
             </button>
           </div>
           {parameterEntries.length === 0 ? (
-            <p className="text-[11.5px] leading-5 text-[#6B7185]">
+            <p className="sg-mdl-help dim">
               Companion profile metadata is unavailable.
             </p>
           ) : (
-            <div className="grid gap-2 sm:grid-cols-2">
+            <div className="sg-mdl-params">
               {parameterEntries.map(([name, schema]) => (
                 <ProfileParameterControl
                   key={name}
@@ -1100,11 +1075,9 @@ function ManagedServerSection({
         </div>
       </div>
 
-      <div className="mt-3 rounded-lg border border-white/10 bg-black/20 p-2.5">
-        <span className="mb-1.5 block text-[10.5px] font-medium uppercase tracking-wide text-[#9098A8]">
-          Start payload preview
-        </span>
-        <dl className="grid gap-x-3 gap-y-1 text-[11px] leading-4 text-[#9098A8] sm:grid-cols-2">
+      <div className="sg-mdl-panel">
+        <span className="sg-mdl-panel-label">Start payload preview</span>
+        <dl className="sg-mdl-detail-grid">
           <SafeDetail label="Selected model" value={selectedName} />
           <SafeDetail label="Profile" value={profileLabel} />
           {Object.entries(startPayload?.parameters || localModelServerProfileDefaults(selectedProfile)).map(([name, value]) => (
@@ -1113,7 +1086,7 @@ function ManagedServerSection({
         </dl>
       </div>
 
-      <div className="mt-3 flex flex-wrap items-center gap-2 border-t border-white/5 pt-3">
+      <div className="sg-mdl-foot-actions">
         <button
           type="button"
           className="sg-ghost-button"
@@ -1121,8 +1094,8 @@ function ManagedServerSection({
           disabled={!canStart}
           title="Starts companion-managed server only."
         >
-          {action === "start" ? <Loader2 size={14} className="animate-spin" /> : <Server size={14} />}
-          <span className="ml-1.5">{action === "start" ? "Starting..." : "Start selected model"}</span>
+          {action === "start" ? <Loader2 size={14} className="sg-spin" /> : <Server size={14} />}
+          <span>{action === "start" ? "Starting..." : "Start selected model"}</span>
         </button>
         <button
           type="button"
@@ -1131,8 +1104,8 @@ function ManagedServerSection({
           disabled={!canStop}
           title="Stops only the companion-managed server."
         >
-          {action === "stop" ? <Loader2 size={14} className="animate-spin" /> : <CircleSlash size={14} />}
-          <span className="ml-1.5">{action === "stop" ? "Stopping..." : "Stop managed server"}</span>
+          {action === "stop" ? <Loader2 size={14} className="sg-spin" /> : <CircleSlash size={14} />}
+          <span>{action === "stop" ? "Stopping..." : "Stop managed server"}</span>
         </button>
         <button
           type="button"
@@ -1141,12 +1114,12 @@ function ManagedServerSection({
           disabled={!canRestart}
           title="Restarts with the saved selected model and safe defaults."
         >
-          {action === "restart" ? <Loader2 size={14} className="animate-spin" /> : <RefreshCw size={14} />}
-          <span className="ml-1.5">{action === "restart" ? "Restarting..." : "Restart managed server"}</span>
+          {action === "restart" ? <Loader2 size={14} className="sg-spin" /> : <RefreshCw size={14} />}
+          <span>{action === "restart" ? "Restarting..." : "Restart managed server"}</span>
         </button>
       </div>
 
-      <div className="mt-3 space-y-1 text-[11px] leading-4 text-[#6B7185]">
+      <div className="sg-mdl-disclaimer">
         <p>These buttons control only the companion-managed process.</p>
         <p>Starts companion-managed server only.</p>
         <p>Stops only the companion-managed server. Manual servers are not stopped by this button.</p>
@@ -1160,14 +1133,14 @@ function ManagedServerSection({
       </div>
 
       {disabledCopy && (
-        <p className="mt-2 text-[11px] leading-4 text-[#9098A8]">{disabledCopy}</p>
+        <p className="sg-mdl-help">{disabledCopy}</p>
       )}
       {(requestError || statusError) && (
-        <p className="mt-2 break-words text-[11.5px] leading-5 text-[#FCD34D]">
+        <p className="sg-mdl-notice warn">
           {requestError || statusError}
         </p>
       )}
-      {message && <p className="mt-2 text-[11px] leading-4 text-[#6B7185]">{message}</p>}
+      {message && <p className="sg-mdl-help dim">{message}</p>}
     </section>
   );
 }
@@ -1176,8 +1149,8 @@ function ProfileParameterControl({ name, schema, value, disabled, onChange }) {
   const controlId = `managed-param-${name}`;
   const current = value ?? schema.default;
   return (
-    <label className="block rounded-lg border border-white/10 bg-white/[0.03] p-2" htmlFor={controlId}>
-      <span className="block text-[11px] font-medium text-[#D4D4D8]">{schema.label}</span>
+    <label className="sg-mdl-param" htmlFor={controlId}>
+      <span className="sg-mdl-param-label">{schema.label}</span>
       {schema.type === "integer" && (
         <input
           id={controlId}
@@ -1188,18 +1161,17 @@ function ProfileParameterControl({ name, schema, value, disabled, onChange }) {
           value={current}
           disabled={disabled}
           onChange={(event) => onChange(name, event.target.value)}
-          className="mt-1 h-8 w-full rounded-lg border border-white/10 bg-[#0F1421] px-2 text-[11.5px] text-[#E8EAF0]"
+          className="sg-mdl-param-input"
         />
       )}
       {schema.type === "boolean" && (
-        <span className="mt-1 flex h-8 items-center gap-2 text-[11.5px] text-[#E8EAF0]">
+        <span className="sg-mdl-param-check">
           <input
             id={controlId}
             type="checkbox"
             checked={current === true}
             disabled={disabled}
             onChange={(event) => onChange(name, event.target.checked)}
-            className="h-4 w-4 accent-[#86EFAC]"
           />
           Enabled
         </span>
@@ -1210,14 +1182,14 @@ function ProfileParameterControl({ name, schema, value, disabled, onChange }) {
           value={current}
           disabled={disabled}
           onChange={(event) => onChange(name, event.target.value)}
-          className="mt-1 h-8 w-full rounded-lg border border-white/10 bg-[#0F1421] px-2 text-[11.5px] text-[#E8EAF0]"
+          className="sg-mdl-param-input"
         >
           {schema.allowed_values.map((item) => (
             <option key={item} value={item}>{item}</option>
           ))}
         </select>
       )}
-      {schema.help && <span className="mt-1 block text-[10.5px] leading-4 text-[#6B7185]">{schema.help}</span>}
+      {schema.help && <span className="sg-mdl-param-help">{schema.help}</span>}
     </label>
   );
 }
@@ -1276,7 +1248,7 @@ function EmptyLibraryState({ state, roots, requestError }) {
   else if (state === COMPANION_AUTH_FAILED) copy = "Companion auth failed; no cached models are available.";
   else if (roots === 0) copy = "No approved folders are configured on the companion.";
   return (
-    <div className="rounded-lg border border-white/10 bg-white/[0.03] p-3 text-[11.5px] leading-5 text-[#9098A8]">
+    <div className="sg-mdl-infobox">
       {copy}
     </div>
   );
@@ -1284,18 +1256,13 @@ function EmptyLibraryState({ state, roots, requestError }) {
 
 function RootSummaryList({ roots }) {
   return (
-    <div className="mt-3 rounded-lg border border-white/10 bg-black/20 p-2.5">
-      <span className="mb-1.5 block text-[10.5px] font-medium uppercase tracking-wide text-[#9098A8]">
-        Configured approved roots
-      </span>
-      <div className="flex flex-wrap gap-1.5">
+    <div className="sg-mdl-panel">
+      <span className="sg-mdl-panel-label">Configured approved roots</span>
+      <div className="sg-mdl-roots">
         {roots.map((root) => (
-          <span
-            key={root.id}
-            className="inline-flex items-center gap-1.5 rounded-full border border-white/10 bg-white/[0.04] px-2 py-1 text-[10.5px] text-[#D4D4D8]"
-          >
+          <span key={root.id} className="sg-mdl-root">
             {root.id}
-            <span className="text-[#6B7185]">
+            <span>
               {root.recursive ? "recursive" : "top level"} · {root.model_count ?? 0} models
             </span>
           </span>
@@ -1318,20 +1285,20 @@ function CompanionSetupGuide() {
   "process_runtime_dir": "/tmp/lmm-companion-runtime"
 }`;
   return (
-    <div className="mt-3 rounded-lg border border-[#FCD34D]/20 bg-[#FCD34D]/[0.04] p-3">
-      <strong className="block text-[12px] text-[#FCD34D]">Companion setup required</strong>
-      <ul className="mt-2 space-y-1 text-[11.5px] leading-5 text-[#D4D4D8]">
+    <div className="sg-mdl-box warn">
+      <strong className="sg-mdl-box-title">Companion setup required</strong>
+      <ul className="sg-mdl-guide-list">
         <li>Approved GGUF folders are configured in the host companion config.</li>
         <li>The web app cannot safely browse your whole PC or pick host folders directly.</li>
         <li>Configure approved_roots in the companion config, then restart the companion and click Scan.</li>
         <li>Manual server mode still works without the companion.</li>
       </ul>
-      <span className="mt-3 block text-[10.5px] font-medium uppercase tracking-wide text-[#9098A8]">
-        Example/edit-me config template
-      </span>
-      <pre className="mt-1 overflow-x-auto rounded-lg border border-white/10 bg-black/30 p-2.5 text-[11px] leading-5 text-[#E8EAF0]">
-        <code className="whitespace-pre-wrap break-all font-mono">{template}</code>
-      </pre>
+      <span className="sg-mdl-panel-label">Example/edit-me config template</span>
+      <div className="sg-mdl-code template">
+        <pre>
+          <code>{template}</code>
+        </pre>
+      </div>
     </div>
   );
 }
@@ -1340,26 +1307,20 @@ function ChosenLibraryModel({ model, preview, stale, companionStateKey, saving, 
   const name = model.display_name || model.filename || model.relative_path || model.id;
   const unconfigured = companionStateKey === COMPANION_UNCONFIGURED;
   return (
-    <div className="mt-3 rounded-lg border border-[#86EFAC]/20 bg-[#86EFAC]/[0.04] p-3">
-      <div className="flex flex-wrap items-start gap-2">
-        <div className="min-w-0 flex-1">
-          <div className="flex flex-wrap items-center gap-1.5">
-            <strong className="break-words text-[12.5px] text-[#E8EAF0]">{name}</strong>
-            <span className="rounded-full border border-[#86EFAC]/30 bg-[#86EFAC]/10 px-2 py-0.5 text-[10px] uppercase tracking-wide text-[#86EFAC]">
-              Chosen library model
-            </span>
+    <div className="sg-mdl-box ok">
+      <div className="sg-mdl-box-head">
+        <div className="sg-mdl-box-head-main">
+          <div className="sg-mdl-box-name-row">
+            <strong>{name}</strong>
+            <span className="sg-mdl-tag ok">Chosen library model</span>
             {unconfigured && (
-              <span className="rounded-full border border-[#FCD34D]/30 bg-[#FCD34D]/10 px-2 py-0.5 text-[10px] uppercase tracking-wide text-[#FCD34D]">
-                Saved selected model
-              </span>
+              <span className="sg-mdl-tag warn">Saved selected model</span>
             )}
             {stale && !unconfigured && (
-              <span className="rounded-full border border-[#FCD34D]/30 bg-[#FCD34D]/10 px-2 py-0.5 text-[10px] uppercase tracking-wide text-[#FCD34D]">
-                Saved but not in current library
-              </span>
+              <span className="sg-mdl-tag warn">Saved but not in current library</span>
             )}
           </div>
-          <dl className="mt-2 grid gap-x-3 gap-y-1 text-[11px] leading-4 text-[#9098A8] sm:grid-cols-2">
+          <dl className="sg-mdl-detail-grid">
             <SafeDetail label="File" value={model.filename || "—"} />
             <SafeDetail label="Path" value={model.relative_path || "—"} />
             <SafeDetail label="Root" value={model.root_id || "—"} />
@@ -1368,13 +1329,13 @@ function ChosenLibraryModel({ model, preview, stale, companionStateKey, saving, 
             <SafeDetail label="Selected" value={formatModelModifiedAt(model.selected_at)} />
           </dl>
           {unconfigured ? (
-            <p className="mt-2 text-[11px] leading-4 text-[#FCD34D]">
+            <p className="sg-mdl-box-note warn">
               This is a saved selected model from a previous validation or session.
               It is not currently confirmed by a live library scan because the companion is unconfigured.
               Configure the companion and scan approved folder(s) to show all GGUF models.
             </p>
           ) : stale ? (
-            <p className="mt-2 text-[11px] leading-4 text-[#FCD34D]">
+            <p className="sg-mdl-box-note warn">
               Saved but not in current scan. The file may have moved, been renamed,
               or the approved root may need rescanning.
             </p>
@@ -1382,17 +1343,17 @@ function ChosenLibraryModel({ model, preview, stale, companionStateKey, saving, 
         </div>
         <button
           type="button"
-          className="sg-ghost-button shrink-0"
+          className="sg-ghost-button"
           onClick={onClear}
           disabled={saving}
           title="Clear the saved library model selection"
         >
-          {saving ? <Loader2 size={14} className="animate-spin" /> : <CircleSlash size={14} />}
-          <span className="ml-1.5">Clear selection</span>
+          {saving ? <Loader2 size={14} className="sg-spin" /> : <CircleSlash size={14} />}
+          <span>Clear selection</span>
         </button>
       </div>
       {preview && <FutureLaunchPreview preview={preview} />}
-      <p className="mt-2 text-[11px] leading-4 text-[#6B7185]">
+      <p className="sg-mdl-box-note dim">
         This selection is used by Managed Server start/restart with safe typed defaults.
         Provider Settings were not changed.
       </p>
@@ -1402,11 +1363,9 @@ function ChosenLibraryModel({ model, preview, stale, companionStateKey, saving, 
 
 function FutureLaunchPreview({ preview }) {
   return (
-    <div className="mt-3 rounded-lg border border-white/10 bg-black/20 p-2.5">
-      <span className="mb-1.5 block text-[10.5px] font-medium uppercase tracking-wide text-[#9098A8]">
-        Saved selection preview
-      </span>
-      <dl className="grid gap-x-3 gap-y-1 text-[11px] leading-4 text-[#9098A8] sm:grid-cols-2">
+    <div className="sg-mdl-panel">
+      <span className="sg-mdl-panel-label">Saved selection preview</span>
+      <dl className="sg-mdl-detail-grid">
         <SafeDetail label="Model id" value={preview.model_id || "—"} />
         <SafeDetail label="File" value={preview.filename || "—"} />
         <SafeDetail label="Path" value={preview.relative_path || "companion resolves id"} />
@@ -1414,7 +1373,7 @@ function FutureLaunchPreview({ preview }) {
         <SafeDetail label="Profile" value={preview.profile || "gpu_default"} />
         <SafeDetail label="Resolver" value={preview.resolver || "companion_model_id"} />
       </dl>
-      <p className="mt-2 text-[11px] leading-4 text-[#6B7185]">
+      <p className="sg-mdl-help dim">
         No runnable command is generated here; the companion resolves the model id server-side.
       </p>
     </div>
@@ -1433,38 +1392,26 @@ function LibraryModelButton({ model, selected, persisted, onSelect }) {
       type="button"
       onClick={onSelect}
       aria-pressed={selected}
-      className={`w-full rounded-lg border p-3 text-left transition ${
-        selected
-          ? "border-[#86EFAC]/30 bg-[#86EFAC]/[0.07]"
-          : "border-white/10 bg-white/[0.025] hover:border-white/20 hover:bg-white/[0.04]"
-      }`}
+      className={`sg-mdl-modelbtn ${selected ? "is-selected" : ""}`}
     >
-      <div className="flex items-start gap-3">
+      <div className="sg-mdl-modelbtn-inner">
         <span
-          className={`mt-0.5 grid h-5 w-5 shrink-0 place-items-center rounded-full border ${
-            selected
-              ? "border-[#86EFAC]/40 bg-[#86EFAC]/10 text-[#86EFAC]"
-              : "border-white/10 bg-white/[0.03] text-[#6B7185]"
-          }`}
+          className={`sg-mdl-modelbtn-radio ${selected ? "is-selected" : ""}`}
           aria-hidden="true"
         >
           {selected ? <Check size={12} /> : null}
         </span>
-        <div className="min-w-0 flex-1">
-          <div className="flex flex-wrap items-center gap-1.5">
-            <strong className="break-words text-[12.5px] text-[#E8EAF0]">{name}</strong>
+        <div className="sg-mdl-modelbtn-main">
+          <div className="sg-mdl-modelbtn-title">
+            <strong>{name}</strong>
             {selected && (
-              <span className="rounded-full border border-[#86EFAC]/30 bg-[#86EFAC]/10 px-2 py-0.5 text-[10px] uppercase tracking-wide text-[#86EFAC]">
-                Selected here
-              </span>
+              <span className="sg-mdl-tag ok">Selected here</span>
             )}
             {persisted && (
-              <span className="rounded-full border border-[#C4B5FD]/30 bg-[#7C3AED]/15 px-2 py-0.5 text-[10px] uppercase tracking-wide text-[#C4B5FD]">
-                Remembered
-              </span>
+              <span className="sg-mdl-tag accent">Remembered</span>
             )}
           </div>
-          <dl className="mt-2 grid gap-x-3 gap-y-1 text-[11px] leading-4 text-[#9098A8] sm:grid-cols-2">
+          <dl className="sg-mdl-detail-grid">
             <SafeDetail label="File" value={model.filename || "—"} />
             <SafeDetail label="Path" value={model.relative_path || "—"} />
             <SafeDetail label="Root" value={model.root_id || "—"} />
@@ -1473,12 +1420,9 @@ function LibraryModelButton({ model, selected, persisted, onSelect }) {
             <SafeDetail label="Compatible" value={model.server_compatible === true ? "Yes" : "Unknown"} />
           </dl>
           {chips.length > 0 && (
-            <div className="mt-2 flex flex-wrap gap-1.5">
+            <div className="sg-mdl-modelbtn-chips">
               {chips.map((chip) => (
-                <span
-                  key={chip}
-                  className="rounded-full border border-white/10 bg-white/[0.04] px-2 py-0.5 text-[10.5px] text-[#D4D4D8]"
-                >
+                <span key={chip} className="sg-mdl-chip">
                   {chip}
                 </span>
               ))}
@@ -1492,18 +1436,18 @@ function LibraryModelButton({ model, selected, persisted, onSelect }) {
 
 function SafeDetail({ label, value }) {
   return (
-    <div className="min-w-0">
-      <dt className="inline text-[#6B7185]">{label}: </dt>
-      <dd className="inline break-words text-[#D4D4D8]">{value}</dd>
+    <div className="sg-mdl-detail">
+      <dt>{label}: </dt>
+      <dd>{value}</dd>
     </div>
   );
 }
 
 function Metric({ label, value }) {
   return (
-    <div className="rounded-lg border border-white/10 bg-white/[0.02] px-3 py-2">
-      <span className="block text-[10px] uppercase tracking-wide text-[#6B7185]">{label}</span>
-      <span className="mt-0.5 block truncate text-[12.5px] text-[#E8EAF0]" title={value}>
+    <div className="sg-mdl-metric">
+      <span className="sg-mdl-metric-label">{label}</span>
+      <span className="sg-mdl-metric-value" title={value}>
         {value}
       </span>
     </div>
@@ -1513,50 +1457,48 @@ function Metric({ label, value }) {
 function Troubleshooting({ state, host, inDocker, notes }) {
   const isDockerHost = host === "host.docker.internal";
   return (
-    <div className="mt-4 rounded-lg border border-[#FCD34D]/20 bg-[#FCD34D]/[0.05] p-3">
-      <div className="flex items-start gap-2">
-        <AlertTriangle size={14} className="mt-0.5 shrink-0 text-[#FCD34D]" />
-        <div className="min-w-0 text-[11.5px] leading-5 text-[#D4D4D8]">
-          {state === STATE_NOT_CONFIGURED ? (
-            <>
-              <strong className="block text-[#FCD34D]">No local server configured</strong>
-              <p className="mt-1 text-[#9098A8]">
-                Set the base URL on the Local provider card above (an OpenAI-compatible
-                endpoint ending in <code>/v1</code>), then Refresh.
-              </p>
-            </>
-          ) : (
-            <>
-              <strong className="block text-[#FCD34D]">Local server not reachable</strong>
-              <ol className="mt-1.5 list-decimal space-y-1 pl-4 text-[#9098A8]">
-                <li>Start your local OpenAI-compatible server (e.g. <code>llama-server</code>) on your host.</li>
+    <div className="sg-mdl-trouble">
+      <AlertTriangle size={14} />
+      <div className="sg-mdl-trouble-body">
+        {state === STATE_NOT_CONFIGURED ? (
+          <>
+            <strong>No local server configured</strong>
+            <p>
+              Set the base URL on the Local provider card above (an OpenAI-compatible
+              endpoint ending in <code>/v1</code>), then Refresh.
+            </p>
+          </>
+        ) : (
+          <>
+            <strong>Local server not reachable</strong>
+            <ol className="sg-mdl-steps">
+              <li>Start your local OpenAI-compatible server (e.g. <code>llama-server</code>) on your host.</li>
+              <li>
+                Confirm it exposes the OpenAI-compatible models endpoint at{" "}
+                <code>{host ? `${host}…/v1/models` : "…/v1/models"}</code>.
+              </li>
+              {inDocker && isDockerHost && (
                 <li>
-                  Confirm it exposes the OpenAI-compatible models endpoint at{" "}
-                  <code>{host ? `${host}…/v1/models` : "…/v1/models"}</code>.
+                  The app runs in Docker and reaches your host at{" "}
+                  <code>host.docker.internal</code>. Bind the server with{" "}
+                  <code>--host 0.0.0.0</code> (not <code>127.0.0.1</code>) so the container can reach it.
                 </li>
-                {inDocker && isDockerHost && (
-                  <li>
-                    The app runs in Docker and reaches your host at{" "}
-                    <code>host.docker.internal</code>. Bind the server with{" "}
-                    <code>--host 0.0.0.0</code> (not <code>127.0.0.1</code>) so the container can reach it.
-                  </li>
-                )}
-                <li>Then click <strong>Refresh status</strong>.</li>
-              </ol>
-            </>
-          )}
-          {/* Any extra backend notes not already implied above */}
-          {notes.length > 0 && (
-            <ul className="mt-2 space-y-1 text-[#9098A8]">
-              {notes.map((note, i) => (
-                <li key={i} className="flex gap-1.5">
-                  <span className="text-[#6B7185]">•</span>
-                  <span className="break-words">{note}</span>
-                </li>
-              ))}
-            </ul>
-          )}
-        </div>
+              )}
+              <li>Then click <strong>Refresh status</strong>.</li>
+            </ol>
+          </>
+        )}
+        {/* Any extra backend notes not already implied above */}
+        {notes.length > 0 && (
+          <ul className="sg-mdl-bullets">
+            {notes.map((note, i) => (
+              <li key={i}>
+                <span className="sg-mdl-dot">•</span>
+                <span>{note}</span>
+              </li>
+            ))}
+          </ul>
+        )}
       </div>
     </div>
   );
@@ -1583,16 +1525,16 @@ export function CommandHelper({
   const CopyIcon = copied ? ClipboardCheck : Copy;
 
   const body = (
-    <div className="space-y-3">
-      <p className="text-[11.5px] leading-5 text-[#9098A8]">
-        Run this in a terminal <strong className="text-[#D4D4D8]">on your host machine</strong>.
+    <div className="sg-mdl-helper-body">
+      <p className="sg-mdl-helper-intro">
+        Run this in a terminal <strong>on your host machine</strong>.
         The app never runs it for you — copy it, edit the model path, run it, then click
         Refresh status.
       </p>
 
       {/* Profile picker (only when more than one whitelisted profile exists) */}
       {profiles.length > 1 && (
-        <div className="flex flex-wrap items-center gap-1.5">
+        <div className="sg-mdl-helper-profiles">
           {profiles.map((p) => {
             const active = p.id === activeProfile.id;
             return (
@@ -1601,11 +1543,7 @@ export function CommandHelper({
                 type="button"
                 onClick={() => onSelectProfile(p.id)}
                 aria-pressed={active}
-                className={`inline-flex h-[26px] items-center rounded-full border px-2.5 text-[11px] ${
-                  active
-                    ? "border-[#C4B5FD]/40 bg-[#7C3AED]/20 text-[#C4B5FD]"
-                    : "border-white/10 bg-white/[0.03] text-[#9098A8] hover:text-[#D4D4D8]"
-                }`}
+                className={`sg-mdl-helper-profile ${active ? "active" : ""}`}
               >
                 {p.label}
               </button>
@@ -1614,38 +1552,32 @@ export function CommandHelper({
         </div>
       )}
       {activeProfile.description && (
-        <p className="text-[11px] leading-5 text-[#6B7185]">{activeProfile.description}</p>
+        <p className="sg-mdl-helper-desc">{activeProfile.description}</p>
       )}
 
       {/* The command itself — selectable code block + copy button */}
-      <div className="rounded-lg border border-white/10 bg-black/30">
-        <div className="flex items-center justify-between gap-2 border-b border-white/5 px-3 py-1.5">
-          <span className="inline-flex items-center gap-1.5 text-[10.5px] uppercase tracking-wide text-[#6B7185]">
+      <div className="sg-mdl-code">
+        <div className="sg-mdl-code-head">
+          <span className="sg-mdl-code-head-label">
             <Terminal size={12} /> Start command
           </span>
           <button
             type="button"
             onClick={onCopy}
-            className={`inline-flex h-7 items-center gap-1.5 rounded-md border px-2.5 text-[11px] ${
-              copied
-                ? "border-[#86EFAC]/30 bg-[#86EFAC]/10 text-[#86EFAC]"
-                : failed
-                ? "border-[#FCD34D]/30 bg-[#FCD34D]/10 text-[#FCD34D]"
-                : "border-white/10 bg-white/5 text-[#D4D4D8] hover:bg-white/10"
-            }`}
+            className={`sg-mdl-copy ${copied ? "copied" : failed ? "failed" : ""}`}
             title="Copy the command to your clipboard (does not run it)"
           >
             <CopyIcon size={12} />
             {copyButtonLabel(copyState)}
           </button>
         </div>
-        <pre className="overflow-x-auto px-3 py-2.5 text-[11.5px] leading-5 text-[#E8EAF0]">
-          <code className="whitespace-pre-wrap break-all font-mono">{activeProfile.command}</code>
+        <pre>
+          <code>{activeProfile.command}</code>
         </pre>
       </div>
 
       {failed && (
-        <p className="text-[11px] leading-4 text-[#FCD34D]">
+        <p className="sg-mdl-notice warn">
           Couldn’t access the clipboard. Select the command text above and copy it manually
           (Ctrl/Cmd+C).
         </p>
@@ -1653,11 +1585,11 @@ export function CommandHelper({
 
       {/* Static safety/usage warnings from the backend profile */}
       {activeProfile.warnings.length > 0 && (
-        <ul className="space-y-1 text-[11px] leading-5 text-[#9098A8]">
+        <ul className="sg-mdl-bullets">
           {activeProfile.warnings.map((w, i) => (
-            <li key={i} className="flex gap-1.5">
-              <span className="text-[#6B7185]">•</span>
-              <span className="break-words">{w}</span>
+            <li key={i}>
+              <span className="sg-mdl-dot">•</span>
+              <span>{w}</span>
             </li>
           ))}
         </ul>
@@ -1665,11 +1597,11 @@ export function CommandHelper({
 
       {/* Top-level helper notes (e.g. the Docker base-URL hint) */}
       {notes.length > 0 && (
-        <ul className="space-y-1 text-[11px] leading-5 text-[#6B7185]">
+        <ul className="sg-mdl-bullets">
           {notes.map((n, i) => (
-            <li key={i} className="flex gap-1.5">
-              <span>•</span>
-              <span className="break-words">{n}</span>
+            <li key={i}>
+              <span className="sg-mdl-dot">•</span>
+              <span>{n}</span>
             </li>
           ))}
         </ul>
@@ -1678,8 +1610,8 @@ export function CommandHelper({
   );
 
   const heading = (
-    <span className="inline-flex items-center gap-2 text-[12px] font-medium text-[#E8EAF0]">
-      <Terminal size={14} className="text-[#C4B5FD]" />
+    <span className="sg-mdl-helper-head">
+      <Terminal size={14} />
       How to start llama-server (manual)
     </span>
   );
@@ -1688,16 +1620,16 @@ export function CommandHelper({
   // collapsed <details> so a reachable server keeps it tucked away.
   if (prominent) {
     return (
-      <div className="mt-4 rounded-lg border border-white/10 bg-white/[0.02] p-3">
-        <div className="mb-2">{heading}</div>
+      <div className="sg-mdl-helper">
+        {heading}
         {body}
       </div>
     );
   }
   return (
-    <details className="mt-4 rounded-lg border border-white/10 bg-white/[0.02] p-3">
-      <summary className="cursor-pointer list-none">{heading}</summary>
-      <div className="mt-3">{body}</div>
+    <details className="sg-mdl-helper">
+      <summary>{heading}</summary>
+      {body}
     </details>
   );
 }
