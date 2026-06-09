@@ -79,11 +79,14 @@ import {
 } from "../localModelStatus";
 import { CommandHelper } from "./LocalModelsPanel";
 
+// Map the CSS-agnostic tone keys to the Ask-Guide pill modifier classes
+// (design-system.css → "Ask Guide — Slice 7"). Kept as a lookup so every pill
+// derives its colour the same way.
 const STATUS_TONE = {
-  ready: "border-[#86EFAC]/30 bg-[#86EFAC]/10 text-[#86EFAC]",
-  neutral: "border-white/10 bg-white/5 text-[#9098A8]",
-  warning: "border-[#FCD34D]/30 bg-[#FCD34D]/10 text-[#FCD34D]",
-  error: "border-[#FCA5A5]/30 bg-[#FCA5A5]/10 text-[#FCA5A5]",
+  ready: "is-ready",
+  neutral: "is-neutral",
+  warning: "is-warning",
+  error: "is-error",
 };
 
 const LOCAL_LABEL = {
@@ -429,25 +432,25 @@ export default function AskGuideWorkspace() {
   }, [activeProfile]);
 
   return (
-    <div className="flex h-full min-h-0 flex-col bg-[#0A0F1A]">
-      <div className="flex h-[58px] shrink-0 items-center justify-between border-b border-white/5 px-5">
-        <div className="min-w-0">
-          <h1 className="text-[16px] font-semibold text-[#F4F4F5]">Ask Your Guide</h1>
-          <p className="mt-0.5 text-[11.5px] text-[#6B7185]">Select a generated guide and prepare its context.</p>
+    <div className="sg-ask">
+      <div className="sg-ask-head">
+        <div className="sg-ask-head-titles">
+          <h1>Ask Your Guide</h1>
+          <p>Select a generated guide and prepare its context.</p>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="sg-ask-head-actions">
           <Pill tone={localReachable ? "ready" : "warning"}>
-            {localLoading ? <Loader2 size={12} className="animate-spin" /> : localReachable ? <Check size={12} /> : <WifiOff size={12} />}
+            {localLoading ? <Loader2 size={12} className="sg-spin" /> : localReachable ? <Check size={12} /> : <WifiOff size={12} />}
             {localLoading ? "Checking local model" : `Local model: ${LOCAL_LABEL[localState] || "Status unavailable"}`}
           </Pill>
           <button type="button" className="sg-ghost-button" onClick={loadJobs} disabled={jobsLoading}>
-            {jobsLoading ? <Loader2 size={14} className="animate-spin" /> : <RefreshCw size={14} />}
-            <span className="ml-1.5">Refresh guides</span>
+            {jobsLoading ? <Loader2 size={15} className="sg-spin" /> : <RefreshCw size={15} />}
+            <span>Refresh guides</span>
           </button>
         </div>
       </div>
 
-      <div className="grid min-h-0 flex-1 grid-cols-[300px_minmax(420px,1fr)_360px]">
+      <div className="sg-ask-body">
         <GuidePicker
           jobs={jobs}
           loading={jobsLoading}
@@ -456,7 +459,7 @@ export default function AskGuideWorkspace() {
           onSelect={setSelectedJobId}
         />
 
-        <main className="min-w-0 overflow-y-auto border-x border-white/5 p-5">
+        <main className="sg-ask-chat-col">
           <ChatReadinessPanel
             job={selectedJob}
             context={context}
@@ -486,7 +489,7 @@ export default function AskGuideWorkspace() {
           />
         </main>
 
-        <aside className="min-w-0 overflow-y-auto p-4">
+        <aside className="sg-ask-rail">
           <ContextRail
             job={selectedJob}
             context={context}
@@ -538,25 +541,25 @@ export default function AskGuideWorkspace() {
 
 function GuidePicker({ jobs, loading, error, selectedJobId, onSelect }) {
   return (
-    <aside className="min-h-0 overflow-y-auto p-4">
-      <div className="mb-3 flex items-center justify-between">
+    <aside className="sg-ask-picker">
+      <div className="sg-ask-picker-head">
         <div>
-          <h2 className="text-[13px] font-semibold text-[#E8EAF0]">Generated guides</h2>
-          <p className="mt-0.5 text-[11px] text-[#6B7185]">{loading ? "Loading…" : `${jobs.length} eligible`}</p>
+          <h2>Generated guides</h2>
+          <p>{loading ? "Loading…" : `${jobs.length} eligible`}</p>
         </div>
-        <Search size={15} className="text-[#6B7185]" />
+        <Search size={16} />
       </div>
 
       {error && <Notice tone="error" title="Guide list unavailable" text={error} />}
       {!loading && !error && jobs.length === 0 && (
-        <div className="rounded-lg border border-white/10 bg-white/[0.03] p-4 text-[12px] leading-5 text-[#9098A8]">
-          <BookOpen size={18} className="mb-2 text-[#F97316]" />
-          <strong className="block text-[#E8EAF0]">No generated guides yet</strong>
-          <span className="mt-1 block">Generate a guide in Builder first, then return here to prepare it for Ask.</span>
+        <div className="sg-ask-noguides">
+          <BookOpen size={20} />
+          <strong>No generated guides yet</strong>
+          <span>Generate a guide in Builder first, then return here to prepare it for Ask.</span>
         </div>
       )}
 
-      <div className="space-y-2">
+      <div className="sg-ask-guide-list">
         {loading
           ? Array.from({ length: 4 }, (_, i) => <SkeletonGuide key={i} />)
           : jobs.map((job) => {
@@ -566,29 +569,23 @@ function GuidePicker({ jobs, loading, error, selectedJobId, onSelect }) {
                   key={job.id}
                   type="button"
                   onClick={() => onSelect(job.id)}
-                  className={`w-full rounded-lg border p-3 text-left transition ${
-                    active
-                      ? "border-[#F97316]/45 bg-[#F97316]/10"
-                      : "border-white/10 bg-white/[0.03] hover:border-white/20 hover:bg-white/[0.05]"
-                  }`}
+                  className={`sg-ask-guide${active ? " active" : ""}`}
                 >
-                  <div className="flex items-start gap-2">
-                    <FileText size={15} className={active ? "mt-0.5 shrink-0 text-[#F97316]" : "mt-0.5 shrink-0 text-[#9098A8]"} />
-                    <div className="min-w-0 flex-1">
-                      <strong className="block truncate text-[12.5px] text-[#E8EAF0]">{safeText(job.title, "Untitled guide")}</strong>
-                      <span className="mt-0.5 block truncate text-[11px] text-[#6B7185]">
-                        {formatDate(job.updated_at || job.created_at)}
-                      </span>
+                  <div className="sg-ask-guide-top">
+                    <FileText size={15} className="sg-ask-guide-glyph" />
+                    <div className="sg-ask-guide-main">
+                      <strong className="sg-ask-guide-title">{safeText(job.title, "Untitled guide")}</strong>
+                      <span className="sg-ask-guide-date">{formatDate(job.updated_at || job.created_at)}</span>
                     </div>
-                    {active && <ChevronRight size={15} className="mt-0.5 shrink-0 text-[#F97316]" />}
+                    {active && <ChevronRight size={15} className="sg-ask-guide-chevron" />}
                   </div>
-                  <div className="mt-2 flex flex-wrap gap-1.5">
+                  <div className="sg-ask-chips">
                     <MiniChip>{safeText(job.status, "status unavailable")}</MiniChip>
                     {job.provider && <MiniChip>{job.provider}</MiniChip>}
                     {job.model && <MiniChip>{job.model}</MiniChip>}
                     {job.generator_preset && <MiniChip>{job.generator_preset}</MiniChip>}
                   </div>
-                  <p className="mt-2 text-[11px] leading-4 text-[#9098A8]">{guideSourceSummary(job)}</p>
+                  <p className="sg-ask-guide-summary">{guideSourceSummary(job)}</p>
                 </button>
               );
             })}
@@ -628,37 +625,37 @@ function ChatReadinessPanel({
   const title = safeText(context?.title || job?.title, "Select a guide");
   const canSend = chat.enabled && draftMessage.trim().length > 0;
   return (
-    <div className="mx-auto flex min-h-full max-w-[860px] flex-col">
-      <section className="rounded-xl border border-white/10 bg-white/[0.03] p-5">
-        <div className="flex items-start gap-4">
-          <span className="grid h-11 w-11 shrink-0 place-items-center rounded-lg bg-[#F97316]/15 text-[#FDBA74]">
+    <div className="sg-ask-center">
+      <section className="sg-ask-readiness">
+        <div className="sg-ask-readiness-head">
+          <span className="sg-ask-readiness-icon">
             <MessageSquareText size={20} />
           </span>
-          <div className="min-w-0 flex-1">
-            <div className="flex flex-wrap items-center gap-2">
-              <h2 className="min-w-0 truncate text-[18px] font-semibold text-[#F4F4F5]">{title}</h2>
+          <div className="sg-ask-readiness-main">
+            <div className="sg-ask-readiness-titlerow">
+              <h2 className="sg-ask-readiness-title">{title}</h2>
               <Pill tone={prep.tone}>{prep.label}</Pill>
             </div>
-            <p className="mt-2 text-[12.5px] leading-5 text-[#A8AEBC]">
+            <p className="sg-ask-readiness-desc">
               Prepare this guide once, then ask grounded questions through the local model. Sessions are created lazily on first send.
             </p>
             {session?.sessionId && (
-              <div className="mt-2 flex flex-wrap items-center gap-2">
-                <p className="text-[11px] text-[#6B7185]">{sessionStatusLabel(session)}</p>
-                <button type="button" className="sg-ghost-button h-7 px-2 text-[11px]" onClick={onClearSession} disabled={sessionAction !== null || messages.length === 0}>
-                  <Eraser size={12} />
-                  <span className="ml-1">Clear chat</span>
+              <div className="sg-ask-session-line">
+                <p>{sessionStatusLabel(session)}</p>
+                <button type="button" className="sg-btn-sm" onClick={onClearSession} disabled={sessionAction !== null || messages.length === 0}>
+                  <Eraser size={13} />
+                  <span>Clear chat</span>
                 </button>
-                <button type="button" className="sg-ghost-button h-7 px-2 text-[11px] text-[#FCA5A5]" onClick={onDeleteSession} disabled={sessionAction !== null}>
-                  <Trash2 size={12} />
-                  <span className="ml-1">Delete</span>
+                <button type="button" className="sg-btn-sm danger" onClick={onDeleteSession} disabled={sessionAction !== null}>
+                  <Trash2 size={13} />
+                  <span>Delete</span>
                 </button>
               </div>
             )}
           </div>
         </div>
 
-        <div className="mt-5 grid grid-cols-3 gap-2">
+        <div className="sg-ask-metric-grid cols-3">
           <Metric label="Guide chars" value={contextLoading ? "…" : formatCount(context?.guide?.char_count)} />
           <Metric label="Source chars" value={contextLoading ? "…" : formatCount(context?.source?.char_count)} />
           <Metric label="Chunks" value={prepareResult?.ready ? formatCount(prepareResult.total_chunk_count) : "Not prepared"} />
@@ -685,46 +682,46 @@ function ChatReadinessPanel({
           />
         )}
 
-        <div className="mt-5 flex flex-wrap items-center gap-2">
+        <div className="sg-ask-prep-row">
           <button
             type="button"
             onClick={onPrepare}
             disabled={!job || contextLoading || prepareLoading || readyState !== "ready"}
-            className="sg-cta sg-press-btn disabled:cursor-not-allowed disabled:opacity-50"
+            className="sg-cta sg-press-btn"
             title="Build or reuse the safe chunk index for this guide"
           >
-            {prepareLoading ? <Loader2 size={15} className="animate-spin" /> : prepReady ? <Check size={15} /> : <Sparkles size={15} />}
+            {prepareLoading ? <Loader2 size={15} className="sg-spin" /> : prepReady ? <Check size={15} /> : <Sparkles size={15} />}
             {prepareLoading ? "Preparing…" : prepReady ? "Prepare again" : "Prepare context"}
           </button>
-          <span className="text-[11.5px] text-[#6B7185]">
+          <span className="sg-ask-prep-hint">
             {prepReady ? "Context index is ready for local chat." : "Builds guide/source chunks without exposing text."}
           </span>
           <button
             type="button"
             onClick={onNewSession}
             disabled={!job || sessionAction !== null}
-            className="sg-ghost-button h-8 px-2 text-[11px] disabled:cursor-not-allowed disabled:opacity-50"
+            className="sg-btn-sm"
           >
-            {sessionAction === "new" ? <Loader2 size={13} className="animate-spin" /> : <Plus size={13} />}
-            <span className="ml-1">New chat</span>
+            {sessionAction === "new" ? <Loader2 size={13} className="sg-spin" /> : <Plus size={13} />}
+            <span>New chat</span>
           </button>
         </div>
       </section>
 
-      <section className="mt-4 flex min-h-[520px] flex-1 flex-col overflow-hidden rounded-xl border border-white/10 bg-black/20">
-        <div className="min-h-0 flex-1 overflow-y-auto p-5">
+      <section className="sg-ask-chat">
+        <div className="sg-ask-chat-scroll">
           {messages.length === 0 ? (
             <EmptyChatState chat={chat} prepReady={prepReady} localReachable={localReachable} />
           ) : (
-            <div className="space-y-4">
+            <div className="sg-ask-msgs">
               {messages.map((message, index) => (
                 <ChatBubble key={message.id || `${message.role}-${index}`} message={message} />
               ))}
             </div>
           )}
           {sending && (
-            <div className="mt-4 flex items-center gap-2 text-[12px] text-[#9098A8]">
-              <Loader2 size={14} className="animate-spin" />
+            <div className="sg-ask-sending">
+              <Loader2 size={14} className="sg-spin" />
               Asking the local model…
             </div>
           )}
@@ -740,36 +737,36 @@ function ChatReadinessPanel({
               type="button"
               onClick={onPrepare}
               disabled={!job || contextLoading || prepareLoading || readyState !== "ready"}
-              className="sg-cta sg-press-btn mt-3 disabled:cursor-not-allowed disabled:opacity-50"
+              className="sg-cta sg-press-btn sg-ask-prep-inline"
             >
-              {prepareLoading ? <Loader2 size={15} className="animate-spin" /> : <Sparkles size={15} />}
+              {prepareLoading ? <Loader2 size={15} className="sg-spin" /> : <Sparkles size={15} />}
               {prepareLoading ? "Preparing…" : "Prepare context"}
             </button>
           )}
         </div>
         <form
-          className="border-t border-white/5 p-4"
+          className="sg-ask-composer"
           onSubmit={(event) => {
             event.preventDefault();
             if (canSend) onSendMessage();
           }}
         >
-          <div className={`flex items-end gap-2 rounded-lg border px-3 py-2 ${chat.enabled ? "border-white/10 bg-white/[0.03]" : "border-white/10 bg-white/[0.02] opacity-70"}`}>
+          <div className={`sg-ask-input-wrap${chat.enabled ? "" : " disabled"}`}>
             <textarea
               disabled={!chat.enabled}
               value={draftMessage}
               onChange={(event) => setDraftMessage(safeInputText(event.target.value))}
               rows={1}
-              className="max-h-32 min-h-[36px] min-w-0 flex-1 resize-none bg-transparent py-2 text-[13px] leading-5 text-[#E8EAF0] outline-none placeholder:text-[#6B7185]"
+              className="sg-ask-textarea"
               placeholder={chat.enabled ? "Ask a question about this guide…" : chat.label}
             />
             <button
               type="submit"
               disabled={!canSend}
-              className="grid h-9 w-9 shrink-0 place-items-center rounded-md bg-[#F97316] text-white transition hover:bg-[#FB923C] disabled:cursor-not-allowed disabled:bg-white/5 disabled:text-[#6B7185]"
+              className="sg-ask-send"
               title={chat.enabled ? "Send message" : chat.label}
             >
-              {sending ? <Loader2 size={15} className="animate-spin" /> : <Send size={15} />}
+              {sending ? <Loader2 size={15} className="sg-spin" /> : <Send size={15} />}
             </button>
           </div>
         </form>
@@ -796,13 +793,11 @@ function EmptyChatState({ chat, prepReady, localReachable }) {
           ? "Start the local OpenAI-compatible server, then refresh local status."
           : "Ask a focused question. Answers and citations come from the backend response only.";
   return (
-    <div className="rounded-lg border border-dashed border-white/10 bg-white/[0.02] p-5">
-      <div className="flex items-start gap-3">
-        <CircleSlash size={18} className="mt-0.5 shrink-0 text-[#6B7185]" />
-        <div className="min-w-0">
-          <strong className="block text-[13px] text-[#E8EAF0]">{title}</strong>
-          <p className="mt-1 max-w-[620px] text-[12px] leading-5 text-[#9098A8]">{text}</p>
-        </div>
+    <div className="sg-ask-empty-chat">
+      <CircleSlash size={18} />
+      <div>
+        <strong>{title}</strong>
+        <p>{text}</p>
       </div>
     </div>
   );
@@ -811,30 +806,20 @@ function EmptyChatState({ chat, prepReady, localReachable }) {
 function ChatBubble({ message }) {
   const assistant = message.role === "assistant";
   return (
-    <article className={`flex ${assistant ? "justify-start" : "justify-end"}`}>
-      <div
-        className={`max-w-[82%] rounded-xl border px-4 py-3 ${
-          assistant
-            ? "border-white/10 bg-white/[0.04] text-[#E8EAF0]"
-            : "border-[#F97316]/30 bg-[#F97316]/15 text-[#FFF7ED]"
-        }`}
-      >
-        <div className="mb-1 text-[10.5px] font-semibold uppercase text-[#6B7185]">
-          {assistant ? "Ask Your Guide" : "You"}
-        </div>
-        {assistant ? <AnswerText content={message.content} /> : <p className="whitespace-pre-wrap break-words text-[13px] leading-6">{message.content}</p>}
+    <article className={`sg-ask-bubble-row${assistant ? " assistant" : " user"}`}>
+      <div className={`sg-ask-bubble${assistant ? " assistant" : " user"}`}>
+        <div className="sg-ask-bubble-role">{assistant ? "Ask Your Guide" : "You"}</div>
+        {assistant ? <AnswerText content={message.content} /> : <p className="sg-ask-user-text">{message.content}</p>}
         {assistant && citationWarningText(message) && (
-          <p className="mt-3 rounded-md border border-[#FCD34D]/20 bg-[#FCD34D]/[0.05] px-2 py-1.5 text-[11px] leading-4 text-[#FCD34D]">
-            {citationWarningText(message)}
-          </p>
+          <p className="sg-ask-cite-warn">{citationWarningText(message)}</p>
         )}
         {assistant && message.citations?.length > 0 && (
-          <div className="mt-3 rounded-lg border border-[#86EFAC]/15 bg-[#86EFAC]/[0.04] p-2">
-            <div className="mb-1.5 flex items-center gap-1.5 text-[10.5px] font-semibold uppercase tracking-wide text-[#86EFAC]">
+          <div className="sg-ask-sources">
+            <div className="sg-ask-sources-head">
               <Check size={12} />
               Sources used
             </div>
-            <div className="flex flex-wrap gap-1.5">
+            <div className="sg-ask-chips">
               {message.citations.map((label) => (
                 <MiniChip key={label}>{label}</MiniChip>
               ))}
@@ -842,11 +827,9 @@ function ChatBubble({ message }) {
           </div>
         )}
         {assistant && message.retrievedChunks?.length > 0 && (
-          <details className="mt-3 border-t border-white/5 pt-2">
-            <summary className="cursor-pointer text-[11px] font-medium text-[#A8AEBC]">
-              Retrieved chunk metadata ({formatCount(message.retrievedChunks.length)})
-            </summary>
-            <div className="mt-2">
+          <details className="sg-ask-retrieved">
+            <summary>Retrieved chunk metadata ({formatCount(message.retrievedChunks.length)})</summary>
+            <div className="sg-ask-retrieved-body">
               <RetrievedChunkList rows={message.retrievedChunks} compact />
             </div>
           </details>
@@ -858,20 +841,20 @@ function ChatBubble({ message }) {
 
 function AnswerText({ content }) {
   const blocks = answerBlocks(content);
-  if (blocks.length === 0) return <p className="text-[13px] leading-6 text-[#9098A8]">No answer text.</p>;
+  if (blocks.length === 0) return <p className="sg-ask-answer-empty">No answer text.</p>;
   return (
-    <div className="space-y-2 break-words text-[13px] leading-6">
+    <div className="sg-ask-answer">
       {blocks.map((block, index) => {
         if (block.type === "heading") {
           return (
-            <h3 key={index} className="pt-1 text-[14px] font-semibold leading-6 text-[#F4F4F5]">
+            <h3 key={index}>
               <InlineSegments segments={block.segments} />
             </h3>
           );
         }
         if (block.type === "list") {
           return (
-            <ol key={index} className="list-decimal space-y-1 pl-5">
+            <ol key={index}>
               {block.items.map((item, itemIndex) => (
                 <li key={itemIndex}>
                   <InlineSegments segments={item} />
@@ -882,15 +865,15 @@ function AnswerText({ content }) {
         }
         if (block.type === "pre") {
           return (
-            <pre key={index} className="overflow-x-auto whitespace-pre-wrap rounded-md border border-white/10 bg-black/30 p-2 text-[12px] leading-5 text-[#D4D4D8]">
+            <pre key={index} className="sg-ask-code">
               {block.text}
             </pre>
           );
         }
         if (block.type === "math") {
           return (
-            <div key={index} className="overflow-x-auto rounded-lg border border-[#60A5FA]/20 bg-[#60A5FA]/[0.06] px-3 py-2 font-mono text-[12.5px] leading-6 text-[#DBEAFE]">
-              <pre className="whitespace-pre-wrap">{block.text}</pre>
+            <div key={index} className="sg-ask-math">
+              <pre>{block.text}</pre>
             </div>
           );
         }
@@ -909,11 +892,9 @@ function InlineSegments({ segments }) {
     <>
       {segments.map((segment, index) =>
         segment.type === "strong" ? (
-          <strong key={index} className="font-semibold text-[#F4F4F5]">
-            {segment.text}
-          </strong>
+          <strong key={index}>{segment.text}</strong>
         ) : segment.type === "math" ? (
-          <code key={index} className="mx-0.5 rounded border border-[#60A5FA]/20 bg-[#60A5FA]/[0.08] px-1.5 py-0.5 font-mono text-[12px] text-[#DBEAFE]">
+          <code key={index} className="sg-ask-imath">
             {segment.text}
           </code>
         ) : (
@@ -927,28 +908,17 @@ function InlineSegments({ segments }) {
 function RetrievedChunkList({ rows, compact = false }) {
   const safeRows = retrievedChunkRows(rows);
   if (safeRows.length === 0) {
-    return <p className="text-[11.5px] leading-5 text-[#9098A8]">No retrieved citation metadata.</p>;
+    return <p className="sg-ask-muted">No retrieved citation metadata.</p>;
   }
   return (
-    <div className="space-y-1.5">
+    <div className="sg-ask-chunk-list">
       {safeRows.map((row, index) => (
-        <div
-          key={`${row.label}-${row.chunkId || index}`}
-          className={
-            compact
-              ? "rounded-md border border-white/10 bg-white/[0.025] px-2 py-1.5 text-[11px] leading-5"
-              : "rounded-lg border border-white/10 bg-white/[0.02] p-2 text-[11.5px] leading-5"
-          }
-        >
-          <div className="flex min-w-0 items-start justify-between gap-2">
-            <span className="min-w-0 truncate font-medium text-[#E8EAF0]">{row.label}</span>
-            {row.score !== null && (
-              <span className="shrink-0 rounded border border-white/10 bg-white/[0.04] px-1.5 py-0.5 font-mono text-[10px] text-[#A8AEBC]">
-                score {formatScore(row.score)}
-              </span>
-            )}
+        <div key={`${row.label}-${row.chunkId || index}`} className={`sg-ask-chunk${compact ? " compact" : ""}`}>
+          <div className="sg-ask-chunk-top">
+            <span className="sg-ask-chunk-label">{row.label}</span>
+            {row.score !== null && <span className="sg-ask-chunk-score">score {formatScore(row.score)}</span>}
           </div>
-          <div className="mt-1 flex flex-wrap gap-1.5 text-[10.5px] text-[#9098A8]">
+          <div className="sg-ask-chunk-meta">
             {row.sourceType && <SourceMeta label="Type" value={row.sourceType} />}
             {row.page !== null && <SourceMeta label="Page" value={formatCount(row.page)} />}
             {row.approxTokens !== null && <SourceMeta label="Tokens" value={`~${formatCount(row.approxTokens)}`} />}
@@ -961,8 +931,8 @@ function RetrievedChunkList({ rows, compact = false }) {
 
 function SourceMeta({ label, value }) {
   return (
-    <span className="rounded border border-white/10 bg-white/[0.03] px-1.5 py-0.5">
-      <span className="text-[#6B7185]">{label}</span> <span className="text-[#D4D4D8]">{value}</span>
+    <span className="sg-ask-meta-tag">
+      <span className="k">{label}</span> <span className="v">{value}</span>
     </span>
   );
 }
@@ -997,24 +967,24 @@ function ContextRail({
   commandProps,
 }) {
   return (
-    <div className="space-y-3">
+    <div className="sg-ask-rail-stack">
       <Panel title="Selected guide" icon={BookOpen}>
         {!job ? (
-          <p className="text-[12px] leading-5 text-[#9098A8]">Select a generated guide to inspect its context.</p>
+          <p className="sg-ask-muted">Select a generated guide to inspect its context.</p>
         ) : (
-          <div className="space-y-3">
+          <div className="sg-ask-selguide">
             <div>
-              <strong className="block text-[13px] text-[#E8EAF0]">{safeText(job.title, "Untitled guide")}</strong>
-              <p className="mt-1 text-[11px] text-[#6B7185]">{formatDate(job.updated_at || job.created_at)}</p>
+              <strong className="sg-ask-selguide-title">{safeText(job.title, "Untitled guide")}</strong>
+              <p className="sg-ask-selguide-date">{formatDate(job.updated_at || job.created_at)}</p>
             </div>
-            <div className="flex flex-wrap gap-1.5">
+            <div className="sg-ask-chips">
               {job.status && <MiniChip>{job.status}</MiniChip>}
               {job.style && <MiniChip>{job.style}</MiniChip>}
               {job.generator_preset && <MiniChip>{job.generator_preset}</MiniChip>}
               {job.provider && <MiniChip>{job.provider}</MiniChip>}
               {job.model && <MiniChip>{job.model}</MiniChip>}
             </div>
-            <p className="text-[11.5px] leading-5 text-[#9098A8]">
+            <p className="sg-ask-muted">
               {job.source_available ? "Generated guide and extracted source are available." : "Generated guide is available; extracted source is not present."}
             </p>
           </div>
@@ -1038,33 +1008,29 @@ function ContextRail({
       <Panel title="Context sources" icon={FileText}>
         {contextLoading && <InlineLoading label="Loading context inventory" />}
         {contextError && <Notice tone="error" title="Context unavailable" text={contextError} />}
-        {!contextLoading && !contextError && context && (
-          <ContextInventory context={context} />
-        )}
+        {!contextLoading && !contextError && context && <ContextInventory context={context} />}
       </Panel>
 
       <Panel title="Preparation" icon={Sparkles}>
-        <div className="flex items-center justify-between gap-2">
+        <div className="sg-ask-panel-row">
           <Pill tone={prep.tone}>{prep.label}</Pill>
           {prepareResult?.cache_status && <MiniChip>{prepareResult.cache_status}</MiniChip>}
         </div>
-        {prepareError && <p className="mt-2 break-words text-[11.5px] leading-5 text-[#FCA5A5]">{prepareError}</p>}
+        {prepareError && <p className="sg-ask-err-text">{prepareError}</p>}
         {prepareResult?.ready && <PrepareSummary result={prepareResult} />}
       </Panel>
 
       {(lastRetrievedChunks.length > 0 || lastLocalModel?.model) && (
         <Panel title="Latest answer context" icon={MessageSquareText}>
           {lastLocalModel?.model && (
-            <p className="mb-2 text-[11.5px] leading-5 text-[#9098A8]">
-              Local model: <span className="text-[#D4D4D8]">{lastLocalModel.model}</span>
+            <p className="sg-ask-muted sg-ask-latest-model">
+              Local model: <span>{lastLocalModel.model}</span>
             </p>
           )}
           {lastRetrievedChunks.length > 0 && (
-            <details>
-              <summary className="cursor-pointer text-[11.5px] font-medium text-[#A8AEBC]">
-                Show retrieved chunks ({formatCount(lastRetrievedChunks.length)})
-              </summary>
-              <div className="mt-2">
+            <details className="sg-ask-retrieved">
+              <summary>Show retrieved chunks ({formatCount(lastRetrievedChunks.length)})</summary>
+              <div className="sg-ask-retrieved-body">
                 <RetrievedChunkList rows={lastRetrievedChunks} />
               </div>
             </details>
@@ -1081,16 +1047,18 @@ function ContextRail({
           onRefresh={reloadLocal}
         />
         {commandProps && (
-          <CommandHelper
-            prominent={commandProps.prominent}
-            profiles={commandProps.profiles}
-            activeProfile={commandProps.activeProfile}
-            selectedProfileId={commandProps.selectedProfileId}
-            onSelectProfile={commandProps.onSelectProfile}
-            copyState={commandProps.copyState}
-            onCopy={commandProps.onCopy}
-            notes={commandProps.notes}
-          />
+          <div className="sg-ask-cmd">
+            <CommandHelper
+              prominent={commandProps.prominent}
+              profiles={commandProps.profiles}
+              activeProfile={commandProps.activeProfile}
+              selectedProfileId={commandProps.selectedProfileId}
+              onSelectProfile={commandProps.onSelectProfile}
+              copyState={commandProps.copyState}
+              onCopy={commandProps.onCopy}
+              notes={commandProps.notes}
+            />
+          </div>
         )}
       </Panel>
     </div>
@@ -1099,27 +1067,27 @@ function ContextRail({
 
 function SessionManager({ job, sessions, loading, error, action, activeSessionId, onSelect, onNew, onRefresh }) {
   if (!job) {
-    return <p className="text-[12px] leading-5 text-[#9098A8]">Select a generated guide to see its chats.</p>;
+    return <p className="sg-ask-muted">Select a generated guide to see its chats.</p>;
   }
   return (
-    <div className="space-y-3">
-      <div className="flex items-center gap-2">
-        <button type="button" className="sg-cta sg-press-btn h-8 px-3 text-[11.5px]" onClick={onNew} disabled={action !== null}>
-          {action === "new" ? <Loader2 size={13} className="animate-spin" /> : <Plus size={13} />}
-          <span className="ml-1">New chat</span>
+    <div className="sg-ask-sessions">
+      <div className="sg-ask-session-actions">
+        <button type="button" className="sg-btn-sm accent" onClick={onNew} disabled={action !== null}>
+          {action === "new" ? <Loader2 size={13} className="sg-spin" /> : <Plus size={13} />}
+          <span>New chat</span>
         </button>
-        <button type="button" className="sg-ghost-button h-8 px-2 text-[11px]" onClick={onRefresh} disabled={loading}>
-          {loading ? <Loader2 size={12} className="animate-spin" /> : <RefreshCw size={12} />}
-          <span className="ml-1">Refresh</span>
+        <button type="button" className="sg-btn-sm" onClick={onRefresh} disabled={loading}>
+          {loading ? <Loader2 size={13} className="sg-spin" /> : <RefreshCw size={13} />}
+          <span>Refresh</span>
         </button>
       </div>
-      {error && <p className="break-words text-[11.5px] leading-5 text-[#FCA5A5]">{error}</p>}
+      {error && <p className="sg-ask-err-text">{error}</p>}
       {loading && <InlineLoading label="Loading sessions" />}
       {!loading && !error && sessions.length === 0 && (
-        <p className="text-[11.5px] leading-5 text-[#9098A8]">No saved chats for this guide yet. Sending a message will create one.</p>
+        <p className="sg-ask-muted">No saved chats for this guide yet. Sending a message will create one.</p>
       )}
       {!loading && sessions.length > 0 && (
-        <div className="space-y-2">
+        <div className="sg-ask-session-list">
           {sessions.map((item) => {
             const active = item.sessionId === activeSessionId;
             return (
@@ -1128,19 +1096,15 @@ function SessionManager({ job, sessions, loading, error, action, activeSessionId
                 type="button"
                 onClick={() => onSelect(item.sessionId)}
                 disabled={action !== null || active}
-                className={`w-full rounded-lg border p-2 text-left transition ${
-                  active
-                    ? "border-[#F97316]/40 bg-[#F97316]/10"
-                    : "border-white/10 bg-white/[0.02] hover:border-white/20 hover:bg-white/[0.04]"
-                } disabled:cursor-default`}
+                className={`sg-ask-session${active ? " active" : ""}`}
               >
-                <div className="flex items-center justify-between gap-2">
-                  <strong className="min-w-0 truncate text-[11.5px] text-[#E8EAF0]">{sessionShortLabel(item)}</strong>
+                <div className="sg-ask-session-top">
+                  <strong>{sessionShortLabel(item)}</strong>
                   {active && <MiniChip>Active</MiniChip>}
                 </div>
-                <p className="mt-1 truncate text-[10.5px] text-[#6B7185]">{sessionMetaLabel(item)}</p>
+                <p className="sg-ask-session-meta">{sessionMetaLabel(item)}</p>
                 {item.lastMessage?.snippet && (
-                  <p className="mt-1 max-h-8 overflow-hidden text-[11px] leading-4 text-[#9098A8]">
+                  <p className="sg-ask-session-snippet">
                     {item.lastMessage.role === "user" ? "You: " : "Guide: "}
                     {item.lastMessage.snippet}
                   </p>
@@ -1159,39 +1123,39 @@ function ContextInventory({ context }) {
   const selections = pageSelectionRows(context);
   const reasons = readinessReasons(context);
   return (
-    <div className="space-y-4">
-      <div className="grid grid-cols-2 gap-2">
+    <div className="sg-ask-inventory">
+      <div className="sg-ask-metric-grid cols-2">
         <Metric label="Guide present" value={context.guide?.clean_md_present ? "Yes" : "No"} />
         <Metric label="Guide headings" value={formatCount(context.guide?.heading_count)} />
         <Metric label="Source present" value={context.source?.extracted_txt_present ? "Yes" : "No"} />
         <Metric label="Page anchors" value={formatCount(context.source?.page_anchor_count)} />
       </div>
-      <div className="grid grid-cols-2 gap-2">
+      <div className="sg-ask-metric-grid cols-2">
         <Metric label="Guide chars" value={formatCount(context.guide?.char_count)} />
         <Metric label="Source chars" value={formatCount(context.source?.char_count)} />
       </div>
       {reasons.length > 0 && (
-        <ul className="space-y-1 text-[11.5px] leading-5 text-[#FCD34D]">
+        <ul className="sg-ask-reasons">
           {reasons.map((reason, i) => <li key={i}>{reason}</li>)}
         </ul>
       )}
       <div>
-        <span className="mb-1.5 block text-[10.5px] font-semibold uppercase text-[#6B7185]">Attachments</span>
+        <span className="sg-ask-sublabel">Attachments</span>
         {attachments.length === 0 ? (
-          <p className="text-[11.5px] text-[#9098A8]">No attachment metadata.</p>
+          <p className="sg-ask-muted">No attachment metadata.</p>
         ) : (
-          <div className="space-y-2">
+          <div className="sg-ask-attach-list">
             {attachments.map((item, i) => (
-              <div key={`${item.filename}-${i}`} className="rounded-lg border border-white/10 bg-white/[0.02] p-2">
-                <div className="flex items-center justify-between gap-2">
-                  <span className="min-w-0 truncate text-[11.5px] text-[#D4D4D8]">{item.filename}</span>
+              <div key={`${item.filename}-${i}`} className="sg-ask-attach">
+                <div className="sg-ask-attach-top">
+                  <span className="sg-ask-attach-name">{item.filename}</span>
                   <MiniChip>{item.mode}</MiniChip>
                 </div>
-                <p className="mt-1 text-[11px] text-[#6B7185]">
+                <p className="sg-ask-attach-chars">
                   {item.extractedChars === null ? "Extracted chars unavailable" : `${formatCount(item.extractedChars)} extracted chars`}
                 </p>
                 {item.warnings.length > 0 && (
-                  <ul className="mt-1 space-y-0.5 text-[11px] text-[#FCD34D]">
+                  <ul className="sg-ask-attach-warn">
                     {item.warnings.map((warning, index) => <li key={index}>{warning}</li>)}
                   </ul>
                 )}
@@ -1201,14 +1165,14 @@ function ContextInventory({ context }) {
         )}
       </div>
       <div>
-        <span className="mb-1.5 block text-[10.5px] font-semibold uppercase text-[#6B7185]">Page selections</span>
+        <span className="sg-ask-sublabel">Page selections</span>
         {selections.length === 0 ? (
-          <p className="text-[11.5px] text-[#9098A8]">No page selections.</p>
+          <p className="sg-ask-muted">No page selections.</p>
         ) : (
-          <div className="space-y-1">
+          <div className="sg-ask-pagesel-list">
             {selections.map((item, i) => (
-              <p key={`${item.filename}-${i}`} className="text-[11.5px] leading-5 text-[#D4D4D8]">
-                {item.filename}: <span className="text-[#9098A8]">{item.ranges.join(", ") || "range unavailable"}</span>
+              <p key={`${item.filename}-${i}`} className="sg-ask-pagesel">
+                {item.filename}: <span>{item.ranges.join(", ") || "range unavailable"}</span>
               </p>
             ))}
           </div>
@@ -1221,24 +1185,24 @@ function ContextInventory({ context }) {
 function PrepareSummary({ result }) {
   const summary = citationSummary(result);
   return (
-    <div className="mt-3 space-y-3">
-      <div className="grid grid-cols-3 gap-2">
+    <div className="sg-ask-prep-summary">
+      <div className="sg-ask-metric-grid cols-3">
         <Metric label="Total" value={formatCount(result.total_chunk_count)} />
         <Metric label="Guide" value={formatCount(result.guide_chunk_count)} />
         <Metric label="Source" value={formatCount(result.source_chunk_count)} />
       </div>
       <div>
-        <span className="mb-1.5 block text-[10.5px] font-semibold uppercase text-[#6B7185]">Citation summary</span>
-        <p className="text-[11.5px] leading-5 text-[#9098A8]">
+        <span className="sg-ask-sublabel">Citation summary</span>
+        <p className="sg-ask-muted">
           {formatCount(summary.guideHeadingCount)} guide headings · {formatCount(summary.sourcePageCount)} source pages
         </p>
         {summary.headings.length > 0 && (
-          <div className="mt-2 flex flex-wrap gap-1.5">
+          <div className="sg-ask-chips sg-ask-chips-spaced">
             {summary.headings.map((heading) => <MiniChip key={heading}>{heading}</MiniChip>)}
           </div>
         )}
         {summary.pages.length > 0 && (
-          <p className="mt-2 text-[11px] text-[#6B7185]">Pages: {summary.pages.join(", ")}</p>
+          <p className="sg-ask-muted sg-ask-pages">Pages: {summary.pages.join(", ")}</p>
         )}
       </div>
     </div>
@@ -1254,38 +1218,34 @@ function LocalModelSummary({ status, error, loading, state, onRefresh }) {
   const { shown, overflow } = modelChips(status, 8);
   const reachable = state === STATE_REACHABLE;
   return (
-    <div>
-      <div className="flex items-center justify-between gap-2">
+    <div className="sg-ask-local">
+      <div className="sg-ask-panel-row sg-ask-local-head">
         <Pill tone={reachable ? "ready" : "warning"}>
-          {loading ? <Loader2 size={12} className="animate-spin" /> : reachable ? <Check size={12} /> : <WifiOff size={12} />}
+          {loading ? <Loader2 size={12} className="sg-spin" /> : reachable ? <Check size={12} /> : <WifiOff size={12} />}
           {loading ? "Checking" : LOCAL_LABEL[state] || "Status unavailable"}
         </Pill>
-        <button type="button" className="sg-ghost-button h-8 px-2 text-[11px]" onClick={() => onRefresh(true)} disabled={loading}>
-          {loading ? <Loader2 size={12} className="animate-spin" /> : <RefreshCw size={12} />}
-          <span className="ml-1">Refresh</span>
+        <button type="button" className="sg-btn-sm" onClick={() => onRefresh(true)} disabled={loading}>
+          {loading ? <Loader2 size={13} className="sg-spin" /> : <RefreshCw size={13} />}
+          <span>Refresh</span>
         </button>
       </div>
-      <div className="mt-3 grid grid-cols-2 gap-2">
+      <div className="sg-ask-metric-grid cols-2">
         <Metric label="Latency" value={latency === null ? "—" : `${latency} ms`} />
         <Metric label="Models" value={formatCount(count)} />
         <Metric label="Default" value={defaultModel || "—"} />
         <Metric label="Selected" value={selected || "—"} />
       </div>
-      {errorMessage && !reachable && (
-        <p className="mt-2 break-words text-[11.5px] leading-5 text-[#FCD34D]">{errorMessage}</p>
-      )}
+      {errorMessage && !reachable && <p className="sg-ask-warn-text">{errorMessage}</p>}
       {shown.length > 0 && (
-        <div className="mt-3 flex flex-wrap gap-1.5">
+        <div className="sg-ask-chips sg-ask-chips-spaced">
           {shown.map((model) => <MiniChip key={model}>{model}</MiniChip>)}
           {overflow > 0 && <MiniChip>+{overflow} more</MiniChip>}
         </div>
       )}
       {!reachable && (
-        <div className="mt-3 rounded-lg border border-[#FCD34D]/20 bg-[#FCD34D]/[0.05] p-3 text-[11.5px] leading-5 text-[#D4D4D8]">
-          <div className="flex gap-2">
-            <Terminal size={14} className="mt-0.5 shrink-0 text-[#FCD34D]" />
-            <span>Chat input stays disabled until the local OpenAI-compatible server is reachable.</span>
-          </div>
+        <div className="sg-ask-offline">
+          <Terminal size={14} />
+          <span>Chat input stays disabled until the local OpenAI-compatible server is reachable.</span>
         </div>
       )}
     </div>
@@ -1294,12 +1254,12 @@ function LocalModelSummary({ status, error, loading, state, onRefresh }) {
 
 function Panel({ title, icon: Icon, children }) {
   return (
-    <section className="rounded-xl border border-white/10 bg-white/[0.03] p-4">
-      <div className="mb-3 flex items-center gap-2">
-        <span className="grid h-7 w-7 place-items-center rounded-lg bg-white/[0.04] text-[#F97316]">
+    <section className="sg-ask-panel">
+      <div className="sg-ask-panel-head">
+        <span className="sg-ask-panel-icon">
           <Icon size={14} />
         </span>
-        <h2 className="text-[12.5px] font-semibold text-[#E8EAF0]">{title}</h2>
+        <h2>{title}</h2>
       </div>
       {children}
     </section>
@@ -1307,26 +1267,18 @@ function Panel({ title, icon: Icon, children }) {
 }
 
 function Pill({ tone = "neutral", children }) {
-  return (
-    <span className={`inline-flex h-[24px] shrink-0 items-center gap-1.5 rounded-full border px-2.5 text-[10.5px] ${STATUS_TONE[tone] || STATUS_TONE.neutral}`}>
-      {children}
-    </span>
-  );
+  return <span className={`sg-ask-pill ${STATUS_TONE[tone] || STATUS_TONE.neutral}`}>{children}</span>;
 }
 
 function MiniChip({ children }) {
-  return (
-    <span className="inline-flex max-w-full items-center truncate rounded-full border border-white/10 bg-white/[0.04] px-2 py-0.5 text-[10.5px] text-[#A8AEBC]">
-      {children}
-    </span>
-  );
+  return <span className="sg-ask-tag">{children}</span>;
 }
 
 function Metric({ label, value }) {
   return (
-    <div className="min-w-0 rounded-lg border border-white/10 bg-white/[0.02] px-3 py-2">
-      <span className="block text-[10px] uppercase text-[#6B7185]">{label}</span>
-      <span className="mt-0.5 block truncate text-[12px] text-[#E8EAF0]" title={String(value)}>{value}</span>
+    <div className="sg-ask-metric">
+      <span className="sg-ask-metric-k">{label}</span>
+      <span className="sg-ask-metric-v" title={String(value)}>{value}</span>
     </div>
   );
 }
@@ -1334,13 +1286,11 @@ function Metric({ label, value }) {
 function Notice({ tone, title, text }) {
   const isError = tone === "error";
   return (
-    <div className={`mt-4 rounded-lg border p-3 ${isError ? "border-[#FCA5A5]/20 bg-[#FCA5A5]/[0.05]" : "border-[#FCD34D]/20 bg-[#FCD34D]/[0.05]"}`}>
-      <div className="flex items-start gap-2">
-        <AlertTriangle size={14} className={`mt-0.5 shrink-0 ${isError ? "text-[#FCA5A5]" : "text-[#FCD34D]"}`} />
-        <div className="min-w-0 text-[11.5px] leading-5">
-          <strong className={`block ${isError ? "text-[#FCA5A5]" : "text-[#FCD34D]"}`}>{title}</strong>
-          <span className="break-words text-[#D4D4D8]">{text}</span>
-        </div>
+    <div className={`sg-ask-notice${isError ? " error" : " warn"}`}>
+      <AlertTriangle size={14} />
+      <div className="sg-ask-notice-body">
+        <strong>{title}</strong>
+        <span>{text}</span>
       </div>
     </div>
   );
@@ -1348,8 +1298,8 @@ function Notice({ tone, title, text }) {
 
 function InlineLoading({ label }) {
   return (
-    <div className="flex items-center gap-2 text-[12px] text-[#9098A8]">
-      <Loader2 size={14} className="animate-spin" />
+    <div className="sg-ask-inline-load">
+      <Loader2 size={14} className="sg-spin" />
       {label}
     </div>
   );
@@ -1357,12 +1307,12 @@ function InlineLoading({ label }) {
 
 function SkeletonGuide() {
   return (
-    <div className="rounded-lg border border-white/10 bg-white/[0.03] p-3">
-      <div className="h-3 w-4/5 rounded bg-white/10" />
-      <div className="mt-2 h-2.5 w-2/5 rounded bg-white/5" />
-      <div className="mt-3 flex gap-1.5">
-        <div className="h-5 w-14 rounded-full bg-white/5" />
-        <div className="h-5 w-20 rounded-full bg-white/5" />
+    <div className="sg-ask-skel">
+      <div className="sg-ask-skel-line w80" />
+      <div className="sg-ask-skel-line w40" />
+      <div className="sg-ask-skel-chips">
+        <div className="sg-ask-skel-chip w14" />
+        <div className="sg-ask-skel-chip w20" />
       </div>
     </div>
   );

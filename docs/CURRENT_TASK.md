@@ -5,6 +5,20 @@
 
 ---
 
+## Slice 7 — Ask Guide workspace reskin DONE.
+
+- **Slice 7 (GuideForge UI reskin — Ask Guide workspace) is DONE.**
+  Visual/layout-only.
+- **Files changed:** `frontend/src/components/AskGuideWorkspace.jsx` and
+  `frontend/src/design-system.css` (additive "Ask Guide — Slice 7" block).
+- **Preserved:** local-only Ask behavior, sessions, prepare-context behavior,
+  citations, retrieved metadata safety (metadata-only, no chunk body),
+  local-model status gating, handlers, and API calls/payloads.
+- **Verification:** build green, `compileall` green, `git diff --check` clean,
+  live browser pass, `smoke_release.py` 28/28.
+
+---
+
 ## NEXT — LMM Phase 2G11 final hardening/regression DONE; Phase 2 paused.
 
 - **Local Model Manager Phase 2G11 is DONE** on branch
