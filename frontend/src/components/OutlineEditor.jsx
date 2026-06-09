@@ -123,7 +123,7 @@ export default function OutlineEditor({
   }
 
   return (
-    <div className="grid gap-4">
+    <div className="sg-tab-stack">
       <SectionHeader
         eyebrow="Planning"
         title="Guide outline"
@@ -131,43 +131,38 @@ export default function OutlineEditor({
       />
 
       {!isAi && (
-        <div className="flex items-start gap-2 rounded-xl border border-sky-400/25 bg-sky-400/[0.07] p-3 text-[12.5px] leading-5 text-sky-100">
-          <Info className="mt-0.5 h-4 w-4 shrink-0" />
+        <div className="sg-info-banner">
+          <Info />
           <span>Outline is applied when generating with AI. Paste / Upload render your Markdown as-is, so the outline won&apos;t change their output.</span>
         </div>
       )}
 
-      <div className="rounded-xl border border-white/[0.06] bg-white/[0.025] p-4">
-        <div className="flex flex-wrap items-center justify-between gap-2">
-          <label className="inline-flex items-center gap-2 text-[13px] font-semibold text-[#F4F4F5]">
+      <div className="sg-fpanel">
+        <div className="sg-ol-head">
+          <label className="sg-ol-check">
             <input
               type="checkbox"
-              className="h-4 w-4 accent-[#F97316]"
               checked={enabled}
               onChange={(event) => setEnabled(event.target.checked)}
             />
             Use this outline when generating
           </label>
           {sections.length > 0 && (
-            <button
-              type="button"
-              onClick={clearOutline}
-              className="inline-flex h-8 items-center gap-1 rounded-lg border border-white/[0.08] bg-white/[0.03] px-2.5 text-[12px] font-semibold text-[#9098A8] transition hover:text-[#F4F4F5]"
-            >
-              <X className="h-3.5 w-3.5" /> Clear
+            <button type="button" onClick={clearOutline} className="sg-mini-btn">
+              <X /> Clear
             </button>
           )}
         </div>
 
-        <div className="mt-3">
+        <div style={{ marginTop: 12 }}>
           <FieldLabel>Quick templates</FieldLabel>
-          <div className="mt-1.5 flex flex-wrap gap-1.5">
+          <div className="sg-pill-row" style={{ marginTop: 6 }}>
             {OUTLINE_TEMPLATES.map((template) => (
               <button
                 key={template.id}
                 type="button"
                 onClick={() => applyTemplate(template)}
-                className="inline-flex h-8 items-center rounded-full border border-white/[0.08] bg-white/[0.03] px-3 text-[12px] font-semibold text-[#D4D4D8] transition hover:border-[rgba(249,115,22,0.45)] hover:text-white"
+                className="sg-pill-toggle"
               >
                 {template.label}
               </button>
@@ -176,60 +171,54 @@ export default function OutlineEditor({
         </div>
 
         {isAi && (
-          <div className="mt-3">
+          <div style={{ marginTop: 12 }}>
             <button
               type="button"
               onClick={handleGenerate}
               disabled={genLoading}
-              className="inline-flex h-9 items-center gap-2 rounded-lg border border-[rgba(168,85,247,0.4)] bg-[rgba(168,85,247,0.12)] px-3 text-[12.5px] font-semibold text-[#D8B4FE] transition hover:border-[rgba(168,85,247,0.6)] disabled:opacity-50"
+              className="sg-ghost-button accent"
             >
-              {genLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Wand2 className="h-4 w-4" />}
+              {genLoading ? <Loader2 className="sg-spin" /> : <Wand2 />}
               {genLoading ? "Drafting outline…" : "Generate outline from topic"}
             </button>
-            {genError && <p className="mt-1.5 text-[11.5px] text-red-300">{genError}</p>}
+            {genError && <p className="sg-ol-err">{genError}</p>}
           </div>
         )}
       </div>
 
-      <div className="rounded-xl border border-white/[0.06] bg-white/[0.025] p-4">
-        <div className="flex items-center justify-between">
+      <div className="sg-fpanel">
+        <div className="sg-fpanel-head">
           <FieldLabel>Sections {sections.length > 0 ? `(${sections.length})` : ""}</FieldLabel>
-          <button
-            type="button"
-            onClick={addSection}
-            className="inline-flex h-8 items-center gap-1 rounded-lg border border-white/[0.08] bg-white/[0.03] px-2.5 text-[12px] font-semibold text-[#D4D4D8] transition hover:border-[rgba(249,115,22,0.45)] hover:text-white"
-          >
-            <Plus className="h-3.5 w-3.5" /> Add section
+          <button type="button" onClick={addSection} className="sg-mini-btn">
+            <Plus /> Add section
           </button>
         </div>
 
         {sections.length === 0 ? (
-          <div className="mt-3 rounded-[10px] border border-dashed border-white/[0.1] bg-[#070B14] p-4 text-center text-[12.5px] leading-5 text-[#9098A8]">
+          <div className="sg-empty" style={{ marginTop: 12 }}>
             No outline yet. Pick a template, add sections, or generate one from your topic.
           </div>
         ) : (
-          <div className="mt-2.5 grid gap-2">
+          <div className="sg-ol-list">
             {sections.map((section, index) => (
-              <div key={index} className="rounded-[10px] border border-white/[0.07] bg-[#070B14] p-2.5">
-                <div className="flex items-center gap-2">
-                  <span className="grid h-6 w-6 shrink-0 place-items-center rounded-md bg-[rgba(249,115,22,0.12)] font-mono text-[11px] font-bold text-[#FB923C]">
-                    {index + 1}
-                  </span>
+              <div key={index} className="sg-ol-row">
+                <div className="sg-ol-row-top">
+                  <span className="sg-ol-num">{index + 1}</span>
                   <input
                     value={section.title}
                     onChange={(event) => updateSection(index, { title: event.target.value })}
                     placeholder="Section title…"
-                    className="h-8 min-w-0 flex-1 rounded-md border border-white/[0.08] bg-white/[0.03] px-2.5 text-[13px] font-semibold text-[#F4F4F5] outline-none focus:border-[rgba(249,115,22,0.45)]"
+                    className="sg-ol-title-input"
                   />
-                  <div className="flex shrink-0 items-center gap-0.5">
+                  <div className="sg-ol-row-ctl">
                     <IconBtn title="Move up" disabled={index === 0} onClick={() => moveSection(index, -1)}>
-                      <ChevronUp className="h-3.5 w-3.5" />
+                      <ChevronUp />
                     </IconBtn>
                     <IconBtn title="Move down" disabled={index === sections.length - 1} onClick={() => moveSection(index, 1)}>
-                      <ChevronDown className="h-3.5 w-3.5" />
+                      <ChevronDown />
                     </IconBtn>
                     <IconBtn title="Delete section" onClick={() => deleteSection(index)} danger>
-                      <Trash2 className="h-3.5 w-3.5" />
+                      <Trash2 />
                     </IconBtn>
                   </div>
                 </div>
@@ -237,7 +226,7 @@ export default function OutlineEditor({
                   value={section.instructions}
                   onChange={(event) => updateSection(index, { instructions: event.target.value })}
                   placeholder="Optional: what this section should cover"
-                  className="mt-1.5 h-8 w-full rounded-md border border-white/[0.06] bg-transparent px-2.5 text-[12px] text-[#D4D4D8] outline-none placeholder:text-[#6B7185] focus:border-[rgba(249,115,22,0.35)]"
+                  className="sg-ol-instr-input"
                 />
               </div>
             ))}
@@ -245,14 +234,14 @@ export default function OutlineEditor({
         )}
 
         {enabled && validTitleCount === 0 && (
-          <p className="mt-2 inline-flex items-center gap-1.5 text-[11.5px] text-amber-200">
-            <AlertCircle className="h-3.5 w-3.5" />
+          <p className="sg-ol-status warn">
+            <AlertCircle />
             Add at least one section title — an empty outline is ignored during generation.
           </p>
         )}
         {enabled && validTitleCount > 0 && isAi && (
-          <p className="mt-2 inline-flex items-center gap-1.5 text-[11.5px] text-emerald-200/80">
-            <Sparkles className="h-3.5 w-3.5" />
+          <p className="sg-ol-status ok">
+            <Sparkles />
             {validTitleCount} section{validTitleCount === 1 ? "" : "s"} will guide AI generation.
           </p>
         )}
@@ -268,9 +257,7 @@ function IconBtn({ children, onClick, title, disabled = false, danger = false })
       title={title}
       disabled={disabled}
       onClick={onClick}
-      className={`grid h-7 w-7 place-items-center rounded-md border border-white/[0.08] bg-white/[0.03] transition disabled:opacity-30 ${
-        danger ? "text-[#9098A8] hover:text-red-300" : "text-[#9098A8] hover:text-[#F4F4F5]"
-      }`}
+      className={`sg-icon-btn${danger ? " danger" : ""}`}
     >
       {children}
     </button>
@@ -279,16 +266,14 @@ function IconBtn({ children, onClick, title, disabled = false, danger = false })
 
 function SectionHeader({ eyebrow, title, description }) {
   return (
-    <div className="rounded-xl border border-white/[0.06] bg-white/[0.025] p-4">
-      <div className="font-mono text-[10px] font-semibold uppercase tracking-[0.14em] text-[#F97316]">{eyebrow}</div>
-      <h2 className="mt-1 text-[22px] font-semibold tracking-[-0.02em] text-[#F4F4F5]">{title}</h2>
-      <p className="mt-1 max-w-2xl text-[12.5px] leading-5 text-[#9098A8]">{description}</p>
+    <div className="sg-shead">
+      <div className="sg-shead-eyebrow">{eyebrow}</div>
+      <h2 className="sg-shead-title">{title}</h2>
+      <p className="sg-shead-desc">{description}</p>
     </div>
   );
 }
 
 function FieldLabel({ children }) {
-  return (
-    <div className="text-[11px] font-semibold uppercase tracking-[0.06em] text-[#9098A8]">{children}</div>
-  );
+  return <div className="sg-field-label">{children}</div>;
 }

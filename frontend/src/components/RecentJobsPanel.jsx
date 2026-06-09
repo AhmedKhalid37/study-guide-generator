@@ -70,13 +70,9 @@ function jobTitle(job) {
 }
 
 function statusClass(status) {
-  if (status === "done") {
-    return "border-emerald-400/30 bg-emerald-400/10 text-emerald-200";
-  }
-  if (status?.includes("failed")) {
-    return "border-red-400/30 bg-red-400/10 text-red-200";
-  }
-  return "border-amber-300/30 bg-amber-300/10 text-amber-100";
+  if (status === "done") return "pill-green";
+  if (status?.includes("failed")) return "pill-red";
+  return "pill-amber";
 }
 
 // Build a {id, name, color} folder object from a job's flat folder_* fields,
@@ -387,13 +383,10 @@ export function StylePill({ style }) {
   if (!style) {
     return null;
   }
-  const tone = style.isCustom
-    ? "border-violet-400/30 bg-violet-400/10 text-violet-200"
-    : "border-sky-400/25 bg-sky-400/10 text-sky-200";
   return (
-    <span className={`inline-flex w-fit items-center gap-1.5 rounded-full border px-2 py-0.5 text-[11px] font-bold ${tone}`}>
+    <span className={`pill ${style.isCustom ? "pill-indigo" : "pill-soft"}`}>
       {style.name}
-      <span className="opacity-70">· {style.isCustom ? "Custom" : "Built-in"}</span>
+      <span style={{ opacity: 0.7 }}>· {style.isCustom ? "Custom" : "Built-in"}</span>
     </span>
   );
 }
@@ -403,8 +396,8 @@ export function FolderPill({ folder }) {
     return null;
   }
   return (
-    <span className="inline-flex w-fit items-center gap-1.5 rounded-full border border-white/10 bg-white/[0.05] px-2 py-0.5 text-[11px] font-semibold text-slate-300">
-      <FolderClosed className="h-3 w-3" color={folderColor(folder)} />
+    <span className="pill pill-soft">
+      <FolderClosed style={{ width: 13, height: 13 }} color={folderColor(folder)} />
       {folder.name}
     </span>
   );
@@ -492,42 +485,31 @@ function ArtifactLinkGrid({ jobId, artifacts }) {
   }
 
   return (
-    <div className="mt-3 grid gap-2">
+    <div style={{ marginTop: 12, display: "grid", gap: 8 }}>
       {artifacts.map((artifact) => {
         const Icon = artifact.icon || artifactIcon(artifact.name);
         const href = artifact.url ? apiArtifactUrl(artifact.url) : artifactUrl(jobId, artifact.name);
         const previewHref = artifact.name === "final.pdf" ? `${href}?disposition=inline` : href;
         return (
-          <div
-            key={artifact.name}
-            className="rounded-xl border border-white/10 bg-white/[0.04] p-3"
-          >
-            <div className="flex items-center justify-between gap-3">
-              <span className="inline-flex min-w-0 items-center gap-2 text-sm font-bold text-slate-100">
-                <Icon className="h-4 w-4 shrink-0 text-ember-500" />
+          <div key={artifact.name} className="sg-art-row">
+            <div className="sg-art-top">
+              <span className="sg-art-name">
+                <Icon />
                 <span className="truncate">{artifact.label}</span>
               </span>
-              <span className={`rounded-full border px-2 py-0.5 text-[10px] font-bold ${artifact.available === false ? "border-white/10 text-slate-500" : "border-emerald-400/25 bg-emerald-400/10 text-emerald-200"}`}>
+              <span className={`pill ${artifact.available === false ? "pill-soft" : "pill-green"}`}>
                 {artifact.available === false ? "missing" : "ready"}
               </span>
             </div>
             {artifact.available !== false && (
-              <div className="mt-3 flex gap-2">
-                <a
-                  href={href}
-                  className="inline-flex h-8 flex-1 items-center justify-center rounded-lg border border-white/10 bg-white/[0.04] text-xs font-bold text-slate-200 transition hover:border-ember-500/60 hover:text-white"
-                >
-                  <Download className="mr-1.5 h-3.5 w-3.5" />
+              <div className="sg-art-actions">
+                <a href={href}>
+                  <Download style={{ width: 14, height: 14 }} />
                   Download
                 </a>
                 {(artifact.name === "final.pdf" || artifact.name === "final.html") && (
-                  <a
-                    href={previewHref}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="inline-flex h-8 flex-1 items-center justify-center rounded-lg border border-white/10 bg-white/[0.04] text-xs font-bold text-slate-200 transition hover:border-ember-500/60 hover:text-white"
-                  >
-                    <ExternalLink className="mr-1.5 h-3.5 w-3.5" />
+                  <a href={previewHref} target="_blank" rel="noreferrer">
+                    <ExternalLink style={{ width: 14, height: 14 }} />
                     Open
                   </a>
                 )}
@@ -576,29 +558,25 @@ export function JobDetailsDrawer({ open, onClose, loading, error, details, style
   ];
 
   return (
-    <div className="fixed inset-0 z-50 flex justify-end bg-black/55 backdrop-blur-sm">
-      <button type="button" className="absolute inset-0 cursor-default" onClick={onClose} aria-label="Close job details" />
-      <aside className="relative flex h-full w-full max-w-[760px] flex-col border-l border-white/10 bg-[#090D16]/95 shadow-[-24px_0_80px_rgba(0,0,0,0.45)]">
-        <div className="flex items-start justify-between gap-4 border-b border-white/10 p-5">
+    <div className="sg-drawer-root">
+      <button type="button" className="sg-drawer-scrim" onClick={onClose} aria-label="Close job details" />
+      <aside className="sg-drawer-sheet">
+        <div className="sg-drawer-head">
           <div className="min-w-0">
-            <p className="text-xs font-bold uppercase tracking-[0.18em] text-ember-500">Job Details</p>
-            <h2 className="mt-1 truncate text-2xl font-bold text-white">
+            <p className="sg-drawer-eyebrow">Job Details</p>
+            <h2 className="sg-drawer-title">
               {manifest ? jobTitle(manifest) : "Loading job"}
             </h2>
-            {manifest?.id && <p className="mt-1 break-all font-mono text-xs text-slate-500">{manifest.id}</p>}
+            {manifest?.id && <p className="sg-drawer-id">{manifest.id}</p>}
           </div>
-          <button
-            type="button"
-            onClick={onClose}
-            className="grid h-9 w-9 shrink-0 place-items-center rounded-lg border border-white/10 bg-white/[0.04] text-slate-300 transition hover:text-white"
-          >
-            <X className="h-4 w-4" />
+          <button type="button" onClick={onClose} className="sg-drawer-close" aria-label="Close">
+            <X />
           </button>
         </div>
 
         {/* Tab bar */}
         {!loading && !error && manifest && (
-          <div className="flex gap-1 border-b border-white/10 px-5 pt-3">
+          <div className="sg-drawer-tabs">
             {tabs.map((tab) => {
               const Icon = tab.icon;
               return (
@@ -607,13 +585,9 @@ export function JobDetailsDrawer({ open, onClose, loading, error, details, style
                   type="button"
                   disabled={tab.disabled}
                   onClick={() => setDrawerTab(tab.key)}
-                  className={`inline-flex items-center gap-1.5 rounded-t-lg border border-b-0 px-3 py-2 text-xs font-bold transition ${
-                    drawerTab === tab.key
-                      ? "border-white/10 bg-[#090D16] text-ember-400"
-                      : "border-transparent text-slate-400 hover:text-white disabled:cursor-not-allowed disabled:opacity-35"
-                  }`}
+                  className={`sg-drawer-tab${drawerTab === tab.key ? " active" : ""}`}
                 >
-                  {Icon && <Icon className="h-3.5 w-3.5" />}
+                  {Icon && <Icon />}
                   {tab.label}
                 </button>
               );
@@ -621,7 +595,7 @@ export function JobDetailsDrawer({ open, onClose, loading, error, details, style
           </div>
         )}
 
-        <div className="min-h-0 flex-1 overflow-y-auto p-5">
+        <div className="sg-drawer-body">
           {loading && (
             <div className="flex min-h-72 items-center justify-center gap-3 text-slate-300">
               <Loader2 className="h-5 w-5 animate-spin text-ember-500" />
@@ -637,15 +611,15 @@ export function JobDetailsDrawer({ open, onClose, loading, error, details, style
           )}
 
           {!loading && !error && manifest && drawerTab === "details" && (
-            <div className="grid gap-5">
-              <section className="rounded-2xl border border-white/10 bg-white/[0.035] p-4">
-                <div className="flex flex-wrap gap-2">
+            <div className="sg-tab-stack">
+              <section>
+                <div className="sg-meta-pills">
                   <StatusPill status={manifest.status} />
-                  <span className="rounded-full border border-white/10 bg-white/[0.04] px-3 py-1 text-xs font-bold text-slate-300">
+                  <span className="pill pill-soft">
                     {manifest.path_mode || manifest.input_type || "input"}
                   </span>
                   {manifest.provider && (
-                    <span className="rounded-full border border-white/10 bg-white/[0.04] px-3 py-1 text-xs font-bold text-slate-300">
+                    <span className="pill pill-soft">
                       {formatProviderModel(manifest)}
                     </span>
                   )}
@@ -691,16 +665,11 @@ export function JobDetailsDrawer({ open, onClose, loading, error, details, style
 
               {manifest.outline_enabled && (manifest.outline_titles?.length ?? 0) > 0 && (
                 <DetailsSection title={`Outline · ${manifest.outline_section_count || manifest.outline_titles.length} sections`}>
-                  <ol className="grid gap-1.5">
+                  <ol>
                     {manifest.outline_titles.map((sectionTitle, index) => (
-                      <li
-                        key={`${sectionTitle}-${index}`}
-                        className="flex items-center gap-2.5 rounded-lg border border-white/10 bg-[#070B14] px-3 py-2 text-xs text-slate-200"
-                      >
-                        <span className="grid h-5 w-5 shrink-0 place-items-center rounded bg-ember-500/15 font-mono text-[10px] font-bold text-ember-300">
-                          {index + 1}
-                        </span>
-                        <span className="min-w-0 truncate font-semibold">{sectionTitle}</span>
+                      <li key={`${sectionTitle}-${index}`} className="sg-num-row">
+                        <span className="sg-num">{index + 1}</span>
+                        <span className="t">{sectionTitle}</span>
                       </li>
                     ))}
                   </ol>
@@ -793,40 +762,33 @@ function MathDegradedNotice({ failures, canEdit, onEdit }) {
     return null;
   }
   return (
-    <section className="rounded-2xl border border-amber-300/25 bg-amber-300/[0.06] p-4">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div className="flex items-center gap-2">
-          <AlertTriangle className="h-4 w-4 shrink-0 text-amber-300" />
-          <span className="text-sm font-bold text-amber-100">
+    <section>
+      <div className="sg-row-between">
+        <div className="sg-row">
+          <AlertTriangle style={{ width: 16, height: 16, flex: "none", color: "var(--amber)" }} />
+          <span style={{ color: "var(--text)", fontWeight: 600, fontSize: 13.5 }}>
             {count} math expression{count === 1 ? "" : "s"} couldn&apos;t render
           </span>
         </div>
         {canEdit && (
-          <button
-            type="button"
-            onClick={onEdit}
-            className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-amber-300/40 bg-amber-300/10 px-3 text-xs font-bold text-amber-100 transition hover:border-amber-300/70 hover:text-white"
-          >
-            <Edit3 className="h-3.5 w-3.5" />
+          <button type="button" onClick={onEdit}>
+            <Edit3 style={{ width: 14, height: 14 }} />
             Fix in Markdown editor
           </button>
         )}
       </div>
-      <p className="mt-2 text-xs leading-5 text-amber-100/80">
+      <p>
         The guide rendered, but these expressions show as error-marked spans. Edit
         them in the Markdown editor and re-render to clean them up.
       </p>
-      <ul className="mt-3 grid gap-2">
+      <ul style={{ marginTop: 12 }}>
         {failures.map((failure, index) => (
-          <li
-            key={index}
-            className="rounded-lg border border-amber-300/15 bg-[#070B14] p-3 text-xs leading-5"
-          >
-            <code className="block break-all font-mono text-amber-100">
+          <li key={index} style={{ border: "1px solid var(--card-border)", background: "var(--card)", borderRadius: 9, padding: 10 }}>
+            <code>
               {failure.display_mode ? "display" : "inline"}: {failure.expr}
             </code>
             {failure.message && (
-              <span className="mt-1 block text-amber-100/70">{failure.message}</span>
+              <span style={{ marginTop: 4, display: "block", color: "var(--muted)", fontSize: 12 }}>{failure.message}</span>
             )}
           </li>
         ))}
@@ -935,11 +897,7 @@ function DetailsSection({ title, children }) {
 }
 
 function StatusPill({ status }) {
-  return (
-    <span className={`inline-flex w-fit rounded-full border px-3 py-1 text-xs font-bold ${statusClass(status)}`}>
-      {status || "unknown"}
-    </span>
-  );
+  return <span className={`pill ${statusClass(status)}`}>{status || "unknown"}</span>;
 }
 
 function ValidationSummary({ validation, manifest }) {

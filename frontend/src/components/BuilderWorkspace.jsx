@@ -1971,7 +1971,7 @@ function StyleSettings({
 }) {
   const presetActive = Boolean(generatorPreset);
   return (
-    <div className="grid gap-5">
+    <div className="sg-tab-stack">
       <SectionHeader
         eyebrow="Guide design"
         title="Style and depth"
@@ -2002,66 +2002,53 @@ function StyleSettings({
 
 function PreviewWorkspacePanel({ result, artifacts, artifactUrls, previewFormat, setPreviewFormat }) {
   return (
-    <div className="grid gap-4">
+    <div className="sg-tab-stack">
       <SectionHeader
         eyebrow="Preview"
         title="Exports and artifacts"
         description="Inspect the latest generated job and choose what to preview or download."
       />
-      <div className="grid gap-3 xl:grid-cols-3">
+      <div className="sg-infocard-grid">
         <InfoCard label="Preview" value={previewFormat === "sample" ? "Sample" : previewFormat.toUpperCase()} />
         <InfoCard label="Status" value={result?.status || "No generated job"} />
         <InfoCard label="Artifacts" value={`${artifacts.length} available`} />
       </div>
-      <div className="rounded-xl border border-white/[0.06] bg-white/[0.025] p-4">
+      <div className="sg-fpanel">
         <FieldLabel>Preview format</FieldLabel>
-        <div className="mt-2 flex gap-1.5">
+        <div className="sg-seg-row" style={{ marginTop: 8 }}>
           {["pdf", "html"].map((format) => (
             <button
               key={format}
               type="button"
               disabled={!result}
               onClick={() => setPreviewFormat(format)}
-              className={`h-8 rounded-md border px-3 text-[12px] font-semibold transition disabled:cursor-not-allowed disabled:opacity-45 ${
-                previewFormat === format
-                  ? "border-[rgba(249,115,22,0.45)] bg-[rgba(249,115,22,0.14)] text-[#F97316]"
-                  : "border-white/[0.08] bg-white/[0.03] text-[#9098A8] hover:text-[#D4D4D8]"
-              }`}
+              className={`sg-seg-btn${previewFormat === format ? " active" : ""}`}
             >
               {format.toUpperCase()}
             </button>
           ))}
         </div>
       </div>
-      <div className="rounded-xl border border-white/[0.06] bg-white/[0.025] p-4">
+      <div className="sg-fpanel">
         <FieldLabel>Artifact availability</FieldLabel>
         {result ? (
-          <div className="mt-2 grid gap-2 sm:grid-cols-2">
+          <div className="sg-avail-grid" style={{ marginTop: 8 }}>
             {Object.entries(artifactLabels).map(([name, artifact]) => {
               const available = Boolean(artifactUrls[name]);
-              const Icon = artifact.icon;
+              const AvailIcon = artifact.icon;
               return (
-                <div
-                  key={name}
-                  className={`flex items-center justify-between rounded-[10px] border px-3 py-2 ${
-                    available
-                      ? "border-[rgba(249,115,22,0.25)] bg-[rgba(249,115,22,0.08)]"
-                      : "border-white/[0.06] bg-[#070B14] opacity-70"
-                  }`}
-                >
-                  <span className="inline-flex items-center gap-2 text-[12px] font-semibold text-[#D4D4D8]">
-                    <Icon className="h-3.5 w-3.5 text-[#F97316]" />
+                <div key={name} className={`sg-avail-row ${available ? "ready" : "missing"}`}>
+                  <span className="sg-avail-name">
+                    <AvailIcon />
                     {artifact.label}
                   </span>
-                  <span className="text-[10.5px] font-semibold uppercase tracking-[0.08em] text-[#9098A8]">
-                    {available ? "Ready" : "Missing"}
-                  </span>
+                  <span className="sg-avail-state">{available ? "Ready" : "Missing"}</span>
                 </div>
               );
             })}
           </div>
         ) : (
-          <div className="mt-2 rounded-[10px] border border-white/[0.06] bg-[#070B14] p-4 text-[12.5px] leading-5 text-[#9098A8]">
+          <div className="sg-hint-block" style={{ marginTop: 8 }}>
             Generate a guide first to enable PDF/HTML preview and artifact downloads.
           </div>
         )}
@@ -2070,7 +2057,7 @@ function PreviewWorkspacePanel({ result, artifacts, artifactUrls, previewFormat,
         <AttachedSourcesSummary result={result} />
       )}
       {result && (
-        <div className="rounded-xl border border-white/[0.06] bg-white/[0.025] p-4">
+        <div className="sg-fpanel">
           <FieldLabel>Downloads</FieldLabel>
           <ArtifactDownloadGrid artifacts={artifacts} />
         </div>
@@ -2087,20 +2074,14 @@ function PreviewWorkspacePanel({ result, artifacts, artifactUrls, previewFormat,
 function ProviderBadge({ provider, size = "sm" }) {
   const icon = providerIconFor(provider);
   const label = providerLabelFor(provider);
-  const lg = size === "lg";
+  const sz = size === "lg" ? "lg" : "sm";
   if (icon) {
     return (
-      <span
-        className={`inline-flex shrink-0 items-center justify-center overflow-hidden bg-white ring-1 ring-white/20 ${
-          lg ? "h-12 w-12 rounded-xl p-2" : "h-6 w-6 rounded-md p-[3px]"
-        }`}
-        title={label}
-      >
+      <span className={`sg-prov-badge ${sz}`} title={label}>
         <img
           src={icon}
           alt={`${label} logo`}
           loading="lazy"
-          className="h-full w-full object-contain"
           onError={(event) => {
             event.currentTarget.style.display = "none";
           }}
@@ -2108,15 +2089,7 @@ function ProviderBadge({ provider, size = "sm" }) {
       </span>
     );
   }
-  return (
-    <span
-      className={`inline-flex shrink-0 items-center justify-center bg-white/[0.08] font-bold uppercase tracking-[0.06em] text-[#D4D4D8] ring-1 ring-white/10 ${
-        lg ? "h-12 min-w-12 rounded-xl px-2.5 text-[11px]" : "h-6 rounded-md px-2 text-[10px]"
-      }`}
-    >
-      {label}
-    </span>
-  );
+  return <span className={`sg-prov-badge text ${sz}`}>{label}</span>;
 }
 
 const fmtPresetParams = (params = {}) => {
@@ -2142,34 +2115,22 @@ function GeneratorPresetCard({ preset, selected, onSelect }) {
       aria-pressed={selected}
       onClick={() => onSelect?.(preset.id)}
       title={available ? undefined : "This preset's prompt could not be loaded."}
-      className={`flex flex-col gap-2.5 rounded-xl border p-3 text-left transition disabled:cursor-not-allowed disabled:opacity-40 ${
-        selected
-          ? "border-[rgba(249,115,22,0.5)] bg-[rgba(249,115,22,0.08)] ring-1 ring-[rgba(249,115,22,0.35)]"
-          : "border-white/[0.08] bg-[#070B14] hover:border-white/20"
-      }`}
+      className={`sg-pick-card${selected ? " active" : ""}`}
     >
-      <div className="flex items-center gap-3">
+      <div className="sg-pick-head">
         <ProviderBadge provider={preset.provider} size="lg" />
-        <div className="min-w-0 flex-1">
+        <div className="sg-pick-min">
           {modelLabel && (
-            <div className="truncate text-[13.5px] font-bold leading-tight text-[#F4F4F5]" title={modelLabel}>
+            <div className="sg-pick-model" title={modelLabel}>
               {modelLabel}
             </div>
           )}
-          <div className="mt-0.5 truncate text-[12px] font-semibold leading-tight text-[#F8B57E]">
-            {preset.name}
-          </div>
+          <div className="sg-pick-name">{preset.name}</div>
         </div>
-        {!available && (
-          <span className="shrink-0 rounded-md bg-white/[0.06] px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.06em] text-[#9098A8]">
-            Unavailable
-          </span>
-        )}
-        {selected && <Check className="h-4 w-4 shrink-0 text-[#F97316]" />}
+        {!available && <span className="sg-pick-tag">Unavailable</span>}
+        {selected && <Check className="sg-pick-check" />}
       </div>
-      {preset.purpose && (
-        <p className="text-[11.5px] leading-4 text-[#9098A8]">{preset.purpose}</p>
-      )}
+      {preset.purpose && <p className="sg-pick-purpose">{preset.purpose}</p>}
     </button>
   );
 }
@@ -2185,25 +2146,21 @@ function GeneratorPresetControls({ generatorPresets = [], generatorPreset = "", 
   return (
     <div>
       <FieldLabel tip={TOOLTIPS.generatorPreset}>Generator preset</FieldLabel>
-      <p className="mt-1 text-[11.5px] leading-4 text-[#9098A8]">
+      <p className="sg-fpanel-sub">
         A full model-tuned system prompt with its own sampling params. Overrides the style below.
       </p>
-      <div className="mt-2 grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
+      <div className="sg-pick-grid" style={{ marginTop: 8 }}>
         <button
           type="button"
           aria-pressed={!generatorPreset}
           onClick={() => onSelectGeneratorPreset?.("")}
-          className={`flex flex-col justify-center gap-1 rounded-xl border p-3 text-left transition ${
-            !generatorPreset
-              ? "border-[rgba(249,115,22,0.5)] bg-[rgba(249,115,22,0.08)] ring-1 ring-[rgba(249,115,22,0.35)]"
-              : "border-white/[0.08] bg-[#070B14] hover:border-white/20"
-          }`}
+          className={`sg-pick-card${!generatorPreset ? " active" : ""}`}
         >
-          <div className="flex items-center gap-2">
-            <span className="text-[13px] font-semibold text-[#F4F4F5]">None</span>
-            {!generatorPreset && <Check className="h-4 w-4 text-[#F97316]" />}
+          <div className="sg-pick-head">
+            <span className="sg-pick-title">None</span>
+            {!generatorPreset && <Check className="sg-pick-check" />}
           </div>
-          <p className="text-[11.5px] leading-4 text-[#9098A8]">
+          <p className="sg-pick-purpose">
             Use the style below instead of a tuned generator preset.
           </p>
         </button>
@@ -2217,17 +2174,17 @@ function GeneratorPresetControls({ generatorPresets = [], generatorPreset = "", 
         ))}
       </div>
       {active && (
-        <div className="mt-2 rounded-[10px] border border-white/[0.06] bg-[#070B14] p-3 text-[12px] leading-5 text-[#9098A8]">
-          <div className="text-[11.5px]">
-            Tuned for <span className="text-[#D4D4D8]">{active.model_hint}</span> · {fmtPresetParams(active.params)}
+        <div className="sg-preset-note">
+          <div>
+            Tuned for <span className="accent">{active.model_hint}</span> · {fmtPresetParams(active.params)}
           </div>
           {compat.warn && (
-            <div className="mt-2 flex items-start gap-1.5 rounded-[8px] border border-[rgba(249,115,22,0.35)] bg-[rgba(249,115,22,0.08)] px-2.5 py-1.5 text-[11.5px] text-[#F8B57E]">
-              <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+            <div className="sg-preset-warn">
+              <AlertTriangle />
               <span>
                 This preset is tuned for {compat.hint}. It may still work with{" "}
-                <span className="font-semibold">{model || "your selected model"}</span>, but {compat.hint} is
-                recommended. <span className="text-[#C9A27A]">Your model selection still applies.</span>
+                <span className="strong">{model || "your selected model"}</span>, but {compat.hint} is
+                recommended. <span className="strong">Your model selection still applies.</span>
                 <InfoTip text={TOOLTIPS.modelCompat} label="Model compatibility" />
               </span>
             </div>
@@ -2243,7 +2200,7 @@ function StyleControls({ selectedStyle, onSelectStyle, styleOptions = styleChips
   const customStyles = styleOptions.filter((style) => style.custom);
 
   const renderGrid = (styles) => (
-    <div className="mt-1.5 grid grid-cols-3 gap-1.5 sm:grid-cols-6">
+    <div className="sg-mini-style-grid" style={{ marginTop: 6 }}>
       {styles.map((style) => (
         <MiniStyle
           key={style.promptName}
@@ -2272,9 +2229,9 @@ function StyleControls({ selectedStyle, onSelectStyle, styleOptions = styleChips
 
 function StyleGroupLabel({ children }) {
   return (
-    <div className="mt-2.5 mb-0.5 flex items-center gap-2 text-[10px] font-bold uppercase tracking-[0.16em] text-[#9098A8]">
+    <div className="sg-group-label">
       <span>{children}</span>
-      <span className="h-px flex-1 bg-white/10" />
+      <span className="rule" />
     </div>
   );
 }
@@ -2283,20 +2240,16 @@ function LengthControls({ length, setLength }) {
   return (
     <div>
       <FieldLabel tip={TOOLTIPS.length}>Length</FieldLabel>
-      <div className="mt-1.5 grid grid-cols-3 gap-1.5">
+      <div className="sg-len-grid" style={{ marginTop: 6 }}>
         {lengthOptions.map((option) => (
           <button
             key={option.id}
             type="button"
             onClick={() => setLength(option.id)}
-            className={`rounded-[9px] border px-1.5 py-2 text-center ${
-              length === option.id
-                ? "border-[rgba(249,115,22,0.45)] bg-[rgba(249,115,22,0.12)]"
-                : "border-white/[0.08] bg-transparent"
-            }`}
+            className={`sg-len-card${length === option.id ? " active" : ""}`}
           >
-            <div className="text-[12.5px] font-semibold">{option.label}</div>
-            <div className="text-[10.5px] text-[#9098A8]">{option.meta}</div>
+            <div className="sg-len-label">{option.label}</div>
+            <div className="sg-len-meta">{option.meta}</div>
           </button>
         ))}
       </div>
@@ -2310,7 +2263,7 @@ function LengthControls({ length, setLength }) {
 // (owned by Styles). Rendered as two segmented rows matching LengthControls.
 function AxisControls({ outputDepth, setOutputDepth, difficulty, setDifficulty }) {
   return (
-    <div className="grid gap-4 sm:grid-cols-2">
+    <div className="sg-axis-grid">
       <SegmentedAxis
         label="Output depth"
         tip={TOOLTIPS.outputDepth}
@@ -2333,17 +2286,13 @@ function SegmentedAxis({ label, tip, value, onChange, options }) {
   return (
     <div>
       <FieldLabel tip={tip}>{label}</FieldLabel>
-      <div className="mt-1.5 flex flex-wrap gap-1.5">
+      <div className="sg-seg-row" style={{ marginTop: 6 }}>
         {options.map((option) => (
           <button
             key={option.value || "auto"}
             type="button"
             onClick={() => onChange(option.value)}
-            className={`inline-flex h-8 items-center rounded-[9px] border px-3 text-[12px] font-semibold transition ${
-              value === option.value
-                ? "border-[rgba(249,115,22,0.45)] bg-[rgba(249,115,22,0.12)] text-[#F97316]"
-                : "border-white/[0.08] bg-transparent text-[#9098A8] hover:text-[#D4D4D8]"
-            }`}
+            className={`sg-seg-btn${value === option.value ? " active" : ""}`}
           >
             {option.label}
           </button>
@@ -2360,24 +2309,20 @@ function SectionControls({ includeSections, toggleSection }) {
   return (
     <div>
       <FieldLabel tip={TOOLTIPS.sections}>Output sections</FieldLabel>
-      <div className="mt-1.5 grid gap-3">
+      <div className="sg-section-groups" style={{ marginTop: 6 }}>
         {SECTION_GROUPS.map((group) => (
           <div key={group.title}>
             <StyleGroupLabel>{group.title}</StyleGroupLabel>
-            <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
+            <div className="sg-pill-row" style={{ marginTop: 6 }}>
               {group.keys.map((entry) => {
                 const active = Boolean(includeSections[entry.key]);
                 const chip = (
                   <button
                     type="button"
                     onClick={() => toggleSection(entry.key)}
-                    className={`inline-flex h-7 items-center gap-1.5 rounded-full border px-3 text-xs font-medium ${
-                      active
-                        ? "border-[rgba(249,115,22,0.35)] bg-[rgba(249,115,22,0.10)] text-[#FB923C]"
-                        : "border-white/10 bg-white/[0.04] text-[#F4F4F5]"
-                    }`}
+                    className={`sg-pill-toggle${active ? " active" : ""}`}
                   >
-                    {active && <span className="text-[10px]">✓</span>}
+                    {active && <Check />}
                     {entry.label}
                   </button>
                 );
@@ -2883,23 +2828,17 @@ function PreflightCard({
 }
 
 function MiniStyle({ style, active, onClick }) {
-  const Icon = style.icon;
+  const StyleIcon = style.icon;
   return (
     <button
       type="button"
       onClick={onClick}
-      className={`sg-mini-style ${active ? "active" : ""}`}
+      className={`sg-mini-style${active ? " active" : ""}`}
     >
-      <span
-        className={`grid h-[26px] w-[26px] place-items-center rounded-[7px] border ${
-          active
-            ? "border-[rgba(255,180,120,0.4)] bg-gradient-to-br from-[#FB923C] via-[#F97316] to-[#C2410C] text-[#1B0F03]"
-            : "border-[rgba(255,180,120,0.18)] bg-gradient-to-br from-[#1F2A40] to-[#131B2C] text-[#F97316]"
-        }`}
-      >
-        <Icon className="h-4 w-4" />
+      <span className="glyph">
+        <StyleIcon />
       </span>
-      <span className="text-[10.5px] font-medium">{style.label}</span>
+      <span className="lbl">{style.label}</span>
     </button>
   );
 }
@@ -2926,32 +2865,28 @@ function OptionCard({ option, active, disabled = false, onClick }) {
 
 function SectionHeader({ eyebrow, title, description }) {
   return (
-    <div className="rounded-xl border border-white/[0.06] bg-white/[0.025] p-4">
-      <div className="font-mono text-[10px] font-semibold uppercase tracking-[0.14em] text-[#F97316]">
-        {eyebrow}
-      </div>
-      <h2 className="mt-1 text-[22px] font-semibold tracking-[-0.02em] text-[#F4F4F5]">{title}</h2>
-      <p className="mt-1 max-w-2xl text-[12.5px] leading-5 text-[#9098A8]">{description}</p>
+    <div className="sg-shead">
+      <div className="sg-shead-eyebrow">{eyebrow}</div>
+      <h2 className="sg-shead-title">{title}</h2>
+      <p className="sg-shead-desc">{description}</p>
     </div>
   );
 }
 
 function InfoCard({ label, value }) {
   return (
-    <div className="rounded-xl border border-white/[0.06] bg-white/[0.025] p-3">
-      <div className="font-mono text-[9.5px] font-semibold uppercase tracking-[0.12em] text-[#6B7185]">
-        {label}
-      </div>
-      <div className="mt-1 truncate text-[13px] font-semibold text-[#F4F4F5]">{value}</div>
+    <div className="sg-infocard">
+      <div className="sg-infocard-k">{label}</div>
+      <div className="sg-infocard-v">{value}</div>
     </div>
   );
 }
 
 function MetaRow({ label, value }) {
   return (
-    <div className="flex items-center justify-between gap-3 rounded-[9px] border border-white/[0.06] bg-[#070B14] px-3 py-2">
-      <span className="text-[#9098A8]">{label}</span>
-      <span className="truncate font-mono text-[11px] font-semibold text-[#F4F4F5]">{value}</span>
+    <div className="flex items-center justify-between gap-3 rounded-[9px] border px-3 py-2" style={{ borderColor: "var(--card-border)", background: "var(--card-2)" }}>
+      <span style={{ color: "var(--muted)" }}>{label}</span>
+      <span className="truncate font-mono text-[11px] font-semibold" style={{ color: "var(--text)" }}>{value}</span>
     </div>
   );
 }

@@ -60,9 +60,11 @@ import Button from "./Button";
 import ItemCard from "./ItemCard";
 import ProviderPill from "./ProviderPill";
 import Icon from "./Icon";
-import deepseekMark from "../assets/providers/deepseek.svg";
-import qwenMark from "../assets/providers/qwen.svg";
-import localMark from "../assets/providers/local.svg";
+import deepseekMark from "../assets/providers/deepseek1.svg";
+import qwenMark from "../assets/providers/qwen1.svg";
+import gemmaMark from "../assets/providers/gemma.svg";
+import geminiMark from "../assets/providers/gemini.svg";
+import mistralMark from "../assets/providers/mistral.svg";
 import {
   activationDecision,
   ACTIVATE_BLOCKED,
@@ -77,13 +79,15 @@ import {
 } from "../shortcutStatus";
 
 // Decorative provider marks for the hero badge cluster (no behaviour).
+// Decorative only. Sizes/positions are kept inside the 540px cluster
+// (left% · 5.4 + size ≤ ~500) so nothing clips against the hero's overflow.
 const HERO_BADGES = [
-  { x: 28, y: 46, size: 116, src: deepseekMark },
-  { x: 53, y: 8, size: 132, src: qwenMark },
-  { x: 78, y: 40, size: 104, src: localMark },
-  { x: 44, y: 80, size: 84, ghost: true },
-  { x: 90, y: 6, size: 80, ghost: true },
-  { x: 92, y: 72, size: 96, ghost: true }
+  { x: 38, y: 30, size: 84, src: deepseekMark, dark: true },
+  { x: 58, y: 8, size: 88, src: qwenMark },
+  { x: 76, y: 40, size: 76, src: gemmaMark },
+  { x: 50, y: 64, size: 60, src: geminiMark },
+  { x: 80, y: 12, size: 64, src: mistralMark },
+  { x: 78, y: 66, size: 56, ghost: true }
 ];
 
 // Quick Launch pastel fills, cycled across the cards in order (the same four
@@ -291,7 +295,7 @@ function Hero({ onGetStarted }) {
         {HERO_BADGES.map((badge, index) => (
           <div
             key={index}
-            className={`prov-badge ${badge.ghost ? "ghost" : "light"}`}
+            className={`prov-badge ${badge.ghost ? "ghost" : badge.dark ? "dark" : "light"}`}
             style={{ left: `${badge.x}%`, top: `${badge.y}%`, width: badge.size, height: badge.size }}
           >
             {badge.src && <img src={badge.src} alt="" className="prov-badge-mark" />}
@@ -756,34 +760,30 @@ function CustomizeShortcutsModal({ shortcuts, currentBuilderSetup, onClose, onCh
   }, [refresh]);
 
   return (
-    <div className="fixed inset-0 z-[60] flex items-center justify-center p-4">
-      <button type="button" aria-label="Close" className="absolute inset-0 cursor-default bg-black/60" onClick={onClose} />
-      <div
-        role="dialog"
-        aria-modal="true"
-        className="sg-shortcuts-modal relative flex max-h-[88vh] w-full max-w-2xl flex-col overflow-hidden rounded-2xl border border-white/10 bg-[#0B0F19] shadow-2xl"
-      >
-        <div className="flex items-center justify-between border-b border-white/10 px-5 py-3.5">
-          <div className="flex items-center gap-2">
-            <Settings2 size={16} className="text-[#F97316]" />
-            <h2 className="text-sm font-bold text-white">
+    <div className="sg-modal-scrim">
+      <button type="button" aria-label="Close" className="sg-scrim-bg" onClick={onClose} />
+      <div role="dialog" aria-modal="true" className="sg-shortcuts-modal">
+        <div className="sg-sc-head">
+          <div className="sg-sc-head-l">
+            <Settings2 size={16} />
+            <h2>
               {mode === "form" ? (editing ? "Edit shortcut" : "New shortcut") : mode === "import" ? "Import shortcuts" : "Customize shortcuts"}
             </h2>
           </div>
-          <button type="button" onClick={onClose} className="rounded-lg p-1 text-slate-400 hover:bg-white/10 hover:text-white">
+          <button type="button" onClick={onClose} className="sg-sc-x" aria-label="Close">
             <X size={16} />
           </button>
         </div>
 
         {error && (
-          <div className="mx-5 mt-3 flex items-center gap-2 rounded-lg border border-red-400/30 bg-red-400/10 px-3 py-2 text-xs text-red-200">
+          <div className="sg-sc-error">
             <AlertCircle size={14} /> {error}
           </div>
         )}
 
         {mode === "list" && (
           <>
-            <div className="flex flex-wrap items-center gap-2 px-5 py-3">
+            <div className="sg-sc-actions">
               <button type="button" className="sg-modal-action" onClick={() => { setEditing(null); setMode("form"); }}>
                 <Plus size={14} /> New
               </button>
@@ -793,16 +793,16 @@ function CustomizeShortcutsModal({ shortcuts, currentBuilderSetup, onClose, onCh
               <a className="sg-modal-action" href={exportShortcutsUrl()} download="shortcuts.json">
                 <Download size={14} /> Export all
               </a>
-              <div className="flex-1" />
+              <div className="sg-sc-spacer" />
               <button type="button" className="sg-modal-action" onClick={() => setConfirmReset(true)}>
                 <RotateCcw size={14} /> Reset defaults
               </button>
             </div>
-            <div className="min-h-0 flex-1 overflow-y-auto px-5 pb-5">
+            <div className="sg-sc-scroll">
               {items.length === 0 ? (
-                <p className="py-8 text-center text-sm text-slate-400">No shortcuts. Create one or reset to defaults.</p>
+                <p style={{ textAlign: "center", padding: "32px 0" }}>No shortcuts. Create one or reset to defaults.</p>
               ) : (
-                <ul className="flex flex-col gap-2">
+                <ul className="sg-sc-list">
                   {items.map((shortcut, index) => (
                     <ShortcutRow
                       key={shortcut.id}
@@ -884,12 +884,12 @@ function ShortcutRow({ shortcut, busy, isFirst, isLast, onUp, onDown, onTogglePi
   const showChip = status === STATUS_DEGRADED || status === STATUS_BROKEN;
   const firstFinding = shortcutFindings(shortcut)[0];
   return (
-    <li className="flex items-center gap-2 rounded-xl border border-white/10 bg-white/[0.03] px-3 py-2.5">
-      <div className="flex flex-col">
-        <button type="button" disabled={isFirst} onClick={onUp} className="rounded p-0.5 text-slate-400 hover:text-white disabled:opacity-25" title="Move up">
+    <li className="sg-sc-row">
+      <div style={{ display: "flex", flexDirection: "column" }}>
+        <button type="button" disabled={isFirst} onClick={onUp} className="sg-sc-move" title="Move up">
           <ArrowUp size={13} />
         </button>
-        <button type="button" disabled={isLast} onClick={onDown} className="rounded p-0.5 text-slate-400 hover:text-white disabled:opacity-25" title="Move down">
+        <button type="button" disabled={isLast} onClick={onDown} className="sg-sc-move" title="Move down">
           <ArrowDown size={13} />
         </button>
       </div>
@@ -900,9 +900,9 @@ function ShortcutRow({ shortcut, busy, isFirst, isLast, onUp, onDown, onTogglePi
       >
         {shortcutEmoji(shortcut)}
       </span>
-      <div className="min-w-0 flex-1">
-        <div className="flex items-center gap-2">
-          <strong className="truncate text-sm font-semibold text-white">{shortcut.name}</strong>
+      <div style={{ minWidth: 0, flex: 1 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+          <strong>{shortcut.name}</strong>
           <span className="shrink-0 rounded border border-white/10 px-1.5 py-0.5 text-[10px] uppercase tracking-wide text-slate-400">
             {TYPE_LABELS[shortcut.type] || shortcut.type}
           </span>
@@ -923,17 +923,17 @@ function ShortcutRow({ shortcut, busy, isFirst, isLast, onUp, onDown, onTogglePi
             </span>
           )}
         </div>
-        <p className="truncate text-xs text-slate-400">{shortcut.description || summarizePayload(shortcut)}</p>
+        <p className="sg-sc-desc">{shortcut.description || summarizePayload(shortcut)}</p>
       </div>
-      {busy && <Loader2 size={14} className="animate-spin text-slate-400" />}
-      <div className="flex shrink-0 items-center gap-0.5">
+      {busy && <Loader2 size={14} className="sg-spin" style={{ color: "var(--muted)" }} />}
+      <div style={{ display: "flex", flex: "none", alignItems: "center", gap: 2 }}>
         <IconBtn title="Inspect" onClick={onInspect}><Info size={14} /></IconBtn>
         <IconBtn title={shortcut.pinned ? "Unpin from Home" : "Pin to Home"} onClick={onTogglePin}>
           {shortcut.pinned ? <Pin size={14} className="text-[#F97316]" /> : <PinOff size={14} />}
         </IconBtn>
         <IconBtn title="Edit" onClick={onEdit}><Pencil size={14} /></IconBtn>
         <IconBtn title="Duplicate" onClick={onDuplicate}><Copy size={14} /></IconBtn>
-        <a className="grid h-7 w-7 place-items-center rounded-lg text-slate-400 hover:bg-white/10 hover:text-white" title="Export" href={exportShortcutUrl(shortcut.id)} download={`${shortcut.id}.json`}>
+        <a className="sg-sc-iconbtn" title="Export" href={exportShortcutUrl(shortcut.id)} download={`${shortcut.id}.json`}>
           <Download size={14} />
         </a>
         <IconBtn title="Delete" onClick={onDelete} danger><Trash2 size={14} /></IconBtn>
@@ -948,7 +948,7 @@ function IconBtn({ title, onClick, danger, children }) {
       type="button"
       title={title}
       onClick={onClick}
-      className={`grid h-7 w-7 place-items-center rounded-lg hover:bg-white/10 ${danger ? "text-slate-400 hover:text-red-300" : "text-slate-400 hover:text-white"}`}
+      className={`sg-sc-iconbtn${danger ? " danger" : ""}`}
     >
       {children}
     </button>
@@ -1098,8 +1098,8 @@ function ShortcutForm({ editing, currentBuilderSetup, onCancel, onSaved, onError
   }
 
   return (
-    <form onSubmit={handleSubmit} className="flex min-h-0 flex-1 flex-col">
-      <div className="min-h-0 flex-1 space-y-4 overflow-y-auto px-5 py-4">
+    <form onSubmit={handleSubmit} className="sg-form">
+      <div className="sg-form-scroll">
         <Field label="Name">
           <input className="sg-input" value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. Exam Cram — Qwen" maxLength={120} autoFocus />
         </Field>
@@ -1107,15 +1107,15 @@ function ShortcutForm({ editing, currentBuilderSetup, onCancel, onSaved, onError
           <input className="sg-input" value={description} onChange={(e) => setDescription(e.target.value)} placeholder="Short summary shown on the card" maxLength={400} />
         </Field>
 
-        <div className="grid grid-cols-2 gap-3">
+        <div className="sg-form-grid">
           <Field label="Icon">
-            <div className="flex flex-wrap gap-1.5">
+            <div className="sg-icon-grid">
               {ICON_CHOICES.map((choice) => (
                 <button
                   key={choice}
                   type="button"
                   onClick={() => setIcon(choice)}
-                  className={`grid h-8 w-8 place-items-center rounded-lg border text-base ${icon === choice ? "border-[#F97316] bg-[#F97316]/15" : "border-white/10 bg-white/[0.03] hover:bg-white/10"}`}
+                  className={`sg-icon-cell${icon === choice ? " active" : ""}`}
                 >
                   {choice}
                 </button>
@@ -1123,13 +1123,13 @@ function ShortcutForm({ editing, currentBuilderSetup, onCancel, onSaved, onError
             </div>
           </Field>
           <Field label="Color">
-            <div className="flex flex-wrap gap-1.5">
+            <div className="sg-swatch-row">
               {COLOR_CHOICES.map((choice) => (
                 <button
                   key={choice}
                   type="button"
                   onClick={() => setColor(choice)}
-                  className={`h-8 w-8 rounded-lg border-2 ${color === choice ? "border-white" : "border-transparent"}`}
+                  className={`sg-swatch${color === choice ? " active" : ""}`}
                   style={{ background: choice }}
                   aria-label={choice}
                 />
@@ -1141,29 +1141,28 @@ function ShortcutForm({ editing, currentBuilderSetup, onCancel, onSaved, onError
         <Field label="Type">
           <select className="sg-input" value={type} onChange={(e) => setType(e.target.value)} disabled={Boolean(editing)}>
             {SHORTCUT_TYPES.map((t) => (
-              <option key={t} value={t} className="bg-[#0B0F19]">
+              <option key={t} value={t}>
                 {TYPE_LABELS[t]}
               </option>
             ))}
           </select>
-          {editing && <p className="mt-1 text-[11px] text-slate-500">Type can't change after creation. Duplicate to make a different kind.</p>}
+          {editing && <p style={{ marginTop: 6, fontSize: 11.5, color: "var(--muted)" }}>Type can't change after creation. Duplicate to make a different kind.</p>}
         </Field>
 
         {type === "builder_setup" && (
-          <div className="space-y-3 rounded-xl border border-white/10 bg-white/[0.02] p-3">
-            <div className="flex items-center justify-between">
-              <span className="text-[11px] font-bold uppercase tracking-wide text-slate-400">Builder setup</span>
+          <div className="sg-form-sub">
+            <div className="sg-row-between">
+              <span className="sg-form-sub-title">Builder setup</span>
               <button
                 type="button"
                 onClick={captureFromBuilder}
                 disabled={!currentBuilderSetup}
-                className="inline-flex items-center gap-1.5 rounded-lg border border-white/15 bg-white/[0.04] px-2.5 py-1 text-[11px] font-semibold text-slate-200 hover:bg-white/[0.08] disabled:opacity-40"
                 title={currentBuilderSetup ? "Fill these fields from the Builder's current settings" : "Open the Builder once to capture its settings"}
               >
-                <Wand2 size={12} /> Capture from Builder
+                <Wand2 size={14} /> Capture from Builder
               </button>
             </div>
-            <div className="grid grid-cols-2 gap-3">
+            <div className="sg-form-grid">
               <Field label="Input type">
                 <select className="sg-input" value={builder.input_type} onChange={(e) => setBuilder({ ...builder, input_type: e.target.value })}>
                   {INPUT_TYPES.map((it) => (
@@ -1212,17 +1211,17 @@ function ShortcutForm({ editing, currentBuilderSetup, onCancel, onSaved, onError
                 </select>
               </Field>
             </div>
-            <div className="flex flex-wrap items-center gap-4">
-              <label className="flex items-center gap-2 text-xs text-slate-300">
+            <div className="sg-check-line">
+              <label className="sg-check-row">
                 <input type="checkbox" checked={builder.strict_math} onChange={(e) => setBuilder({ ...builder, strict_math: e.target.checked })} />
                 Strict math
               </label>
-              <div className="flex items-center gap-2">
-                <span className="text-xs text-slate-400">Exports:</span>
+              <div className="sg-check-inline">
+                <span>Exports:</span>
                 {EXPORT_FORMATS.map((fmt) => {
                   const on = builder.export_formats?.includes(fmt);
                   return (
-                    <label key={fmt} className="flex items-center gap-1 text-xs text-slate-300">
+                    <label key={fmt} className="sg-check-row">
                       <input
                         type="checkbox"
                         checked={Boolean(on)}
@@ -1260,7 +1259,7 @@ function ShortcutForm({ editing, currentBuilderSetup, onCancel, onSaved, onError
         )}
 
         {type === "library_view" && (
-          <div className="grid grid-cols-2 gap-3">
+          <div className="sg-form-grid">
             <Field label="View">
               <select className="sg-input" value={viewBase} onChange={(e) => setViewBase(e.target.value)}>
                 {VIEW_BASES.map((v) => (
@@ -1278,12 +1277,12 @@ function ShortcutForm({ editing, currentBuilderSetup, onCancel, onSaved, onError
         )}
       </div>
 
-      <div className="flex justify-end gap-2 border-t border-white/10 px-5 py-3">
-        <button type="button" onClick={onCancel} className="inline-flex h-9 items-center rounded-lg border border-white/15 bg-white/[0.04] px-3.5 text-sm font-bold text-slate-200 hover:bg-white/[0.08]">
+      <div className="sg-form-footer">
+        <button type="button" onClick={onCancel} className="sg-ghost-button">
           Cancel
         </button>
-        <button type="submit" disabled={saving} className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-[#F97316]/50 bg-[#F97316]/80 px-3.5 text-sm font-bold text-white hover:bg-[#F97316] disabled:opacity-50">
-          {saving && <Loader2 size={14} className="animate-spin" />}
+        <button type="submit" disabled={saving} className="sg-ghost-button accent">
+          {saving && <Loader2 size={14} className="sg-spin" />}
           {editing ? "Save changes" : "Create shortcut"}
         </button>
       </div>
@@ -1561,22 +1560,22 @@ function SavedPromptControl({ savePrompt, setSavePrompt, savedPromptText, setSav
 
 function ConfirmDialog({ heading, body, actionLabel, busy, onCancel, onConfirm }) {
   return (
-    <div className="fixed inset-0 z-[70] flex items-center justify-center p-4">
-      <button type="button" aria-label="Cancel" className="absolute inset-0 cursor-default bg-black/60" onClick={onCancel} />
-      <div role="dialog" aria-modal="true" className="relative w-full max-w-sm rounded-2xl border border-white/10 bg-[#0B0F19] p-5 shadow-2xl">
-        <div className="flex items-start gap-3">
-          <AlertTriangle className="mt-0.5 h-5 w-5 shrink-0 text-red-400" />
-          <div className="min-w-0">
-            <h2 className="text-sm font-bold text-white">{heading}</h2>
-            <p className="mt-1 text-sm text-slate-400">{body}</p>
+    <div className="sg-modal-scrim">
+      <button type="button" aria-label="Cancel" className="sg-scrim-bg" onClick={onCancel} />
+      <div role="dialog" aria-modal="true" className="sg-modal" style={{ maxWidth: 400 }}>
+        <div style={{ display: "flex", alignItems: "flex-start", gap: 12 }}>
+          <AlertTriangle style={{ width: 20, height: 20, flex: "none", marginTop: 2, color: "var(--red)" }} />
+          <div style={{ minWidth: 0 }}>
+            <h2>{heading}</h2>
+            <p style={{ marginTop: 6, color: "var(--text-dim)", fontSize: 13, lineHeight: 1.5 }}>{body}</p>
           </div>
         </div>
-        <div className="mt-5 flex justify-end gap-2">
-          <button type="button" autoFocus disabled={busy} onClick={onCancel} className="inline-flex h-9 items-center rounded-lg border border-white/15 bg-white/[0.04] px-3.5 text-sm font-bold text-slate-200 hover:bg-white/[0.08] disabled:opacity-50">
+        <div className="sg-modal-actions">
+          <button type="button" autoFocus disabled={busy} onClick={onCancel} className="sg-ghost-button">
             Cancel
           </button>
-          <button type="button" disabled={busy} onClick={onConfirm} className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-red-400/50 bg-red-500/80 px-3.5 text-sm font-bold text-white hover:bg-red-500 disabled:opacity-50">
-            {busy && <Loader2 className="h-4 w-4 animate-spin" />}
+          <button type="button" disabled={busy} onClick={onConfirm} className="sg-ghost-button danger">
+            {busy && <Loader2 className="sg-spin" />}
             {actionLabel}
           </button>
         </div>
