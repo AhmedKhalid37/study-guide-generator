@@ -64,17 +64,7 @@ import {
 } from "../sectionMeta";
 import { FOLDER_PRESET_COLORS } from "../folderMeta";
 import { presetCompat, presetModelLabel, providerIconFor, providerLabelFor } from "../presetMeta";
-import {
-  BoltGlyph,
-  DocGlyph,
-  LeafGlyph,
-  ListGlyph,
-  PDFGlyph,
-  SparkleGlyph,
-  Tile,
-  TrophyGlyph,
-  UploadGlyph
-} from "./ClaudeIcons";
+import { Icon } from "./Icon";
 import { JobDetailsDrawer } from "./RecentJobsPanel";
 import { BUILTIN_STYLE_NAMES } from "../styleMeta";
 import OutlineEditor from "./OutlineEditor";
@@ -1078,11 +1068,10 @@ export default function BuilderWorkspace({
             onClick={() => setActiveBuilderTab(tab.id)}
             className={activeBuilderTab === tab.id ? "active" : ""}
           >
-            <BuilderTabIcon id={tab.id} active={activeBuilderTab === tab.id} />
+            <BuilderTabIcon id={tab.id} />
             {tab.label}
           </button>
         ))}
-        <div className="flex-1" />
         <span className="sg-autosave">
           <i />
           {draftSavedAt ? `Draft saved · ${formatDraftTime(draftSavedAt)}` : "Unsaved draft"}
@@ -1275,21 +1264,17 @@ function SaveShortcutDialog({ dialog, setDialog, sourceText, saving, error, onCo
   const over = dialog.savePrompt && len > MAX_SAVED_PROMPT_CHARS;
   const nothingToSave = dialog.savePrompt && !willSave;
   return (
-    <div className="fixed inset-0 z-[70] flex items-center justify-center p-4">
+    <div className="sg-modal-scrim">
       <button
         type="button"
         aria-label="Close"
-        className="absolute inset-0 cursor-default bg-black/60"
+        className="sg-scrim-bg"
         onClick={() => !saving && setDialog(null)}
       />
-      <div
-        role="dialog"
-        aria-modal="true"
-        className="relative w-full max-w-md rounded-2xl border border-white/10 bg-[#0B0F19] p-5 shadow-2xl"
-      >
-        <h2 className="text-sm font-bold text-white">Save as shortcut</h2>
-        <label className="mt-3 block">
-          <span className="mb-1 block text-[11px] font-bold uppercase tracking-wide text-slate-400">Name</span>
+      <div role="dialog" aria-modal="true" className="sg-modal">
+        <h2>Save as shortcut</h2>
+        <div className="sg-field-block" style={{ marginTop: 14 }}>
+          <span className="sg-field-label">Name</span>
           <input
             className="sg-input"
             autoFocus
@@ -1298,26 +1283,25 @@ function SaveShortcutDialog({ dialog, setDialog, sourceText, saving, error, onCo
             onChange={(e) => setDialog({ ...dialog, name: e.target.value })}
             placeholder="Name this shortcut"
           />
-        </label>
+        </div>
 
-        <div className="mt-3 rounded-lg border border-white/10 bg-white/[0.02] p-3">
-          <label className="flex items-start gap-2 text-xs text-slate-200">
+        <div className="sg-modal-card">
+          <label className="sg-checkrow">
             <input
               type="checkbox"
-              className="mt-0.5"
               checked={dialog.savePrompt}
               onChange={(e) => setDialog({ ...dialog, savePrompt: e.target.checked })}
             />
             <span>
-              <span className="font-semibold">Save prompt/source text with this shortcut</span>
-              <span className="mt-0.5 block text-[11px] font-normal text-slate-400">
+              <span className="ttl">Save prompt/source text with this shortcut</span>
+              <span className="sub">
                 Includes the current prompt/text inside the shortcut export. Leave off for
                 reusable settings only. This may contain private course material.
               </span>
             </span>
           </label>
           {dialog.savePrompt && (
-            <div className={`mt-2 text-[11px] ${over ? "text-red-300" : "text-slate-400"}`}>
+            <div className={`sg-modal-count${over ? " over" : ""}`}>
               {len.toLocaleString()} / {MAX_SAVED_PROMPT_CHARS.toLocaleString()} chars
               {over ? " — too long; shorten the source text." : ""}
               {nothingToSave && !over ? " — no typed source text to save yet." : ""}
@@ -1325,14 +1309,14 @@ function SaveShortcutDialog({ dialog, setDialog, sourceText, saving, error, onCo
           )}
         </div>
 
-        {error && <p className="mt-3 text-xs text-red-300">{error}</p>}
+        {error && <p className="sg-modal-err">{error}</p>}
 
-        <div className="mt-4 flex justify-end gap-2">
+        <div className="sg-modal-actions">
           <button
             type="button"
             onClick={() => setDialog(null)}
             disabled={saving}
-            className="inline-flex h-9 items-center rounded-lg border border-white/15 bg-white/[0.04] px-3.5 text-sm font-bold text-slate-200 hover:bg-white/[0.08] disabled:opacity-50"
+            className="sg-ghost-button"
           >
             Cancel
           </button>
@@ -1340,10 +1324,13 @@ function SaveShortcutDialog({ dialog, setDialog, sourceText, saving, error, onCo
             type="button"
             onClick={() => onConfirm({ name: dialog.name, savePrompt: dialog.savePrompt })}
             disabled={saving || !dialog.name.trim() || over}
-            className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-[#F97316]/50 bg-[#F97316]/80 px-3.5 text-sm font-bold text-white hover:bg-[#F97316] disabled:opacity-50"
+            className="sg-progress-btn"
+            style={{ minWidth: 0, height: 40, padding: "0 18px" }}
           >
-            {saving && <Loader2 className="h-4 w-4 animate-spin" />}
-            Save
+            <span className="sg-progress-label">
+              {saving && <Loader2 className="sg-spin" />}
+              Save
+            </span>
           </button>
         </div>
       </div>
@@ -1420,75 +1407,77 @@ function BuilderActionBar({
         <ActionChip icon={FileText} kx="Length" v={lengthText} />
       </div>
 
-      {artifacts.length > 0 && (
-        <div className="sg-action-exports">
-          {artifacts.map(([name, url]) => {
-            const meta = artifactLabels[name];
-            const Icon = meta.icon;
-            return (
-              <a key={name} href={apiUrl(url)} className="sg-export-btn" title={`Download ${meta.label}`}>
-                <Icon className="h-3.5 w-3.5 text-[#F97316]" />
-                {meta.label}
-              </a>
-            );
-          })}
-        </div>
-      )}
-
-      <button
-        type="button"
-        onClick={onSaveShortcut}
-        disabled={shortcutSaving}
-        title={
-          shortcutSaveError ||
-          "Save the current builder setup as a pinned shortcut on Home"
-        }
-        className="sg-ghost-button inline-flex items-center gap-1.5 disabled:opacity-60"
-      >
-        {shortcutSaving ? (
-          <Loader2 className="h-4 w-4 animate-spin" />
-        ) : shortcutSaveError ? (
-          <AlertCircle className="h-4 w-4 text-red-300" />
-        ) : shortcutSaved ? (
-          <Check className="h-4 w-4 text-emerald-300" />
-        ) : (
-          <Bookmark className="h-4 w-4" />
+      <div className="sg-action-buttons">
+        {artifacts.length > 0 && (
+          <div className="sg-action-exports">
+            {artifacts.map(([name, url]) => {
+              const meta = artifactLabels[name];
+              const ArtifactIcon = meta.icon;
+              return (
+                <a key={name} href={apiUrl(url)} className="sg-export-btn" title={`Download ${meta.label}`}>
+                  <ArtifactIcon />
+                  {meta.label}
+                </a>
+              );
+            })}
+          </div>
         )}
-        {shortcutSaving
-          ? "Saving…"
-          : shortcutSaveError
-            ? "Save failed"
-            : shortcutSaved
-              ? "Saved to Home"
-              : "Save as shortcut"}
-      </button>
 
-      {loading && (
         <button
           type="button"
-          onClick={onCancel}
-          disabled={!canCancel || cancelling}
+          onClick={onSaveShortcut}
+          disabled={shortcutSaving}
           title={
-            canCancel
-              ? "Stop this generation at the next safe step (your inputs are kept)"
-              : "Preparing… cancel becomes available once the job starts"
+            shortcutSaveError ||
+            "Save the current builder setup as a pinned shortcut on Home"
           }
-          className="sg-ghost-button inline-flex items-center gap-1.5 disabled:opacity-60"
+          className="sg-ghost-button"
         >
-          <X className="h-4 w-4" />
-          {cancelling ? "Cancelling…" : "Cancel"}
+          {shortcutSaving ? (
+            <Loader2 className="sg-spin" />
+          ) : shortcutSaveError ? (
+            <AlertCircle style={{ color: "var(--red)" }} />
+          ) : shortcutSaved ? (
+            <Check style={{ color: "var(--green)" }} />
+          ) : (
+            <Bookmark />
+          )}
+          {shortcutSaving
+            ? "Saving…"
+            : shortcutSaveError
+              ? "Save failed"
+              : shortcutSaved
+                ? "Saved to Home"
+                : "Save as shortcut"}
         </button>
-      )}
 
-      <GenerateProgressButton loading={loading} progress={progress} hasResult={hasResult} />
+        {loading && (
+          <button
+            type="button"
+            onClick={onCancel}
+            disabled={!canCancel || cancelling}
+            title={
+              canCancel
+                ? "Stop this generation at the next safe step (your inputs are kept)"
+                : "Preparing… cancel becomes available once the job starts"
+            }
+            className="sg-ghost-button"
+          >
+            <X />
+            {cancelling ? "Cancelling…" : "Cancel"}
+          </button>
+        )}
+
+        <GenerateProgressButton loading={loading} progress={progress} hasResult={hasResult} />
+      </div>
     </div>
   );
 }
 
-function ActionChip({ icon: Icon, kx, v, title, dot = false }) {
+function ActionChip({ icon: ChipIcon, kx, v, title, dot = false }) {
   return (
     <span className="sg-chip" title={title || `${kx}: ${v}`}>
-      {dot ? <i className="dot" /> : Icon ? <Icon className="h-3 w-3 text-[#F97316]" /> : null}
+      {dot ? <i className="dot" /> : ChipIcon ? <ChipIcon /> : null}
       <span className="sg-chip-key">{kx}</span>
       <span className="sg-chip-val">{v}</span>
     </span>
@@ -1519,15 +1508,15 @@ function GenerateProgressButton({ loading, progress, hasResult }) {
           ? "Regenerate Guide"
           : "Generate Guide";
   const icon = failed ? (
-    <AlertCircle className="h-4 w-4" />
+    <AlertCircle />
   ) : complete ? (
-    <Check className="h-4 w-4" />
+    <Check />
   ) : running ? (
-    <Loader2 className="h-4 w-4 animate-spin" />
+    <Loader2 className="sg-spin" />
   ) : hasResult ? (
-    <RefreshCw className="h-[17px] w-[17px]" />
+    <RefreshCw />
   ) : (
-    <Sparkles className="h-[18px] w-[18px]" />
+    <Sparkles />
   );
 
   return (
@@ -1554,35 +1543,35 @@ function GenerateProgressButton({ loading, progress, hasResult }) {
 // Non-blocking notice shown after a guide exists and a setting has since changed.
 function DirtyNotice({ onRegenerateFull, onRegenerateSections, onKeep, busy }) {
   return (
-    <div className="sg-dirty-notice">
-      <AlertTriangle className="h-4 w-4 shrink-0 text-[#F8B57E]" />
-      <span className="min-w-0 flex-1 text-[12.5px] font-medium text-[#F4F4F5]">
+    <div className="sg-banner sg-banner-amber">
+      <AlertTriangle />
+      <span className="sg-banner-text">
         The preview is outdated because settings changed.
       </span>
-      <div className="flex flex-wrap items-center gap-2">
+      <div className="sg-banner-actions">
         <button
           type="button"
           disabled={busy}
           onClick={onRegenerateFull}
-          className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-[rgba(249,115,22,0.5)] bg-[rgba(249,115,22,0.16)] px-3 text-[12px] font-semibold text-[#F97316] transition hover:bg-[rgba(249,115,22,0.24)] disabled:cursor-not-allowed disabled:opacity-50"
+          className="sg-mini-btn indigo"
         >
-          <RefreshCw className="h-3.5 w-3.5" />
+          <RefreshCw />
           Regenerate full guide
         </button>
         <button
           type="button"
           onClick={onRegenerateSections}
-          className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-white/[0.12] bg-white/[0.04] px-3 text-[12px] font-semibold text-[#D4D4D8] transition hover:text-white"
+          className="sg-mini-btn"
         >
-          <ListChecks className="h-3.5 w-3.5" />
+          <ListChecks />
           Regenerate changed sections only
         </button>
         <button
           type="button"
           onClick={onKeep}
-          className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-white/[0.1] bg-white/[0.04] px-3 text-[12px] font-semibold text-[#9098A8] transition hover:text-[#F4F4F5]"
+          className="sg-mini-btn"
         >
-          <X className="h-3.5 w-3.5" />
+          <X />
           Keep current output
         </button>
       </div>
@@ -1697,10 +1686,10 @@ function BuilderComposer({
             </select>
           </label>
           {modelNotice && (
-            <p className="text-[12px] leading-5 text-[#FCD34D]">{modelNotice}</p>
+            <p className="sg-note sg-note-warn">{modelNotice}</p>
           )}
           {selectedProvider?.discovery_error && (
-            <p className="text-[12px] leading-5 text-[#FCA5A5]">
+            <p className="sg-note sg-note-err">
               Local discovery: {selectedProvider.discovery_error}
             </p>
           )}
@@ -1728,18 +1717,15 @@ function BuilderComposer({
         <div className="sg-model-chip">
           <i />
           <span>{source === "llm" ? `${selectedProvider?.display_name || provider} · ${model || "No model"}` : "Markdown pipeline"}</span>
-          <ChevronRight className="h-3.5 w-3.5 text-[#9098A8]" />
+          <ChevronRight />
         </div>
         {source === "llm" && outlineEnabled && outlineCount > 0 && (
-          <span
-            className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-[rgba(168,85,247,0.4)] bg-[rgba(168,85,247,0.12)] px-3 text-[12px] font-semibold text-[#D8B4FE]"
-            title="This guide will follow your outline"
-          >
-            <ListChecks className="h-3.5 w-3.5" />
+          <span className="pill pill-indigo" title="This guide will follow your outline">
+            <ListChecks size={14} />
             Outline · {outlineCount}
           </span>
         )}
-        <div className="flex-1" />
+        <div className="sg-grow" />
         <FolderPicker
           folders={folders}
           folderId={folderId}
@@ -1751,7 +1737,7 @@ function BuilderComposer({
           onClick={onSaveDraft}
           className="sg-ghost-button"
         >
-          <Save className="h-4 w-4" />
+          <Save />
           Save draft
         </button>
       </div>
@@ -1763,21 +1749,17 @@ function FolderPicker({ folders = [], folderId, setFolderId, onCreateFolder }) {
   const [creating, setCreating] = useState(false);
 
   return (
-    <div className="relative inline-flex items-center gap-1">
-      <label
-        className="inline-flex h-9 items-center gap-2 rounded-lg border border-white/[0.08] bg-white/[0.03] pl-3 pr-2 text-[12.5px] font-medium text-[#D4D4D8]"
-        title="Choose a Library folder for this guide"
-      >
-        <Folder className="h-3.5 w-3.5 text-[#F97316]" />
-        <span className="text-[#9098A8]">Save to</span>
+    <div className="sg-folder">
+      <label className="sg-folder-field" title="Choose a Library folder for this guide">
+        <Folder />
+        <span className="sg-folder-pre">Save to</span>
         <select
           value={folderId}
           onChange={(event) => setFolderId(event.target.value)}
-          className="h-7 max-w-[150px] truncate rounded-md border-0 bg-transparent pr-1 text-[12.5px] font-semibold text-[#F4F4F5] outline-none"
         >
-          <option value="unfiled" className="bg-[#0B1220]">Unfiled</option>
+          <option value="unfiled">Unfiled</option>
           {folders.map((folder) => (
-            <option key={folder.id} value={folder.id} className="bg-[#0B1220]">
+            <option key={folder.id} value={folder.id}>
               {folder.name}
             </option>
           ))}
@@ -1788,9 +1770,9 @@ function FolderPicker({ folders = [], folderId, setFolderId, onCreateFolder }) {
           type="button"
           onClick={() => setCreating((open) => !open)}
           title="Create folder"
-          className="grid h-9 w-9 shrink-0 place-items-center rounded-lg border border-white/[0.08] bg-white/[0.03] text-[#9098A8] transition hover:border-[rgba(249,115,22,0.45)] hover:text-[#F97316]"
+          className="sg-folder-add"
         >
-          <FolderPlus className="h-4 w-4" />
+          <FolderPlus />
         </button>
       )}
       {creating && (
@@ -1826,12 +1808,12 @@ function CreateFolderPopover({ onClose, onCreateFolder }) {
 
   return (
     <>
-      <button type="button" className="fixed inset-0 z-40 cursor-default" aria-label="Close" onClick={onClose} />
-      <div className="absolute bottom-11 right-0 z-50 w-64 rounded-xl border border-white/10 bg-[#0B1220] p-3 shadow-2xl">
-        <div className="mb-2 flex items-center justify-between">
-          <span className="text-[11px] font-bold uppercase tracking-[0.12em] text-[#9098A8]">New folder</span>
-          <button type="button" onClick={onClose} className="text-[#9098A8] hover:text-white">
-            <X className="h-3.5 w-3.5" />
+      <button type="button" className="sg-scrim-bg" style={{ position: "fixed", zIndex: 40, background: "transparent" }} aria-label="Close" onClick={onClose} />
+      <div className="sg-popover">
+        <div className="sg-popover-head">
+          <span>New folder</span>
+          <button type="button" onClick={onClose} className="sg-popover-x">
+            <X />
           </button>
         </div>
         <input
@@ -1843,9 +1825,9 @@ function CreateFolderPopover({ onClose, onCreateFolder }) {
             if (event.key === "Escape") onClose();
           }}
           placeholder="Folder name…"
-          className="h-8 w-full rounded-md border border-white/[0.1] bg-[#070B14] px-2 text-[13px] text-[#F4F4F5] outline-none focus:border-[rgba(249,115,22,0.45)]"
+          className="sg-input"
         />
-        <div className="mt-2 flex items-center gap-1.5">
+        <div className="sg-swatches">
           {FOLDER_PRESET_COLORS.map((swatch) => {
             const active = swatch.toLowerCase() === color.toLowerCase();
             return (
@@ -1854,22 +1836,21 @@ function CreateFolderPopover({ onClose, onCreateFolder }) {
                 type="button"
                 onClick={() => setColor(swatch)}
                 aria-label={`Color ${swatch}`}
-                className={`h-4 w-4 rounded-full border transition ${
-                  active ? "ring-2 ring-white/70 ring-offset-1 ring-offset-[#0B1220]" : "border-white/20"
-                }`}
+                className={`sg-swatch${active ? " active" : ""}`}
                 style={{ backgroundColor: swatch }}
               />
             );
           })}
         </div>
-        {error && <p className="mt-2 text-[11px] text-red-300">{error}</p>}
+        {error && <p className="sg-modal-err" style={{ marginTop: 8 }}>{error}</p>}
         <button
           type="button"
           onClick={submit}
           disabled={!name.trim() || busy}
-          className="mt-2.5 inline-flex h-8 w-full items-center justify-center gap-1.5 rounded-md border border-[rgba(249,115,22,0.45)] bg-[rgba(249,115,22,0.14)] text-[12.5px] font-semibold text-[#F97316] transition disabled:cursor-not-allowed disabled:opacity-50"
+          className="sg-mini-btn indigo"
+          style={{ marginTop: 10, width: "100%", justifyContent: "center", height: 34 }}
         >
-          {busy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Check className="h-3.5 w-3.5" />}
+          {busy ? <Loader2 className="sg-spin" /> : <Check />}
           Create &amp; select
         </button>
       </div>
@@ -1882,25 +1863,25 @@ function TemplatePicker({ presets = [], selectedPreset = "", onApplyPreset, busy
   return (
     <div className="sg-field-block">
       <FieldLabel>Template</FieldLabel>
-      <div className="flex items-center gap-2">
-        <span className="grid h-9 w-9 shrink-0 place-items-center rounded-lg border border-white/[0.08] bg-white/[0.03] text-[#F97316]">
-          {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <LayoutTemplate className="h-4 w-4" />}
+      <div className="sg-template-row">
+        <span className="sg-template-mark">
+          {busy ? <Loader2 className="sg-spin" /> : <LayoutTemplate />}
         </span>
         <select
           value={selectedPreset || "custom"}
           disabled={busy}
           onChange={(event) => onApplyPreset?.(event.target.value)}
-          className="h-9 min-w-0 flex-1 rounded-lg border border-white/[0.08] bg-[#070B14] px-3 text-[13px] font-medium text-[#F4F4F5] outline-none disabled:opacity-60"
+          className="sg-select"
         >
-          <option value="custom" className="bg-[#0B1220]">Custom (no template)</option>
+          <option value="custom">Custom (no template)</option>
           {presets.map((preset) => (
-            <option key={preset.id} value={preset.id} className="bg-[#0B1220]">
+            <option key={preset.id} value={preset.id}>
               {preset.name}
             </option>
           ))}
         </select>
       </div>
-      <p className="mt-1.5 text-[11.5px] leading-4 text-[#9098A8]">
+      <p className="field-hint">
         {active
           ? `${active.description} You can still edit the outline and style before generating.`
           : "Pick a template to pre-fill the outline and style. Custom leaves them as-is."}
@@ -1911,26 +1892,18 @@ function TemplatePicker({ presets = [], selectedPreset = "", onApplyPreset, busy
 
 function DraftRestoreBanner({ draft, onRestore, onDiscard }) {
   return (
-    <div className="mx-1 mb-1 flex flex-wrap items-center gap-3 rounded-xl border border-[rgba(249,115,22,0.35)] bg-[rgba(249,115,22,0.10)] px-4 py-2.5">
-      <Clock className="h-4 w-4 shrink-0 text-[#F97316]" />
-      <span className="min-w-0 flex-1 text-[12.5px] font-medium text-[#F4F4F5]">
+    <div className="sg-banner">
+      <Clock />
+      <span className="sg-banner-text">
         Restore unsaved draft from {formatDraftTime(draft.savedAt)}?
       </span>
-      <div className="flex items-center gap-2">
-        <button
-          type="button"
-          onClick={onRestore}
-          className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-[rgba(249,115,22,0.5)] bg-[rgba(249,115,22,0.16)] px-3 text-[12px] font-semibold text-[#F97316] transition hover:bg-[rgba(249,115,22,0.24)]"
-        >
-          <RotateCcw className="h-3.5 w-3.5" />
+      <div className="sg-banner-actions">
+        <button type="button" onClick={onRestore} className="sg-mini-btn indigo">
+          <RotateCcw />
           Restore
         </button>
-        <button
-          type="button"
-          onClick={onDiscard}
-          className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-white/[0.1] bg-white/[0.04] px-3 text-[12px] font-semibold text-[#9098A8] transition hover:text-[#F4F4F5]"
-        >
-          <X className="h-3.5 w-3.5" />
+        <button type="button" onClick={onDiscard} className="sg-mini-btn">
+          <X />
           Discard
         </button>
       </div>
@@ -1938,12 +1911,11 @@ function DraftRestoreBanner({ draft, onRestore, onDiscard }) {
   );
 }
 
-function BuilderTabIcon({ id, active }) {
-  const color = active ? "#F97316" : "#6B7185";
-  if (id === "outline") return <ListGlyph size={14} color={color} />;
-  if (id === "style") return <SparkleGlyph size={14} color={color} />;
-  if (id === "preview") return <PDFGlyph size={14} color={color} />;
-  return <DocGlyph size={14} color={color} />;
+function BuilderTabIcon({ id }) {
+  if (id === "outline") return Icon.library();
+  if (id === "style") return Icon.styles();
+  if (id === "preview") return Icon.eye();
+  return Icon.builder();
 }
 
 function SourceTabs({ source, setSource, setError }) {
@@ -1960,7 +1932,7 @@ function SourceTabs({ source, setSource, setError }) {
   }, [activeIndex]);
 
   return (
-    <div ref={tabsRef} className="sg-tabs mt-1.5">
+    <div ref={tabsRef} className="sg-tabs" style={{ marginTop: 10 }}>
       <span className="sg-tab-slider" style={{ transform: `translateX(${slider.x}px)`, width: slider.w }} />
       {sourceTabs.map((tab) => (
         <button
@@ -2431,7 +2403,7 @@ function SourceEditor({ source, text, setText, file, setFile, setError }) {
   if (source === "upload") {
     return (
       <label className="sg-source-drop">
-        <Tile size={46} radius={12}><UploadGlyph size={22} /></Tile>
+        <span className="sg-drop-mark">{Icon.upload()}</span>
         <span>
           {file ? file.name : "Choose a .md or .markdown file"}
         </span>
@@ -2623,15 +2595,15 @@ function AttachmentsPicker({
   }
 
   return (
-    <div className="rounded-xl border border-white/[0.06] bg-white/[0.025] p-3">
+    <div className="sg-attachments">
       <FieldLabel tip={TOOLTIPS.attachments}>Attachments</FieldLabel>
-      <label className="mt-2 flex cursor-pointer items-center gap-3 rounded-[10px] border border-dashed border-white/[0.12] bg-[#070B14] p-3 transition hover:border-[rgba(249,115,22,0.35)]">
-        <span className="grid h-9 w-9 place-items-center rounded-[9px] border border-[rgba(255,180,120,0.16)] bg-[#111A2B] text-[#F97316]">
-          <Upload className="h-4 w-4" />
+      <label className="sg-attach-drop">
+        <span className="sg-attach-mark">
+          <Upload />
         </span>
-        <span className="min-w-0 flex-1">
-          <span className="block text-[12.5px] font-semibold text-[#F4F4F5]">Attach source files</span>
-          <span className="block text-[11px] text-[#9098A8]">txt, md, csv, tsv, docx, pptx, pdf · max 5 files</span>
+        <span className="sg-attach-drop-body">
+          <span className="sg-attach-drop-title">Attach source files</span>
+          <span className="sg-attach-drop-sub">txt, md, csv, tsv, docx, pptx, pdf · max 5 files</span>
         </span>
         <input
           type="file"
@@ -2645,17 +2617,17 @@ function AttachmentsPicker({
         />
       </label>
       {attachments.length > 0 && (
-        <div className="mt-2 grid gap-1.5">
+        <div className="sg-attach-list">
           {attachments.map((file, index) => (
             <div key={`${file.name}-${file.size}-${index}`}>
-              <div className="flex items-center gap-2 rounded-[9px] border border-white/[0.06] bg-white/[0.03] px-2.5 py-2 text-[12px]">
-                <FileText className="h-3.5 w-3.5 text-[#F97316]" />
-                <span className="min-w-0 flex-1 truncate text-[#D4D4D8]">{file.name}</span>
-                <span className="text-[10.5px] text-[#9098A8]">{formatFileSize(file.size)}</span>
+              <div className="sg-attach-row">
+                <FileText className="sg-attach-file-icon" />
+                <span className="sg-attach-name">{file.name}</span>
+                <span className="sg-attach-size">{formatFileSize(file.size)}</span>
                 <button
                   type="button"
                   onClick={() => removeFile(index)}
-                  className="rounded-md border border-white/[0.08] px-2 py-1 text-[10.5px] font-semibold text-[#9098A8] transition hover:text-[#F4F4F5]"
+                  className="sg-mini-btn"
                 >
                   Remove
                 </button>
@@ -2702,8 +2674,8 @@ function PreflightCard({
 
   if (entry.status === "checking") {
     return (
-      <div className="mt-1.5 flex items-center gap-2 rounded-[9px] border border-white/[0.06] bg-white/[0.02] px-2.5 py-1.5 text-[11px] text-[#9098A8]">
-        <Loader2 className="h-3 w-3 animate-spin" />
+      <div className="sg-pf sg-pf-quiet">
+        <Loader2 className="sg-spin" style={{ width: 13, height: 13 }} />
         Inspecting PDF…
       </div>
     );
@@ -2711,9 +2683,11 @@ function PreflightCard({
 
   if (entry.status === "error") {
     return (
-      <div className="mt-1.5 flex items-start gap-2 rounded-[9px] border border-[rgba(252,211,77,0.25)] bg-[rgba(252,211,77,0.06)] px-2.5 py-1.5 text-[11px] text-[#FCD34D]">
-        <AlertTriangle className="mt-0.5 h-3 w-3 shrink-0" />
-        <span>Could not inspect this PDF; it will be processed normally.</span>
+      <div className="sg-pf sg-pf-warn">
+        <div className="sg-pf-row">
+          <AlertTriangle />
+          <span>Could not inspect this PDF; it will be processed normally.</span>
+        </div>
       </div>
     );
   }
@@ -2759,38 +2733,36 @@ function PreflightCard({
   // Calm confirmation shown whenever a selection is active. "blocked" PDFs never
   // carry a selection, so this only appears for ok/warn files.
   const selectionBar = selectionActive ? (
-    <div className="mt-1.5 flex flex-wrap items-center gap-2 rounded-[9px] border border-[rgba(52,211,153,0.28)] bg-[rgba(52,211,153,0.07)] px-2.5 py-1.5 text-[11px]">
-      <Check className="h-3 w-3 shrink-0 text-[#34D399]" />
-      <span className="font-semibold text-[#D1FAE5]">Using pages {formatPageRanges(selection)}</span>
-      {pageCount && <span className="text-[10px] text-[#6EE7B7]/80">of {pageCount}</span>}
-      <div className="ml-auto flex items-center gap-1.5">
-        {showRange && (
+    <div className="sg-pf sg-pf-ok">
+      <div className="sg-pf-bar">
+        <Check style={{ width: 13, height: 13 }} />
+        <span style={{ fontWeight: 600, color: "var(--text)" }}>Using pages {formatPageRanges(selection)}</span>
+        {pageCount && <span style={{ opacity: 0.8 }}>of {pageCount}</span>}
+        <div className="sg-pf-spacer">
+          {showRange && (
+            <button type="button" onClick={openRangeEditor} className="sg-mini-btn">
+              Edit range
+            </button>
+          )}
           <button
             type="button"
-            onClick={openRangeEditor}
-            className="rounded-md border border-white/[0.12] px-2 py-1 text-[10.5px] font-semibold text-[#D4D4D8] transition hover:text-[#F4F4F5]"
+            onClick={() => {
+              onClearSelection?.();
+              cancelRange();
+            }}
+            className="sg-mini-btn"
           >
-            Edit range
+            Use all pages
           </button>
-        )}
-        <button
-          type="button"
-          onClick={() => {
-            onClearSelection?.();
-            cancelRange();
-          }}
-          className="rounded-md border border-white/[0.12] px-2 py-1 text-[10.5px] font-semibold text-[#D4D4D8] transition hover:text-[#F4F4F5]"
-        >
-          Use all pages
-        </button>
+        </div>
       </div>
     </div>
   ) : null;
 
   // Inline range editor, opened from the warning card or the selection bar.
   const rangeEditor = rangeOpen ? (
-    <div className="mt-1.5 rounded-[9px] border border-white/[0.1] bg-[#070B14] px-2.5 py-2 text-[11px]">
-      <label className="block text-[10.5px] font-semibold text-[#D4D4D8]">
+    <div className="sg-range-editor">
+      <label>
         Pages to include{pageCount ? ` (1-${pageCount})` : ""}
       </label>
       <input
@@ -2807,25 +2779,16 @@ function PreflightCard({
           }
         }}
         placeholder="e.g. 1-20 or 1-20, 35-42"
-        className="mt-1 w-full rounded-md border border-white/[0.12] bg-[#0B1220] px-2 py-1 text-[11.5px] text-[#F4F4F5] outline-none focus:border-[rgba(249,115,22,0.45)]"
       />
-      {rangeError && <p className="mt-1 text-[10.5px] text-[#FCA5A5]">{rangeError}</p>}
-      <p className="mt-1 text-[10px] text-[#6B7280]">
+      {rangeError && <p className="sg-range-err">{rangeError}</p>}
+      <p className="sg-range-help">
         1-based and inclusive; separate multiple ranges with commas.
       </p>
-      <div className="mt-1.5 flex items-center gap-1.5">
-        <button
-          type="button"
-          onClick={applyRange}
-          className="rounded-md border border-[rgba(249,115,22,0.4)] bg-[rgba(249,115,22,0.12)] px-2 py-1 text-[10.5px] font-semibold text-[#FDBA74] transition hover:bg-[rgba(249,115,22,0.2)]"
-        >
+      <div className="sg-pf-actions">
+        <button type="button" onClick={applyRange} className="sg-mini-btn indigo">
           Apply
         </button>
-        <button
-          type="button"
-          onClick={cancelRange}
-          className="rounded-md border border-white/[0.1] px-2 py-1 text-[10.5px] font-semibold text-[#9098A8] transition hover:text-[#F4F4F5]"
-        >
+        <button type="button" onClick={cancelRange} className="sg-mini-btn">
           Cancel
         </button>
       </div>
@@ -2859,75 +2822,55 @@ function PreflightCard({
       ? `Recommended: process the first ${firstN} pages, or choose a page range to limit OCR/extraction.`
       : "";
 
-  const tone = blocked
-    ? "border-[rgba(248,113,113,0.3)] bg-[rgba(248,113,113,0.07)]"
-    : "border-[rgba(252,211,77,0.28)] bg-[rgba(252,211,77,0.06)]";
-  const Icon = blocked ? AlertCircle : AlertTriangle;
-  const iconColor = blocked ? "text-[#FCA5A5]" : "text-[#FCD34D]";
+  const ToneIcon = blocked ? AlertCircle : AlertTriangle;
 
   return (
     <>
       {selectionBar}
       {rangeEditor}
       {showCollapsedAck && (
-        <div className="mt-1.5 flex items-center gap-2 rounded-[9px] border border-white/[0.06] bg-white/[0.02] px-2.5 py-1.5 text-[11px] text-[#9098A8]">
-          <Check className="h-3 w-3 text-[#34D399]" />
+        <div className="sg-pf sg-pf-quiet">
+          <Check style={{ width: 13, height: 13, color: "var(--green)" }} />
           Continuing with this PDF despite the warning.
         </div>
       )}
       {showFullWarning && (
-        <div className={`mt-1.5 rounded-[9px] border px-2.5 py-2 text-[11.5px] ${tone}`}>
-          <div className="flex items-start gap-2">
-            <Icon className={`mt-0.5 h-3.5 w-3.5 shrink-0 ${iconColor}`} />
-            <div className="min-w-0 flex-1">
-              <p className="font-semibold text-[#F4F4F5]">
+        <div className={`sg-pf ${blocked ? "sg-pf-block" : "sg-pf-warn"}`}>
+          <div className="sg-pf-row">
+            <ToneIcon />
+            <div style={{ minWidth: 0, flex: 1 }}>
+              <p className="sg-pf-title">
                 {blocked ? "This PDF can't be processed" : "Heads up before you generate"}
               </p>
               {facts.length > 0 && (
-                <p className="mt-0.5 text-[10.5px] text-[#9098A8]">{facts.join(" · ")}</p>
+                <p className="sg-pf-facts">{facts.join(" · ")}</p>
               )}
               {warnings.length > 0 && (
-                <ul className="mt-1 space-y-0.5 text-[#D4D4D8]">
+                <ul className="sg-pf-list">
                   {warnings.map((message, idx) => (
-                    <li key={idx} className="leading-[1.35]">• {message}</li>
+                    <li key={idx}>• {message}</li>
                   ))}
                 </ul>
               )}
-              {recommended && <p className="mt-1 text-[10.5px] text-[#9098A8]">{recommended}</p>}
+              {recommended && <p className="sg-pf-rec">{recommended}</p>}
 
-              <div className="mt-2 flex flex-wrap items-center gap-1.5">
+              <div className="sg-pf-actions">
                 {!blocked && (
-                  <button
-                    type="button"
-                    onClick={onAcknowledge}
-                    className="rounded-md border border-white/[0.1] bg-white/[0.04] px-2 py-1 text-[10.5px] font-semibold text-[#F4F4F5] transition hover:border-[rgba(249,115,22,0.35)]"
-                  >
+                  <button type="button" onClick={onAcknowledge} className="sg-mini-btn">
                     Continue anyway
                   </button>
                 )}
                 {showFirstN && (
-                  <button
-                    type="button"
-                    onClick={() => onSelectFirstN?.(firstN)}
-                    className="rounded-md border border-[rgba(249,115,22,0.35)] bg-white/[0.04] px-2 py-1 text-[10.5px] font-semibold text-[#FDBA74] transition hover:bg-[rgba(249,115,22,0.12)]"
-                  >
+                  <button type="button" onClick={() => onSelectFirstN?.(firstN)} className="sg-mini-btn indigo">
                     Process first {firstN} pages
                   </button>
                 )}
                 {showRange && (
-                  <button
-                    type="button"
-                    onClick={openRangeEditor}
-                    className="rounded-md border border-[rgba(249,115,22,0.35)] bg-white/[0.04] px-2 py-1 text-[10.5px] font-semibold text-[#FDBA74] transition hover:bg-[rgba(249,115,22,0.12)]"
-                  >
+                  <button type="button" onClick={openRangeEditor} className="sg-mini-btn indigo">
                     Choose page range
                   </button>
                 )}
-                <button
-                  type="button"
-                  onClick={onRemove}
-                  className="rounded-md border border-white/[0.1] px-2 py-1 text-[10.5px] font-semibold text-[#9098A8] transition hover:text-[#F4F4F5]"
-                >
+                <button type="button" onClick={onRemove} className="sg-mini-btn">
                   Remove file
                 </button>
               </div>
@@ -2962,26 +2905,20 @@ function MiniStyle({ style, active, onClick }) {
 }
 
 function OptionCard({ option, active, disabled = false, onClick }) {
-  const Icon = option.icon;
+  const OptionIcon = option.icon;
   return (
     <button
       type="button"
       disabled={disabled}
       onClick={onClick}
-      className={`sg-option-card ${active ? "active" : ""} ${disabled ? "opacity-55" : ""}`}
+      className={`sg-option-card ${active ? "active" : ""}`}
     >
-      <span
-        className={`grid h-8 w-8 shrink-0 place-items-center rounded-[8px] border ${
-          active
-            ? "border-[rgba(255,180,120,0.4)] bg-gradient-to-br from-[#FB923C] via-[#F97316] to-[#C2410C] text-[#1B0F03]"
-            : "border-[rgba(255,180,120,0.16)] bg-[#111A2B] text-[#F97316]"
-        }`}
-      >
-        <Icon className="h-4 w-4" />
+      <span className="sg-option-mark">
+        <OptionIcon />
       </span>
-      <span className="min-w-0">
-        <span className="block text-[12.5px] font-semibold text-[#F4F4F5]">{option.label}</span>
-        <span className="block truncate text-[10.5px] text-[#9098A8]">{option.meta}</span>
+      <span className="sg-option-body">
+        <span className="sg-option-title">{option.label}</span>
+        <span className="sg-option-meta">{option.meta}</span>
       </span>
     </button>
   );
@@ -3021,18 +2958,14 @@ function MetaRow({ label, value }) {
 
 function PreviewFormatTabs({ result, previewFormat, setPreviewFormat }) {
   return (
-    <div className="flex gap-1">
+    <div className="sg-format-tabs">
       {["pdf", "html"].map((format) => (
         <button
           key={format}
           type="button"
           disabled={!result}
           onClick={() => setPreviewFormat(format)}
-          className={`h-7 rounded-md border px-2.5 text-[11.5px] font-semibold transition disabled:cursor-not-allowed disabled:opacity-45 ${
-            previewFormat === format
-              ? "border-[rgba(249,115,22,0.45)] bg-[rgba(249,115,22,0.14)] text-[#F97316]"
-              : "border-white/[0.08] bg-white/[0.03] text-[#9098A8] hover:text-[#D4D4D8]"
-          }`}
+          className={`sg-format-tab${previewFormat === format ? " active" : ""}`}
         >
           {format.toUpperCase()}
         </button>
@@ -3043,27 +2976,23 @@ function PreviewFormatTabs({ result, previewFormat, setPreviewFormat }) {
 
 function ArtifactDownloadGrid({ artifacts, compact = false }) {
   return (
-    <div className={`grid gap-1.5 ${compact ? "" : "sm:grid-cols-2"}`}>
+    <div className={`sg-dl-grid ${compact ? "" : "cols"}`}>
       {artifacts.length === 0 && (
-        <div className="rounded-md border border-white/[0.08] bg-white/[0.03] px-3 py-2 text-[12px] text-[#9098A8]">
+        <div className="sg-dl-empty">
           No artifacts available yet.
         </div>
       )}
       {artifacts.map(([name, url]) => {
         const artifact = artifactLabels[name];
-        const Icon = artifact.icon;
+        const ArtifactIcon = artifact.icon;
         const label = name === "final.html" ? "View HTML" : name === "final.pdf" ? "Download PDF" : artifact.label;
         return (
-          <a
-            key={name}
-            href={apiUrl(url)}
-            className="flex items-center justify-between rounded-md border border-white/[0.08] bg-white/[0.035] px-3 py-2 text-[12px] font-semibold text-[#D4D4D8] transition hover:border-[rgba(249,115,22,0.45)] hover:text-white"
-          >
-            <span className="inline-flex items-center gap-2">
-              <Icon className="h-3.5 w-3.5 text-[#F97316]" />
+          <a key={name} href={apiUrl(url)} className="sg-dl-link">
+            <span className="sg-dl-label">
+              <ArtifactIcon className="sg-dl-lead" />
               {label}
             </span>
-            <Download className="h-3.5 w-3.5 text-[#6B7185]" />
+            <Download className="sg-dl-trail" />
           </a>
         );
       })}
@@ -3079,45 +3008,42 @@ function AttachedSourcesSummary({ result, compact = false }) {
 
   const warnings = result?.extraction_warnings ?? attachments.flatMap((item) => item.warnings ?? []);
   return (
-    <div className={`rounded-xl border border-white/[0.06] bg-white/[0.025] ${compact ? "mt-3 p-3" : "p-4"}`}>
-      <div className="flex items-center justify-between gap-3">
+    <div className={`sg-sources${compact ? " compact" : ""}`}>
+      <div className="sg-sources-head">
         <FieldLabel>Attached sources</FieldLabel>
-        <div className="flex flex-wrap justify-end gap-1.5">
-          <span className="inline-flex h-6 items-center gap-1.5 rounded-full border border-emerald-400/25 bg-emerald-400/10 px-2 text-[10.5px] font-bold text-emerald-200">
-            <FileText className="h-3 w-3" />
+        <div className="sg-sources-pills">
+          <span className="pill pill-green">
+            <span className="dot" />
             {attachments.length} {attachments.length === 1 ? "source" : "sources"}
           </span>
           {warnings.length > 0 && (
-            <span className="inline-flex h-6 items-center gap-1.5 rounded-full border border-amber-300/30 bg-amber-300/10 px-2 text-[10.5px] font-bold text-amber-100">
-              <AlertCircle className="h-3 w-3" />
+            <span className="pill pill-amber">
+              <span className="dot" />
               {warnings.length} warning{warnings.length === 1 ? "" : "s"}
             </span>
           )}
         </div>
       </div>
-      <div className={`mt-2 grid gap-2 ${compact ? "max-h-36 overflow-auto pr-1" : ""}`}>
+      <div className={`sg-sources-list${compact ? " scroll-y" : ""}`}>
         {attachments.map((attachment, index) => {
           const itemWarnings = attachment.warnings ?? [];
           const extracted = Number(attachment.extracted_chars || 0);
           return (
-            <div key={`${attachment.filename}-${index}`} className="rounded-[10px] border border-white/[0.06] bg-[#070B14] p-2.5">
-              <div className="flex items-center justify-between gap-2">
-                <span className="min-w-0 truncate text-[12px] font-semibold text-[#F4F4F5]">{attachment.filename}</span>
-                <span className={`rounded-full border px-2 py-0.5 text-[10px] font-bold ${
-                  attachment.status === "extracted"
-                    ? "border-emerald-400/25 bg-emerald-400/10 text-emerald-200"
-                    : "border-amber-300/30 bg-amber-300/10 text-amber-100"
-                }`}>
+            <div key={`${attachment.filename}-${index}`} className="sg-source-item">
+              <div className="sg-source-item-top">
+                <span className="sg-source-item-name">{attachment.filename}</span>
+                <span className={`pill ${attachment.status === "extracted" ? "pill-green" : "pill-amber"}`}>
+                  <span className="dot" />
                   {attachment.status || "unknown"}
                 </span>
               </div>
-              <div className="mt-1.5 flex flex-wrap gap-1.5 text-[10.5px] font-semibold text-[#9098A8]">
+              <div className="sg-source-item-meta">
                 <span>{attachment.mode || attachment.extension || "unsupported"}</span>
                 <span>{extracted.toLocaleString()} chars</span>
                 {attachment.truncated && <span>truncated</span>}
               </div>
               {itemWarnings.length > 0 && (
-                <div className="mt-2 grid gap-1 text-[11px] leading-4 text-amber-100">
+                <div className="sg-source-warn">
                   {itemWarnings.map((warning, warningIndex) => (
                     <p key={warningIndex}>{warning}</p>
                   ))}
@@ -3163,19 +3089,15 @@ function LivePreviewPanel({
 
       <div className="sg-paper-preview">
         {!result ? (
-          <div className="relative h-full overflow-hidden p-[10px] font-serif">
-            <div className="font-mono text-[9px] tracking-[0.15em] text-[#A78050]">
+          <div className="sg-paper-pad">
+            <div className="sg-paper-eyebrow">
               {styleLabel} · {lengthLabel}
             </div>
-            <div className="mt-1.5 text-[22px] font-bold leading-[1.1] tracking-[-0.02em]">
-              {title}
-            </div>
-            <div className="mt-1 font-sans text-[10.5px] text-[#6B5A3F]">
-              Sample preview · not sent to backend
-            </div>
-            <div className="mt-3.5 h-px bg-gradient-to-r from-[#C2410C] to-transparent" />
+            <div className="sg-paper-title">{title}</div>
+            <div className="sg-paper-note">Sample preview · not sent to backend</div>
+            <div className="sg-paper-rule" />
             <SamplePreview />
-            <div className="absolute bottom-0 left-[10px] right-[10px] flex justify-between font-mono text-[9px] text-[#A78050]">
+            <div className="sg-paper-foot">
               <span>STUDY GUIDE</span>
               <span>03 / 20</span>
             </div>
@@ -3190,9 +3112,9 @@ function LivePreviewPanel({
 
       {result && (
         <div className="sg-download-panel">
-          <div className="mb-2 flex items-center justify-between">
-            <span className="text-[12.5px] font-semibold text-[#D4D4D8]">Downloads</span>
-            <span className="font-mono text-[10px] text-[#6B7185]">{artifacts.length} files</span>
+          <div className="sg-download-head">
+            <span className="t">Downloads</span>
+            <span className="n">{artifacts.length} files</span>
           </div>
           <ArtifactDownloadGrid artifacts={artifacts} compact />
         </div>
@@ -3203,20 +3125,14 @@ function LivePreviewPanel({
       <div className="sg-preview-actions">
         <a
           href={primaryPdf ? apiUrl(primaryPdf) : undefined}
-          className={`flex h-9 flex-1 items-center justify-center rounded-lg border border-white/[0.08] bg-white/[0.03] text-[12.5px] font-medium text-[#D4D4D8] ${
-            primaryPdf ? "" : "pointer-events-none opacity-55"
-          }`}
+          className={`sg-pa${primaryPdf ? "" : " disabled"}`}
         >
-          <Download className="h-4 w-4" />
-          <span className="ml-2">Export PDF</span>
+          <Download />
+          Export PDF
         </a>
-        <button
-          type="button"
-          onClick={onOpenDetails}
-          className="flex h-9 flex-1 items-center justify-center rounded-lg border border-white/[0.08] bg-white/[0.03] text-[12.5px] font-medium text-[#D4D4D8]"
-        >
-          <Share2 className="h-3.5 w-3.5" />
-          <span className="ml-2">Details</span>
+        <button type="button" onClick={onOpenDetails} className="sg-pa">
+          <Share2 />
+          Details
         </button>
       </div>
     </aside>
@@ -3232,7 +3148,7 @@ function ArtifactPreview({ format, artifactUrls }) {
       <iframe
         title="Generated PDF preview"
         src={previewApiUrl(artifactUrls["final.pdf"])}
-        className="h-full w-full rounded-md border-0 bg-white"
+        className="sg-paper-frame"
       />
     );
   }
@@ -3246,7 +3162,7 @@ function ArtifactPreview({ format, artifactUrls }) {
         title="Generated HTML preview"
         src={previewApiUrl(artifactUrls["final.html"])}
         sandbox="allow-same-origin"
-        className="h-full w-full rounded-md border-0 bg-white"
+        className="sg-paper-frame"
       />
     );
   }
@@ -3256,11 +3172,11 @@ function ArtifactPreview({ format, artifactUrls }) {
 
 function PreviewUnavailable() {
   return (
-    <div className="grid h-full place-items-center rounded-md bg-white p-6 text-center">
+    <div className="sg-paper-empty">
       <div>
-        <FileText className="mx-auto h-8 w-8 text-[#C2410C]" />
-        <p className="mt-3 text-sm font-bold text-slate-900">Preview not available yet.</p>
-        <p className="mt-1 text-xs text-slate-500">Choose PDF or HTML after the artifact is generated.</p>
+        <FileText />
+        <p className="t">Preview not available yet.</p>
+        <p className="s">Choose PDF or HTML after the artifact is generated.</p>
       </div>
     </div>
   );
@@ -3269,25 +3185,23 @@ function PreviewUnavailable() {
 function SamplePreview() {
   return (
     <>
-      <div className="mt-3.5 text-[13px] font-bold">1 · Definitions</div>
-      <div className="mt-1.5 font-sans text-[10.5px] leading-[1.55] text-[#3A3528]">
+      <div className="sg-paper-h">1 · Definitions</div>
+      <div className="sg-paper-p">
         A limit describes the value a function approaches as its input approaches some value c.
       </div>
-      <div className="mt-2.5 border-l-2 border-[#F97316] bg-[rgba(249,115,22,0.07)] px-3 py-2.5 font-mono text-[10.5px] text-[#7A4A1C]">
-        lim x→c f(x) = L
-      </div>
-      <div className="mt-3.5 text-[13px] font-bold">2 · Continuity</div>
-      <div className="mt-1.5 font-sans text-[10.5px] leading-[1.55] text-[#3A3528]">
+      <div className="sg-paper-eq">lim x→c f(x) = L</div>
+      <div className="sg-paper-h">2 · Continuity</div>
+      <div className="sg-paper-p">
         f is continuous at c if lim x→c f(x) = f(c). Three conditions must hold:
       </div>
-      <ul className="mt-1.5 list-disc pl-[18px] font-sans text-[10.5px] text-[#3A3528]">
+      <ul className="sg-paper-ul">
         <li>f(c) is defined</li>
         <li>The limit exists</li>
         <li>They are equal</li>
       </ul>
-      <div className="mt-3.5 rounded-md border border-dashed border-[rgba(194,65,12,0.4)] bg-[rgba(249,115,22,0.10)] p-2.5">
-        <div className="font-mono text-[9px] tracking-[0.1em] text-[#A78050]">MEMORY CUE</div>
-        <div className="mt-0.5 font-sans text-[11px] text-[#3A3528]">
+      <div className="sg-paper-cue">
+        <div className="cue-label">MEMORY CUE</div>
+        <div className="cue-body">
           <strong>D-L-E</strong>: Defined · Limit exists · Equal
         </div>
       </div>
@@ -3297,7 +3211,7 @@ function SamplePreview() {
 
 function FieldLabel({ children, tip, tipLabel }) {
   return (
-    <div className="mb-1.5 flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-[0.06em] text-[#9098A8]">
+    <div className="sg-field-label">
       <span>{children}</span>
       {tip && <InfoTip text={tip} label={tipLabel || (typeof children === "string" ? children : "")} />}
     </div>
@@ -3306,14 +3220,13 @@ function FieldLabel({ children, tip, tipLabel }) {
 
 function Toggle({ label, checked, onChange, tip }) {
   return (
-    <label className="flex items-center gap-2 rounded-[10px] border border-white/[0.06] bg-white/[0.03] px-3 py-2 text-[12.5px] font-medium text-[#D4D4D8]">
+    <label className="sg-toggle">
       <input
         type="checkbox"
         checked={checked}
         onChange={(event) => onChange(event.target.checked)}
-        className="h-4 w-4 accent-[#F97316]"
       />
-      <span className="inline-flex items-center gap-1.5">
+      <span>
         {label}
         {tip && <InfoTip text={tip} label={typeof label === "string" ? label : ""} />}
       </span>
@@ -3326,7 +3239,7 @@ function Toggle({ label, checked, onChange, tip }) {
 // trigger swallows clicks so it never toggles a surrounding <label> control.
 function InfoTip({ text, label }) {
   return (
-    <span className="sg-infotip group">
+    <span className="sg-infotip">
       <button
         type="button"
         aria-label={label ? `Help: ${label}` : "More information"}
@@ -3334,9 +3247,8 @@ function InfoTip({ text, label }) {
           event.preventDefault();
           event.stopPropagation();
         }}
-        className="grid h-4 w-4 place-items-center rounded-full border border-white/15 text-[#9098A8] outline-none transition hover:border-[rgba(249,115,22,0.5)] hover:text-[#F4F4F5] focus-visible:border-[rgba(249,115,22,0.6)] focus-visible:text-[#F4F4F5] focus-visible:ring-1 focus-visible:ring-[rgba(249,115,22,0.5)]"
       >
-        <Info className="h-2.5 w-2.5" />
+        <Info />
       </button>
       <span role="tooltip" className="sg-infotip-bubble">
         {text}
@@ -3347,30 +3259,20 @@ function InfoTip({ text, label }) {
 
 function ErrorMessage({ error }) {
   return (
-    <div className="rounded-xl border border-red-400/30 bg-red-400/10 p-3 text-[12.5px] text-red-100">
-      <div className="flex items-start gap-2.5">
-        <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
-        <div>
-          <p className="font-semibold">{error.message || "Could not generate guide."}</p>
-          {error.details && (
-            <details className="mt-2 text-red-100/80">
-              <summary className="cursor-pointer font-semibold">Details</summary>
-              <pre className="mt-2 max-h-36 overflow-auto whitespace-pre-wrap rounded-lg bg-black/20 p-2 text-[11px]">
-                {error.details}
-              </pre>
-            </details>
-          )}
-        </div>
+    <div className="sg-error">
+      <AlertCircle />
+      <div>
+        <p style={{ fontWeight: 600 }}>{error.message || "Could not generate guide."}</p>
+        {error.details && (
+          <details style={{ marginTop: 8 }}>
+            <summary>Details</summary>
+            <pre>{error.details}</pre>
+          </details>
+        )}
       </div>
     </div>
   );
 }
-
-const fieldClass =
-  "h-11 w-full rounded-[10px] border border-white/[0.08] bg-white/[0.03] px-3.5 text-base font-medium tracking-[-0.01em] text-[#F4F4F5] outline-none transition focus:border-[rgba(249,115,22,0.45)]";
-
-const selectClass =
-  "h-9 w-full rounded-[10px] border border-white/[0.08] bg-[#070B14] px-3 text-[13.5px] font-medium text-[#F4F4F5] outline-none";
 
 function normalizeProviderDetails(options) {
   const details = options?.provider_details ?? options?.providers_v2;
