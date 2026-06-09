@@ -1,15 +1,23 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import {
   AlertCircle,
+  BookOpen,
   Check,
   Copy,
+  FileText,
+  Footprints,
+  Hammer,
+  ListChecks,
   Loader2,
+  Palette,
   Pencil,
   Plus,
   Sparkles,
   Trash2,
+  Trophy,
   Wand2,
-  X
+  X,
+  Zap
 } from "lucide-react";
 import {
   createStyle,
@@ -20,31 +28,23 @@ import {
   getStyles,
   updateStyle
 } from "../api/client";
-import {
-  BoltGlyph,
-  BookGlyph,
-  DocGlyph,
-  LeafGlyph,
-  ListGlyph,
-  SparkleGlyph,
-  Tile,
-  TrophyGlyph
-} from "./ClaudeIcons";
 
 const REQUIRED_PLACEHOLDERS = ["{title}", "{mode}", "{source}"];
 
-const BUILTIN_GLYPHS = {
-  basic_study_guide: DocGlyph,
-  baby_steps: LeafGlyph,
-  exam_cram: BoltGlyph,
-  mcq_training: ListGlyph,
-  final_solution: TrophyGlyph,
-  claude_study_guide: SparkleGlyph,
-  master_longform: BookGlyph
+// Decorative-only icon per built-in style id (rebound to the GuideForge lucide
+// set). Falls back to a neutral glyph for unknown/custom styles.
+const BUILTIN_ICONS = {
+  basic_study_guide: FileText,
+  baby_steps: Footprints,
+  exam_cram: Zap,
+  mcq_training: ListChecks,
+  final_solution: Trophy,
+  claude_study_guide: Sparkles,
+  master_longform: BookOpen
 };
 
-function glyphForStyle(style) {
-  return BUILTIN_GLYPHS[style.id] || SparkleGlyph;
+function iconForStyle(style, custom) {
+  return BUILTIN_ICONS[style.id] || (custom ? Palette : Sparkles);
 }
 
 function missingPlaceholders(content) {
@@ -203,73 +203,73 @@ export default function StylesWorkspace({ selectedStyle, onSelectStyle, onOpenBu
   );
 
   return (
-    <div className="sg-page">
+    <div className="sg-sty">
       <div className="sg-page-head">
         <div>
           <h1>Styles</h1>
           <p>Compare built-in prompt presets side by side, plus your own custom and AI-generated styles.</p>
         </div>
         <button type="button" className="sg-cta sg-press-btn" onClick={openCreate}>
-          <Plus size={16} stroke="#1A1206" strokeWidth={2.6} />
+          <Plus size={16} strokeWidth={2.4} />
           New custom style
         </button>
       </div>
 
       {loadError && (
-        <div className="sg-style-alert">
-          <AlertCircle size={15} />
+        <div className="sg-sty-alert">
+          <AlertCircle size={16} />
           <span>{loadError}</span>
         </div>
       )}
 
-      <SectionHeading title="Built-in" right="Read-only · real prompt_name values" />
-      <div className="sg-style-grid">
-        {data.builtin.map((style, index) => (
-          <StyleCard
-            key={style.id}
-            style={style}
-            active={selectedStyle === style.id}
-            delay={index * 30}
-            onUse={() => useStyle(style.id)}
-            onBuild={() => buildWithStyle(style.id)}
-            onClone={() => openClone(style)}
-          />
-        ))}
-      </div>
-
-      <SectionHeading
-        title="My Styles"
-        right={loading ? "Loading…" : `${data.custom.length} custom style${data.custom.length === 1 ? "" : "s"}`}
-      />
-      {data.custom.length === 0 ? (
-        <div className="sg-custom-style-row">
-          <button type="button" className="sg-add-custom sg-add-custom-btn" onClick={openCreate}>
-            <Tile size={36} radius={10} variant="soft">
-              <Plus size={18} stroke="#F97316" />
-            </Tile>
-            <div>
-              <strong>Create your first custom style</strong>
-              <p>Write a prompt by hand, clone a built-in, or generate a draft with AI.</p>
-            </div>
-          </button>
-        </div>
-      ) : (
-        <div className="sg-style-grid">
-          {data.custom.map((style, index) => (
+      <section className="sg-sty-section">
+        <SectionHeading title="Built-in" right="Read-only · real prompt_name values" />
+        <div className="sg-sty-grid">
+          {data.builtin.map((style) => (
             <StyleCard
               key={style.id}
               style={style}
               active={selectedStyle === style.id}
-              delay={index * 30}
-              custom
               onUse={() => useStyle(style.id)}
               onBuild={() => buildWithStyle(style.id)}
-              onEdit={() => openEdit(style)}
-              onDelete={() => setDeleteTarget(style)}
+              onClone={() => openClone(style)}
             />
           ))}
         </div>
-      )}
+      </section>
+
+      <section className="sg-sty-section">
+        <SectionHeading
+          title="My Styles"
+          right={loading ? "Loading…" : `${data.custom.length} custom style${data.custom.length === 1 ? "" : "s"}`}
+        />
+        {data.custom.length === 0 ? (
+          <button type="button" className="sg-sty-empty" onClick={openCreate}>
+            <span className="sg-sty-empty-icon">
+              <Plus size={20} />
+            </span>
+            <span className="sg-sty-empty-text">
+              <strong>Create your first custom style</strong>
+              <span>Write a prompt by hand, clone a built-in, or generate a draft with AI.</span>
+            </span>
+          </button>
+        ) : (
+          <div className="sg-sty-grid">
+            {data.custom.map((style) => (
+              <StyleCard
+                key={style.id}
+                style={style}
+                active={selectedStyle === style.id}
+                custom
+                onUse={() => useStyle(style.id)}
+                onBuild={() => buildWithStyle(style.id)}
+                onEdit={() => openEdit(style)}
+                onDelete={() => setDeleteTarget(style)}
+              />
+            ))}
+          </div>
+        )}
+      </section>
 
       {editor.open && (
         <StyleEditorDrawer
@@ -291,51 +291,60 @@ export default function StylesWorkspace({ selectedStyle, onSelectStyle, onOpenBu
   );
 }
 
-function StyleCard({ style, active, delay, custom, onUse, onBuild, onEdit, onDelete, onClone }) {
-  const Glyph = glyphForStyle(style);
+function StyleCard({ style, active, custom, onUse, onBuild, onEdit, onDelete, onClone }) {
+  const Icon = iconForStyle(style, custom);
   return (
-    <div className={`sg-style-big sg-recent-row ${active ? "active" : ""}`} style={{ animationDelay: `${delay}ms` }}>
-      <div className="sg-style-big-top">
-        <Tile size={40} radius={11} variant={active ? "orange" : "dark"}>
-          <Glyph size={20} color={active ? "#1B0F03" : "#F97316"} />
-        </Tile>
-        <div>
-          <strong>{style.name}</strong>
-          <p>{style.description || (custom ? "Custom style" : "Built-in style")}</p>
+    <div className={`sg-sty-card ${active ? "active" : ""}`}>
+      <div className="sg-sty-card-top">
+        <span className={`sg-sty-icon ${active ? "active" : ""}`}>
+          <Icon size={19} />
+        </span>
+        <div className="sg-sty-card-headings">
+          <strong className="sg-sty-name">{style.name}</strong>
+          <p className="sg-sty-desc">{style.description || (custom ? "Custom style" : "Built-in style")}</p>
         </div>
-        <span>{active ? "Selected" : custom ? "Custom" : "Built-in"}</span>
+        <span className={`sg-sty-badge ${active ? "is-active" : custom ? "is-custom" : "is-builtin"}`}>
+          {active ? "Selected" : custom ? "Custom" : "Built-in"}
+        </span>
       </div>
 
       {custom && style.tags?.length > 0 && (
-        <div className="sg-style-tags">
+        <div className="sg-sty-tags">
           {style.tags.map((tag) => (
-            <span key={tag}>{tag}</span>
+            <span key={tag} className="sg-sty-tag">{tag}</span>
           ))}
         </div>
       )}
       {custom && style.base_style && (
-        <p className="sg-style-base">Based on {style.base_style}</p>
+        <p className="sg-sty-base">Based on {style.base_style}</p>
       )}
 
-      <div className="sg-style-actions">
-        <button type="button" className="sg-ghost-button" onClick={onUse}>
+      <div className="sg-sty-actions">
+        <button
+          type="button"
+          className={`sg-btn-sm${active ? " accent" : ""}`}
+          onClick={onUse}
+          disabled={active}
+        >
+          {active ? <Check size={14} /> : null}
           {active ? "Selected" : "Use"}
         </button>
         {custom ? (
           <>
-            <button type="button" className="sg-icon-button" title="Edit" onClick={onEdit}>
+            <button type="button" className="sg-btn-sm sq" title="Edit" onClick={onEdit}>
               <Pencil size={14} />
             </button>
-            <button type="button" className="sg-icon-button danger" title="Delete" onClick={onDelete}>
+            <button type="button" className="sg-btn-sm sq danger" title="Delete" onClick={onDelete}>
               <Trash2 size={14} />
             </button>
           </>
         ) : (
-          <button type="button" className="sg-icon-button" title="Clone to custom" onClick={onClone}>
+          <button type="button" className="sg-btn-sm sq" title="Clone to custom" onClick={onClone}>
             <Copy size={14} />
           </button>
         )}
-        <button type="button" className="sg-cta compact" onClick={onBuild}>
+        <button type="button" className="sg-btn-sm accent sg-sty-build" onClick={onBuild}>
+          <Hammer size={14} />
           Build
         </button>
       </div>
@@ -411,66 +420,58 @@ function StyleEditorDrawer({ editor, providers, onClose, onSave }) {
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex justify-end bg-black/55 backdrop-blur-sm">
-      <button type="button" className="absolute inset-0 cursor-default" onClick={onClose} aria-label="Close editor" />
-      <aside className="relative flex h-full w-full max-w-[720px] flex-col border-l border-white/10 bg-[#090D16]/95 shadow-[-24px_0_80px_rgba(0,0,0,0.45)]">
-        <div className="flex items-start justify-between gap-4 border-b border-white/10 p-5">
-          <div className="min-w-0">
-            <p className="text-xs font-bold uppercase tracking-[0.18em] text-ember-500">
-              {isEdit ? "Edit custom style" : "New custom style"}
-            </p>
-            <h2 className="mt-1 truncate text-2xl font-bold text-white">{name || "Untitled style"}</h2>
-            {editor.baseStyle && (
-              <p className="mt-1 text-xs text-slate-500">Based on {editor.baseStyle}</p>
-            )}
+    <div className="sg-drawer-root">
+      <button type="button" className="sg-drawer-scrim" onClick={onClose} aria-label="Close editor" />
+      <aside className="sg-drawer-sheet sg-sty-drawer">
+        <div className="sg-drawer-head">
+          <div style={{ minWidth: 0 }}>
+            <p className="sg-drawer-eyebrow">{isEdit ? "Edit custom style" : "New custom style"}</p>
+            <h2 className="sg-drawer-title">{name || "Untitled style"}</h2>
+            {editor.baseStyle && <p className="sg-drawer-id">Based on {editor.baseStyle}</p>}
           </div>
-          <button
-            type="button"
-            onClick={onClose}
-            className="grid h-9 w-9 shrink-0 place-items-center rounded-lg border border-white/10 bg-white/[0.04] text-slate-300 transition hover:text-white"
-          >
-            <X className="h-4 w-4" />
+          <button type="button" className="sg-drawer-close" onClick={onClose} aria-label="Close">
+            <X size={16} />
           </button>
         </div>
 
-        <div className="min-h-0 flex-1 overflow-y-auto p-5">
+        <div className="sg-sty-drawer-body">
           {editor.saving && !name && !content ? (
-            <div className="flex min-h-72 items-center justify-center gap-3 text-slate-300">
-              <Loader2 className="h-5 w-5 animate-spin text-ember-500" />
+            <div className="sg-sty-drawer-loading">
+              <Loader2 size={18} className="sg-spin" />
               <span>Loading style…</span>
             </div>
           ) : (
-            <div className="grid gap-4">
+            <>
               {!isEdit && (
-                <div className="rounded-2xl border border-white/10 bg-white/[0.035] p-4">
+                <div className="sg-sty-gen">
                   <button
                     type="button"
-                    className="flex w-full items-center justify-between text-left"
+                    className="sg-sty-gen-toggle"
                     onClick={() => setGenOpen((open) => !open)}
                   >
-                    <span className="flex items-center gap-2 text-sm font-semibold text-white">
-                      <Wand2 className="h-4 w-4 text-ember-500" />
+                    <span className="sg-sty-gen-toggle-label">
+                      <Wand2 size={15} />
                       Generate a draft with AI
                     </span>
-                    <span className="text-xs text-slate-400">{genOpen ? "Hide" : "Show"}</span>
+                    <span className="sg-sty-gen-toggle-state">{genOpen ? "Hide" : "Show"}</span>
                   </button>
                   {genOpen && (
-                    <div className="mt-3 grid gap-3">
+                    <div className="sg-sty-gen-body">
                       {providers.length === 0 ? (
-                        <p className="text-xs text-amber-300">
+                        <p className="sg-sty-warn">
                           No LLM provider is configured on the server. Add a provider key in .env to enable generation.
                         </p>
                       ) : (
                         <>
                           <textarea
-                            className="sg-source-textarea !min-h-[88px] rounded-xl border border-white/10 bg-[#070B14] p-3"
+                            className="sg-source-textarea sg-sty-gen-area"
                             placeholder="Describe the study-guide style you want, e.g. 'A one-page cheat sheet, formulas only, heavy on tables.'"
                             value={genDescription}
                             onChange={(event) => setGenDescription(event.target.value)}
                           />
-                          <div className="grid grid-cols-2 gap-2">
-                            <label className="grid gap-1 text-xs text-slate-400">
-                              Provider
+                          <div className="sg-sty-gen-selects">
+                            <label className="sg-sty-field">
+                              <span className="sg-sty-field-label">Provider</span>
                               <select
                                 className="sg-select"
                                 value={genProvider}
@@ -487,8 +488,8 @@ function StyleEditorDrawer({ editor, providers, onClose, onSave }) {
                                 ))}
                               </select>
                             </label>
-                            <label className="grid gap-1 text-xs text-slate-400">
-                              Model
+                            <label className="sg-sty-field">
+                              <span className="sg-sty-field-label">Model</span>
                               <select
                                 className="sg-select"
                                 value={genModel}
@@ -502,25 +503,26 @@ function StyleEditorDrawer({ editor, providers, onClose, onSave }) {
                               </select>
                             </label>
                           </div>
-                          {genError && <p className="text-xs text-red-300">{genError}</p>}
+                          {genError && <p className="sg-sty-error">{genError}</p>}
                           <button
                             type="button"
-                            className="sg-ghost-button justify-center"
+                            className="sg-btn-sm accent sg-sty-gen-btn"
                             onClick={handleGenerate}
                             disabled={genLoading}
                           >
                             {genLoading ? (
-                              <span className="flex items-center gap-2">
-                                <Loader2 className="h-4 w-4 animate-spin" /> Generating…
-                              </span>
+                              <>
+                                <Loader2 size={14} className="sg-spin" /> Generating…
+                              </>
                             ) : (
-                              <span className="flex items-center gap-2">
-                                <Sparkles className="h-4 w-4" /> Generate draft
-                              </span>
+                              <>
+                                <Sparkles size={14} /> Generate draft
+                              </>
                             )}
                           </button>
-                          <p className="text-[11px] text-slate-500">
-                            The draft fills the fields below. Review and edit before saving — nothing is saved until you click Save.
+                          <p className="sg-sty-gen-hint">
+                            The draft fills the fields below. Review and edit before saving — nothing is saved until you
+                            click Save.
                           </p>
                         </>
                       )}
@@ -529,8 +531,8 @@ function StyleEditorDrawer({ editor, providers, onClose, onSave }) {
                 </div>
               )}
 
-              <label className="grid gap-1.5">
-                <span className="text-xs font-semibold uppercase tracking-wide text-slate-400">Name</span>
+              <label className="sg-sty-field">
+                <span className="sg-sty-field-label">Name</span>
                 <input
                   className="sg-input sg-input-lg"
                   value={name}
@@ -540,8 +542,8 @@ function StyleEditorDrawer({ editor, providers, onClose, onSave }) {
                 />
               </label>
 
-              <label className="grid gap-1.5">
-                <span className="text-xs font-semibold uppercase tracking-wide text-slate-400">Description</span>
+              <label className="sg-sty-field">
+                <span className="sg-sty-field-label">Description</span>
                 <input
                   className="sg-input sg-input-lg"
                   value={description}
@@ -551,8 +553,8 @@ function StyleEditorDrawer({ editor, providers, onClose, onSave }) {
                 />
               </label>
 
-              <label className="grid gap-1.5">
-                <span className="text-xs font-semibold uppercase tracking-wide text-slate-400">Tags (comma-separated)</span>
+              <label className="sg-sty-field">
+                <span className="sg-sty-field-label">Tags (comma-separated)</span>
                 <input
                   className="sg-input sg-input-lg"
                   value={tags}
@@ -561,8 +563,8 @@ function StyleEditorDrawer({ editor, providers, onClose, onSave }) {
                 />
               </label>
 
-              <div className="grid gap-1.5">
-                <span className="text-xs font-semibold uppercase tracking-wide text-slate-400">Prompt template</span>
+              <div className="sg-sty-field">
+                <span className="sg-sty-field-label">Prompt template</span>
                 <div className="sg-source-editor">
                   <textarea
                     className="sg-source-textarea"
@@ -572,50 +574,46 @@ function StyleEditorDrawer({ editor, providers, onClose, onSave }) {
                   />
                 </div>
                 {missing.length > 0 ? (
-                  <p className="flex items-center gap-1.5 text-[11.5px] text-amber-300">
-                    <AlertCircle className="h-3.5 w-3.5" />
-                    Missing placeholder{missing.length > 1 ? "s" : ""}: {missing.join(", ")} — the guide may ignore your source without {"{source}"}.
+                  <p className="sg-sty-hint warn">
+                    <AlertCircle size={14} />
+                    Missing placeholder{missing.length > 1 ? "s" : ""}: {missing.join(", ")} — the guide may ignore your
+                    source without {"{source}"}.
                   </p>
                 ) : (
-                  <p className="flex items-center gap-1.5 text-[11.5px] text-emerald-300">
-                    <Check className="h-3.5 w-3.5" /> All required placeholders present.
+                  <p className="sg-sty-hint ok">
+                    <Check size={14} /> All required placeholders present.
                   </p>
                 )}
               </div>
 
-              {editor.error && <p className="text-sm text-red-300">{editor.error}</p>}
-            </div>
+              {editor.error && <p className="sg-sty-error">{editor.error}</p>}
+            </>
           )}
         </div>
 
-        <div className="flex items-center justify-end gap-2 border-t border-white/10 p-4">
+        <div className="sg-sty-drawer-foot">
           <button type="button" className="sg-ghost-button" onClick={onClose}>
             Cancel
           </button>
-          <button
-            type="button"
-            className="sg-cta"
-            disabled={!canSave}
-            onClick={() =>
-              onSave({
-                mode: editor.mode,
-                id: editor.id,
-                name: name.trim(),
-                description: description.trim(),
-                tags,
-                content,
-                baseStyle: editor.baseStyle
-              })
-            }
-          >
+          <button type="button" className="sg-cta sg-press-btn" disabled={!canSave} onClick={() =>
+            onSave({
+              mode: editor.mode,
+              id: editor.id,
+              name: name.trim(),
+              description: description.trim(),
+              tags,
+              content,
+              baseStyle: editor.baseStyle
+            })
+          }>
             {editor.saving ? (
-              <span className="flex items-center gap-2">
-                <Loader2 className="h-4 w-4 animate-spin" /> Saving…
-              </span>
+              <>
+                <Loader2 size={15} className="sg-spin" /> Saving…
+              </>
             ) : (
-              <span className="flex items-center gap-2">
-                <Check className="h-4 w-4" /> {isEdit ? "Save changes" : "Create style"}
-              </span>
+              <>
+                <Check size={15} /> {isEdit ? "Save changes" : "Create style"}
+              </>
             )}
           </button>
         </div>
@@ -626,32 +624,23 @@ function StyleEditorDrawer({ editor, providers, onClose, onSave }) {
 
 function ConfirmDeleteModal({ target, onCancel, onConfirm }) {
   return (
-    <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
-      <button type="button" className="absolute inset-0 cursor-default" onClick={onCancel} aria-label="Cancel" />
-      <div className="relative w-full max-w-[420px] rounded-2xl border border-white/10 bg-[#0B0F19] p-6 shadow-2xl">
-        <div className="flex items-center gap-3">
-          <span className="grid h-10 w-10 place-items-center rounded-xl bg-red-500/15 text-red-300">
-            <Trash2 className="h-5 w-5" />
-          </span>
+    <div className="sg-modal-scrim">
+      <button type="button" className="sg-scrim-bg" onClick={onCancel} aria-label="Cancel" />
+      <div className="sg-modal">
+        <div className="sg-modal-head">
+          <Trash2 size={20} style={{ color: "#FCA5A5" }} />
           <div>
-            <h3 className="text-lg font-bold text-white">Delete custom style?</h3>
-            <p className="text-sm text-slate-400">
-              “{target.name}” will be removed permanently.
-            </p>
+            <h2>Delete custom style?</h2>
+            <p>“{target.name}” will be removed permanently.</p>
           </div>
         </div>
-        {target.error && <p className="mt-3 text-sm text-red-300">{target.error}</p>}
-        <div className="mt-5 flex justify-end gap-2">
+        {target.error && <p className="sg-modal-err">{target.error}</p>}
+        <div className="sg-modal-actions">
           <button type="button" className="sg-ghost-button" onClick={onCancel}>
             Cancel
           </button>
-          <button
-            type="button"
-            className="sg-cta"
-            style={{ background: "linear-gradient(180deg,#F87171,#DC2626)" }}
-            onClick={onConfirm}
-          >
-            Delete
+          <button type="button" className="sg-sty-danger-cta sg-press-btn" onClick={onConfirm}>
+            <Trash2 size={15} /> Delete
           </button>
         </div>
       </div>
@@ -661,7 +650,7 @@ function ConfirmDeleteModal({ target, onCancel, onConfirm }) {
 
 function SectionHeading({ title, right }) {
   return (
-    <div className="sg-section-head">
+    <div className="sg-sty-section-head">
       <h2>{title}</h2>
       {right && <span>{right}</span>}
     </div>

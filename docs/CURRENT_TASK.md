@@ -5,6 +5,19 @@
 
 ---
 
+## Slice 8 — Styles workspace reskin DONE.
+
+- **Slice 8 (GuideForge UI reskin — Styles workspace) is DONE.**
+  Visual/layout-only.
+- **Files changed:** `frontend/src/components/StylesWorkspace.jsx` and
+  `frontend/src/design-system.css`.
+- **Preserved:** style CRUD, built-in/custom/generated style behavior, AI style
+  generation behavior, form validation, handlers, state, and API calls.
+- **Verification:** build green, `compileall` green, `git diff --check` clean,
+  live browser pass, `smoke_release.py` 28/28.
+
+---
+
 ## Slice 7 — Ask Guide workspace reskin DONE.
 
 - **Slice 7 (GuideForge UI reskin — Ask Guide workspace) is DONE.**

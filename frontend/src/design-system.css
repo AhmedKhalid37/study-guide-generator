@@ -2137,3 +2137,101 @@ body { overflow: hidden; }
 .sg-ask-cmd code { font-family: var(--mono); white-space: pre-wrap; word-break: break-all; }
 .sg-ask-cmd button { display: inline-flex; align-items: center; gap: 6px; padding: 5px 10px; border-radius: 8px; border: 1px solid var(--card-border); background: var(--card); color: var(--text-dim); font: inherit; font-size: 12px; font-weight: 600; cursor: pointer; }
 .sg-ask-cmd button:hover { color: var(--text); border-color: var(--card-border-2); }
+
+/* =========================================================================
+   Styles workspace — Slice 8 reskin.
+   Real semantic CSS only (Tailwind utilities are inert in this app). Built on
+   the Slice 5b density baseline; indigo is the accent hue (matching Builder /
+   Library / Ask). No Styles logic/handlers/state/endpoints changed — visual
+   only. Reuses the shared .sg-page-head / .sg-cta / .sg-btn-sm / .sg-drawer-*
+   / .sg-modal-* systems; everything below is additive and Styles-scoped.
+   ========================================================================= */
+
+/* ---- Page shell ---- */
+.sg-sty { max-width: 1320px; margin: 0 auto; display: flex; flex-direction: column; gap: 26px; }
+
+.sg-sty-alert { display: flex; align-items: center; gap: 9px; padding: 11px 14px; border-radius: var(--r-inner); border: 1px solid var(--red-soft); background: var(--red-soft); color: #FCA5A5; font-size: 13.5px; }
+.sg-sty-alert svg { width: 16px; height: 16px; flex: none; }
+
+/* ---- Sections ---- */
+.sg-sty-section { display: flex; flex-direction: column; }
+.sg-sty-section-head { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; margin-bottom: 14px; padding-bottom: 10px; border-bottom: 1px solid var(--hairline); }
+.sg-sty-section-head h2 { font-family: var(--serif); font-size: 22px; font-weight: 500; letter-spacing: -0.01em; color: var(--text); }
+.sg-sty-section-head span { font-size: 12.5px; color: var(--muted); white-space: nowrap; }
+
+/* ---- Card grid ---- */
+.sg-sty-grid { display: grid; gap: 12px; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); }
+
+.sg-sty-card { display: flex; flex-direction: column; gap: 12px; border-radius: var(--r-card); border: 1px solid var(--card-border); background: var(--card); padding: 16px; transition: border-color .15s, background .15s; }
+.sg-sty-card:hover { border-color: var(--card-border-2); }
+.sg-sty-card.active { border-color: var(--indigo); background: var(--indigo-soft); }
+
+.sg-sty-card-top { display: flex; align-items: flex-start; gap: 12px; }
+.sg-sty-icon { display: grid; place-items: center; width: 40px; height: 40px; flex: none; border-radius: var(--r-inner); border: 1px solid var(--card-border); background: var(--card-2); color: #A5A8F8; }
+.sg-sty-icon.active { border-color: transparent; background: var(--indigo); color: #fff; }
+.sg-sty-icon svg { width: 19px; height: 19px; }
+.sg-sty-card-headings { min-width: 0; flex: 1; }
+.sg-sty-name { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 15.5px; font-weight: 650; color: var(--text); }
+.sg-sty-desc { margin-top: 3px; font-size: 13px; line-height: 1.45; color: var(--muted); display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+
+.sg-sty-badge { flex: none; align-self: flex-start; height: 22px; display: inline-flex; align-items: center; padding: 0 9px; border-radius: var(--r-pill); border: 1px solid var(--card-border); font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; color: var(--muted); }
+.sg-sty-badge.is-active { border-color: var(--indigo); background: var(--indigo); color: #fff; }
+.sg-sty-badge.is-custom { color: #A5A8F8; border-color: rgba(99,102,241,0.3); background: var(--indigo-soft); }
+.sg-sty-badge.is-builtin { color: var(--text-dim); background: var(--card-2); }
+
+.sg-sty-tags { display: flex; flex-wrap: wrap; gap: 6px; }
+.sg-sty-tag { display: inline-flex; align-items: center; padding: 3px 9px; border-radius: var(--r-pill); border: 1px solid var(--card-border); background: var(--card-2); font-size: 11.5px; color: var(--text-dim); }
+.sg-sty-base { font-size: 12px; color: var(--muted); }
+.sg-sty-base::first-letter { text-transform: none; }
+
+.sg-sty-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 7px; margin-top: auto; }
+.sg-sty-build { margin-left: auto; }
+
+/* ---- Empty state (no custom styles) ---- */
+.sg-sty-empty { display: flex; align-items: center; gap: 14px; width: 100%; text-align: left; border-radius: var(--r-card); border: 1px dashed var(--card-border-2); background: var(--card); padding: 18px; cursor: pointer; transition: border-color .15s, background .15s; }
+.sg-sty-empty:hover { border-color: var(--indigo); background: var(--card-2); }
+.sg-sty-empty-icon { display: grid; place-items: center; width: 40px; height: 40px; flex: none; border-radius: var(--r-inner); background: var(--indigo-soft); color: #A5A8F8; }
+.sg-sty-empty-icon svg { width: 20px; height: 20px; }
+.sg-sty-empty-text { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+.sg-sty-empty-text strong { font-size: 14.5px; font-weight: 650; color: var(--text); }
+.sg-sty-empty-text span { font-size: 13px; line-height: 1.45; color: var(--muted); }
+
+/* ---- Editor drawer (reuses .sg-drawer-root/scrim/sheet/head/close) ---- */
+.sg-sty-drawer .sg-drawer-head { align-items: flex-start; }
+.sg-sty-drawer-body { flex: 1; min-height: 0; overflow-y: auto; padding: 20px; display: flex; flex-direction: column; gap: 16px; }
+.sg-sty-drawer-loading { display: flex; min-height: 280px; align-items: center; justify-content: center; gap: 11px; color: var(--text-dim); font-size: 14px; }
+.sg-sty-drawer-loading svg { color: #A5A8F8; }
+
+.sg-sty-field { display: flex; flex-direction: column; gap: 8px; }
+.sg-sty-field-label { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.12em; color: var(--label); }
+
+.sg-sty-hint { display: flex; align-items: center; gap: 7px; font-size: 12.5px; line-height: 1.4; }
+.sg-sty-hint svg { width: 14px; height: 14px; flex: none; }
+.sg-sty-hint.warn { color: #F4C76B; }
+.sg-sty-hint.ok { color: #6EE7B7; }
+.sg-sty-error { font-size: 13px; line-height: 1.45; color: #FCA5A5; word-break: break-word; }
+.sg-sty-warn { font-size: 12.5px; line-height: 1.5; color: #F4C76B; }
+
+/* AI generate sub-panel */
+.sg-sty-gen { border-radius: var(--r-card); border: 1px solid var(--card-border); background: var(--card-2); padding: 14px; }
+.sg-sty-gen-toggle { display: flex; width: 100%; align-items: center; justify-content: space-between; gap: 10px; background: none; border: 0; padding: 0; cursor: pointer; }
+.sg-sty-gen-toggle-label { display: inline-flex; align-items: center; gap: 8px; font-size: 14px; font-weight: 600; color: var(--text); }
+.sg-sty-gen-toggle-label svg { width: 15px; height: 15px; color: #A5A8F8; }
+.sg-sty-gen-toggle-state { font-size: 12.5px; color: var(--muted); }
+.sg-sty-gen-body { margin-top: 14px; display: flex; flex-direction: column; gap: 12px; }
+.sg-sty-gen-area { min-height: 84px; }
+.sg-sty-gen-selects { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.sg-sty-gen-btn { align-self: flex-start; height: 38px; padding: 0 16px; }
+.sg-sty-gen-hint { font-size: 11.5px; line-height: 1.5; color: var(--muted); }
+
+@media (max-width: 560px) {
+  .sg-sty-gen-selects { grid-template-columns: 1fr; }
+}
+
+/* drawer footer */
+.sg-sty-drawer-foot { flex: none; display: flex; align-items: center; justify-content: flex-end; gap: 9px; padding: 14px 20px; border-top: 1px solid var(--hairline); }
+
+/* ---- Destructive confirm CTA (delete custom style) ---- */
+.sg-sty-danger-cta { display: inline-flex; align-items: center; gap: 8px; height: 42px; padding: 0 16px; border-radius: 11px; border: 1px solid #DC2626; background: linear-gradient(180deg, #F87171, #DC2626); color: #fff; font-family: var(--sans); font-size: 14.5px; font-weight: 650; cursor: pointer; }
+.sg-sty-danger-cta:hover { background: linear-gradient(180deg, #F26464, #C81E1E); }
+.sg-sty-danger-cta svg { width: 15px; height: 15px; }
