@@ -56,9 +56,9 @@ const emptyFilters = { status: "", provider: "", style: "", mode: "", hasAttachm
 const TRASH_VIEW = "__trash__";
 
 function statusTone(status) {
-  if (status === "done") return "border-emerald-400/30 bg-emerald-400/10 text-emerald-200";
-  if (String(status || "").includes("failed")) return "border-red-400/30 bg-red-400/10 text-red-200";
-  return "border-amber-300/30 bg-amber-300/10 text-amber-100";
+  if (status === "done") return "pill-green";
+  if (String(status || "").includes("failed")) return "pill-red";
+  return "pill-amber";
 }
 
 // Split a bulk-action response ({ results: [{ id, status }], ... }) into the
@@ -679,7 +679,7 @@ export default function LibraryWorkspace({ refreshKey = 0, onOpenBuilder, initia
   }
 
   return (
-    <div className="flex min-h-0 flex-1 gap-4 p-1">
+    <div className="sg-library">
       <FolderRail
         folders={data.folders}
         selectedFolder={selectedFolder}
@@ -702,7 +702,7 @@ export default function LibraryWorkspace({ refreshKey = 0, onOpenBuilder, initia
         onDeleteFolders={openFolderDelete}
       />
 
-      <div className="flex min-w-0 flex-1 flex-col">
+      <div className="sg-lib-main">
         <div className="sg-page-head">
           <div>
             <h1>{inTrashView ? "Trash" : folderMap[selectedFolder]?.name || "Library"}</h1>
@@ -715,7 +715,8 @@ export default function LibraryWorkspace({ refreshKey = 0, onOpenBuilder, initia
           {inTrashView ? (
             <button
               type="button"
-              className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-red-400/40 bg-red-500/10 px-3 text-sm font-bold text-red-200 transition hover:bg-red-500/20 disabled:cursor-not-allowed disabled:opacity-40"
+              className="sg-btn-sm danger"
+              style={{ height: 42, padding: "0 14px" }}
               disabled={trashJobs.length === 0}
               onClick={() => setConfirm({ kind: "emptyTrash", count: trashJobs.length })}
             >
@@ -723,7 +724,7 @@ export default function LibraryWorkspace({ refreshKey = 0, onOpenBuilder, initia
             </button>
           ) : (
             <button type="button" className="sg-cta sg-press-btn" onClick={() => onOpenBuilder?.()}>
-              <Plus size={16} stroke="#1A1206" strokeWidth={2.6} />
+              <Plus size={16} stroke="#111" strokeWidth={2.6} />
               New Guide
             </button>
           )}
@@ -754,7 +755,7 @@ export default function LibraryWorkspace({ refreshKey = 0, onOpenBuilder, initia
         )}
 
         {error && (
-          <div className="mt-3 flex items-center gap-2 rounded-lg border border-red-400/30 bg-red-400/10 px-4 py-2 text-sm text-red-200">
+          <div className="sg-lib-error">
             <AlertCircle size={15} />
             <span>{error}</span>
           </div>
@@ -774,10 +775,9 @@ export default function LibraryWorkspace({ refreshKey = 0, onOpenBuilder, initia
         )}
 
         {!inTrashView && !loading && filteredJobs.length > 0 && (
-          <label className="mt-3 inline-flex w-fit cursor-pointer items-center gap-2 px-0.5 text-xs font-semibold text-slate-400 hover:text-slate-200">
+          <label className="sg-selectall">
             <input
               type="checkbox"
-              className="h-3.5 w-3.5 accent-ember-500"
               checked={allVisibleSelected}
               onChange={toggleSelectAllVisible}
             />
@@ -797,10 +797,9 @@ export default function LibraryWorkspace({ refreshKey = 0, onOpenBuilder, initia
         )}
 
         {inTrashView && trashJobs.length > 0 && (
-          <label className="mt-3 inline-flex w-fit cursor-pointer items-center gap-2 px-0.5 text-xs font-semibold text-slate-400 hover:text-slate-200">
+          <label className="sg-selectall">
             <input
               type="checkbox"
-              className="h-3.5 w-3.5 accent-ember-500"
               checked={allTrashSelected}
               onChange={toggleSelectAllTrash}
             />
@@ -808,15 +807,15 @@ export default function LibraryWorkspace({ refreshKey = 0, onOpenBuilder, initia
           </label>
         )}
 
-        <div className="mt-3 min-h-0 flex-1 overflow-y-auto pr-1">
+        <div className="sg-lib-list">
           {inTrashView ? (
             trashJobs.length === 0 ? (
-              <div className="flex min-h-48 flex-col items-center justify-center gap-2 text-slate-400">
-                <Trash2 className="h-6 w-6 opacity-60" />
+              <div className="sg-lib-empty">
+                <Trash2 />
                 <span>Trash is empty.</span>
               </div>
             ) : (
-              <div className="grid gap-2.5">
+              <div className="sg-lib-cards">
                 {trashJobs.map((job) => (
                   <TrashCard
                     key={job.id}
@@ -831,17 +830,17 @@ export default function LibraryWorkspace({ refreshKey = 0, onOpenBuilder, initia
               </div>
             )
           ) : loading ? (
-            <div className="flex min-h-48 items-center justify-center gap-3 text-slate-300">
-              <Loader2 className="h-5 w-5 animate-spin text-ember-500" />
+            <div className="sg-lib-loading">
+              <Loader2 className="sg-spin" />
               <span>Loading library…</span>
             </div>
           ) : filteredJobs.length === 0 ? (
-            <div className="flex min-h-48 flex-col items-center justify-center gap-2 text-slate-400">
-              <Layers3 className="h-6 w-6 opacity-60" />
+            <div className="sg-lib-empty">
+              <Layers3 />
               <span>No guides match this view.</span>
             </div>
           ) : (
-            <div className="grid gap-2.5">
+            <div className="sg-lib-cards">
               {filteredJobs.map((job) => (
                 <JobCard
                   key={job.id}
@@ -900,26 +899,17 @@ export default function LibraryWorkspace({ refreshKey = 0, onOpenBuilder, initia
 // the bulk-delete Undo). Tone drives the accent color; not a new dependency.
 function Toast({ toast, onClose }) {
   if (!toast) return null;
-  const tone =
-    toast.tone === "error"
-      ? "border-red-400/40 bg-red-500/15 text-red-100"
-      : toast.tone === "success"
-      ? "border-emerald-400/40 bg-emerald-500/15 text-emerald-100"
-      : "border-white/15 bg-[#0B0F19] text-slate-100";
+  const tone = toast.tone === "error" ? "error" : toast.tone === "success" ? "success" : "";
   return (
-    <div className="fixed bottom-5 left-1/2 z-[70] -translate-x-1/2">
-      <div className={`flex items-center gap-3 rounded-xl border px-4 py-2.5 shadow-2xl ${tone}`}>
-        <span className="text-sm font-semibold">{toast.message}</span>
+    <div className="sg-toast-wrap">
+      <div className={`sg-toast ${tone}`.trim()}>
+        <span>{toast.message}</span>
         {toast.action && (
-          <button
-            type="button"
-            onClick={toast.action.run}
-            className="inline-flex items-center gap-1 rounded-lg border border-white/25 bg-white/10 px-2.5 py-1 text-xs font-bold text-white transition hover:bg-white/20"
-          >
+          <button type="button" onClick={toast.action.run} className="sg-toast-action">
             <RotateCcw size={12} /> {toast.action.label}
           </button>
         )}
-        <button type="button" onClick={onClose} className="text-slate-400 transition hover:text-white" aria-label="Dismiss">
+        <button type="button" onClick={onClose} className="sg-toast-x" aria-label="Dismiss">
           <X size={14} />
         </button>
       </div>
@@ -962,50 +952,31 @@ function ConfirmModal({ confirm, busy, onCancel, onConfirm }) {
     actionLabel = "Delete Forever";
   }
   return (
-    <div className="fixed inset-0 z-[60] flex items-center justify-center p-4">
-      <button
-        type="button"
-        aria-label="Cancel"
-        className="absolute inset-0 cursor-default bg-black/60"
-        onClick={onCancel}
-      />
-      <div
-        role="dialog"
-        aria-modal="true"
-        className="relative w-full max-w-sm rounded-2xl border border-white/10 bg-[#0B0F19] p-5 shadow-2xl"
-      >
-        <div className="flex items-start gap-3">
+    <div className="sg-modal-scrim">
+      <button type="button" aria-label="Cancel" className="sg-scrim-bg" onClick={onCancel} />
+      <div role="dialog" aria-modal="true" className="sg-modal" style={{ maxWidth: 400 }}>
+        <div className="sg-modal-head">
           {destructive ? (
-            <AlertTriangle className="mt-0.5 h-5 w-5 shrink-0 text-red-400" />
+            <AlertTriangle style={{ color: "var(--red)" }} />
           ) : (
-            <Trash2 className="mt-0.5 h-5 w-5 shrink-0 text-amber-300" />
+            <Trash2 style={{ color: "var(--amber)" }} />
           )}
-          <div className="min-w-0">
-            <h2 className="text-sm font-bold text-white">{heading}</h2>
-            <p className="mt-1 text-sm text-slate-400">{body}</p>
+          <div style={{ minWidth: 0 }}>
+            <h2>{heading}</h2>
+            <p>{body}</p>
           </div>
         </div>
-        <div className="mt-5 flex justify-end gap-2">
-          <button
-            type="button"
-            autoFocus
-            disabled={busy}
-            onClick={onCancel}
-            className="inline-flex h-9 items-center rounded-lg border border-white/15 bg-white/[0.04] px-3.5 text-sm font-bold text-slate-200 transition hover:bg-white/[0.08] disabled:opacity-50"
-          >
+        <div className="sg-modal-actions">
+          <button type="button" autoFocus disabled={busy} onClick={onCancel} className="sg-ghost-button">
             Cancel
           </button>
           <button
             type="button"
             disabled={busy}
             onClick={onConfirm}
-            className={`inline-flex h-9 items-center gap-1.5 rounded-lg px-3.5 text-sm font-bold transition disabled:opacity-50 ${
-              destructive
-                ? "border border-red-400/50 bg-red-500/80 text-white hover:bg-red-500"
-                : "border border-amber-300/40 bg-amber-400/20 text-amber-100 hover:bg-amber-400/30"
-            }`}
+            className={`sg-ghost-button ${destructive ? "danger" : "accent"}`}
           >
-            {busy && <Loader2 className="h-4 w-4 animate-spin" />}
+            {busy && <Loader2 className="sg-spin" />}
             {actionLabel}
           </button>
         </div>
@@ -1037,163 +1008,164 @@ function FolderRail({
 }) {
   const trashActive = selectedFolder === trashView;
   const folderSelectionCount = selectedFolderIds.size;
-  return (
-    <aside className="flex w-56 shrink-0 flex-col rounded-2xl border border-white/10 bg-white/[0.035] p-3">
-      <p className="px-1 pb-2 text-[11px] font-bold uppercase tracking-[0.16em] text-slate-500">Folders</p>
-      <div className="min-h-0 flex-1 overflow-y-auto pr-0.5">
-        {folders.map((folder) => {
-          const active = selectedFolder === folder.id;
-          const isRenaming = renaming?.id === folder.id;
-          const selectable = !folder.system;
-          const selected = selectable && selectedFolderIds.has(folder.id);
-          return (
-            <div key={folder.id} className="group flex items-center gap-1">
-              {selectable && !isRenaming && (
-                <input
-                  type="checkbox"
-                  className="h-3.5 w-3.5 shrink-0 accent-ember-500"
-                  checked={selected}
-                  onChange={() => onToggleFolderSelect(folder.id)}
-                  aria-label={`Select folder ${folder.name}`}
-                />
-              )}
-              {isRenaming ? (
-                <div className="grid min-w-0 flex-1 gap-1.5 px-1 py-1">
-                  <div className="flex items-center gap-1">
-                    <input
-                      autoFocus
-                      className="sg-input h-8 px-2 text-sm"
-                      value={renaming.name}
-                      onChange={(event) => setRenaming({ ...renaming, name: event.target.value })}
-                      onKeyDown={(event) => {
-                        if (event.key === "Enter") onRename();
-                        if (event.key === "Escape") setRenaming(null);
-                      }}
-                    />
-                    <button type="button" className="sg-icon-button" onClick={onRename} title="Save">
-                      <Plus size={13} />
-                    </button>
-                  </div>
-                  <ColorSwatches
-                    value={renaming.color}
-                    onChange={(color) => setRenaming({ ...renaming, color })}
-                  />
-                </div>
-              ) : (
-                <button
-                  type="button"
-                  onClick={() => onSelect(folder.id)}
-                  className={`flex min-w-0 flex-1 items-center gap-2 rounded-lg px-2 py-1.5 text-left text-sm transition ${
-                    active ? "bg-ember-500/[0.12] text-white" : "text-slate-300 hover:bg-white/[0.05]"
-                  }`}
-                >
-                  <FolderGlyph folder={folder} />
-                  <span className="min-w-0 flex-1 truncate">{folder.name}</span>
-                  <span className="text-[11px] tabular-nums text-slate-500">{folder.count}</span>
-                  {!folder.system && (
-                    <span className="hidden shrink-0 items-center gap-0.5 group-hover:flex">
-                      <span
-                        role="button"
-                        tabIndex={0}
-                        className="grid h-5 w-5 place-items-center rounded text-slate-400 hover:text-white"
-                        onClick={(event) => {
-                          event.stopPropagation();
-                          setRenaming({ id: folder.id, name: folder.name, color: folder.color || FOLDER_PRESET_COLORS[0] });
-                        }}
-                        title="Rename"
-                      >
-                        <Pencil size={12} />
-                      </span>
-                      <span
-                        role="button"
-                        tabIndex={0}
-                        className="grid h-5 w-5 place-items-center rounded text-slate-400 hover:text-red-300"
-                        onClick={(event) => {
-                          event.stopPropagation();
-                          onDelete(folder);
-                        }}
-                        title="Delete"
-                      >
-                        <Trash2 size={12} />
-                      </span>
-                    </span>
-                  )}
-                </button>
-              )}
+  // System folders (All Guides / Unfiled) stay pinned near the top alongside
+  // Trash; only the custom folders below scroll. This keeps the header, system
+  // rows, selection action bar, and create controls in predictable places.
+  const systemFolders = folders.filter((folder) => folder.system);
+  const customFolders = folders.filter((folder) => !folder.system);
+
+  const renderFolderLine = (folder) => {
+    const active = selectedFolder === folder.id;
+    const isRenaming = renaming?.id === folder.id;
+    const selectable = !folder.system;
+    const selected = selectable && selectedFolderIds.has(folder.id);
+    return (
+      <div key={folder.id} className="sg-folder-line">
+        {selectable && !isRenaming && (
+          <input
+            type="checkbox"
+            className="sg-folder-check"
+            checked={selected}
+            onChange={() => onToggleFolderSelect(folder.id)}
+            aria-label={`Select folder ${folder.name}`}
+          />
+        )}
+        {isRenaming ? (
+          <div className="sg-folder-rename">
+            <div className="sg-folder-rename-row">
+              <input
+                autoFocus
+                className="sg-input compact"
+                value={renaming.name}
+                onChange={(event) => setRenaming({ ...renaming, name: event.target.value })}
+                onKeyDown={(event) => {
+                  if (event.key === "Enter") onRename();
+                  if (event.key === "Escape") setRenaming(null);
+                }}
+              />
+              <button type="button" className="sg-icon-button" onClick={onRename} title="Save">
+                <Plus size={15} />
+              </button>
             </div>
-          );
-        })}
+            <ColorSwatches
+              value={renaming.color}
+              onChange={(color) => setRenaming({ ...renaming, color })}
+            />
+          </div>
+        ) : (
+          <button
+            type="button"
+            onClick={() => onSelect(folder.id)}
+            className={`sg-folder-btn${active ? " active" : ""}`}
+          >
+            <FolderGlyph folder={folder} />
+            <span className="sg-folder-name">{folder.name}</span>
+            <span className="sg-folder-count">{folder.count}</span>
+            {!folder.system && (
+              <span className="sg-folder-tools">
+                <span
+                  role="button"
+                  tabIndex={0}
+                  className="sg-folder-tool"
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    setRenaming({ id: folder.id, name: folder.name, color: folder.color || FOLDER_PRESET_COLORS[0] });
+                  }}
+                  title="Rename"
+                >
+                  <Pencil size={13} />
+                </span>
+                <span
+                  role="button"
+                  tabIndex={0}
+                  className="sg-folder-tool danger"
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    onDelete(folder);
+                  }}
+                  title="Delete"
+                >
+                  <Trash2 size={13} />
+                </span>
+              </span>
+            )}
+          </button>
+        )}
+      </div>
+    );
+  };
+
+  return (
+    <aside className="sg-folder-rail">
+      <p className="sg-folder-rail-title">Folders</p>
+
+      {/* System rows + Trash — pinned near the top, never pushed down. */}
+      <div className="sg-folder-system">
+        {systemFolders.map(renderFolderLine)}
+        <div className="sg-folder-line">
+          <button
+            type="button"
+            onClick={() => onSelect(trashView)}
+            className={`sg-folder-btn${trashActive ? " active" : ""}`}
+          >
+            <Trash2 size={16} color={trashActive ? "var(--indigo)" : "var(--muted)"} />
+            <span className="sg-folder-name">Trash</span>
+            <span className="sg-folder-count">{trashCount}</span>
+          </button>
+        </div>
       </div>
 
+      {/* Folder selection action bar — directly above the custom folder list. */}
       {folderSelectionCount > 0 && (
-        <div className="mt-2 rounded-lg border border-ember-500/40 bg-ember-500/[0.08] p-2">
-          <p className="px-0.5 text-xs font-bold text-white">
+        <div className="sg-folder-selbar">
+          <p>
             {folderSelectionCount} folder{folderSelectionCount === 1 ? "" : "s"} selected
           </p>
-          <div className="mt-1.5 flex items-center gap-1.5">
-            <button
-              type="button"
-              onClick={onDeleteFolders}
-              className="inline-flex h-7 flex-1 items-center justify-center gap-1 rounded-lg border border-red-400/40 bg-red-500/10 px-2 text-xs font-bold text-red-200 transition hover:bg-red-500/20"
-            >
-              <Trash2 size={12} /> Delete
+          <div className="sg-folder-selbar-row">
+            <button type="button" onClick={onDeleteFolders} className="sg-btn-sm danger" style={{ flex: 1 }}>
+              <Trash2 size={13} /> Delete
             </button>
-            <button
-              type="button"
-              onClick={onClearFolderSelection}
-              className="inline-flex h-7 items-center justify-center gap-1 rounded-lg border border-white/10 bg-white/[0.04] px-2 text-xs font-bold text-slate-300 transition hover:text-white"
-            >
-              <X size={12} /> Clear
+            <button type="button" onClick={onClearFolderSelection} className="sg-btn-sm">
+              <X size={13} /> Clear
             </button>
           </div>
         </div>
       )}
 
-      <div className="mt-2 border-t border-white/10 pt-2">
-        <button
-          type="button"
-          onClick={() => onSelect(trashView)}
-          className={`flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left text-sm transition ${
-            trashActive ? "bg-ember-500/[0.12] text-white" : "text-slate-300 hover:bg-white/[0.05]"
-          }`}
-        >
-          <Trash2 size={15} color={trashActive ? "#F97316" : "#9098A8"} />
-          <span className="min-w-0 flex-1 truncate">Trash</span>
-          <span className="text-[11px] tabular-nums text-slate-500">{trashCount}</span>
-        </button>
-      </div>
+      {/* Only the custom folder list scrolls when it overflows. */}
+      <div className="sg-folder-scroll">{customFolders.map(renderFolderLine)}</div>
 
-      <div className="mt-2 border-t border-white/10 pt-2">
-        <div className="flex items-center gap-1">
+      <div className="sg-folder-sep">
+        <div className="sg-folder-create-row">
           <input
-            className="sg-input h-8 px-2 text-sm"
+            className="sg-input compact"
             placeholder="New folder…"
             value={newFolderName}
             onChange={(event) => setNewFolderName(event.target.value)}
             onKeyDown={(event) => event.key === "Enter" && onCreate()}
           />
           <button type="button" className="sg-icon-button" onClick={onCreate} title="Create folder">
-            <FolderPlus size={14} />
+            <FolderPlus size={15} />
           </button>
         </div>
-        <div className="mt-1.5 px-1">
+        <div style={{ marginTop: 10, paddingLeft: 2 }}>
           <ColorSwatches value={newFolderColor} onChange={setNewFolderColor} />
         </div>
-        {folderError && <p className="mt-1.5 px-1 text-[11px] text-red-300">{folderError}</p>}
+        {folderError && <p className="sg-folder-err">{folderError}</p>}
       </div>
     </aside>
   );
 }
 
 function FolderGlyph({ folder }) {
-  const color = folder.color || (folder.system ? "#9098A8" : "#F97316");
-  if (folder.id === "all") return <Layers3 size={15} color="#F97316" />;
-  return <FolderClosed size={15} color={color} />;
+  const color = folder.color || (folder.system ? "var(--muted)" : "var(--indigo)");
+  if (folder.id === "all") return <Layers3 size={16} color="var(--indigo)" />;
+  return <FolderClosed size={16} color={color} />;
 }
 
 function ColorSwatches({ value, onChange }) {
   return (
-    <div className="flex items-center gap-1.5">
+    <div className="sg-cswatches">
       {FOLDER_PRESET_COLORS.map((color) => {
         const active = (value || "").toLowerCase() === color.toLowerCase();
         return (
@@ -1203,9 +1175,7 @@ function ColorSwatches({ value, onChange }) {
             onClick={() => onChange(color)}
             title={color}
             aria-label={`Folder color ${color}`}
-            className={`h-4 w-4 rounded-full border transition ${
-              active ? "ring-2 ring-white/70 ring-offset-1 ring-offset-[#0B0F19]" : "border-white/20"
-            }`}
+            className={`sg-cswatch${active ? " active" : ""}`}
             style={{ backgroundColor: color }}
           />
         );
@@ -1216,17 +1186,16 @@ function ColorSwatches({ value, onChange }) {
 
 function Toolbar({ q, setQ, sort, setSort, showFilters, setShowFilters, activeFilterCount }) {
   return (
-    <div className="mt-3 flex flex-wrap items-center gap-2">
-      <div className="flex min-w-0 flex-1 items-center gap-2 rounded-lg border border-white/10 bg-white/[0.04] px-3">
-        <Search size={15} className="shrink-0 text-slate-500" />
+    <div className="sg-lib-toolbar">
+      <div className="sg-search">
+        <Search size={15} />
         <input
-          className="h-9 w-full min-w-0 bg-transparent text-sm text-slate-100 outline-none placeholder:text-slate-500"
           placeholder="Search title, id, provider, or style…"
           value={q}
           onChange={(event) => setQ(event.target.value)}
         />
         {q && (
-          <button type="button" className="text-slate-500 hover:text-white" onClick={() => setQ("")}>
+          <button type="button" onClick={() => setQ("")} aria-label="Clear search">
             <X size={14} />
           </button>
         )}
@@ -1235,30 +1204,18 @@ function Toolbar({ q, setQ, sort, setSort, showFilters, setShowFilters, activeFi
       <button
         type="button"
         onClick={() => setShowFilters((open) => !open)}
-        className={`inline-flex h-9 items-center gap-1.5 rounded-lg border px-3 text-sm font-semibold transition ${
-          activeFilterCount > 0 || showFilters
-            ? "border-ember-500/50 bg-ember-500/10 text-white"
-            : "border-white/10 bg-white/[0.04] text-slate-300 hover:text-white"
-        }`}
+        className={`sg-filter-btn${activeFilterCount > 0 || showFilters ? " active" : ""}`}
       >
         Filters
-        {activeFilterCount > 0 && (
-          <span className="grid h-4 min-w-4 place-items-center rounded-full bg-ember-500 px-1 text-[10px] font-bold text-[#1A1206]">
-            {activeFilterCount}
-          </span>
-        )}
-        <ChevronDown size={14} className={showFilters ? "rotate-180 transition" : "transition"} />
+        {activeFilterCount > 0 && <span className="sg-filter-badge">{activeFilterCount}</span>}
+        <ChevronDown size={14} style={showFilters ? { transform: "rotate(180deg)" } : undefined} />
       </button>
 
-      <label className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-white/10 bg-white/[0.04] px-2 text-sm text-slate-300">
-        <span className="text-xs text-slate-500">Sort</span>
-        <select
-          className="bg-transparent text-sm text-slate-100 outline-none"
-          value={sort}
-          onChange={(event) => setSort(event.target.value)}
-        >
+      <label className="sg-sort">
+        <span>Sort</span>
+        <select value={sort} onChange={(event) => setSort(event.target.value)}>
           {SORTS.map((option) => (
-            <option key={option.id} value={option.id} className="bg-[#0B0F19]">
+            <option key={option.id} value={option.id}>
               {option.label}
             </option>
           ))}
@@ -1271,7 +1228,7 @@ function Toolbar({ q, setQ, sort, setSort, showFilters, setShowFilters, activeFi
 function FilterBar({ filters, setFilters, statuses, providers, styleChoices, modes, onClear }) {
   const set = (key, value) => setFilters((current) => ({ ...current, [key]: value }));
   return (
-    <div className="mt-2 flex flex-wrap items-center gap-2 rounded-lg border border-white/10 bg-white/[0.02] p-2.5">
+    <div className="sg-filterbar">
       <FilterSelect label="Status" value={filters.status} onChange={(value) => set("status", value)} options={statuses} />
       <FilterSelect label="Provider" value={filters.provider} onChange={(value) => set("provider", value)} options={providers} />
       <FilterSelect
@@ -1287,7 +1244,7 @@ function FilterBar({ filters, setFilters, statuses, providers, styleChoices, mod
       <ToggleChip active={filters.hasWarnings} onClick={() => set("hasWarnings", !filters.hasWarnings)}>
         <AlertCircle size={12} /> Warnings
       </ToggleChip>
-      <button type="button" className="ml-auto text-xs font-semibold text-slate-400 hover:text-white" onClick={onClear}>
+      <button type="button" className="sg-filter-clear" onClick={onClear}>
         Clear all
       </button>
     </div>
@@ -1299,16 +1256,12 @@ function FilterSelect({ label, value, onChange, options }) {
     typeof option === "string" ? { value: option, label: option } : option
   );
   return (
-    <label className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-white/10 bg-white/[0.04] px-2 text-xs text-slate-300">
-      <span className="text-slate-500">{label}</span>
-      <select
-        className="max-w-[140px] bg-transparent text-xs text-slate-100 outline-none"
-        value={value}
-        onChange={(event) => onChange(event.target.value)}
-      >
-        <option value="" className="bg-[#0B0F19]">All</option>
+    <label className="sg-filter-field">
+      <span>{label}</span>
+      <select value={value} onChange={(event) => onChange(event.target.value)}>
+        <option value="">All</option>
         {normalized.map((option) => (
-          <option key={option.value} value={option.value} className="bg-[#0B0F19]">
+          <option key={option.value} value={option.value}>
             {option.label}
           </option>
         ))}
@@ -1319,15 +1272,7 @@ function FilterSelect({ label, value, onChange, options }) {
 
 function ToggleChip({ active, onClick, children }) {
   return (
-    <button
-      type="button"
-      onClick={onClick}
-      className={`inline-flex h-8 items-center gap-1.5 rounded-lg border px-2.5 text-xs font-semibold transition ${
-        active
-          ? "border-ember-500/50 bg-ember-500/10 text-white"
-          : "border-white/10 bg-white/[0.04] text-slate-300 hover:text-white"
-      }`}
-    >
+    <button type="button" onClick={onClick} className={`sg-toggle-chip${active ? " active" : ""}`}>
       {children}
     </button>
   );
@@ -1339,17 +1284,10 @@ function JobCard({ job, style, folder, moveTargets, onMove, onDetails, onTrash, 
   const created = job.created_at || "";
   const favorite = Boolean(job.favorite);
   return (
-    <div
-      className={`flex gap-3 rounded-xl border p-3 transition ${
-        selected
-          ? "border-ember-500/60 bg-ember-500/[0.08]"
-          : "border-white/10 bg-white/[0.035] hover:border-white/20"
-      }`}
-    >
-      <label className="flex shrink-0 items-start pt-0.5" onClick={(event) => event.stopPropagation()}>
+    <div className={`sg-job-card${selected ? " selected" : ""}`}>
+      <label className="sg-job-check" onClick={(event) => event.stopPropagation()}>
         <input
           type="checkbox"
-          className="h-4 w-4 accent-ember-500"
           checked={selected}
           onChange={() => onToggleSelect(job.id)}
           aria-label={`Select ${job.title || "study guide"}`}
@@ -1361,62 +1299,51 @@ function JobCard({ job, style, folder, moveTargets, onMove, onDetails, onTrash, 
         title={favorite ? "Remove from favorites" : "Add to favorites"}
         aria-label={favorite ? "Remove from favorites" : "Add to favorites"}
         aria-pressed={favorite}
-        className={`flex shrink-0 items-start pt-0.5 transition ${
-          favorite ? "text-ember-400" : "text-slate-500 hover:text-ember-300"
-        }`}
+        className={`sg-job-fav${favorite ? " on" : ""}`}
       >
         <Star size={16} fill={favorite ? "currentColor" : "none"} />
       </button>
-      <div className="flex min-w-0 flex-1 flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-        <div className="min-w-0 flex-1">
-          <p className="truncate text-sm font-bold text-white">{job.title || "Untitled study guide"}</p>
-          <p className="mt-0.5 truncate text-xs text-slate-400">
+      <div className="sg-job-body">
+        <div className="sg-job-main">
+          <p className="sg-job-title">{job.title || "Untitled study guide"}</p>
+          <p className="sg-job-sub">
             {[[job.provider, job.model].filter(Boolean).join(" / ") || "Study guide", created].filter(Boolean).join(" · ")}
           </p>
-          <div className="mt-2 flex flex-wrap items-center gap-1.5">
-            <span className={`inline-flex rounded-full border px-2 py-0.5 text-[11px] font-bold ${statusTone(job.status)}`}>
-              {job.status || "unknown"}
-            </span>
+          <div className="sg-job-meta">
+            <span className={`pill ${statusTone(job.status)}`}>{job.status || "unknown"}</span>
             {style && <StylePill style={style} />}
             {folder && folder.id !== "unfiled" && <FolderPill folder={folder} />}
             {(attachments.count || 0) > 0 && (
-              <span className="inline-flex items-center gap-1 rounded-full border border-emerald-400/25 bg-emerald-400/10 px-2 py-0.5 text-[11px] font-bold text-emerald-200">
+              <span className="pill pill-green">
                 <Paperclip size={11} /> {attachments.count}
               </span>
             )}
             {attachments.has_warnings && (
-              <span className="inline-flex items-center gap-1 rounded-full border border-amber-300/30 bg-amber-300/10 px-2 py-0.5 text-[11px] font-bold text-amber-100">
+              <span className="pill pill-amber">
                 <AlertCircle size={11} /> {attachments.warning_count || 1}
               </span>
             )}
           </div>
         </div>
 
-        <div className="flex shrink-0 flex-wrap items-center gap-1.5">
+        <div className="sg-job-actions">
           {availability.final_pdf && (
             <a
               href={`${artifactUrl(job.id, "final.pdf")}?disposition=inline`}
               target="_blank"
               rel="noreferrer"
-              className="inline-flex h-8 items-center gap-1 rounded-lg border border-white/10 bg-white/[0.04] px-2.5 text-xs font-bold text-slate-200 transition hover:border-ember-500/60 hover:text-white"
+              className="sg-btn-sm"
             >
               <ExternalLink size={13} /> PDF
             </a>
           )}
           {availability.clean_md && (
-            <a
-              href={artifactUrl(job.id, "clean.md")}
-              className="inline-flex h-8 items-center gap-1 rounded-lg border border-white/10 bg-white/[0.04] px-2.5 text-xs font-bold text-slate-200 transition hover:border-ember-500/60 hover:text-white"
-            >
+            <a href={artifactUrl(job.id, "clean.md")} className="sg-btn-sm">
               <Download size={13} /> MD
             </a>
           )}
           <MoveMenu job={job} folders={moveTargets} onMove={onMove} />
-          <button
-            type="button"
-            onClick={onDetails}
-            className="inline-flex h-8 items-center rounded-lg border border-white/10 bg-white/[0.04] px-2.5 text-xs font-bold text-ember-300 transition hover:border-ember-500/60 hover:text-white"
-          >
+          <button type="button" onClick={onDetails} className="sg-btn-sm accent">
             Details
           </button>
           <button
@@ -1424,7 +1351,7 @@ function JobCard({ job, style, folder, moveTargets, onMove, onDetails, onTrash, 
             onClick={onTrash}
             title="Move to trash"
             aria-label={`Move ${job.title || "study guide"} to trash`}
-            className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-white/10 bg-white/[0.04] text-slate-400 transition hover:border-red-400/50 hover:text-red-300"
+            className="sg-btn-sm sq danger"
           >
             <Trash2 size={14} />
           </button>
@@ -1437,51 +1364,38 @@ function JobCard({ job, style, folder, moveTargets, onMove, onDetails, onTrash, 
 function TrashCard({ job, style, selected, onToggleSelect, onRestore, onDeleteForever }) {
   const attachments = job.attachment_summary || {};
   return (
-    <div
-      className={`flex gap-3 rounded-xl border p-3 transition ${
-        selected ? "border-ember-500/60 bg-ember-500/[0.08]" : "border-white/10 bg-white/[0.025]"
-      }`}
-    >
-      <label className="flex shrink-0 items-start pt-0.5" onClick={(event) => event.stopPropagation()}>
+    <div className={`sg-job-card${selected ? " selected" : ""}`}>
+      <label className="sg-job-check" onClick={(event) => event.stopPropagation()}>
         <input
           type="checkbox"
-          className="h-4 w-4 accent-ember-500"
           checked={selected}
           onChange={() => onToggleSelect(job.id)}
           aria-label={`Select ${job.title || "study guide"}`}
         />
       </label>
-      <div className="flex min-w-0 flex-1 flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-        <div className="min-w-0 flex-1">
-          <p className="truncate text-sm font-bold text-slate-200">{job.title || "Untitled study guide"}</p>
-          <p className="mt-0.5 truncate text-xs text-slate-500">
+      <div className="sg-job-body">
+        <div className="sg-job-main">
+          <p className="sg-job-title">{job.title || "Untitled study guide"}</p>
+          <p className="sg-job-sub">
             {[[job.provider, job.model].filter(Boolean).join(" / ") || "Study guide",
               job.trashed_at ? `trashed ${job.trashed_at}` : null]
               .filter(Boolean)
               .join(" · ")}
           </p>
-          <div className="mt-2 flex flex-wrap items-center gap-1.5">
+          <div className="sg-job-meta">
             {style && <StylePill style={style} />}
             {(attachments.count || 0) > 0 && (
-              <span className="inline-flex items-center gap-1 rounded-full border border-emerald-400/25 bg-emerald-400/10 px-2 py-0.5 text-[11px] font-bold text-emerald-200">
+              <span className="pill pill-green">
                 <Paperclip size={11} /> {attachments.count}
               </span>
             )}
           </div>
         </div>
-        <div className="flex shrink-0 flex-wrap items-center gap-1.5">
-          <button
-            type="button"
-            onClick={onRestore}
-            className="inline-flex h-8 items-center gap-1 rounded-lg border border-white/10 bg-white/[0.04] px-2.5 text-xs font-bold text-slate-200 transition hover:border-ember-500/60 hover:text-white"
-          >
+        <div className="sg-job-actions">
+          <button type="button" onClick={onRestore} className="sg-btn-sm">
             <RotateCcw size={13} /> Restore
           </button>
-          <button
-            type="button"
-            onClick={onDeleteForever}
-            className="inline-flex h-8 items-center gap-1 rounded-lg border border-red-400/40 bg-red-500/10 px-2.5 text-xs font-bold text-red-200 transition hover:bg-red-500/20"
-          >
+          <button type="button" onClick={onDeleteForever} className="sg-btn-sm danger">
             <Trash2 size={13} /> Delete forever
           </button>
         </div>
@@ -1492,38 +1406,21 @@ function TrashCard({ job, style, selected, onToggleSelect, onRestore, onDeleteFo
 
 function BulkBar({ count, folders, onMove, onUnfile, onExport, exporting, onDelete, onClear }) {
   return (
-    <div className="mt-3 flex flex-wrap items-center gap-2 rounded-lg border border-ember-500/40 bg-ember-500/[0.08] px-3 py-2">
-      <span className="text-sm font-bold text-white">{count} selected</span>
-      <div className="ml-auto flex flex-wrap items-center gap-2">
+    <div className="sg-bulkbar">
+      <span className="sg-bulk-count">{count} selected</span>
+      <div className="sg-bulk-actions">
         <BatchMoveMenu folders={folders} onMove={onMove} />
-        <button
-          type="button"
-          onClick={onUnfile}
-          className="inline-flex h-8 items-center gap-1 rounded-lg border border-white/10 bg-white/[0.04] px-2.5 text-xs font-bold text-slate-200 transition hover:border-ember-500/60 hover:text-white"
-        >
+        <button type="button" onClick={onUnfile} className="sg-btn-sm">
           <FolderClosed size={13} /> Move to Unfiled
         </button>
-        <button
-          type="button"
-          onClick={onExport}
-          disabled={exporting || count === 0}
-          className="inline-flex h-8 items-center gap-1 rounded-lg border border-white/10 bg-white/[0.04] px-2.5 text-xs font-bold text-slate-200 transition hover:border-ember-500/60 hover:text-white disabled:cursor-not-allowed disabled:opacity-50"
-        >
-          {exporting ? <Loader2 size={13} className="animate-spin" /> : <Download size={13} />}
+        <button type="button" onClick={onExport} disabled={exporting || count === 0} className="sg-btn-sm">
+          {exporting ? <Loader2 size={13} className="sg-spin" /> : <Download size={13} />}
           {exporting ? "Exporting…" : "Export selected"}
         </button>
-        <button
-          type="button"
-          onClick={onDelete}
-          className="inline-flex h-8 items-center gap-1 rounded-lg border border-red-400/40 bg-red-500/10 px-2.5 text-xs font-bold text-red-200 transition hover:bg-red-500/20"
-        >
+        <button type="button" onClick={onDelete} className="sg-btn-sm danger">
           <Trash2 size={13} /> Delete
         </button>
-        <button
-          type="button"
-          onClick={onClear}
-          className="inline-flex h-8 items-center gap-1 rounded-lg border border-white/10 bg-white/[0.04] px-2.5 text-xs font-bold text-slate-300 transition hover:text-white"
-        >
+        <button type="button" onClick={onClear} className="sg-btn-sm">
           <X size={13} /> Clear
         </button>
       </div>
@@ -1533,28 +1430,16 @@ function BulkBar({ count, folders, onMove, onUnfile, onExport, exporting, onDele
 
 function TrashBulkBar({ count, onRestore, onPurge, onClear }) {
   return (
-    <div className="mt-3 flex flex-wrap items-center gap-2 rounded-lg border border-ember-500/40 bg-ember-500/[0.08] px-3 py-2">
-      <span className="text-sm font-bold text-white">{count} selected</span>
-      <div className="ml-auto flex flex-wrap items-center gap-2">
-        <button
-          type="button"
-          onClick={onRestore}
-          className="inline-flex h-8 items-center gap-1 rounded-lg border border-white/10 bg-white/[0.04] px-2.5 text-xs font-bold text-slate-200 transition hover:border-ember-500/60 hover:text-white"
-        >
+    <div className="sg-bulkbar">
+      <span className="sg-bulk-count">{count} selected</span>
+      <div className="sg-bulk-actions">
+        <button type="button" onClick={onRestore} className="sg-btn-sm">
           <RotateCcw size={13} /> Restore selected
         </button>
-        <button
-          type="button"
-          onClick={onPurge}
-          className="inline-flex h-8 items-center gap-1 rounded-lg border border-red-400/40 bg-red-500/10 px-2.5 text-xs font-bold text-red-200 transition hover:bg-red-500/20"
-        >
+        <button type="button" onClick={onPurge} className="sg-btn-sm danger">
           <Trash2 size={13} /> Delete forever
         </button>
-        <button
-          type="button"
-          onClick={onClear}
-          className="inline-flex h-8 items-center gap-1 rounded-lg border border-white/10 bg-white/[0.04] px-2.5 text-xs font-bold text-slate-300 transition hover:text-white"
-        >
+        <button type="button" onClick={onClear} className="sg-btn-sm">
           <X size={13} /> Clear
         </button>
       </div>
@@ -1571,57 +1456,35 @@ function DeleteFoldersModal({ folderDelete, busy, onCancel, onFoldersOnly, onWit
   const folderLabel = `${folderIds.length} folder${folderIds.length === 1 ? "" : "s"}`;
   const guideLabel = `${jobCount} guide${jobCount === 1 ? "" : "s"}`;
   return (
-    <div className="fixed inset-0 z-[60] flex items-center justify-center p-4">
-      <button type="button" aria-label="Cancel" className="absolute inset-0 cursor-default bg-black/60" onClick={onCancel} />
-      <div
-        role="dialog"
-        aria-modal="true"
-        className="relative w-full max-w-md rounded-2xl border border-white/10 bg-[#0B0F19] p-5 shadow-2xl"
-      >
-        <div className="flex items-start gap-3">
-          <FolderClosed className="mt-0.5 h-5 w-5 shrink-0 text-amber-300" />
-          <div className="min-w-0">
-            <h2 className="text-sm font-bold text-white">Delete {folderLabel}?</h2>
-            <p className="mt-1 text-sm text-slate-400">
+    <div className="sg-modal-scrim">
+      <button type="button" aria-label="Cancel" className="sg-scrim-bg" onClick={onCancel} />
+      <div role="dialog" aria-modal="true" className="sg-modal" style={{ maxWidth: 460 }}>
+        <div className="sg-modal-head">
+          <FolderClosed style={{ color: "var(--amber)" }} />
+          <div style={{ minWidth: 0 }}>
+            <h2>Delete {folderLabel}?</h2>
+            <p>
               {jobCount > 0
                 ? `${guideLabel} are filed in ${folderIds.length === 1 ? "this folder" : "these folders"}. Choose what happens to them.`
                 : "These folders have no guides filed in them."}
             </p>
           </div>
         </div>
-        <div className="mt-5 grid gap-2">
-          <button
-            type="button"
-            disabled={busy}
-            onClick={onFoldersOnly}
-            className="flex flex-col items-start rounded-lg border border-white/15 bg-white/[0.04] px-3.5 py-2.5 text-left transition hover:bg-white/[0.08] disabled:opacity-50"
-          >
-            <span className="text-sm font-bold text-slate-100">Delete folders only</span>
-            <span className="text-xs text-slate-400">Guides are kept and become Unfiled.</span>
+        <div className="sg-modal-choices">
+          <button type="button" disabled={busy} onClick={onFoldersOnly} className="sg-choice">
+            <span className="t">Delete folders only</span>
+            <span className="d">Guides are kept and become Unfiled.</span>
           </button>
-          <button
-            type="button"
-            disabled={busy}
-            onClick={onWithGuides}
-            className="flex flex-col items-start rounded-lg border border-red-400/40 bg-red-500/10 px-3.5 py-2.5 text-left transition hover:bg-red-500/20 disabled:opacity-50"
-          >
-            <span className="flex items-center gap-1.5 text-sm font-bold text-red-100">
-              {busy && <Loader2 className="h-4 w-4 animate-spin" />}
+          <button type="button" disabled={busy} onClick={onWithGuides} className="sg-choice danger">
+            <span className="t">
+              {busy && <Loader2 className="sg-spin" style={{ width: 16, height: 16 }} />}
               Delete folders and move guides to Trash
             </span>
-            <span className="text-xs text-red-200/80">
-              {guideLabel} are soft-deleted to Trash (restorable). Not permanent.
-            </span>
+            <span className="d">{guideLabel} are soft-deleted to Trash (restorable). Not permanent.</span>
           </button>
         </div>
-        <div className="mt-3 flex justify-end">
-          <button
-            type="button"
-            autoFocus
-            disabled={busy}
-            onClick={onCancel}
-            className="inline-flex h-9 items-center rounded-lg border border-white/15 bg-white/[0.04] px-3.5 text-sm font-bold text-slate-200 transition hover:bg-white/[0.08] disabled:opacity-50"
-          >
+        <div className="sg-modal-actions">
+          <button type="button" autoFocus disabled={busy} onClick={onCancel} className="sg-ghost-button">
             Cancel
           </button>
         </div>
@@ -1633,21 +1496,15 @@ function DeleteFoldersModal({ folderDelete, busy, onCancel, onFoldersOnly, onWit
 function BatchMoveMenu({ folders, onMove }) {
   const [open, setOpen] = useState(false);
   return (
-    <div className="relative">
-      <button
-        type="button"
-        onClick={() => setOpen((value) => !value)}
-        className="inline-flex h-8 items-center gap-1 rounded-lg border border-ember-500/50 bg-ember-500/10 px-2.5 text-xs font-bold text-white transition hover:border-ember-500/70"
-      >
+    <div className="sg-menu-wrap">
+      <button type="button" onClick={() => setOpen((value) => !value)} className="sg-btn-sm accent">
         <FolderClosed size={13} /> Move to folder <ChevronDown size={12} />
       </button>
       {open && (
         <>
-          <button type="button" className="fixed inset-0 z-40 cursor-default" aria-label="Close menu" onClick={() => setOpen(false)} />
-          <div className="absolute right-0 z-50 mt-1 max-h-64 w-48 overflow-y-auto rounded-xl border border-white/10 bg-[#0B0F19] p-1 shadow-2xl">
-            {folders.length === 0 && (
-              <p className="px-2.5 py-1.5 text-xs text-slate-500">No folders yet.</p>
-            )}
+          <button type="button" className="sg-menu-scrim" aria-label="Close menu" onClick={() => setOpen(false)} />
+          <div className="sg-menu">
+            {folders.length === 0 && <p className="sg-menu-empty">No folders yet.</p>}
             {folders.map((folder) => (
               <button
                 key={folder.id}
@@ -1656,10 +1513,10 @@ function BatchMoveMenu({ folders, onMove }) {
                   setOpen(false);
                   onMove(folder.id);
                 }}
-                className="flex w-full items-center gap-2 rounded-lg px-2.5 py-1.5 text-left text-sm text-slate-200 hover:bg-white/[0.06]"
+                className="sg-menu-item"
               >
                 <FolderClosed size={13} color={folderColor(folder)} />
-                <span className="min-w-0 flex-1 truncate">{folder.name}</span>
+                <span className="name">{folder.name}</span>
               </button>
             ))}
           </div>
@@ -1672,18 +1529,14 @@ function BatchMoveMenu({ folders, onMove }) {
 function MoveMenu({ job, folders, onMove }) {
   const [open, setOpen] = useState(false);
   return (
-    <div className="relative">
-      <button
-        type="button"
-        onClick={() => setOpen((value) => !value)}
-        className="inline-flex h-8 items-center gap-1 rounded-lg border border-white/10 bg-white/[0.04] px-2.5 text-xs font-bold text-slate-200 transition hover:border-ember-500/60 hover:text-white"
-      >
+    <div className="sg-menu-wrap">
+      <button type="button" onClick={() => setOpen((value) => !value)} className="sg-btn-sm">
         <FolderClosed size={13} /> Move <ChevronDown size={12} />
       </button>
       {open && (
         <>
-          <button type="button" className="fixed inset-0 z-40 cursor-default" aria-label="Close menu" onClick={() => setOpen(false)} />
-          <div className="absolute right-0 z-50 mt-1 max-h-64 w-48 overflow-y-auto rounded-xl border border-white/10 bg-[#0B0F19] p-1 shadow-2xl">
+          <button type="button" className="sg-menu-scrim" aria-label="Close menu" onClick={() => setOpen(false)} />
+          <div className="sg-menu">
             {folders.map((folder) => {
               const current = job.folder_id === folder.id;
               return (
@@ -1695,13 +1548,11 @@ function MoveMenu({ job, folders, onMove }) {
                     setOpen(false);
                     if (!current) onMove(job.id, folder.id);
                   }}
-                  className={`flex w-full items-center gap-2 rounded-lg px-2.5 py-1.5 text-left text-sm ${
-                    current ? "text-slate-500" : "text-slate-200 hover:bg-white/[0.06]"
-                  }`}
+                  className="sg-menu-item"
                 >
-                  <FolderClosed size={13} color={folder.color || "#9098A8"} />
-                  <span className="min-w-0 flex-1 truncate">{folder.name}</span>
-                  {current && <span className="text-[10px]">current</span>}
+                  <FolderClosed size={13} color={folder.color || "var(--muted)"} />
+                  <span className="name">{folder.name}</span>
+                  {current && <span className="cur">current</span>}
                 </button>
               );
             })}
