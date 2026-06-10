@@ -22,6 +22,9 @@ Rules implemented (Slice 19):
                                   unavailable, never crash.
   5. ``missing_section``        — an ``expected_sections`` entry absent from the
                                   document headings (normalized match).
+  6. ``page_citation_range``    — optional, advisory source-page citation
+                                  plausibility check when source page anchors
+                                  are supplied by offline tooling.
 
 Markdown safety: fenced code blocks are ignored for heading/table/math checks,
 inline code spans are ignored for math checks, the input is never mutated, and no
@@ -46,6 +49,7 @@ import sys
 import tempfile
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
+from typing import Iterable
 
 # ── Tunables / bounds ───────────────────────────────────────────────────────
 
@@ -61,6 +65,11 @@ SEVERITY_WARNING = "warning"
 SEVERITY_INFO = "info"
 
 _HEADING_RE = re.compile(r"^(#{1,6})(?=\s|$)(.*)$")
+_SOURCE_PAGE_ANCHOR_RE = re.compile(r"(?im)^\s*##\s+Page\s+(\d+)\b")
+_PAGE_CITATION_RE = re.compile(
+    r"\b(?:pp?\.\s*|pages?\s+)(\d{1,5})(?:\s*[-\u2013]\s*(\d{1,5}))?",
+    re.IGNORECASE,
+)
 
 
 # ── Result dataclasses ──────────────────────────────────────────────────────
@@ -489,6 +498,84 @@ def _lint_expected_sections(
             )
 
 
+# ── Rule 6: source-page citation plausibility ────────────────────────────────
+
+def extract_source_page_anchors(source_text: str) -> set[int]:
+    """Return page numbers from extraction-style ``## Page N`` anchors."""
+    if not isinstance(source_text, str):
+        return set()
+    pages: set[int] = set()
+    for match in _SOURCE_PAGE_ANCHOR_RE.finditer(source_text):
+        try:
+            pages.add(int(match.group(1)))
+        except ValueError:
+            continue
+    return pages
+
+
+def _normalize_available_pages(
+    available_source_pages: Iterable[int] | None,
+) -> set[int] | None:
+    if available_source_pages is None:
+        return None
+    pages: set[int] = set()
+    for value in available_source_pages:
+        if isinstance(value, bool):
+            continue
+        try:
+            page = int(value)
+        except (TypeError, ValueError):
+            continue
+        if page > 0:
+            pages.add(page)
+    return pages
+
+
+def _citation_pages(start: int, end: int | None) -> set[int]:
+    if end is None:
+        return {start}
+    lo, hi = sorted((start, end))
+    if hi - lo > 500:
+        return {start, end}
+    return set(range(lo, hi + 1))
+
+
+def _lint_page_citations(
+    lines: list[str],
+    code: list[bool],
+    available_pages: set[int],
+    add,
+) -> None:
+    for line_index, line in enumerate(lines, start=1):
+        if code[line_index - 1]:
+            continue
+        scrubbed = _INLINE_CODE_RE.sub(" ", line)
+        for match in _PAGE_CITATION_RE.finditer(scrubbed):
+            start = int(match.group(1))
+            end = int(match.group(2)) if match.group(2) else None
+            cited_pages = _citation_pages(start, end)
+            if cited_pages and cited_pages <= available_pages:
+                continue
+            if available_pages:
+                detail = ", ".join(str(p) for p in sorted(cited_pages - available_pages))
+                message = (
+                    "Page citation references source page(s) not present in the "
+                    f"available anchors: {detail}."
+                )
+            else:
+                message = (
+                    "Page citation appears in the guide, but no source page anchors "
+                    "were supplied."
+                )
+            add(
+                "page_citation_range",
+                SEVERITY_WARNING,
+                line_index,
+                message,
+                line,
+            )
+
+
 # ── Public API ─────────────────────────────────────────────────────────────────
 
 def lint_guide_markdown(
@@ -496,14 +583,17 @@ def lint_guide_markdown(
     *,
     source_name: str | None = None,
     expected_sections: list[str] | None = None,
+    available_source_pages: Iterable[int] | None = None,
     run_katex: bool = True,
 ) -> GuideLintReport:
     """Lint *markdown* for structural / rendering-risk issues (advisory only).
 
     The input is never mutated. Findings are conservative: ambiguous Markdown is
-    reported as a ``warning`` rather than an ``error``. The KaTeX render check is
-    optional and degrades to an info finding when Node/KaTeX is unavailable. This
-    function never raises on bad input and never affects guide generation.
+    reported as a ``warning`` rather than an ``error``. The optional page-citation
+    check runs only when ``available_source_pages`` is supplied by offline tooling.
+    The KaTeX render check is optional and degrades to an info finding when
+    Node/KaTeX is unavailable. This function never raises on bad input and never
+    affects guide generation.
     """
     raw: list[tuple[str, str, int, str, str]] = []
 
@@ -518,11 +608,14 @@ def lint_guide_markdown(
     lines = body.splitlines()
     code = _code_mask(lines)
     headings = _collect_headings(lines, code)
+    available_pages = _normalize_available_pages(available_source_pages)
 
     _lint_empty_headings(lines, code, headings, add)
     _lint_tables(lines, code, add)
     _lint_math_delimiters(lines, code, add)
     _lint_expected_sections(expected_sections, headings, add)
+    if available_pages is not None:
+        _lint_page_citations(lines, code, available_pages, add)
     if run_katex:
         _lint_katex(body, lines, add)
 

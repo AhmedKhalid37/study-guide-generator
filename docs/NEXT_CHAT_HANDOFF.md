@@ -6,10 +6,10 @@
 > stable overview see `PROJECT_CONTEXT.md`; canonical brief is `../CLAUDE.md`.
 
 ## Current position
-- **Branch in progress:** `slice23a-page-anchor-reachability`, created from
-  `chrome-renderer-v1`. Slice 23A is implemented as a measurement/proof slice and
-  intentionally uncommitted. Do not commit unless explicitly asked; do not
-  force-push.
+- **Branch in progress:** `slice23b-source-page-citations`, created from
+  `chrome-renderer-v1` after Slice 23A. Slice 23B is implemented as a small
+  prompt/output-behavior measurement slice and intentionally uncommitted. Do not
+  commit unless explicitly asked; do not force-push.
 - **Branch (trunk / PR target):** `chrome-renderer-v1` (all reskin slices land here).
 - **Phase:** the **GuideForge reskin + UX phase is COMPLETE** (Slices 1–15
   reskinned every workspace to semantic GuideForge CSS — Tailwind utilities are
@@ -52,6 +52,26 @@
   rendered citation assumption was added. Tests/docs only; no prompt behavior,
   frontend/UI, provider, OCR, extraction, retrieval, `validation.json`,
   `math_verification.json`, or `/api/jobs/llm` request-field change.
+- **Slice 23B result (source page-citation directive + checks):** implemented
+  uncommitted on `slice23b-source-page-citations`. `pipeline/orchestrator.py`
+  conditionally inserts `SOURCE_PAGE_CITATION_DIRECTIVE` when source text contains
+  `## Page N` anchors, in both template and preset prompt paths. The directive
+  asks for compact `(p. 3)` / `(pp. 3-5)` citations for factual claims, examples,
+  formulas, and definitions where possible, cites only anchored pages, and says
+  not to invent page citations. It is inserted after axes/include-section
+  guidance and before `MARKDOWN_MATH_SYSTEM`; the math system block remains last.
+  No-anchor baselines remain unchanged. The old optional `slide_page_references`
+  fragment now uses the same compact format to avoid conflicting prompt rules.
+  `pipeline/guide_lint.py` has an optional advisory `page_citation_range` check
+  when offline tooling supplies `available_source_pages`; it detects conservative
+  `p. 3` / `pp. 3-5` / `page 3` forms and warns only. Eval specs may provide
+  `source_page_anchors`, now used by `test_scripts/eval/score_guide.py`; the
+  sample source/good guide fixtures include anchors and valid citations. New
+  focused test: `test_scripts/test_source_page_citations.py`; updated
+  page-anchor, page-reference-format, guide-lint, and eval-harness tests.
+  No frontend/UI, JobDetails, backend route, provider, `/api/jobs/llm` field,
+  OCR/extraction, retrieval/Ask, `validation.json`, `math_verification.json`,
+  guide-lint artifact, or render/PDF pipeline changes.
 - **Slice 20 result (measurement spine only):** added `test_scripts/eval/`
   (`run_eval.py` CLI + `score_guide.py` pure core + `golden/sample.json` +
   fixtures + READMEs). It scores guide Markdown against a JSON **golden spec**

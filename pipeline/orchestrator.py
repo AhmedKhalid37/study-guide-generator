@@ -31,6 +31,13 @@ MARKDOWN_MATH_SYSTEM = (
     "fragments like \"$0,1$, $0,2$\"."
 )
 
+SOURCE_PAGE_CITATION_DIRECTIVE = (
+    "When the source text contains '## Page N' anchors, cite the source page for "
+    "factual claims, examples, formulas, and definitions where possible. Use "
+    "compact citations like (p. 3) or (pp. 3-5), and cite only pages that appear "
+    "as source anchors. Do not invent page citations."
+)
+
 # ── Optional output-section toggles ──────────────────────────────────────────
 # A generation request may ask for extra output sections via ``include_sections``
 # (a dict-of-bool, e.g. {"glossary": true}). This is the SINGLE source of truth
@@ -91,13 +98,9 @@ INCLUDE_SECTION_FRAGMENTS: dict[str, str] = {
         "The source text marks each original slide/page with a '## Page N' (or 'Slide N') "
         "anchor. Carry these through: when a fact, formula, or definition comes from a "
         "specific page, add a compact reference right after it, and prefer grouping related "
-        "content under the page it came from. ALWAYS write page references inside parentheses "
-        "using this exact format: write (page N) for a single page; write (pages N-M) for a "
-        "continuous range; write (pages N, M, P-Q) for multiple separate pages and/or ranges. "
-        "Never use p., pp., pN, 'p. N', or any bare page fragment outside parentheses. Use a "
-        "normal hyphen '-' for ranges (e.g. (pages 20-21)) — never an en dash or a spaced "
-        "dash like '20 - 21'. Do not invent page numbers — only cite anchors that appear in "
-        "the source."
+        "content under the page it came from. Prefer (p. N) for a single page and (pp. N-M) "
+        "for a continuous range. Do not invent page numbers — cite only anchors that appear "
+        "in the source."
     ),
     # Legacy shortcut module keys kept as accepted canonical sections (backward
     # compat with library/shortcuts.json state and any old payloads). They have a
@@ -226,6 +229,24 @@ def build_include_sections_block(
     return "\n".join(lines)
 
 
+def source_has_page_anchors(source_text: str) -> bool:
+    """Return True when extraction-style ``## Page N`` anchors are present."""
+    if not isinstance(source_text, str):
+        return False
+    for line in source_text.splitlines():
+        stripped = line.strip()
+        if stripped.startswith("## Page "):
+            tail = stripped.removeprefix("## Page ").strip()
+            if tail and tail.split(maxsplit=1)[0].isdigit():
+                return True
+    return False
+
+
+def build_source_page_citation_block(source_text: str) -> str:
+    """Return the source-page citation directive only when page anchors exist."""
+    return SOURCE_PAGE_CITATION_DIRECTIVE if source_has_page_anchors(source_text) else ""
+
+
 def _system_with_sections(*parts: str) -> str:
     """Join non-empty system-prompt parts, keeping ``MARKDOWN_MATH_SYSTEM`` last.
 
@@ -239,6 +260,7 @@ def _system_with_sections(*parts: str) -> str:
 #   [preset system prompt, preset path only]
 #   axis/global directive fragments (output_depth, difficulty)
 #   include_sections fragments
+#   conditional source page-citation directive
 #   MARKDOWN_MATH_SYSTEM  ← always the final appended block
 # Axes are global directives that shape HOW the guide is written, so they come
 # before the section-adding include_sections fragments; the math/table contract
@@ -260,6 +282,7 @@ def build_messages(
     system = _system_with_sections(
         build_axis_directives_block(output_depth, difficulty),
         build_include_sections_block(include_sections),
+        build_source_page_citation_block(source_text),
         MARKDOWN_MATH_SYSTEM,
     )
     return [
@@ -284,6 +307,7 @@ def build_messages_for_preset(
         system_prompt,
         build_axis_directives_block(output_depth, difficulty),
         build_include_sections_block(include_sections),
+        build_source_page_citation_block(source_text),
         MARKDOWN_MATH_SYSTEM,
     )
     return [

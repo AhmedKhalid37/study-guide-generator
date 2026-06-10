@@ -4,17 +4,17 @@
 
 This guide reviews how a feed-forward neural network learns. It covers the role
 of the activation function, how errors flow backward through backpropagation, and
-how gradient descent updates the weights.
+how gradient descent updates the weights (p. 1).
 
 ## Key Concepts
 
 - **Activation function** — a non-linearity applied to each unit's weighted sum.
   The logistic (sigmoid) activation maps any real value into the open interval
-  (0, 1).
+  (0, 1) (pp. 1-2).
 - **Backpropagation** — the algorithm that computes the gradient of the loss with
-  respect to every weight by applying the chain rule layer by layer.
+  respect to every weight by applying the chain rule layer by layer (p. 1).
 - **Gradient descent** — the optimization step that nudges each weight in the
-  direction that reduces the loss.
+  direction that reduces the loss (p. 1).
 
 | Concept | Role |
 | --- | --- |
@@ -24,9 +24,13 @@ how gradient descent updates the weights.
 
 ## Worked Examples
 
-A small arithmetic check: 2 + 3 = 5.
+A small arithmetic check from the source example (p. 2):
+
+2 + 3 = 5
 
 Logistic output for z = 1.43:
+
+Source page for the logistic example: (p. 2).
 
 exp(1.43) / (1 + exp(1.43)) ≈ 0.806
 

@@ -1347,3 +1347,24 @@ Every result is scanned for credential-looking field names/values and the write 
 against the last time *that same guide* was scored — never a different guide that
 shares the spec — and it is **non-blocking** in this phase (a regression reports a
 delta, it never fails the run).
+
+## Source page citations use compact `p.` / `pp.` form when `## Page N` anchors exist
+Slice 23B adds an automatic source page-citation directive only when source text
+contains extraction-style `## Page N` anchors. The directive prefers compact
+citations such as `(p. 3)` and `(pp. 3-5)`, tells the model to cite source pages
+for factual claims/examples/formulas/definitions where possible, and tells it to
+cite only pages that appear as anchors.
+
+**Why this replaces the older `(page N)` prompt style:** the previous optional
+`slide_page_references` include-section fragment explicitly banned `p.` / `pp.`
+forms to reduce inconsistent page references in PDFs. Slice 23B makes compact
+citations the product-level source-citation style, so leaving the old fragment in
+place would create contradictory instructions whenever that toggle and anchored
+source text were both present. The fragment is therefore aligned to the compact
+style. The source-driven directive remains conditional so the no-anchor default
+prompt baseline is unchanged.
+
+**Checker scope:** page-citation plausibility is advisory and offline/test-only.
+`pipeline.guide_lint` can warn when supplied available source pages are missing
+from a cited `p.` / `pp.` / `page` reference, but it is not wired into live
+generation, job artifacts, UI, `validation.json`, or `math_verification.json`.

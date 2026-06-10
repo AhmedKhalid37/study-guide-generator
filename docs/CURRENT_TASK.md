@@ -5,6 +5,52 @@
 
 ---
 
+## Slice 23B — Source page-citation directive + checks (DONE — uncommitted).
+
+- **Purpose:** add model-facing guidance that uses the Slice 23A proof: when
+  source text contains extraction-style `## Page N` anchors, generated guides
+  should cite source pages compactly and deterministically measurable offline.
+- **Prompt change:** `pipeline/orchestrator.py` now defines
+  `SOURCE_PAGE_CITATION_DIRECTIVE` and conditionally inserts it when
+  `source_text` contains `## Page N` anchors. Exact directive:
+  "When the source text contains '## Page N' anchors, cite the source page for
+  factual claims, examples, formulas, and definitions where possible. Use compact
+  citations like (p. 3) or (pp. 3-5), and cite only pages that appear as source
+  anchors. Do not invent page citations."
+- **Insertion point / invariants:** both `build_messages(...)` and
+  `build_messages_for_preset(...)` insert the conditional citation block after
+  axis/include-section guidance and before `MARKDOWN_MATH_SYSTEM`; preset system
+  prompts still come first; `MARKDOWN_MATH_SYSTEM` remains the final block in
+  both paths. With no page anchors and no other options, the default system
+  prompt remains `MARKDOWN_MATH_SYSTEM`; the preset no-anchor baseline remains
+  `{preset_prompt}\n\n{MARKDOWN_MATH_SYSTEM}`.
+- **Format alignment:** the existing optional `slide_page_references` fragment was
+  aligned from the older `(page N)` policy to compact `(p. N)` / `(pp. N-M)` so it
+  does not conflict with the new source-driven directive.
+- **Advisory checker:** `pipeline/guide_lint.py` now has optional
+  `available_source_pages` support plus `extract_source_page_anchors(...)`. When
+  offline tooling supplies pages, it detects conservative citations such as
+  `p. 3`, `pp. 3-5`, `page 3`, and warns with `page_citation_range` if cited
+  pages are unavailable or no anchors were supplied. It is advisory only and is
+  not wired into live jobs, artifacts, UI, `validation.json`, or
+  `math_verification.json`.
+- **Eval wiring:** `test_scripts/eval/score_guide.py` accepts optional golden-spec
+  `source_page_anchors` and passes them into the linter. The sample golden spec
+  and fixtures now include `## Page 1` / `## Page 2` source anchors and valid
+  compact citations so offline mode measures citation plausibility.
+- **Tests added/updated:** new `test_scripts/test_source_page_citations.py`
+  covers conditional directive insertion, no-anchor baselines, preset/non-preset
+  consistency, and math-block-last ordering. Updated
+  `test_scripts/test_page_anchor_reachability.py`,
+  `test_scripts/test_page_reference_format.py`,
+  `test_scripts/test_guide_lint.py`, and `test_scripts/test_eval_harness.py`.
+- **Scope guardrails:** no frontend/UI, JobDetails, backend route, provider,
+  provider setting, `/api/jobs/llm` request-field, OCR/extraction,
+  retrieval/LanceDB/Ask, `validation.json`, `math_verification.json`,
+  guide-lint job artifact, or render/PDF pipeline changes.
+
+---
+
 ## Slice 23A — Verify source page-anchor reachability (DONE — uncommitted).
 
 - **Purpose:** measurement/proof slice before citation behavior changes. Prove

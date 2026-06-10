@@ -75,6 +75,7 @@ DEFAULT_WEIGHTS = {
 REQUIRED_SPEC_FIELDS = ("id",)
 # Spec list fields that, when present, must be lists of strings.
 _STR_LIST_FIELDS = ("expected_sections", "required_concepts", "must_not_claim")
+_INT_LIST_FIELDS = ("source_page_anchors",)
 
 
 class SpecError(ValueError):
@@ -125,6 +126,14 @@ def validate_spec(spec: object) -> dict:
             continue
         if not isinstance(value, list) or not all(isinstance(v, str) for v in value):
             raise SpecError(f"spec field '{field}' must be a list of strings")
+    for field in _INT_LIST_FIELDS:
+        value = spec.get(field)
+        if value is None:
+            continue
+        if not isinstance(value, list) or not all(
+            isinstance(v, int) and not isinstance(v, bool) for v in value
+        ):
+            raise SpecError(f"spec field '{field}' must be a list of integers")
     guides = spec.get("offline_guides")
     if guides is not None and (
         not isinstance(guides, list) or not all(isinstance(v, str) for v in guides)
@@ -201,7 +210,11 @@ def score_math(guide_text: str) -> tuple[float, dict]:
 # ── Metric 4: structure / lint (reuses Slice 19) ────────────────────────────────
 
 def score_lint(
-    guide_text: str, expected_sections: list[str] | None, *, run_katex: bool = False
+    guide_text: str,
+    expected_sections: list[str] | None,
+    *,
+    available_source_pages: list[int] | None = None,
+    run_katex: bool = False,
 ) -> tuple[float, dict, list[dict]]:
     """Run the advisory linter and turn its severity counts into a score.
 
@@ -211,7 +224,10 @@ def score_lint(
     harder than warnings; info findings are ignored.
     """
     report = lint_guide_markdown(
-        guide_text, expected_sections=expected_sections, run_katex=run_katex
+        guide_text,
+        expected_sections=expected_sections,
+        available_source_pages=available_source_pages,
+        run_katex=run_katex,
     )
     summary = dict(report.summary)
     errors = summary.get("error", 0)
@@ -289,7 +305,10 @@ def build_result(
     must_score, violations = score_must_not_claim(guide_text, spec.get("must_not_claim"))
     math_score, math_summary = score_math(guide_text)
     lint_score, lint_summary, lint_top = score_lint(
-        guide_text, spec.get("expected_sections"), run_katex=run_katex
+        guide_text,
+        spec.get("expected_sections"),
+        available_source_pages=spec.get("source_page_anchors"),
+        run_katex=run_katex,
     )
     artifact_score, artifact_detail = score_artifacts(artifacts)
 

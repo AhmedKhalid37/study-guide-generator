@@ -3,10 +3,14 @@
 These are raw lecture notes used as the *source* input for the sample golden
 spec. They are intentionally small and deterministic.
 
+## Page 1
+
 A neural network is built from layers of units. Each unit applies an activation
 function to a weighted sum of its inputs. Training adjusts the weights using
 gradient descent, and the gradients are computed by backpropagation through the
 network.
+
+## Page 2
 
 Key facts:
 

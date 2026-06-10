@@ -14,6 +14,10 @@
     "backpropagation",
     "gradient descent"
   ],
+  "source_page_anchors": [
+    1,
+    2
+  ],
   "must_not_claim": [
     "softmax outputs can be negative"
   ],
