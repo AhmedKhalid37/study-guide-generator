@@ -111,12 +111,12 @@ function jobProviderModel(job) {
 
 const DEFAULT_COLOR = COLOR_CHOICES[0];
 
-// Tailwind classes per validity tier, shared by the Home card badge and the
-// customize-row chip so all surfaces read the same.
+// Semantic tag modifier per validity tier, shared by the customize-row chip so
+// all surfaces read the same. (Tailwind utilities are inert in this app.)
 const STATUS_CHIP_CLASSES = {
-  [STATUS_VALID]: "border-emerald-400/30 bg-emerald-400/10 text-emerald-200",
-  [STATUS_DEGRADED]: "border-amber-400/30 bg-amber-400/10 text-amber-200",
-  [STATUS_BROKEN]: "border-red-400/30 bg-red-400/10 text-red-200"
+  [STATUS_VALID]: "sg-tag-info",
+  [STATUS_DEGRADED]: "sg-tag-warn",
+  [STATUS_BROKEN]: "sg-tag-bad"
 };
 
 // ── Home page ───────────────────────────────────────────────────────────────
@@ -319,37 +319,35 @@ function DegradedActivationDialog({ shortcut, onContinue, onRepair, onCancel }) 
   const findings = shortcutFindings(shortcut);
   const extra = Math.max(0, findings.length - messages.length);
   return (
-    <div className="fixed inset-0 z-[70] flex items-center justify-center p-4">
-      <button type="button" aria-label="Cancel" className="absolute inset-0 cursor-default bg-black/60" onClick={onCancel} />
-      <div role="dialog" aria-modal="true" className="dialog-card relative w-full max-w-md p-5">
-        <div className="flex items-start gap-3">
-          <AlertTriangle className="mt-0.5 h-5 w-5 shrink-0" style={{ color: "var(--amber)" }} />
-          <div className="min-w-0 flex-1">
-            <h2 className="text-sm font-bold" style={{ color: "var(--text)" }}>
-              Launch “{shortcut.name}”?
-            </h2>
-            <p className="pill pill-amber mt-1">
+    <div className="sg-modal-scrim">
+      <button type="button" aria-label="Cancel" className="sg-scrim-bg" onClick={onCancel} />
+      <div role="dialog" aria-modal="true" className="dialog-card sg-dialog">
+        <div className="sg-dialog-row">
+          <AlertTriangle style={{ color: "var(--amber)" }} />
+          <div className="sg-dialog-main">
+            <h2>Launch “{shortcut.name}”?</h2>
+            <p className="pill pill-amber sg-dialog-pill">
               Needs attention{issues > 0 ? ` · ${issues} issue${issues === 1 ? "" : "s"} found` : ""}
             </p>
             {messages.length > 0 && (
-              <ul className="mt-2 flex flex-col gap-1 text-xs" style={{ color: "var(--text-dim)" }}>
+              <ul className="sg-dialog-list">
                 {messages.map((message, index) => (
-                  <li key={index} className="flex items-start gap-1.5">
-                    <span className="mt-0.5" style={{ color: "var(--amber)" }}>•</span>
-                    <span className="min-w-0">{message}</span>
+                  <li key={index}>
+                    <span className="b" style={{ color: "var(--amber)" }}>•</span>
+                    <span style={{ minWidth: 0 }}>{message}</span>
                   </li>
                 ))}
                 {extra > 0 && (
-                  <li className="text-[11px]" style={{ color: "var(--muted)" }}>+{extra} more in the inspector</li>
+                  <li className="sg-dialog-more">+{extra} more in the inspector</li>
                 )}
               </ul>
             )}
-            <p className="mt-2 text-xs" style={{ color: "var(--muted)" }}>
+            <p className="sg-dialog-note">
               You can continue, but some saved settings may be ignored or replaced by defaults.
             </p>
           </div>
         </div>
-        <div className="mt-5 flex flex-wrap justify-end gap-2">
+        <div className="sg-dialog-actions">
           <Button variant="ghost" onClick={onCancel}>Cancel</Button>
           <Button variant="ghost" onClick={onRepair}>
             <Wrench size={14} /> Repair instead
@@ -365,29 +363,29 @@ function BrokenActivationDialog({ shortcut, onInspect, onCancel }) {
   const messages = topFindingMessages(shortcut);
   const hint = invalidHint(shortcut);
   return (
-    <div className="fixed inset-0 z-[70] flex items-center justify-center p-4">
-      <button type="button" aria-label="Cancel" className="absolute inset-0 cursor-default bg-black/60" onClick={onCancel} />
-      <div role="dialog" aria-modal="true" className="dialog-card relative w-full max-w-md p-5">
-        <div className="flex items-start gap-3">
-          <AlertCircle className="mt-0.5 h-5 w-5 shrink-0" style={{ color: "var(--red)" }} />
-          <div className="min-w-0 flex-1">
-            <h2 className="text-sm font-bold" style={{ color: "var(--text)" }}>This shortcut is broken.</h2>
-            <p className="mt-1 text-xs" style={{ color: "var(--muted)" }}>
+    <div className="sg-modal-scrim">
+      <button type="button" aria-label="Cancel" className="sg-scrim-bg" onClick={onCancel} />
+      <div role="dialog" aria-modal="true" className="dialog-card sg-dialog">
+        <div className="sg-dialog-row">
+          <AlertCircle style={{ color: "var(--red)" }} />
+          <div className="sg-dialog-main">
+            <h2>This shortcut is broken.</h2>
+            <p className="sg-dialog-note" style={{ marginTop: 6 }}>
               “{shortcut.name}” can’t launch as saved. {hint}
             </p>
             {messages.length > 0 && (
-              <ul className="mt-2 flex flex-col gap-1 text-xs" style={{ color: "var(--text-dim)" }}>
+              <ul className="sg-dialog-list">
                 {messages.map((message, index) => (
-                  <li key={index} className="flex items-start gap-1.5">
-                    <span className="mt-0.5" style={{ color: "var(--red)" }}>•</span>
-                    <span className="min-w-0">{message}</span>
+                  <li key={index}>
+                    <span className="b" style={{ color: "var(--red)" }}>•</span>
+                    <span style={{ minWidth: 0 }}>{message}</span>
                   </li>
                 ))}
               </ul>
             )}
           </div>
         </div>
-        <div className="mt-5 flex justify-end gap-2">
+        <div className="sg-dialog-actions">
           <Button variant="ghost" onClick={onCancel}>Cancel</Button>
           <Button variant="white" autoFocus onClick={onInspect}>
             <Wrench size={14} /> Inspect / Repair
@@ -894,7 +892,7 @@ function ShortcutRow({ shortcut, busy, isFirst, isLast, onUp, onDown, onTogglePi
         </button>
       </div>
       <span
-        className="grid h-9 w-9 shrink-0 place-items-center rounded-lg text-lg"
+        className="sg-sc-emoji"
         style={{ background: `color-mix(in srgb, ${accent} 16%, transparent)`, border: `1px solid color-mix(in srgb, ${accent} 30%, transparent)` }}
         aria-hidden
       >
@@ -903,12 +901,12 @@ function ShortcutRow({ shortcut, busy, isFirst, isLast, onUp, onDown, onTogglePi
       <div style={{ minWidth: 0, flex: 1 }}>
         <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
           <strong>{shortcut.name}</strong>
-          <span className="shrink-0 rounded border border-white/10 px-1.5 py-0.5 text-[10px] uppercase tracking-wide text-slate-400">
+          <span className="sg-tag">
             {TYPE_LABELS[shortcut.type] || shortcut.type}
           </span>
           {showChip && (
             <span
-              className={`shrink-0 rounded border px-1.5 py-0.5 text-[10px] ${STATUS_CHIP_CLASSES[status] || ""}`}
+              className={`sg-tag ${STATUS_CHIP_CLASSES[status] || ""}`}
               title={firstFinding?.message || shortcut.reason || badge.label}
             >
               {badge.label}{issues > 0 ? ` · ${issues}` : ""}
@@ -916,7 +914,7 @@ function ShortcutRow({ shortcut, busy, isFirst, isLast, onUp, onDown, onTogglePi
           )}
           {payloadHasSavedPrompt(shortcut.payload) && (
             <span
-              className="shrink-0 rounded border border-sky-400/30 bg-sky-400/10 px-1.5 py-0.5 text-[10px] text-sky-200"
+              className="sg-tag sg-tag-info"
               title="This shortcut includes saved prompt/source text (user content)."
             >
               Saved prompt
@@ -929,7 +927,7 @@ function ShortcutRow({ shortcut, busy, isFirst, isLast, onUp, onDown, onTogglePi
       <div style={{ display: "flex", flex: "none", alignItems: "center", gap: 2 }}>
         <IconBtn title="Inspect" onClick={onInspect}><Info size={14} /></IconBtn>
         <IconBtn title={shortcut.pinned ? "Unpin from Home" : "Pin to Home"} onClick={onTogglePin}>
-          {shortcut.pinned ? <Pin size={14} className="text-[#F97316]" /> : <PinOff size={14} />}
+          {shortcut.pinned ? <Pin size={14} style={{ color: "#F97316" }} /> : <PinOff size={14} />}
         </IconBtn>
         <IconBtn title="Edit" onClick={onEdit}><Pencil size={14} /></IconBtn>
         <IconBtn title="Duplicate" onClick={onDuplicate}><Copy size={14} /></IconBtn>
@@ -1166,7 +1164,7 @@ function ShortcutForm({ editing, currentBuilderSetup, onCancel, onSaved, onError
               <Field label="Input type">
                 <select className="sg-input" value={builder.input_type} onChange={(e) => setBuilder({ ...builder, input_type: e.target.value })}>
                   {INPUT_TYPES.map((it) => (
-                    <option key={it} value={it} className="bg-[#0B0F19]">{INPUT_TYPE_LABELS[it]}</option>
+                    <option key={it} value={it}>{INPUT_TYPE_LABELS[it]}</option>
                   ))}
                 </select>
               </Field>
@@ -1179,9 +1177,9 @@ function ShortcutForm({ editing, currentBuilderSetup, onCancel, onSaved, onError
                   value={builder.provider}
                   onChange={(e) => setBuilder({ ...builder, provider: e.target.value, model: "" })}
                 >
-                  <option value="" className="bg-[#0B0F19]">— select —</option>
+                  <option value="">— select —</option>
                   {providers.map((p) => (
-                    <option key={p.id} value={p.id} className="bg-[#0B0F19]">
+                    <option key={p.id} value={p.id}>
                       {p.label}{p.configured ? "" : " (no key)"}
                     </option>
                   ))}
@@ -1189,24 +1187,24 @@ function ShortcutForm({ editing, currentBuilderSetup, onCancel, onSaved, onError
               </Field>
               <Field label="Model">
                 <select className="sg-input" value={builder.model} onChange={(e) => setBuilder({ ...builder, model: e.target.value })}>
-                  <option value="" className="bg-[#0B0F19]">Provider default</option>
+                  <option value="">Provider default</option>
                   {providerModels.map((m) => (
-                    <option key={m} value={m} className="bg-[#0B0F19]">{m}</option>
+                    <option key={m} value={m}>{m}</option>
                   ))}
                 </select>
               </Field>
               <Field label="Generator preset">
                 <select className="sg-input" value={builder.generator_preset} onChange={(e) => setBuilder({ ...builder, generator_preset: e.target.value })}>
                   {generatorPresetOptions(presets, builder.generator_preset).map((opt) => (
-                    <option key={opt.id || "__none__"} value={opt.id} className="bg-[#0B0F19]">{opt.label}</option>
+                    <option key={opt.id || "__none__"} value={opt.id}>{opt.label}</option>
                   ))}
                 </select>
               </Field>
               <Field label="Style">
                 <select className="sg-input" value={builder.style} onChange={(e) => setBuilder({ ...builder, style: e.target.value })}>
-                  <option value="" className="bg-[#0B0F19]">None</option>
+                  <option value="">None</option>
                   {styles.map((s) => (
-                    <option key={s.id} value={s.id} className="bg-[#0B0F19]">{s.name || s.id}</option>
+                    <option key={s.id} value={s.id}>{s.name || s.id}</option>
                   ))}
                 </select>
               </Field>
@@ -1252,7 +1250,7 @@ function ShortcutForm({ editing, currentBuilderSetup, onCancel, onSaved, onError
           <Field label="Tool">
             <select className="sg-input" value={tool} onChange={(e) => setTool(e.target.value)}>
               {TOOL_KEYS.map((key) => (
-                <option key={key} value={key} className="bg-[#0B0F19]">{TOOL_LABELS[key]}</option>
+                <option key={key} value={key}>{TOOL_LABELS[key]}</option>
               ))}
             </select>
           </Field>
@@ -1263,9 +1261,9 @@ function ShortcutForm({ editing, currentBuilderSetup, onCancel, onSaved, onError
             <Field label="View">
               <select className="sg-input" value={viewBase} onChange={(e) => setViewBase(e.target.value)}>
                 {VIEW_BASES.map((v) => (
-                  <option key={v} value={v} className="bg-[#0B0F19]">{VIEW_BASE_LABELS[v]}</option>
+                  <option key={v} value={v}>{VIEW_BASE_LABELS[v]}</option>
                 ))}
-                <option value="search" className="bg-[#0B0F19]">Search query…</option>
+                <option value="search">Search query…</option>
               </select>
             </Field>
             {viewBase === "search" && (
@@ -1381,32 +1379,32 @@ function ImportPanel({ onCancel, onImported, onActivateShortcut, onCloseModal, o
   const onlyBuilder = previewItems.length === 1 && previewItems[0]?.type === "builder_setup";
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col">
-      <div className="min-h-0 flex-1 space-y-4 overflow-y-auto px-5 py-4">
+    <div className="sg-import">
+      <div className="sg-import-scroll">
         {!preview && (
           <>
-            <p className="text-xs text-slate-400">
+            <p style={{ color: "var(--muted)", fontSize: 13.5, lineHeight: 1.5 }}>
               Paste exported shortcut JSON, or upload a <code>.json</code> file. You'll see a preview before anything is saved.
             </p>
             <textarea
-              className="sg-input h-40 font-mono text-xs"
+              className="sg-input sg-textarea-mono"
               value={rawText}
               onChange={(e) => setRawText(e.target.value)}
               placeholder='{"name": "...", "type": "builder_setup", "payload": { ... }}'
             />
-            <div className="flex items-center gap-2">
+            <div className="sg-import-row">
               <button type="button" className="sg-modal-action" onClick={() => fileRef.current?.click()}>
                 <Upload size={14} /> Choose file
               </button>
-              <input ref={fileRef} type="file" accept=".json,application/json" className="hidden" onChange={handleFile} />
-              <div className="flex-1" />
+              <input ref={fileRef} type="file" accept=".json,application/json" style={{ display: "none" }} onChange={handleFile} />
+              <div className="sg-import-spacer" />
               <button
                 type="button"
                 disabled={!rawText.trim() || loading}
                 onClick={() => runPreview(rawText)}
-                className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-[#F97316]/50 bg-[#F97316]/80 px-3.5 text-sm font-bold text-white hover:bg-[#F97316] disabled:opacity-50"
+                className="sg-ghost-button accent"
               >
-                {loading && <Loader2 size={14} className="animate-spin" />}
+                {loading && <Loader2 size={14} className="sg-spin" />}
                 Preview
               </button>
             </div>
@@ -1415,19 +1413,19 @@ function ImportPanel({ onCancel, onImported, onActivateShortcut, onCloseModal, o
 
         {preview && (
           <>
-            <div className="flex items-center justify-between">
-              <span className="text-xs font-bold uppercase tracking-wide text-slate-400">
+            <div className="sg-import-head">
+              <span className="sg-import-eyebrow">
                 Preview · {previewItems.length} shortcut{previewItems.length === 1 ? "" : "s"}
               </span>
-              <button type="button" className="text-xs text-slate-400 hover:text-white" onClick={() => { setPreview(null); setParsed(null); setRenames({}); }}>
+              <button type="button" className="sg-modal-action" onClick={() => { setPreview(null); setParsed(null); setRenames({}); }}>
                 ← Back
               </button>
             </div>
 
             {previewErrors.length > 0 && (
-              <div className="rounded-lg border border-red-400/30 bg-red-400/10 px-3 py-2 text-xs text-red-200">
+              <div className="sg-import-err">
                 {previewErrors.length} item{previewErrors.length === 1 ? "" : "s"} could not be read:
-                <ul className="mt-1 list-disc pl-4">
+                <ul>
                   {previewErrors.map((e, i) => (
                     <li key={i}>#{e.index + 1}: {e.error}</li>
                   ))}
@@ -1436,32 +1434,32 @@ function ImportPanel({ onCancel, onImported, onActivateShortcut, onCloseModal, o
             )}
 
             {previewItems.map((item, index) => (
-              <div key={index} className="rounded-xl border border-white/10 bg-white/[0.03] p-3">
-                <div className="flex items-center gap-2">
-                  <span className="grid h-8 w-8 place-items-center rounded-lg bg-white/5 text-base">{shortcutEmoji(item)}</span>
-                  <div className="min-w-0 flex-1">
-                    <strong className="block truncate text-sm text-white">{item.name}</strong>
-                    <span className="text-[11px] uppercase tracking-wide text-slate-500">{TYPE_LABELS[item.type] || item.type}</span>
+              <div key={index} className="sg-import-item">
+                <div className="sg-import-item-top">
+                  <span className="sg-import-emoji">{shortcutEmoji(item)}</span>
+                  <div style={{ minWidth: 0, flex: 1 }}>
+                    <strong className="sg-import-name">{item.name}</strong>
+                    <span className="sg-import-type">{TYPE_LABELS[item.type] || item.type}</span>
                   </div>
                   {item.valid === false && (
-                    <span className="rounded border border-amber-400/30 bg-amber-400/10 px-1.5 py-0.5 text-[10px] text-amber-200" title={item.reason}>
+                    <span className="sg-tag sg-tag-warn" title={item.reason}>
                       {invalidHint(item)}
                     </span>
                   )}
                 </div>
-                <p className="mt-2 text-xs text-slate-400">{summarizePayload(item)}</p>
+                <p style={{ marginTop: 8, color: "var(--muted)", fontSize: 13 }}>{summarizePayload(item)}</p>
                 {payloadHasSavedPrompt(item.payload) && (
-                  <p className="mt-1 text-[11px] text-sky-300">
+                  <p style={{ marginTop: 4, color: "#C7C9FB", fontSize: 12 }}>
                     Includes saved prompt/source text ({item.payload.saved_prompt.length.toLocaleString()} chars) — user content will be imported.
                   </p>
                 )}
                 {item._id_regenerated && (
-                  <p className="mt-1 text-[11px] text-sky-300">Will be imported as a new shortcut (new id).</p>
+                  <p style={{ marginTop: 4, color: "#C7C9FB", fontSize: 12 }}>Will be imported as a new shortcut (new id).</p>
                 )}
-                <div className="mt-2">
-                  <label className="text-[11px] text-slate-500">Rename before saving (optional)</label>
+                <div style={{ marginTop: 10 }}>
+                  <label className="sg-field-cap" style={{ marginBottom: 4 }}>Rename before saving (optional)</label>
                   <input
-                    className="sg-input mt-1"
+                    className="sg-input"
                     placeholder={item.name}
                     value={renames[index] ?? ""}
                     onChange={(e) => setRenames({ ...renames, [index]: e.target.value })}
@@ -1472,7 +1470,8 @@ function ImportPanel({ onCancel, onImported, onActivateShortcut, onCloseModal, o
                     type="button"
                     onClick={() => handleUseOnce(item)}
                     disabled={item.valid === false}
-                    className="mt-2 inline-flex items-center gap-1.5 rounded-lg border border-white/15 bg-white/[0.04] px-2.5 py-1 text-[11px] font-semibold text-slate-200 hover:bg-white/[0.08] disabled:opacity-40"
+                    className="sg-modal-action"
+                    style={{ marginTop: 10 }}
                     title={item.valid === false ? "Fix the referenced provider/style first" : "Load into the Builder without saving"}
                   >
                     Use once (don't save)
@@ -1484,13 +1483,13 @@ function ImportPanel({ onCancel, onImported, onActivateShortcut, onCloseModal, o
         )}
       </div>
 
-      <div className="flex justify-end gap-2 border-t border-white/10 px-5 py-3">
-        <button type="button" onClick={onCancel} className="inline-flex h-9 items-center rounded-lg border border-white/15 bg-white/[0.04] px-3.5 text-sm font-bold text-slate-200 hover:bg-white/[0.08]">
+      <div className="sg-import-foot">
+        <button type="button" onClick={onCancel} className="sg-ghost-button">
           Cancel
         </button>
         {preview && previewItems.length > 0 && (
-          <button type="button" disabled={loading} onClick={handleSave} className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-[#F97316]/50 bg-[#F97316]/80 px-3.5 text-sm font-bold text-white hover:bg-[#F97316] disabled:opacity-50">
-            {loading && <Loader2 size={14} className="animate-spin" />}
+          <button type="button" disabled={loading} onClick={handleSave} className="sg-ghost-button accent">
+            {loading && <Loader2 size={14} className="sg-spin" />}
             {onlyBuilder ? "Save as my shortcut" : "Save all as my shortcuts"}
           </button>
         )}
@@ -1503,8 +1502,8 @@ function ImportPanel({ onCancel, onImported, onActivateShortcut, onCloseModal, o
 
 function Field({ label, children }) {
   return (
-    <label className="block">
-      <span className="mb-1 block text-[11px] font-bold uppercase tracking-wide text-slate-400">{label}</span>
+    <label className="sg-field">
+      <span className="sg-field-cap">{label}</span>
       {children}
     </label>
   );
@@ -1519,38 +1518,38 @@ function SavedPromptControl({ savePrompt, setSavePrompt, savedPromptText, setSav
   const len = (savedPromptText || "").length;
   const over = len > MAX_SAVED_PROMPT_CHARS;
   return (
-    <div className="rounded-lg border border-white/10 bg-white/[0.02] p-3">
-      <label className="flex items-start gap-2 text-xs text-slate-200">
+    <div className="sg-form-sub">
+      <label className="sg-prompt-check">
         <input
           type="checkbox"
-          className="mt-0.5"
           checked={savePrompt}
           onChange={(e) => setSavePrompt(e.target.checked)}
         />
         <span>
-          <span className="font-semibold">Save prompt/source text with this shortcut</span>
-          <span className="mt-0.5 block text-[11px] font-normal text-slate-400">
+          <span style={{ fontWeight: 600 }}>Save prompt/source text with this shortcut</span>
+          <span className="sg-prompt-sub">
             Includes the current prompt/text inside the shortcut export. Leave off for
             reusable settings only. This may contain private course material.
           </span>
         </span>
       </label>
       {savePrompt && (
-        <div className="mt-2">
+        <div>
           <textarea
-            className="sg-input min-h-[88px] w-full font-mono text-[12px]"
+            className="sg-input sg-textarea-mono"
+            style={{ minHeight: 88 }}
             value={savedPromptText}
             onChange={(e) => setSavedPromptText(e.target.value)}
             placeholder="Source prompt/text to store inside this shortcut…"
           />
-          <div className={`mt-1 text-[11px] ${over ? "text-red-300" : "text-slate-400"}`}>
+          <div className={`sg-prompt-count${over ? " over" : ""}`}>
             {len.toLocaleString()} / {MAX_SAVED_PROMPT_CHARS.toLocaleString()} chars
             {over ? " — too long; shorten before saving." : ""}
           </div>
         </div>
       )}
       {!savePrompt && savedPromptText && (
-        <div className="mt-2 text-[11px] text-amber-300">
+        <div style={{ color: "#F4C76B", fontSize: 12 }}>
           Saved prompt will be removed from this shortcut when you save.
         </div>
       )}

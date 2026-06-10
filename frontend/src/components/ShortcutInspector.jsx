@@ -47,16 +47,13 @@ import { TYPE_LABELS } from "../shortcutMeta";
 //   - No provider/model auto-switching; suggestions are never auto-applied.
 //   - No raw keys: every candidate is the already-redacted backend list.
 
-const TONE_CLASSES = {
-  valid: "border-emerald-400/30 bg-emerald-400/10 text-emerald-200",
-  degraded: "border-amber-400/30 bg-amber-400/10 text-amber-200",
-  broken: "border-red-400/30 bg-red-400/10 text-red-200",
-};
+// Maps the status-badge tone to a semantic .sg-status-pill modifier.
+const STATUS_TONE = { valid: "ok", degraded: "warn", broken: "bad" };
 
 const SEVERITY_META = {
-  error: { Icon: AlertCircle, cls: "text-red-300", label: "Error" },
-  warning: { Icon: AlertTriangle, cls: "text-amber-300", label: "Warning" },
-  info: { Icon: Info, cls: "text-slate-400", label: "Info" },
+  error: { Icon: AlertCircle, cls: "sev-error", label: "Error" },
+  warning: { Icon: AlertTriangle, cls: "sev-warn", label: "Warning" },
+  info: { Icon: Info, cls: "sev-info", label: "Info" },
 };
 
 // Human labels for the repair field keys (drives the control headings).
@@ -73,11 +70,7 @@ const FIELD_LABELS = {
 function StatusPill({ status }) {
   const badge = statusBadge(status);
   return (
-    <span
-      className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[11px] font-semibold ${
-        TONE_CLASSES[badge.tone] || TONE_CLASSES.valid
-      }`}
-    >
+    <span className={`sg-status-pill ${STATUS_TONE[badge.tone] || "ok"}`}>
       {badge.label}
     </span>
   );
@@ -88,26 +81,22 @@ function FindingRow({ finding }) {
   const { Icon } = meta;
   const candidateCount = Array.isArray(finding?.candidates) ? finding.candidates.length : 0;
   return (
-    <li className="rounded-xl border border-white/10 bg-white/[0.03] p-3">
-      <div className="flex items-start gap-2">
-        <Icon size={15} className={`mt-0.5 shrink-0 ${meta.cls}`} />
-        <div className="min-w-0 flex-1">
-          <div className="flex flex-wrap items-center gap-2">
-            <span className="font-mono text-[11px] text-slate-300">{finding?.code || "unknown"}</span>
-            {finding?.field && (
-              <span className="rounded border border-white/10 px-1.5 py-0.5 text-[10px] text-slate-400">
-                {finding.field}
-              </span>
-            )}
-            <span className={`text-[10px] uppercase tracking-wide ${meta.cls}`}>{meta.label}</span>
+    <li className="sg-insp-card">
+      <div className="sg-insp-find">
+        <Icon className={meta.cls} />
+        <div className="sg-insp-find-body">
+          <div className="sg-insp-find-top">
+            <span className="sg-insp-code">{finding?.code || "unknown"}</span>
+            {finding?.field && <span className="sg-insp-fieldtag">{finding.field}</span>}
+            <span className={`sg-insp-sev ${meta.cls}`}>{meta.label}</span>
           </div>
-          <p className="mt-1 text-xs text-slate-300">{finding?.message || "No description."}</p>
+          <p className="sg-insp-msg">{finding?.message || "No description."}</p>
           {finding?.current_value !== undefined && finding?.current_value !== null && (
-            <p className="mt-1 text-[11px] text-slate-500">
-              Current: <span className="font-mono text-slate-400">{String(finding.current_value)}</span>
+            <p className="sg-insp-sub">
+              Current: <span className="v">{String(finding.current_value)}</span>
             </p>
           )}
-          <p className="mt-1 text-[11px] text-slate-500">
+          <p className="sg-insp-sub">
             {finding?.repairable
               ? candidateCount > 0
                 ? `Repairable — ${candidateCount} candidate${candidateCount === 1 ? "" : "s"} available`
@@ -126,18 +115,18 @@ function RepairFieldControl({ fieldKey, current, removable, options, entry, onCh
   const action = entry?.action || "keep";
   const value = entry?.value ?? "";
   return (
-    <div className="rounded-xl border border-white/10 bg-white/[0.03] p-3">
-      <div className="flex items-center justify-between gap-2">
-        <span className="text-xs font-semibold text-slate-200">{FIELD_LABELS[fieldKey] || fieldKey}</span>
+    <div className="sg-insp-card">
+      <div className="sg-insp-ctl-top">
+        <span className="sg-insp-ctl-label">{FIELD_LABELS[fieldKey] || fieldKey}</span>
         {current !== undefined && current !== null && current !== "" && (
-          <span className="font-mono text-[10px] text-slate-500">now: {String(current)}</span>
+          <span className="sg-insp-ctl-now">now: {String(current)}</span>
         )}
       </div>
-      <div className="mt-2 flex flex-wrap items-center gap-2">
+      <div className="sg-insp-ctl-row">
         <select
           value={action}
           onChange={(e) => onChange(fieldKey, { action: e.target.value, value })}
-          className="h-8 rounded-lg border border-white/15 bg-[#0B0F19] px-2 text-xs text-slate-200"
+          className="sg-insp-select"
         >
           <option value="keep">Keep current</option>
           <option value="replace">Replace with…</option>
@@ -147,7 +136,7 @@ function RepairFieldControl({ fieldKey, current, removable, options, entry, onCh
           <select
             value={value}
             onChange={(e) => onChange(fieldKey, { action: "replace", value: e.target.value })}
-            className="h-8 min-w-[8rem] flex-1 rounded-lg border border-white/15 bg-[#0B0F19] px-2 text-xs text-slate-200"
+            className="sg-insp-select grow"
           >
             <option value="">Choose a replacement…</option>
             {options.map((opt) => (
@@ -159,7 +148,7 @@ function RepairFieldControl({ fieldKey, current, removable, options, entry, onCh
         )}
       </div>
       {action === "replace" && options.length === 0 && (
-        <p className="mt-1.5 text-[11px] text-amber-300">
+        <p className="sg-insp-sub sev-warn">
           No replacement candidates are available for this field.
         </p>
       )}
@@ -169,17 +158,17 @@ function RepairFieldControl({ fieldKey, current, removable, options, entry, onCh
 
 function DiffList({ diff }) {
   if (!Array.isArray(diff) || diff.length === 0) {
-    return <p className="text-[11px] text-slate-500">No field changes.</p>;
+    return <p className="sg-insp-sub">No field changes.</p>;
   }
   const fmt = (v) => (v === null || v === undefined || v === "" ? "—" : typeof v === "object" ? JSON.stringify(v) : String(v));
   return (
-    <ul className="flex flex-col gap-1">
+    <ul className="sg-insp-diff">
       {diff.map((d, i) => (
-        <li key={`${d?.field || "d"}-${i}`} className="flex flex-wrap items-center gap-1 text-[11px]">
-          <span className="font-mono text-slate-400">{d?.field}</span>
-          <span className="font-mono text-slate-500">{fmt(d?.from)}</span>
-          <span className="text-slate-500">→</span>
-          <span className="font-mono text-emerald-300">{fmt(d?.to)}</span>
+        <li key={`${d?.field || "d"}-${i}`}>
+          <span className="f">{d?.field}</span>
+          <span className="from">{fmt(d?.from)}</span>
+          <span className="arr">→</span>
+          <span className="to">{fmt(d?.to)}</span>
         </li>
       ))}
     </ul>
@@ -389,61 +378,57 @@ export default function ShortcutInspector({ shortcut, onClose, onRepaired }) {
   }, [shortcutId, previewFresh, draft, onRepaired, loadInspect]);
 
   return (
-    <div className="fixed inset-0 z-[80] flex justify-end">
-      <button type="button" aria-label="Close inspector" className="absolute inset-0 cursor-default bg-black/60" onClick={onClose} />
+    <div className="sg-drawer-root" style={{ zIndex: 80 }}>
+      <button type="button" aria-label="Close inspector" className="sg-drawer-scrim" onClick={onClose} />
       <aside
         role="dialog"
         aria-modal="true"
         aria-label="Shortcut inspector"
-        className="relative flex h-full w-full max-w-md flex-col border-l border-white/10 bg-[#0B0F19] shadow-2xl"
+        className="sg-drawer-sheet sg-insp"
       >
-        <div className="flex items-start justify-between gap-3 border-b border-white/10 px-5 py-3.5">
-          <div className="min-w-0">
-            <div className="flex items-center gap-2">
-              <h2 className="truncate text-sm font-bold text-white">{view?.name || "Shortcut"}</h2>
+        <div className="sg-insp-head">
+          <div className="sg-insp-titles">
+            <div className="sg-insp-titlerow">
+              <h2 className="sg-insp-title">{view?.name || "Shortcut"}</h2>
               <StatusPill status={status} />
             </div>
-            <p className="mt-0.5 text-[11px] uppercase tracking-wide text-slate-500">{typeLabel}</p>
+            <p className="sg-insp-eyebrow">{typeLabel}</p>
           </div>
-          <button type="button" onClick={onClose} className="rounded-lg p-1 text-slate-400 hover:bg-white/10 hover:text-white">
+          <button type="button" onClick={onClose} className="sg-drawer-close" aria-label="Close">
             <X size={16} />
           </button>
         </div>
 
-        <div className="min-h-0 flex-1 space-y-4 overflow-y-auto px-5 py-4">
+        <div className="sg-insp-body">
           {loading && (
-            <div className="flex items-center gap-2 text-xs text-slate-400">
-              <Loader2 size={14} className="animate-spin" /> Inspecting shortcut…
+            <div className="sg-insp-loading">
+              <Loader2 className="sg-spin" /> Inspecting shortcut…
             </div>
           )}
 
           {notFound && (
-            <div className="rounded-lg border border-amber-400/30 bg-amber-400/10 px-3 py-2 text-xs text-amber-200">
+            <div className="sg-insp-note warn">
               This shortcut no longer exists. It may have been deleted — close and refresh the list.
             </div>
           )}
 
-          {error && (
-            <div className="rounded-lg border border-red-400/30 bg-red-400/10 px-3 py-2 text-xs text-red-200">
-              {error}
-            </div>
-          )}
+          {error && <div className="sg-insp-note bad">{error}</div>}
 
           {applied && (
-            <div className="flex items-start gap-2 rounded-lg border border-emerald-400/30 bg-emerald-400/10 px-3 py-2 text-xs text-emerald-100">
-              <CheckCircle2 size={15} className="mt-0.5 shrink-0 text-emerald-300" />
-              <div className="min-w-0">
-                <p className="font-semibold">
+            <div className="sg-insp-banner">
+              <CheckCircle2 />
+              <div style={{ minWidth: 0 }}>
+                <p className="sg-insp-banner-t">
                   {applied.mode === REPAIR_MODE_CLONE ? "Repaired copy created." : "Shortcut repaired."}
                 </p>
-                <p className="mt-0.5 text-emerald-200/80">
+                <p className="sg-insp-banner-d">
                   {applied.mode === REPAIR_MODE_CLONE
                     ? `New shortcut “${applied.name}” created; the original is unchanged.`
                     : "The saved shortcut was updated."}
                   {applied.status ? ` New status: ${applied.status}.` : ""}
                 </p>
                 {applied.warnings?.length > 0 && (
-                  <p className="mt-0.5 text-amber-200/90">{applied.warnings.join(" ")}</p>
+                  <p className="sg-insp-banner-w">{applied.warnings.join(" ")}</p>
                 )}
               </div>
             </div>
@@ -453,26 +438,26 @@ export default function ShortcutInspector({ shortcut, onClose, onRepaired }) {
             <>
               {/* Legacy valid/reason, shown when relevant for transparency. */}
               {view?.valid === false && (
-                <div className="rounded-lg border border-white/10 bg-white/[0.02] px-3 py-2 text-xs text-slate-300">
-                  <span className="text-slate-500">Legacy check:</span> blocked
+                <div className="sg-insp-note">
+                  <span style={{ color: "var(--muted)" }}>Legacy check:</span> blocked
                   {view?.reason ? ` — ${view.reason}` : ""}
                 </div>
               )}
 
-              <section>
-                <div className="mb-2 flex items-center justify-between">
-                  <h3 className="text-[11px] font-bold uppercase tracking-wide text-slate-400">Findings</h3>
-                  <span className="text-[11px] text-slate-500">
+              <section className="sg-insp-section">
+                <div className="sg-insp-sec-head">
+                  <h3>Findings</h3>
+                  <span className="sg-insp-sec-meta">
                     {counts.error} error{counts.error === 1 ? "" : "s"} · {counts.warning} warning
                     {counts.warning === 1 ? "" : "s"} · {counts.info} info
                   </span>
                 </div>
                 {findings.length === 0 ? (
-                  <p className="rounded-lg border border-emerald-400/20 bg-emerald-400/[0.06] px-3 py-2 text-xs text-emerald-200">
+                  <p className="sg-insp-note ok">
                     No problems found. This shortcut resolves exactly as saved.
                   </p>
                 ) : (
-                  <ul className="flex flex-col gap-2">
+                  <ul className="sg-insp-list">
                     {findings.map((finding, index) => (
                       <FindingRow key={`${finding?.code || "f"}-${index}`} finding={finding} />
                     ))}
@@ -482,17 +467,19 @@ export default function ShortcutInspector({ shortcut, onClose, onRepaired }) {
 
               {/* Repair panel — only for a repairable builder_setup with a
                   supported action. Otherwise a calm "nothing to do" note. */}
-              <section>
-                <h3 className="mb-2 text-[11px] font-bold uppercase tracking-wide text-slate-400">Repair</h3>
+              <section className="sg-insp-section">
+                <div className="sg-insp-sec-head">
+                  <h3>Repair</h3>
+                </div>
 
                 {!panelEligible || !hasActionable ? (
-                  <p className="rounded-lg border border-white/10 bg-white/[0.02] px-3 py-2 text-xs text-slate-400">
+                  <p className="sg-insp-note">
                     {findings.length === 0
                       ? "No repair needed."
                       : "No supported repair action for these findings."}
                   </p>
                 ) : (
-                  <div className="flex flex-col gap-3">
+                  <div className="sg-insp-list">
                     {actionableKeys.map((key) => (
                       <RepairFieldControl
                         key={key}
@@ -506,23 +493,22 @@ export default function ShortcutInspector({ shortcut, onClose, onRepaired }) {
                     ))}
 
                     {unknownSectionKeys.length > 0 && (
-                      <div className="rounded-xl border border-white/10 bg-white/[0.03] p-3">
-                        <span className="text-xs font-semibold text-slate-200">
+                      <div className="sg-insp-card">
+                        <span className="sg-insp-ctl-label">
                           {FIELD_LABELS.include_sections}
                         </span>
-                        <p className="mt-0.5 text-[11px] text-slate-500">
+                        <p className="sg-insp-sub">
                           Remove sections that are no longer recognized.
                         </p>
-                        <div className="mt-2 flex flex-col gap-1.5">
+                        <div className="sg-insp-opts">
                           {unknownSectionKeys.map((sectionKey) => (
-                            <label key={sectionKey} className="flex items-center gap-2 text-xs text-slate-300">
+                            <label key={sectionKey} className="sg-insp-opt">
                               <input
                                 type="checkbox"
                                 checked={(draft.removeSections || []).includes(sectionKey)}
                                 onChange={() => toggleSectionRemoval(sectionKey)}
-                                className="h-3.5 w-3.5 accent-emerald-400"
                               />
-                              <span className="font-mono text-[11px]">{sectionKey}</span>
+                              <span className="mono">{sectionKey}</span>
                             </label>
                           ))}
                         </div>
@@ -530,26 +516,24 @@ export default function ShortcutInspector({ shortcut, onClose, onRepaired }) {
                     )}
 
                     {/* Mode selector */}
-                    <div className="rounded-xl border border-white/10 bg-white/[0.03] p-3">
-                      <span className="text-xs font-semibold text-slate-200">Apply mode</span>
-                      <div className="mt-2 flex flex-col gap-1.5 text-xs text-slate-300">
-                        <label className="flex items-center gap-2">
+                    <div className="sg-insp-card">
+                      <span className="sg-insp-ctl-label">Apply mode</span>
+                      <div className="sg-insp-opts">
+                        <label className="sg-insp-opt">
                           <input
                             type="radio"
                             name="repair-mode"
                             checked={draft.mode === REPAIR_MODE_IN_PLACE}
                             onChange={() => setMode(REPAIR_MODE_IN_PLACE)}
-                            className="accent-sky-400"
                           />
                           Repair this shortcut (update in place)
                         </label>
-                        <label className="flex items-center gap-2">
+                        <label className="sg-insp-opt">
                           <input
                             type="radio"
                             name="repair-mode"
                             checked={draft.mode === REPAIR_MODE_CLONE}
                             onChange={() => setMode(REPAIR_MODE_CLONE)}
-                            className="accent-sky-400"
                           />
                           Create a repaired copy (keep the original)
                         </label>
@@ -560,33 +544,27 @@ export default function ShortcutInspector({ shortcut, onClose, onRepaired }) {
                           value={draft.cloneName}
                           onChange={(e) => setDraft((d) => ({ ...d, cloneName: e.target.value }))}
                           placeholder={defaultCloneName(view?.name)}
-                          className="mt-2 h-8 w-full rounded-lg border border-white/15 bg-[#0B0F19] px-2 text-xs text-slate-200"
+                          className="sg-insp-input"
                         />
                       )}
                     </div>
 
-                    {previewError && (
-                      <div className="rounded-lg border border-red-400/30 bg-red-400/10 px-3 py-2 text-xs text-red-200">
-                        {previewError}
-                      </div>
-                    )}
+                    {previewError && <div className="sg-insp-note bad">{previewError}</div>}
 
                     {/* Preview result + diff */}
                     {preview?.result && previewFresh && (
-                      <div className="rounded-xl border border-sky-400/20 bg-sky-400/[0.06] p-3">
-                        <div className="flex items-center justify-between gap-2">
-                          <span className="text-[11px] font-bold uppercase tracking-wide text-sky-200">
+                      <div className="sg-insp-card accent">
+                        <div className="sg-insp-ctl-top">
+                          <span className="sg-insp-eyebrow" style={{ marginTop: 0, color: "#C7C9FB" }}>
                             Preview ({preview.result.mode})
                           </span>
                           <StatusPill status={preview.result?.proposed?.validity?.status || "valid"} />
                         </div>
-                        <div className="mt-2">
-                          <DiffList diff={preview.result.diff} />
-                        </div>
+                        <DiffList diff={preview.result.diff} />
                         {Array.isArray(preview.result.warnings) && preview.result.warnings.length > 0 && (
-                          <p className="mt-2 text-[11px] text-amber-300">{preview.result.warnings.join(" ")}</p>
+                          <p className="sg-insp-sub sev-warn">{preview.result.warnings.join(" ")}</p>
                         )}
-                        <p className="mt-2 text-[11px] text-slate-400">
+                        <p className="sg-insp-sub">
                           The original is unchanged until you apply.
                         </p>
                       </div>
@@ -594,40 +572,36 @@ export default function ShortcutInspector({ shortcut, onClose, onRepaired }) {
 
                     {/* Stale-preview note */}
                     {preview?.result && !previewFresh && (
-                      <p className="rounded-lg border border-amber-400/20 bg-amber-400/[0.06] px-3 py-2 text-[11px] text-amber-200">
+                      <p className="sg-insp-note warn">
                         Your choices changed — preview again before applying.
                       </p>
                     )}
 
-                    {applyError && (
-                      <div className="rounded-lg border border-red-400/30 bg-red-400/10 px-3 py-2 text-xs text-red-200">
-                        {applyError}
-                      </div>
-                    )}
+                    {applyError && <div className="sg-insp-note bad">{applyError}</div>}
 
                     {/* Confirm step */}
                     {confirmOpen && (
-                      <div className="rounded-xl border border-amber-400/30 bg-amber-400/[0.08] p-3">
-                        <p className="text-xs text-amber-100">
+                      <div className="sg-insp-card warn">
+                        <p className="sg-insp-msg" style={{ marginTop: 0, color: "#F4C76B" }}>
                           {draft.mode === REPAIR_MODE_CLONE
                             ? "This will create a repaired copy and leave the original unchanged."
                             : "This will update the saved shortcut."}
                         </p>
-                        <div className="mt-2 flex items-center gap-2">
+                        <div className="sg-insp-ctl-row">
                           <button
                             type="button"
                             onClick={handleApply}
                             disabled={applying}
-                            className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-emerald-400/40 bg-emerald-400/15 px-3 text-xs font-bold text-emerald-100 hover:bg-emerald-400/25 disabled:cursor-not-allowed disabled:opacity-50"
+                            className="sg-act ok sm"
                           >
-                            {applying ? <Loader2 size={13} className="animate-spin" /> : <CheckCircle2 size={13} />}
+                            {applying ? <Loader2 size={13} className="sg-spin" /> : <CheckCircle2 size={13} />}
                             {draft.mode === REPAIR_MODE_CLONE ? "Create copy" : "Update shortcut"}
                           </button>
                           <button
                             type="button"
                             onClick={() => setConfirmOpen(false)}
                             disabled={applying}
-                            className="inline-flex h-8 items-center rounded-lg border border-white/15 bg-white/[0.04] px-3 text-xs font-semibold text-slate-200 hover:bg-white/[0.08]"
+                            className="sg-act sm"
                           >
                             Cancel
                           </button>
@@ -642,16 +616,16 @@ export default function ShortcutInspector({ shortcut, onClose, onRepaired }) {
         </div>
 
         {/* Footer actions: Preview + Apply (only when a repair panel is shown). */}
-        <div className="flex items-center justify-between gap-2 border-t border-white/10 px-5 py-3">
+        <div className="sg-insp-foot">
           {panelEligible && hasActionable ? (
-            <div className="flex items-center gap-2">
+            <div className="sg-insp-foot-l">
               <button
                 type="button"
                 onClick={handlePreview}
                 disabled={!canPreview}
-                className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-sky-400/40 bg-sky-400/15 px-3.5 text-sm font-semibold text-sky-100 hover:bg-sky-400/25 disabled:cursor-not-allowed disabled:border-white/10 disabled:bg-white/[0.03] disabled:text-slate-500"
+                className="sg-act accent"
               >
-                {previewing ? <Loader2 size={14} className="animate-spin" /> : <RefreshCw size={14} />}
+                {previewing ? <Loader2 size={14} className="sg-spin" /> : <RefreshCw size={14} />}
                 Preview repair
               </button>
               <button
@@ -659,7 +633,7 @@ export default function ShortcutInspector({ shortcut, onClose, onRepaired }) {
                 onClick={() => setConfirmOpen(true)}
                 disabled={!canApply || confirmOpen}
                 title={!previewFresh ? "Preview the repair first" : undefined}
-                className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-emerald-400/40 bg-emerald-400/15 px-3.5 text-sm font-bold text-emerald-100 hover:bg-emerald-400/25 disabled:cursor-not-allowed disabled:border-white/10 disabled:bg-white/[0.03] disabled:text-slate-500"
+                className="sg-act ok"
               >
                 <Wrench size={14} />
                 Apply…
@@ -668,11 +642,7 @@ export default function ShortcutInspector({ shortcut, onClose, onRepaired }) {
           ) : (
             <span />
           )}
-          <button
-            type="button"
-            onClick={onClose}
-            className="inline-flex h-9 items-center rounded-lg border border-white/15 bg-white/[0.04] px-3.5 text-sm font-bold text-slate-200 hover:bg-white/[0.08]"
-          >
+          <button type="button" onClick={onClose} className="sg-act">
             Close
           </button>
         </div>

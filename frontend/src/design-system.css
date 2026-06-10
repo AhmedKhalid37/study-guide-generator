@@ -2601,3 +2601,168 @@ details.sg-mdl-helper > summary::-webkit-details-marker { display: none; }
 .sg-exp-formats-empty { font-size: 12px; color: var(--label); }
 .sg-exp-fmt-chip { display: inline-flex; align-items: center; gap: 5px; padding: 3px 9px; border-radius: 7px; border: 1px solid var(--card-border); background: var(--card-2); font-size: 11.5px; font-weight: 600; color: var(--text-dim); }
 .sg-exp-fmt-chip svg { flex: none; color: #A5A8F8; }
+
+/* =========================================================================
+   Reskin QA — Slice 11 (HomeShortcuts + ShortcutInspector).
+   Visual/CSS/markup only. Tailwind utilities are inert in this app, so these
+   are real semantic rules built on the Slice 5b density baseline. No app
+   logic / handlers / state / endpoints changed. RecentJobsPanel / JobDetails
+   body is intentionally NOT touched here (deferred to its own slice).
+   ========================================================================= */
+
+/* ---- shared small tag/chip (shortcut row + import meta) ---- */
+.sg-tag {
+  display: inline-flex; align-items: center; gap: 5px; flex: none;
+  padding: 2px 7px; border-radius: 6px;
+  border: 1px solid var(--card-border); background: var(--card);
+  color: var(--muted); font-size: 11px; font-weight: 600;
+  text-transform: uppercase; letter-spacing: 0.04em; white-space: nowrap;
+}
+.sg-tag-warn { border-color: var(--amber-soft); background: var(--amber-soft); color: #F4C76B; text-transform: none; }
+.sg-tag-bad  { border-color: var(--red-soft);   background: var(--red-soft);   color: #FCA5A5; text-transform: none; }
+.sg-tag-info { border-color: var(--indigo-soft); background: var(--indigo-soft); color: #C7C9FB; text-transform: none; }
+
+/* ---- shortcut-row emoji tile (bg/border supplied inline from accent) ---- */
+.sg-sc-emoji { display: grid; place-items: center; width: 38px; height: 38px; flex: none; border-radius: 10px; font-size: 19px; }
+
+/* ---- centered confirm / activation dialogs (overlay was inert Tailwind) ---- */
+.sg-dialog { position: relative; width: 100%; max-width: 420px; padding: 20px; }
+.sg-dialog-row { display: flex; align-items: flex-start; gap: 12px; }
+.sg-dialog-row > svg { flex: none; margin-top: 2px; width: 20px; height: 20px; }
+.sg-dialog-main { min-width: 0; flex: 1; }
+.sg-dialog-main h2 { font-family: var(--serif); font-size: 19px; font-weight: 500; color: var(--text); }
+.sg-dialog-pill { margin-top: 8px; }
+.sg-dialog-list { display: flex; flex-direction: column; gap: 5px; margin-top: 10px; list-style: none; padding: 0; }
+.sg-dialog-list li { display: flex; align-items: flex-start; gap: 7px; color: var(--text-dim); font-size: 13.5px; line-height: 1.45; }
+.sg-dialog-list li .b { margin-top: 1px; flex: none; }
+.sg-dialog-more { color: var(--muted); font-size: 12px; }
+.sg-dialog-note { margin-top: 10px; color: var(--muted); font-size: 13px; line-height: 1.5; }
+.sg-dialog-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 9px; margin-top: 18px; }
+
+/* ---- shared monospace textarea (import + saved-prompt) ---- */
+.sg-textarea-mono { min-height: 150px; font-family: var(--mono); font-size: 12.5px; line-height: 1.5; resize: vertical; }
+
+/* ---- import shortcuts panel (lives inside .sg-shortcuts-modal) ---- */
+.sg-import { display: flex; min-height: 0; flex: 1; flex-direction: column; }
+.sg-import-scroll { min-height: 0; flex: 1; overflow-y: auto; padding: 16px 18px; display: flex; flex-direction: column; gap: 14px; }
+.sg-import-row { display: flex; align-items: center; gap: 8px; }
+.sg-import-spacer { flex: 1; }
+.sg-import-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.sg-import-eyebrow { font: 600 11px/1.2 var(--mono); text-transform: uppercase; letter-spacing: 0.12em; color: var(--label); }
+.sg-import-err { border: 1px solid var(--red-soft); background: var(--red-soft); border-radius: 9px; padding: 9px 12px; color: #FCA5A5; font-size: 13px; line-height: 1.45; }
+.sg-import-err ul { margin: 6px 0 0; padding-left: 18px; }
+.sg-import-item { border: 1px solid var(--card-border); background: var(--card-2); border-radius: var(--r-inner); padding: 12px; }
+.sg-import-item-top { display: flex; align-items: center; gap: 10px; }
+.sg-import-emoji { display: grid; place-items: center; width: 34px; height: 34px; flex: none; border-radius: 9px; background: var(--card); font-size: 17px; }
+.sg-import-name { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text); font-size: 14px; font-weight: 600; }
+.sg-import-type { font-size: 11px; text-transform: uppercase; letter-spacing: 0.05em; color: var(--muted); }
+.sg-import-foot { display: flex; justify-content: flex-end; gap: 9px; padding: 12px 18px; border-top: 1px solid var(--hairline); }
+
+/* ---- create/edit form helpers ---- */
+.sg-field { display: block; }
+.sg-field-cap { display: block; margin-bottom: 6px; font: 700 11px/1.2 var(--mono); text-transform: uppercase; letter-spacing: 0.1em; color: var(--label); }
+.sg-prompt-check { display: flex; align-items: flex-start; gap: 9px; color: var(--text-dim); font-size: 14px; }
+.sg-prompt-check > input { width: 16px; height: 16px; margin-top: 2px; accent-color: var(--indigo); flex: none; }
+.sg-prompt-sub { display: block; margin-top: 3px; color: var(--muted); font-size: 12.5px; font-weight: 400; line-height: 1.45; }
+.sg-prompt-count { margin-top: 6px; font-size: 12px; color: var(--muted); }
+.sg-prompt-count.over { color: #FCA5A5; }
+
+/* native <select> option backgrounds inside the shortcuts modal (Chromium
+   honours option bg; replaces the inert per-option Tailwind class) */
+.sg-shortcuts-modal option { background: #131315; color: var(--text); }
+
+/* =========================================================================
+   Shortcut Inspector — Slice 11 full reskin (right-side drawer).
+   Reuses the .sg-drawer-root/scrim/sheet shell; the body + cards + controls +
+   action buttons get dedicated semantic classes (no reliance on inert
+   Tailwind). z-index is lifted inline so it sits above the Customize modal.
+   ========================================================================= */
+.sg-insp { max-width: 460px; }
+.sg-insp-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; padding: 16px 18px; border-bottom: 1px solid var(--hairline); }
+.sg-insp-titles { min-width: 0; }
+.sg-insp-titlerow { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.sg-insp-title { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text); font-family: var(--serif); font-size: 19px; font-weight: 500; }
+.sg-insp-eyebrow { margin-top: 3px; font: 600 11px/1.2 var(--mono); text-transform: uppercase; letter-spacing: 0.1em; color: var(--label); }
+.sg-insp-body { flex: 1; min-height: 0; overflow-y: auto; padding: 16px 18px; display: flex; flex-direction: column; gap: 16px; }
+.sg-insp-foot { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 12px 18px; border-top: 1px solid var(--hairline); }
+.sg-insp-foot-l { display: flex; align-items: center; gap: 8px; }
+
+/* status pill tones */
+.sg-status-pill { display: inline-flex; align-items: center; gap: 5px; flex: none; padding: 2px 9px; border-radius: 999px; border: 1px solid var(--card-border); font-size: 11px; font-weight: 600; white-space: nowrap; }
+.sg-status-pill.ok   { border-color: var(--green-soft); background: var(--green-soft); color: #6EE7B7; }
+.sg-status-pill.warn { border-color: var(--amber-soft); background: var(--amber-soft); color: #F4C76B; }
+.sg-status-pill.bad  { border-color: var(--red-soft);   background: var(--red-soft);   color: #FCA5A5; }
+
+/* sections */
+.sg-insp-section { display: flex; flex-direction: column; gap: 10px; }
+.sg-insp-sec-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.sg-insp-sec-head h3 { font: 700 11px/1.2 var(--mono); text-transform: uppercase; letter-spacing: 0.12em; color: var(--label); }
+.sg-insp-sec-meta { font-size: 11.5px; color: var(--muted); }
+
+/* loading / note / banner boxes */
+.sg-insp-loading { display: flex; align-items: center; gap: 8px; color: var(--muted); font-size: 13px; }
+.sg-insp-loading svg { width: 15px; height: 15px; }
+.sg-insp-note { border: 1px solid var(--card-border); background: var(--card-2); border-radius: 10px; padding: 9px 12px; font-size: 13px; line-height: 1.5; color: var(--text-dim); }
+.sg-insp-note.ok   { border-color: var(--green-soft); background: var(--green-soft); color: #A7F3D0; }
+.sg-insp-note.warn { border-color: var(--amber-soft); background: var(--amber-soft); color: #F4C76B; }
+.sg-insp-note.bad  { border-color: var(--red-soft);   background: var(--red-soft);   color: #FCA5A5; }
+.sg-insp-banner { display: flex; align-items: flex-start; gap: 9px; border: 1px solid var(--green-soft); background: var(--green-soft); border-radius: 10px; padding: 10px 12px; }
+.sg-insp-banner > svg { flex: none; margin-top: 1px; width: 16px; height: 16px; color: #6EE7B7; }
+.sg-insp-banner-t { color: #A7F3D0; font-size: 13px; font-weight: 600; }
+.sg-insp-banner-d { margin-top: 2px; color: rgba(167,243,208,0.82); font-size: 12.5px; line-height: 1.45; }
+.sg-insp-banner-w { margin-top: 3px; color: #F4C76B; font-size: 12.5px; }
+
+/* finding + repair cards */
+.sg-insp-list { display: flex; flex-direction: column; gap: 8px; list-style: none; padding: 0; margin: 0; }
+.sg-insp-card { border: 1px solid var(--card-border); background: var(--card-2); border-radius: var(--r-inner); padding: 12px; }
+.sg-insp-card.accent { border-color: var(--indigo-soft); background: var(--indigo-soft); }
+.sg-insp-card.warn { border-color: var(--amber-soft); background: var(--amber-soft); }
+.sg-insp-find { display: flex; align-items: flex-start; gap: 9px; }
+.sg-insp-find > svg { flex: none; margin-top: 1px; width: 15px; height: 15px; }
+.sg-insp-find-body { min-width: 0; flex: 1; }
+.sg-insp-find-top { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.sg-insp-code { font: 600 11px var(--mono); color: var(--text-dim); }
+.sg-insp-fieldtag { padding: 1px 6px; border-radius: 5px; border: 1px solid var(--card-border); font-size: 10.5px; color: var(--muted); }
+.sg-insp-sev { font-size: 10px; text-transform: uppercase; letter-spacing: 0.06em; }
+.sg-insp-msg { margin-top: 6px; color: var(--text-dim); font-size: 13px; line-height: 1.45; }
+.sg-insp-sub { margin-top: 5px; font-size: 11.5px; color: var(--muted); }
+.sg-insp-sub .v { font-family: var(--mono); color: var(--text-dim); }
+.sev-error { color: #FCA5A5; }
+.sev-warn { color: #F4C76B; }
+.sev-info { color: var(--muted); }
+
+/* repair field control */
+.sg-insp-ctl-top { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.sg-insp-ctl-label { color: var(--text); font-size: 13px; font-weight: 600; }
+.sg-insp-ctl-now { font: 500 10.5px var(--mono); color: var(--muted); white-space: nowrap; }
+.sg-insp-ctl-row { margin-top: 9px; display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.sg-insp-select { height: 34px; border-radius: 9px; border: 1px solid var(--card-border); background: var(--card); color: var(--text-dim); font: inherit; font-size: 13px; padding: 0 8px; outline: none; }
+.sg-insp-select:focus { border-color: var(--card-border-2); }
+.sg-insp-select.grow { flex: 1; min-width: 130px; }
+.sg-insp-input { width: 100%; height: 34px; margin-top: 9px; border-radius: 9px; border: 1px solid var(--card-border); background: var(--card); color: var(--text); font: inherit; font-size: 13px; padding: 0 10px; outline: none; }
+.sg-insp-input:focus { border-color: var(--card-border-2); }
+
+/* checkbox/radio option rows */
+.sg-insp-opts { margin-top: 9px; display: flex; flex-direction: column; gap: 7px; }
+.sg-insp-opt { display: flex; align-items: center; gap: 8px; color: var(--text-dim); font-size: 13px; cursor: pointer; }
+.sg-insp-opt > input { width: 15px; height: 15px; accent-color: var(--indigo); flex: none; }
+.sg-insp-opt .mono { font-family: var(--mono); font-size: 11.5px; }
+
+/* diff list */
+.sg-insp-diff { display: flex; flex-direction: column; gap: 5px; list-style: none; padding: 0; margin: 8px 0 0; }
+.sg-insp-diff li { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; font-size: 11.5px; }
+.sg-insp-diff .f { font-family: var(--mono); color: var(--text-dim); }
+.sg-insp-diff .from { font-family: var(--mono); color: var(--muted); }
+.sg-insp-diff .arr { color: var(--muted); }
+.sg-insp-diff .to { font-family: var(--mono); color: #6EE7B7; }
+
+/* action buttons (footer + inline confirm) */
+.sg-act { display: inline-flex; align-items: center; gap: 7px; height: 36px; padding: 0 14px; border-radius: 9px; border: 1px solid var(--card-border); background: var(--card-2); color: var(--text-dim); font: inherit; font-size: 14px; font-weight: 600; cursor: pointer; transition: border-color .15s, color .15s, background .15s; white-space: nowrap; }
+.sg-act:hover:not(:disabled) { color: var(--text); border-color: var(--card-border-2); }
+.sg-act:disabled { opacity: .5; cursor: not-allowed; }
+.sg-act svg { width: 15px; height: 15px; flex: none; }
+.sg-act.accent { border-color: var(--indigo); background: var(--indigo-soft); color: #C7C9FB; }
+.sg-act.accent:hover:not(:disabled) { background: rgba(99,102,241,0.24); }
+.sg-act.ok { border-color: rgba(52,211,153,0.4); background: var(--green-soft); color: #6EE7B7; }
+.sg-act.ok:hover:not(:disabled) { background: rgba(52,211,153,0.24); }
+.sg-act.sm { height: 32px; font-size: 13px; padding: 0 11px; }

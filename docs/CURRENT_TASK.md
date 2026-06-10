@@ -5,6 +5,55 @@
 
 ---
 
+## Slice 11 — Final QA / polish sweep (HomeShortcuts + ShortcutInspector) DONE.
+
+- **Slice 11 (GuideForge UI reskin — final QA pass) is DONE.** Visual/CSS/markup
+  only. No app logic, handlers, state, ids, endpoints, payloads, or render
+  pipeline changed.
+- **Audit-driven scope (Option 2):** fixed the two live raw surfaces that the
+  Slices 1–10 reskin left behind — **HomeShortcuts** leftovers and a full reskin
+  of the **ShortcutInspector** Inspect/Repair drawer. The large
+  **RecentJobsPanel / JobDetails body** reskin was **deliberately deferred** to
+  its own dedicated slice (it is ~2.1k lines and needs screenshot/live
+  verification; the JobDetails drawer *shell* already has its baseline
+  `sg-drawer-*` reskin).
+- **Files changed:** `frontend/src/components/HomeShortcuts.jsx`,
+  `frontend/src/components/ShortcutInspector.jsx`, and
+  `frontend/src/design-system.css` (additive "Reskin QA — Slice 11" block).
+- **HomeShortcuts fixes:** shortcut-row meta chips (type / status / saved-prompt)
+  → real `.sg-tag*`; emoji tile sizing; **Degraded / Broken activation dialogs**
+  now use a real centered overlay (`.sg-modal-scrim` + `.sg-dialog`) instead of
+  inert `fixed inset-0` Tailwind that rendered them inline; Import-shortcuts
+  panel (intro, mono textarea, preview/primary buttons, error box, preview item
+  cards, rename field, footer) reskinned; `Field` + `SavedPromptControl`
+  helpers; native `<option>` backgrounds via one scoped CSS rule (removed inert
+  per-option Tailwind).
+- **ShortcutInspector fixes:** full reskin of the right-side drawer reusing the
+  `.sg-drawer-root/scrim/sheet` shell (z-index lifted so it sits above the
+  Customize modal); status pills, finding cards, repair field controls,
+  mode/section option rows, preview + diff, confirm step, and footer
+  Preview/Apply/Close actions all use dedicated `.sg-insp-*` / `.sg-act`
+  semantic classes. Repair/confirm/destructive semantics, disabled states, and
+  the preview-before-apply gate are unchanged.
+- **Class audit:** undefined `sg-*` classes in the live render tree = **0**
+  (before and after; the only 3 unmatched — `sg-tile*` — live solely in the dead,
+  never-imported `ClaudeIcons.jsx`). Inert-Tailwind/old-palette leftovers in
+  live-rendered code reduced to RecentJobsPanel only (deferred); `MetaRow` in
+  BuilderWorkspace is dead/unused and left as-is.
+- **Security preserved:** the inspector still renders only redacted backend
+  candidates; no keys/tokens/paths in the DOM.
+- **Live verification:** container rebuilt (`docker compose build && up`) and
+  confirmed serving the new dist; all five target surfaces visually verified at
+  100% zoom (Home cards / Customize modal + Import panel / Inspector drawer above
+  the modal / Degraded+Broken activation overlays), no horizontal overflow at
+  1920/1440/1024.
+- **Verification:** build green; local-model status/command/library harnesses
+  green; `compileall` green; `git diff --check` clean; class audit clean;
+  `smoke_release.py` **28/28** (an earlier run flaked only on the LLM
+  `outline use → followed in order` ordering assertion; clean on re-run).
+
+---
+
 ## Slice 10 — Exports workspace reskin DONE.
 
 - **Slice 10 (GuideForge UI reskin — Exports workspace) is DONE.**
