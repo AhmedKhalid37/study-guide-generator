@@ -226,16 +226,20 @@ request DTOs (Pydantic models such as `LLMJobRequest`), delegating real work to
 
 ## 6. Frontend Architecture
 
-React + Vite + Tailwind. Entry: `frontend/src/main.jsx` → `App.jsx` → `GlowBackground` +
-`DesktopDashboard`. `DesktopDashboard.jsx` is the shell: holds `activeSection` state,
+React + Vite + Tailwind. Entry: `frontend/src/main.jsx` → `App.jsx` →
+`DesktopDashboard` (App just mounts the shell; no decorative background layer).
+`DesktopDashboard.jsx` is the shell: holds `activeSection` state,
 the sidebar nav, and conditionally renders each workspace.
 
 **Component map (`frontend/src/components/`):** `DesktopDashboard`, `HomeShortcuts`,
-`BuilderWorkspace`, `OutlineEditor`, `RecentJobsPanel`, `PasteGenerationPanel`,
+`BuilderWorkspace`, `OutlineEditor`, `RecentJobsPanel`,
 `LibraryWorkspace`, `StylesWorkspace`, `ExportsWorkspace`, `ProviderSettingsWorkspace`,
-`LocalModelsPanel`, `AskGuideWorkspace`, `ShortcutInspector`, plus presentational pieces
-(`TopBar`, `BrandMark`, `ClaudeIcons`, `GlowBackground`, `FallbackImage`,
-`ImplementationNote`, `DesktopMockup`, `PhoneMockup`, `MobileScreenPicker`).
+`LocalModelsPanel`, `AskGuideWorkspace`, `HelpWorkspace`, `ShortcutInspector`, plus small
+shared UI primitives (`Icon`, `Button`, `Panel`, `ItemCard`, `ProviderPill`, `StatusPill`).
+(Slice 17 deleted the unused mockup/legacy presentational set — `TopBar`, `BrandMark`,
+`ClaudeIcons`, `GlowBackground`, `FallbackImage`, `ImplementationNote`, `DesktopMockup`,
+`PhoneMockup`, `MobileScreenPicker`, `PasteGenerationPanel`, the unused `Chip`/`Field`/
+`StatCard` primitives, and `data/mockups.js` — all proven unreachable.)
 
 **Pure helper modules (`frontend/src/*.js`)** — deliberately React-free so plain-node
 harnesses in `frontend/scripts/*.mjs` can unit-test them without a test runner:
@@ -249,9 +253,10 @@ canonical key sets (sections, axes, presets) live in the backend. The frontend c
 invent a section/axis the backend won't honour. (`DECISIONS.md` → "Builder section/axis
 metadata: the frontend never owns the key set".)
 
-**Verify harnesses (node, no test runner):** `verify-assets`, `verify-ask-guide`,
+**Verify harnesses (node, no test runner):** `verify-ask-guide`, `verify-style-compare`,
 `verify-local-model-{status,command,library}`,
-`verify-shortcut-{status,form,repair,activation}`.
+`verify-shortcut-{status,form,repair,activation}`. (`npm test` now chains all of these;
+the obsolete `verify-assets` mockup harness was removed in Slice 17.)
 
 **Rendering safety:** assistant answers and shortcut findings are rendered through tiny
 inert subset renderers — **no `dangerouslySetInnerHTML`, no markdown/KaTeX/MathJax
@@ -815,9 +820,10 @@ when FastAPI is unavailable in host Python):
 - **LMM live/manual (require explicit env, skip otherwise):**
   `validate_lmm_companion_socket_mount`, `validate_lmm_real_llama_server`,
   `validate_lmm_real_profile_e2e`.
-- **Frontend node harnesses (`frontend/scripts/`):** `verify-assets`, `verify-ask-guide`,
-  `verify-local-model-{status,command,library}`,
-  `verify-shortcut-{status,form,repair,activation}`.
+- **Frontend node harnesses (`frontend/scripts/`):** `verify-ask-guide`,
+  `verify-style-compare`, `verify-local-model-{status,command,library}`,
+  `verify-shortcut-{status,form,repair,activation}` (all chained by `npm test`;
+  obsolete `verify-assets` removed in Slice 17).
 
 Standard verification loop (from `CLAUDE.md` §4): `npm --prefix frontend run build` →
 `python -m compileall api pipeline` → `docker compose config` / `build` / `up` →

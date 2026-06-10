@@ -5,6 +5,69 @@
 
 ---
 
+## Slice 17 — Hygiene checkpoint: dead-file sweep + test-chain repair (DONE — reviewed + committed).
+
+- **Purpose:** hygiene checkpoint after committed Slice 16 (`eaa1263`) and Slice 15
+  (`033e7d1`). **Not a feature slice** — no backend/API/pipeline/endpoint/payload
+  changes, no render/OCR/math/prompt changes, no LMM/provider changes, no new deps.
+  Carry out the dead-code sweep Slice 16 deferred and fix the stale `npm test` chain.
+- **Working tree (what this slice changes):**
+  - **Deleted (proven-unreachable dead files, via `git rm`):** mockup/legacy
+    presentational set — `BrandMark.jsx`, `Chip.jsx`, `ClaudeIcons.jsx`,
+    `DesktopMockup.jsx`, `FallbackImage.jsx`, `Field.jsx`, `GlowBackground.jsx`,
+    `ImplementationNote.jsx`, `MobileScreenPicker.jsx`, `PasteGenerationPanel.jsx`,
+    `PhoneMockup.jsx`, `StatCard.jsx`, `TopBar.jsx`, `data/mockups.js`; the five
+    `public/mockups/*.png` assets; and the obsolete `scripts/verify-assets.mjs`
+    harness. Zero live imports/usages confirmed before removal.
+  - **`frontend/package.json`:** `npm test` was `node scripts/verify-assets.mjs`
+    (stale mockup harness). Now chains the maintained harnesses:
+    `verify-shortcut-{status,repair,activation,form}` +
+    `verify-local-model-{status,command,library}` + `verify-ask-guide` +
+    `verify-style-compare`. The old stale-test caveat is now obsolete.
+  - **`frontend/src/App.jsx`:** comment updated to drop the stale `GlowBackground`
+    mention (component deleted).
+  - **`docs/PROJECT_DEEP_CONTEXT_REPORT.md`:** §6 component map + verify-harness
+    list updated to remove `GlowBackground`/mockup/`verify-assets` references and
+    record the Slice 17 deletions.
+- **Validation (all green):** `npm run build`; full `npm test` chain (all 9
+  harnesses pass) + the four explicitly-run `test:local-model-{status,command,
+  library}` / `test:style-compare`; `python -m compileall api pipeline`;
+  `git diff --check` clean. Container already healthy and serving the
+  post-deletion build (deleted `/mockups/mobile-home.png` → **404**, SPA root →
+  **200**); `smoke_release.py` **28 passed / 0 failed / 0 skipped** (incl. no-key-
+  leakage on `/api/options`, `/api/styles`, JobDetails + full paste/upload/LLM/
+  attachment/outline/ZIP/folder/style-CRUD/rerender flows).
+- **Audit D (semantic CSS / inert utilities):**
+  - **Undefined live `sg-*`: 0** — 743 `sg-*` tokens used in JSX, all defined among
+    the 773 `.sg-*` selectors. (The dead `Tile`/`sg-tile-*` source from Slice 16's
+    note is gone with `ClaudeIcons.jsx`.)
+  - **Old-palette/inert Tailwind in live reachable files: only 2 occurrences**, both
+    in `RecentJobsPanel.jsx` lines 348/362 (`text-slate-300`/`text-slate-400`) inside
+    `PreviewPanel`, which renders **only** in the non-embedded `RecentJobsPanel`
+    branch. The sole render site (`HomeShortcuts`) always passes `embedded`; the
+    other importers (`Builder`/`Exports`/`Library`) pull only the named exports
+    (`JobDetailsDrawer`/`StylePill`/`FolderPill`). So this branch is **unreachable
+    dead code** — **intentionally left** (a hygiene slice avoids churning a
+    known-dead branch; logged for a future structural pass), not a live leftover.
+  - **Dead-file leftovers:** none — no live references to any deleted component.
+- **Security quick-scan (no secrets printed):** `/api/options` & `/api/styles` —
+  no raw keys (smoke also asserts this); `/api/provider-settings` — only safe DTO
+  fields (`configured`, `key_source`, `key_hint` last-4, `base_url_host`), no raw
+  key/full URL; `/api/local-model/status` — whitelisted fields only, no token/
+  socket/Authorization/absolute host path/executable path/raw argv (the lone
+  `.gguf` token is a bare model basename, the documented non-secret identifier).
+- **Live walkthrough (functional, API-backed; visual review is operator-owned):**
+  all 7 workspaces + Help + JobDetails reachable — Home (`/api/shortcuts`,`/api/jobs`
+  200), Builder (`/api/options`,`/api/presets` 200; generation PASS), Library
+  (`/api/library`,`/api/library/folders` 200; move/batch PASS), Ask Guide
+  (`/api/ask/jobs` 200), Styles (`/api/styles` 200; style CRUD PASS), Models
+  (`/api/provider-settings`,`/api/local-model/status` 200), Exports (`/api/exports`
+  200; ZIP PASS), Help (static workspace wired in nav + Ask `onOpenHelp`),
+  JobDetails (metadata + no-key-leakage PASS).
+- **Status:** **DONE** — reviewed, approved, and committed.
+
+---
+
 ## Slice 16 — Post-reskin release audit + checkpoint (implemented + verified, awaiting review).
 
 - **Purpose:** release-audit/checkpoint after the GuideForge reskin + UX phase

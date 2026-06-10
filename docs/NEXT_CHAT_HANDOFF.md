@@ -7,25 +7,35 @@
 
 ## Current position
 - **Branch (trunk / PR target):** `chrome-renderer-v1` (all reskin slices land here).
-- **Phase:** the **GuideForge reskin + UX phase is COMPLETE through Slice 16.**
-  Slices 1–15 reskinned every workspace to semantic GuideForge CSS (Tailwind
-  utilities are inert in this app — live UI uses real `.sg-*` / element-cascade
-  rules); Slice 16 is the post-reskin **release audit + checkpoint**.
-- **HEAD before Slice 16:** `033e7d1` (Slice 15). Slice 16 is **implemented +
-  verified, awaiting review before commit** — once committed, update this line
-  with the Slice 16 hash.
-- **Slice 16 result:** live render path is clean — **0 undefined `sg-*`**, **0
-  live raw/old-palette leftovers** (the few that existed in the JobDetails drawer
-  body were inert no-ops already covered by the `.sg-drawer-body` cascade and were
-  stripped). Remaining old-palette lives only in **dead, unreachable code**
-  (non-embedded `RecentJobsPanel`/`PreviewPanel` branch, `Tile`, `MetaRow`, the
-  mockup components) — left in place, logged for a future dead-code sweep. Build,
-  4 frontend harnesses, `compileall`, Docker build/up, and `smoke_release.py`
-  (28/0/0) all green; security scan clean (no keys/tokens/socket/paths in any
-  served API or the JS bundle).
-- **Stale-test caveat (still relevant):** the legacy `npm run test` / verify-assets
-  harnesses reference the old `App.jsx` mockup tree and are **not** release
-  blockers — treat their failures as pre-existing/irrelevant unless newly broken.
+- **Phase:** the **GuideForge reskin + UX phase is COMPLETE** (Slices 1–15
+  reskinned every workspace to semantic GuideForge CSS — Tailwind utilities are
+  inert in this app, live UI uses real `.sg-*` / element-cascade rules). Slice 16
+  was the post-reskin **release audit + checkpoint**; Slice 17 is the follow-on
+  **hygiene checkpoint** (dead-file sweep + `npm test` chain repair). With Slice 17
+  the reskin/UX phase is closed and the codebase is clean — **the next phase is the
+  correctness / measurement layer, starting with deterministic math verification.**
+- **HEAD:** `eaa1263` (Slice 16, committed). Slice 17 is **implemented + verified,
+  PENDING REVIEW before commit** — once committed, update this line with the
+  Slice 17 hash.
+- **Slice 17 result:** carried out the dead-code sweep Slice 16 had deferred —
+  `git rm` of the proven-unreachable mockup/legacy presentational set (`BrandMark`,
+  `Chip`, `ClaudeIcons`, `DesktopMockup`, `FallbackImage`, `Field`, `GlowBackground`,
+  `ImplementationNote`, `MobileScreenPicker`, `PasteGenerationPanel`, `PhoneMockup`,
+  `StatCard`, `TopBar`, `data/mockups.js`, the 5 `public/mockups/*.png`, and the
+  obsolete `verify-assets.mjs`); repaired `npm test` to chain the 9 maintained
+  harnesses; updated the `App.jsx` comment and the deep report. Live render path
+  stays clean — **0 undefined `sg-*`**; the only old-palette tokens left (2 lines in
+  `RecentJobsPanel.jsx`) are inside the **unreachable** non-embedded `PreviewPanel`
+  branch (sole caller `HomeShortcuts` always passes `embedded`), intentionally left
+  rather than churned in a hygiene slice. Build, full `npm test` (9 harnesses),
+  `compileall`, and `smoke_release.py` (28/0/0) all green; container confirmed
+  serving the post-deletion build (deleted mockup PNG → 404, SPA → 200); security
+  scan clean (no keys/tokens/socket/paths in any served API or the JS bundle).
+  **Frontend + docs only; no behaviour/endpoint/payload/data changes, no new deps.**
+- **`npm test` is now a real release check** — the former stale `verify-assets`
+  mockup harness is gone; `npm test` chains the maintained shortcut/local-model/
+  ask/style-compare harnesses, so its failures are now release-relevant. (The old
+  "treat `npm test` failures as pre-existing" caveat no longer applies.)
 - **Screenshots / visual review are operator-owned** — Claude Code does not produce
   them; the operator does visual inspection and supplies screenshots if needed.
 - **NEXT recommended phase = correctness / measurement layer**, starting with
@@ -35,6 +45,17 @@
   app-suggested settings remain deferred.
 
 ## What just landed
+- **Slice 17 — hygiene checkpoint: dead-file sweep + `npm test` repair** (this
+  branch, `chrome-renderer-v1`, PENDING REVIEW). Deleted the proven-unreachable
+  mockup/legacy presentational set + 5 mockup PNGs + obsolete `verify-assets.mjs`
+  via `git rm`; rewired `npm test` from the stale single mockup harness to the 9
+  maintained harnesses; updated the `App.jsx` comment and the deep report's §6
+  component/harness lists. Build + full `npm test` + `compileall` + `git diff
+  --check` + `smoke_release.py` (28/0/0) green; container serving the post-deletion
+  build; 0 undefined `sg-*`; only-remaining old-palette is in the unreachable
+  `PreviewPanel` branch (left, not churned); security scan clean. **Frontend +
+  docs only; no behaviour/endpoint/payload/data changes, no new deps.** See
+  `CURRENT_TASK.md` for the per-audit detail.
 - **Slice 16 — post-reskin release audit + checkpoint** (this branch,
   `chrome-renderer-v1`). Full validation pass after Slices 1–15: build + 4 pure
   frontend harnesses + `compileall` + Docker build/up + `smoke_release.py`
