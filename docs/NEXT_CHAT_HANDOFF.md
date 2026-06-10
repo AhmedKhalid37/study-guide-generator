@@ -6,9 +6,10 @@
 > stable overview see `PROJECT_CONTEXT.md`; canonical brief is `../CLAUDE.md`.
 
 ## Current position
-- **Branch in progress:** `slice22-jobdetails-math-verification-ui`, created from
-  `chrome-renderer-v1`. Slice 22 is implemented + verified but intentionally
-  uncommitted. Do not commit unless explicitly asked; do not force-push.
+- **Branch in progress:** `slice23a-page-anchor-reachability`, created from
+  `chrome-renderer-v1`. Slice 23A is implemented as a measurement/proof slice and
+  intentionally uncommitted. Do not commit unless explicitly asked; do not
+  force-push.
 - **Branch (trunk / PR target):** `chrome-renderer-v1` (all reskin slices land here).
 - **Phase:** the **GuideForge reskin + UX phase is COMPLETE** (Slices 1–15
   reskinned every workspace to semantic GuideForge CSS — Tailwind utilities are
@@ -37,6 +38,20 @@
   summary counts and a bounded compact claim list. No backend, pipeline, prompt,
   provider, `/api/jobs/llm`, job mutation, artifact writing, guide-lint
   integration, or `validation.json` schema change.
+- **Slice 23A result (page-anchor reachability proof):** PASS. The inspected path is
+  `pipeline/extract.py` (`## Page N` PDF anchors) →
+  `pipeline/run_llm_job.py::_attach_sources(...)` (attachment text appended under
+  `## Attached Sources`) → `pipeline/orchestrator.py` (`build_messages(...)` or
+  `build_messages_for_preset(...)`) → `generate_chat_completion(messages, config)`.
+  The exact model-facing boundary is the assembled `messages` list. Focused test
+  `test_scripts/test_page_anchor_reachability.py` plus fixture
+  `test_scripts/fixtures/page_anchor_reachability/extracted_pages.txt` proves simple
+  two-anchor source text, anchors surrounded by normal lecture text, attachment
+  augmentation, and preset prompt assembly preserve `## Page 1` / `## Page 2` in
+  the model-facing `user` content. It also proves no default citation directive or
+  rendered citation assumption was added. Tests/docs only; no prompt behavior,
+  frontend/UI, provider, OCR, extraction, retrieval, `validation.json`,
+  `math_verification.json`, or `/api/jobs/llm` request-field change.
 - **Slice 20 result (measurement spine only):** added `test_scripts/eval/`
   (`run_eval.py` CLI + `score_guide.py` pure core + `golden/sample.json` +
   fixtures + READMEs). It scores guide Markdown against a JSON **golden spec**

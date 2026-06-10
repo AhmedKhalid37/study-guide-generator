@@ -5,6 +5,40 @@
 
 ---
 
+## Slice 23A — Verify source page-anchor reachability (DONE — uncommitted).
+
+- **Purpose:** measurement/proof slice before citation behavior changes. Prove
+  whether extraction-style source anchors such as `## Page N` survive the
+  ingestion/input/prompt path and reach model-facing prompt assembly.
+- **Inspected path:** `pipeline/extract.py` emits PDF anchors as `## Page N`;
+  `pipeline/run_llm_job.py::_attach_sources(...)` copies/extracts attachments,
+  appends extracted text under `## Attached Sources`, and passes the augmented
+  source into `generate_study_guide(...)`; `pipeline/orchestrator.py` assembles
+  model messages with `build_messages(...)` (template path) or
+  `build_messages_for_preset(...)` (preset path); `pipeline/prompt_loader.py`
+  injects `{source}` into the user template. The exact model-facing boundary is
+  the `messages` list passed to `generate_chat_completion(messages, config)`.
+- **Result:** PASS. `## Page 1`, `## Page 2`, etc. currently reach the
+  model-facing `user` message. Template prompts preserve anchors inside the
+  rendered source block; preset prompts use `source_text` as the user message
+  verbatim; attachment-augmented source preserves anchors after `_attach_sources`.
+- **Focused proof added:** `test_scripts/test_page_anchor_reachability.py` plus
+  fixture `test_scripts/fixtures/page_anchor_reachability/extracted_pages.txt`.
+  The test covers simple two-anchor source text, anchors surrounded by normal
+  lecture text, attachment augmentation into prompt assembly, preset prompt
+  assembly, and explicitly verifies no default citation directive/output citation
+  assumption is introduced.
+- **Behavior changes:** none. Tests/docs only. No citation directive change, no
+  generated-guide instruction change, no citation lint/eval rule, no frontend/UI,
+  provider, OCR, extraction, retrieval, `validation.json`, `math_verification.json`,
+  or `/api/jobs/llm` request-field change.
+- **Slice 23B implication:** citation/page-reference prompt, lint, and eval work
+  can proceed from the premise that extraction-produced `## Page N` anchors are
+  already available to the model input. Slice 23B still needs to add citation
+  behavior explicitly; Slice 23A does not assume rendered output citations.
+
+---
+
 ## Slice 22 — JobDetails math verification artifact UI (DONE — uncommitted).
 
 - **Purpose:** add the first read-only JobDetails surface for the Slice 21

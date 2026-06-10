@@ -1,0 +1,11 @@
+Lecture overview before the anchors.
+
+## Page 1
+Gradient descent updates parameters using the negative gradient direction.
+The learning rate controls the step size.
+
+Instructor note between pages: compare the update rule with momentum.
+
+## Page 2
+Backpropagation applies the chain rule from the loss toward earlier layers.
+Intermediate gradients are reused to avoid duplicated work.
