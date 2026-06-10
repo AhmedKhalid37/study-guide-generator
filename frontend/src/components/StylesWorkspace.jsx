@@ -3,10 +3,12 @@ import {
   AlertCircle,
   BookOpen,
   Check,
+  Columns2,
   Copy,
   FileText,
   Footprints,
   Hammer,
+  Hash,
   ListChecks,
   Loader2,
   Palette,
@@ -15,6 +17,7 @@ import {
   Sparkles,
   Trash2,
   Trophy,
+  Type,
   Wand2,
   X,
   Zap
@@ -28,6 +31,12 @@ import {
   getStyles,
   updateStyle
 } from "../api/client";
+import {
+  MAX_COMPARE_STYLES,
+  MIN_COMPARE_STYLES,
+  stylePromptStats,
+  toggleCompareSelection
+} from "../styleCompare";
 
 const REQUIRED_PLACEHOLDERS = ["{title}", "{mode}", "{source}"];
 
@@ -71,6 +80,13 @@ export default function StylesWorkspace({ selectedStyle, onSelectStyle, onOpenBu
   const [editor, setEditor] = useState(emptyEditor);
   const [deleteTarget, setDeleteTarget] = useState(null);
   const [providers, setProviders] = useState([]);
+
+  // ── Compare styles (Slice 14) ──────────────────────────────────────────────
+  // Local UI state only — never persisted. compareDetails caches the full style
+  // detail (incl. prompt body) per id, fetched on demand from GET /api/styles/{id}.
+  const [compareMode, setCompareMode] = useState(false);
+  const [compareIds, setCompareIds] = useState([]);
+  const [compareDetails, setCompareDetails] = useState({});
 
   const refresh = useCallback(async () => {
     setLoading(true);
@@ -202,6 +218,76 @@ export default function StylesWorkspace({ selectedStyle, onSelectStyle, onOpenBu
     [onSelectStyle, onOpenBuilder]
   );
 
+  // Flat lookup of all styles by id (built-in + custom), tagging the source so
+  // the compare columns can render the right badge/actions without re-deriving.
+  const styleById = useMemo(() => {
+    const map = {};
+    data.builtin.forEach((style) => {
+      map[style.id] = { ...style, custom: false };
+    });
+    data.custom.forEach((style) => {
+      map[style.id] = { ...style, custom: true };
+    });
+    return map;
+  }, [data]);
+
+  // Fetch a style's full detail (incl. prompt body) once and cache it.
+  const ensureCompareDetail = useCallback((id) => {
+    setCompareDetails((current) => {
+      if (current[id]) return current;
+      return { ...current, [id]: { status: "loading", data: null, error: null } };
+    });
+    getStyle(id)
+      .then((full) =>
+        setCompareDetails((current) => ({ ...current, [id]: { status: "ready", data: full, error: null } }))
+      )
+      .catch((error) =>
+        setCompareDetails((current) => ({
+          ...current,
+          [id]: { status: "error", data: null, error: error.message || "Could not load this style." }
+        }))
+      );
+  }, []);
+
+  const toggleCompare = useCallback(
+    (id) => {
+      setCompareIds((ids) => {
+        const next = toggleCompareSelection(ids, id, MAX_COMPARE_STYLES);
+        if (next.includes(id)) ensureCompareDetail(id);
+        return next;
+      });
+    },
+    [ensureCompareDetail]
+  );
+
+  const enterCompare = useCallback(() => setCompareMode(true), []);
+  const exitCompare = useCallback(() => {
+    setCompareMode(false);
+    setCompareIds([]);
+  }, []);
+  const clearCompare = useCallback(() => setCompareIds([]), []);
+  const removeCompare = useCallback((id) => setCompareIds((ids) => ids.filter((value) => value !== id)), []);
+
+  // Refresh after a deletion may leave a now-missing id selected — drop it.
+  useEffect(() => {
+    setCompareIds((ids) => {
+      const filtered = ids.filter((id) => styleById[id]);
+      return filtered.length === ids.length ? ids : filtered;
+    });
+  }, [styleById]);
+
+  const compareItems = useMemo(
+    () =>
+      compareIds.map((id) => ({
+        id,
+        meta: styleById[id] || { id, name: id, custom: false, description: "" },
+        detail: compareDetails[id] || { status: "loading", data: null, error: null }
+      })),
+    [compareIds, styleById, compareDetails]
+  );
+
+  const compareFull = compareIds.length >= MAX_COMPARE_STYLES;
+
   return (
     <div className="sg-sty">
       <div className="sg-page-head">
@@ -209,10 +295,21 @@ export default function StylesWorkspace({ selectedStyle, onSelectStyle, onOpenBu
           <h1>Styles</h1>
           <p>Compare built-in prompt presets side by side, plus your own custom and AI-generated styles.</p>
         </div>
-        <button type="button" className="sg-cta sg-press-btn" onClick={openCreate}>
-          <Plus size={16} strokeWidth={2.4} />
-          New custom style
-        </button>
+        <div className="sg-page-head-actions">
+          <button
+            type="button"
+            className={`sg-btn-sm sg-sty-compare-toggle${compareMode ? " accent" : ""}`}
+            onClick={compareMode ? exitCompare : enterCompare}
+            aria-pressed={compareMode}
+          >
+            {compareMode ? <X size={15} /> : <Columns2 size={15} />}
+            {compareMode ? "Exit compare" : "Compare styles"}
+          </button>
+          <button type="button" className="sg-cta sg-press-btn" onClick={openCreate}>
+            <Plus size={16} strokeWidth={2.4} />
+            New custom style
+          </button>
+        </div>
       </div>
 
       {loadError && (
@@ -220,6 +317,20 @@ export default function StylesWorkspace({ selectedStyle, onSelectStyle, onOpenBu
           <AlertCircle size={16} />
           <span>{loadError}</span>
         </div>
+      )}
+
+      {compareMode && (
+        <ComparePanel
+          items={compareItems}
+          onRemove={removeCompare}
+          onClear={clearCompare}
+          onExit={exitCompare}
+          onUse={useStyle}
+          onBuild={buildWithStyle}
+          onEdit={openEdit}
+          onDelete={setDeleteTarget}
+          selectedStyle={selectedStyle}
+        />
       )}
 
       <section className="sg-sty-section">
@@ -230,6 +341,10 @@ export default function StylesWorkspace({ selectedStyle, onSelectStyle, onOpenBu
               key={style.id}
               style={style}
               active={selectedStyle === style.id}
+              compareMode={compareMode}
+              compareSelected={compareIds.includes(style.id)}
+              compareDisabled={compareFull}
+              onToggleCompare={() => toggleCompare(style.id)}
               onUse={() => useStyle(style.id)}
               onBuild={() => buildWithStyle(style.id)}
               onClone={() => openClone(style)}
@@ -261,6 +376,10 @@ export default function StylesWorkspace({ selectedStyle, onSelectStyle, onOpenBu
                 style={style}
                 active={selectedStyle === style.id}
                 custom
+                compareMode={compareMode}
+                compareSelected={compareIds.includes(style.id)}
+                compareDisabled={compareFull}
+                onToggleCompare={() => toggleCompare(style.id)}
                 onUse={() => useStyle(style.id)}
                 onBuild={() => buildWithStyle(style.id)}
                 onEdit={() => openEdit(style)}
@@ -291,11 +410,38 @@ export default function StylesWorkspace({ selectedStyle, onSelectStyle, onOpenBu
   );
 }
 
-function StyleCard({ style, active, custom, onUse, onBuild, onEdit, onDelete, onClone }) {
+function StyleCard({
+  style,
+  active,
+  custom,
+  compareMode,
+  compareSelected,
+  compareDisabled,
+  onToggleCompare,
+  onUse,
+  onBuild,
+  onEdit,
+  onDelete,
+  onClone
+}) {
   const Icon = iconForStyle(style, custom);
+  // In compare mode the whole card toggles selection; the action row stops
+  // propagation so Use/Build/Edit/Delete still work without toggling.
+  const lockedOut = compareMode && compareDisabled && !compareSelected;
+  const cardClicks = compareMode && !lockedOut ? onToggleCompare : undefined;
   return (
-    <div className={`sg-sty-card ${active ? "active" : ""}`}>
+    <div
+      className={`sg-sty-card${active ? " active" : ""}${compareMode ? " compare" : ""}${
+        compareSelected ? " compare-on" : ""
+      }${lockedOut ? " compare-locked" : ""}`}
+      onClick={cardClicks}
+    >
       <div className="sg-sty-card-top">
+        {compareMode && (
+          <span className={`sg-sty-check${compareSelected ? " on" : ""}`} aria-hidden="true">
+            {compareSelected ? <Check size={13} strokeWidth={3} /> : null}
+          </span>
+        )}
         <span className={`sg-sty-icon ${active ? "active" : ""}`}>
           <Icon size={19} />
         </span>
@@ -319,7 +465,7 @@ function StyleCard({ style, active, custom, onUse, onBuild, onEdit, onDelete, on
         <p className="sg-sty-base">Based on {style.base_style}</p>
       )}
 
-      <div className="sg-sty-actions">
+      <div className="sg-sty-actions" onClick={compareMode ? (event) => event.stopPropagation() : undefined}>
         <button
           type="button"
           className={`sg-btn-sm${active ? " accent" : ""}`}
@@ -349,6 +495,177 @@ function StyleCard({ style, active, custom, onUse, onBuild, onEdit, onDelete, on
         </button>
       </div>
     </div>
+  );
+}
+
+function ComparePanel({ items, onRemove, onClear, onExit, onUse, onBuild, onEdit, onDelete, selectedStyle }) {
+  const ready = items.length >= MIN_COMPARE_STYLES;
+  return (
+    <section className={`sg-sty-compare${items.length >= 3 ? " wide" : ""}`}>
+      <div className="sg-sty-compare-head">
+        <div className="sg-sty-compare-head-text">
+          <h2>
+            <Columns2 size={17} />
+            Compare styles
+          </h2>
+          <p>
+            {items.length === 0
+              ? `Pick ${MIN_COMPARE_STYLES}–${MAX_COMPARE_STYLES} styles below to line them up side by side.`
+              : `${items.length} selected · up to ${MAX_COMPARE_STYLES}.`}
+          </p>
+        </div>
+        <div className="sg-sty-compare-controls">
+          <button type="button" className="sg-btn-sm" onClick={onClear} disabled={items.length === 0}>
+            Clear
+          </button>
+          <button type="button" className="sg-btn-sm" onClick={onExit}>
+            <X size={14} />
+            Exit
+          </button>
+        </div>
+      </div>
+
+      {!ready ? (
+        <div className="sg-sty-compare-empty">
+          <Columns2 size={22} />
+          <strong>Select at least two styles to compare.</strong>
+          <span>Use the checkboxes on the style cards below — built-in, custom, and AI-generated all work.</span>
+        </div>
+      ) : (
+        <div className="sg-sty-compare-grid" data-count={items.length}>
+          {items.map((item) => (
+            <CompareColumn
+              key={item.id}
+              item={item}
+              active={selectedStyle === item.id}
+              onRemove={() => onRemove(item.id)}
+              onUse={() => onUse(item.id)}
+              onBuild={() => onBuild(item.id)}
+              onEdit={() => onEdit(item.meta)}
+              onDelete={() => onDelete(item.meta)}
+            />
+          ))}
+        </div>
+      )}
+    </section>
+  );
+}
+
+function CompareColumn({ item, active, onRemove, onUse, onBuild, onEdit, onDelete }) {
+  const { meta, detail } = item;
+  const custom = meta.custom;
+  const status = detail?.status || "loading";
+  const content = status === "ready" ? detail.data?.content || "" : "";
+  const stats = status === "ready" ? stylePromptStats(content) : null;
+  const tags = (status === "ready" ? detail.data?.tags : meta.tags) || [];
+  const baseStyle = (status === "ready" ? detail.data?.base_style : meta.base_style) || null;
+
+  return (
+    <article className="sg-sty-col">
+      <div className="sg-sty-col-head">
+        <div className="sg-sty-col-headings">
+          <strong title={meta.name}>{meta.name}</strong>
+          <span className={`sg-sty-badge ${custom ? "is-custom" : "is-builtin"}`}>
+            {custom ? "Custom" : "Built-in"}
+          </span>
+        </div>
+        <button type="button" className="sg-btn-sm sq" title="Remove from comparison" onClick={onRemove}>
+          <X size={14} />
+        </button>
+      </div>
+
+      <p className="sg-sty-col-desc">{meta.description || (custom ? "Custom style" : "Built-in style")}</p>
+
+      <dl className="sg-sty-col-meta">
+        <div>
+          <dt>Type</dt>
+          <dd>{custom ? (baseStyle ? "Custom (generated/cloned)" : "Custom") : "Built-in"}</dd>
+        </div>
+        {baseStyle && (
+          <div>
+            <dt>Based on</dt>
+            <dd>{baseStyle}</dd>
+          </div>
+        )}
+        {tags.length > 0 && (
+          <div className="span">
+            <dt>Tags</dt>
+            <dd>{tags.join(", ")}</dd>
+          </div>
+        )}
+      </dl>
+
+      {status === "ready" && stats && (
+        <>
+          <div className="sg-sty-col-stats">
+            <Stat icon={Type} label="Words" value={stats.wordCount.toLocaleString()} />
+            <Stat icon={Hash} label="Chars" value={stats.charCount.toLocaleString()} />
+            <Stat icon={ListChecks} label="Headings" value={stats.headingCount} />
+          </div>
+          <div className="sg-sty-col-flags">
+            <FlagChip on={stats.hasMath}>Math</FlagChip>
+            <FlagChip on={stats.hasQuiz}>Quiz / MCQ</FlagChip>
+            <FlagChip on={stats.hasConcise}>Concise / cram</FlagChip>
+          </div>
+        </>
+      )}
+
+      <div className="sg-sty-col-prompt-wrap">
+        {status === "loading" && (
+          <div className="sg-sty-col-state">
+            <Loader2 size={16} className="sg-spin" />
+            <span>Loading prompt…</span>
+          </div>
+        )}
+        {status === "error" && (
+          <div className="sg-sty-col-state error">
+            <AlertCircle size={16} />
+            <span>{detail.error || "Could not load this style."}</span>
+          </div>
+        )}
+        {status === "ready" && <pre className="sg-sty-col-prompt">{content}</pre>}
+      </div>
+
+      <div className="sg-sty-col-actions">
+        <button type="button" className={`sg-btn-sm${active ? " accent" : ""}`} onClick={onUse} disabled={active}>
+          {active ? <Check size={14} /> : null}
+          {active ? "Selected" : "Use"}
+        </button>
+        <button type="button" className="sg-btn-sm accent" onClick={onBuild}>
+          <Hammer size={14} />
+          Build
+        </button>
+        {custom && (
+          <>
+            <button type="button" className="sg-btn-sm sq" title="Edit" onClick={onEdit}>
+              <Pencil size={14} />
+            </button>
+            <button type="button" className="sg-btn-sm sq danger" title="Delete" onClick={onDelete}>
+              <Trash2 size={14} />
+            </button>
+          </>
+        )}
+      </div>
+    </article>
+  );
+}
+
+function Stat({ icon: Icon, label, value }) {
+  return (
+    <div className="sg-sty-stat">
+      <Icon size={13} />
+      <span className="sg-sty-stat-val">{value}</span>
+      <span className="sg-sty-stat-label">{label}</span>
+    </div>
+  );
+}
+
+function FlagChip({ on, children }) {
+  return (
+    <span className={`sg-sty-flag${on ? " on" : ""}`}>
+      {on ? <Check size={12} strokeWidth={3} /> : <X size={12} />}
+      {children}
+    </span>
   );
 }
 

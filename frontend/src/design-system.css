@@ -2237,6 +2237,78 @@ body { overflow: hidden; }
 .sg-sty-danger-cta svg { width: 15px; height: 15px; }
 
 /* =========================================================================
+   Styles workspace — Compare styles (Slice 14). Additive, Styles-scoped, real
+   semantic CSS on the Slice 5b density baseline. Frontend-only feature: prompt
+   bodies come from the existing GET /api/styles/{id} detail. No generation /
+   CRUD behaviour changed. Internal scroll on prompt blocks; the multi-column
+   grid scrolls horizontally for 3–4 columns rather than overflowing the page.
+   ========================================================================= */
+.sg-page-head-actions { display: flex; align-items: center; gap: 9px; flex: none; }
+.sg-sty-compare-toggle { height: 42px; padding: 0 14px; }
+
+.sg-sty-compare { display: flex; flex-direction: column; gap: 14px; border-radius: var(--r-card); border: 1px solid var(--card-border-2); background: var(--card); padding: 16px; }
+.sg-sty-compare-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+.sg-sty-compare-head-text h2 { display: inline-flex; align-items: center; gap: 8px; font-family: var(--serif); font-size: 20px; font-weight: 500; color: var(--text); }
+.sg-sty-compare-head-text h2 svg { width: 17px; height: 17px; color: #A5A8F8; }
+.sg-sty-compare-head-text p { margin-top: 4px; font-size: 13px; color: var(--muted); }
+.sg-sty-compare-controls { display: flex; align-items: center; gap: 7px; flex: none; }
+
+.sg-sty-compare-empty { display: flex; flex-direction: column; align-items: center; gap: 6px; text-align: center; padding: 26px 16px; border-radius: var(--r-inner); border: 1px dashed var(--card-border-2); background: var(--card-2); }
+.sg-sty-compare-empty svg { width: 22px; height: 22px; color: #A5A8F8; }
+.sg-sty-compare-empty strong { font-size: 15px; font-weight: 650; color: var(--text); }
+.sg-sty-compare-empty span { font-size: 13px; color: var(--muted); max-width: 460px; line-height: 1.5; }
+
+/* 2 columns share the width; 3–4 scroll horizontally inside the panel. */
+.sg-sty-compare-grid { display: grid; gap: 12px; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.sg-sty-compare-grid[data-count="3"],
+.sg-sty-compare-grid[data-count="4"] { grid-auto-flow: column; grid-template-columns: none; grid-auto-columns: minmax(300px, 1fr); overflow-x: auto; padding-bottom: 4px; }
+
+.sg-sty-col { display: flex; flex-direction: column; gap: 11px; min-width: 0; border-radius: var(--r-inner); border: 1px solid var(--card-border); background: var(--card-2); padding: 14px; }
+.sg-sty-col-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; }
+.sg-sty-col-headings { min-width: 0; display: flex; flex-direction: column; gap: 6px; }
+.sg-sty-col-headings strong { font-size: 15px; font-weight: 650; color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sg-sty-col-headings .sg-sty-badge { align-self: flex-start; }
+.sg-sty-col-desc { font-size: 13px; line-height: 1.5; color: var(--muted); }
+
+.sg-sty-col-meta { display: grid; gap: 8px 14px; grid-template-columns: 1fr 1fr; margin: 0; }
+.sg-sty-col-meta div.span { grid-column: 1 / -1; }
+.sg-sty-col-meta dt { font-size: 10.5px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.08em; color: var(--label); }
+.sg-sty-col-meta dd { margin: 3px 0 0; font-size: 13px; color: var(--text-dim); word-break: break-word; }
+
+.sg-sty-col-stats { display: flex; flex-wrap: wrap; gap: 7px; }
+.sg-sty-stat { display: inline-flex; align-items: center; gap: 6px; padding: 5px 9px; border-radius: var(--r-pill); border: 1px solid var(--card-border); background: var(--card); font-size: 12px; color: var(--text-dim); }
+.sg-sty-stat svg { width: 13px; height: 13px; color: var(--muted); flex: none; }
+.sg-sty-stat-val { font-weight: 650; color: var(--text); font-variant-numeric: tabular-nums; }
+.sg-sty-stat-label { color: var(--muted); }
+
+.sg-sty-col-flags { display: flex; flex-wrap: wrap; gap: 6px; }
+.sg-sty-flag { display: inline-flex; align-items: center; gap: 5px; padding: 4px 9px; border-radius: var(--r-pill); border: 1px solid var(--card-border); background: var(--card); font-size: 11.5px; font-weight: 600; color: var(--muted); }
+.sg-sty-flag svg { width: 12px; height: 12px; flex: none; }
+.sg-sty-flag.on { color: #6EE7B7; border-color: rgba(110,231,183,0.3); background: rgba(110,231,183,0.1); }
+
+.sg-sty-col-prompt-wrap { flex: 1; min-height: 0; }
+.sg-sty-col-prompt { max-height: 320px; overflow: auto; margin: 0; padding: 11px 12px; border-radius: var(--r-inner); border: 1px solid var(--card-border); background: var(--bg, var(--card)); font-family: var(--mono); font-size: 12px; line-height: 1.5; color: var(--text-dim); white-space: pre-wrap; word-break: break-word; }
+.sg-sty-col-state { display: flex; align-items: center; gap: 9px; padding: 18px 12px; font-size: 13px; color: var(--text-dim); }
+.sg-sty-col-state svg { width: 16px; height: 16px; flex: none; color: #A5A8F8; }
+.sg-sty-col-state.error { color: #FCA5A5; }
+.sg-sty-col-state.error svg { color: #FCA5A5; }
+
+.sg-sty-col-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 7px; margin-top: auto; }
+
+/* ---- Compare-mode selection on the style cards ---- */
+.sg-sty-card.compare { cursor: pointer; }
+.sg-sty-card.compare:hover { border-color: var(--card-border-2); }
+.sg-sty-card.compare.compare-on { border-color: var(--indigo); background: var(--indigo-soft); }
+.sg-sty-card.compare.compare-locked { opacity: 0.5; cursor: not-allowed; }
+.sg-sty-check { display: grid; place-items: center; width: 22px; height: 22px; flex: none; border-radius: 7px; border: 1.5px solid var(--card-border-2); background: var(--card-2); color: #fff; }
+.sg-sty-check.on { border-color: transparent; background: var(--indigo); }
+.sg-sty-check svg { width: 13px; height: 13px; }
+
+@media (max-width: 720px) {
+  .sg-sty-compare-grid { grid-template-columns: minmax(0, 1fr); }
+}
+
+/* =========================================================================
    Models workspace — Slice 9 reskin (Provider Settings + Local Models).
    Real semantic CSS only (Tailwind utilities are inert in this app). Built on
    the Slice 5b density baseline; green = configured/reachable, amber = offline/

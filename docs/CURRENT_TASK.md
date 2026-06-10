@@ -5,6 +5,47 @@
 
 ---
 
+## Slice 14 — Styles "Compare styles" feature DONE.
+
+- **Slice 14 adds a real Compare Styles feature to the Styles workspace.** This is
+  the long-missing capability the "compare built-in prompts side by side" shortcut
+  always described but nothing implemented. **Frontend-only** — no backend, API,
+  pipeline, style CRUD, generation, or Builder-payload changes.
+- **Data source:** the existing **`GET /api/styles/{id}`** detail endpoint already
+  returns the full prompt `content` (it backs clone/edit) for both built-in and
+  custom styles. The list `GET /api/styles` deliberately omits `content`, so the
+  compare panel fetches each selected style's body **lazily on demand** and caches
+  it. Verified live: detail returns `content` with **no** filename/path/secret/key
+  leakage (built-in *and* custom).
+- **Files changed:** `frontend/src/components/StylesWorkspace.jsx` (compare state +
+  `ComparePanel`/`CompareColumn`/`Stat`/`FlagChip`, card selection wiring),
+  `frontend/src/design-system.css` (additive "Compare styles — Slice 14" block),
+  `frontend/package.json` (`test:style-compare` script). **New:**
+  `frontend/src/styleCompare.js` (pure helpers: `toggleCompareSelection`,
+  `stylePromptStats`, MIN/MAX) and `frontend/scripts/verify-style-compare.mjs`
+  (node harness, 20 checks).
+- **UX:** header **Compare styles** toggle (turns into **Exit compare**); in
+  compare mode the cards become checkbox-selectable (selection is visually
+  separate from **Use** — Use/Build/Edit/Delete still work via stopPropagation);
+  2–4 styles allowed (locked out + dimmed at 4). The top **Compare panel** shows a
+  `<2`-selected empty state ("Select at least two styles to compare."), Clear, and
+  Exit; otherwise renders side-by-side columns (2 = balanced; 3–4 = horizontally
+  scrollable grid, no body overflow). Each column shows name, built-in/custom
+  badge, description, type, based-on, tags, deterministic stats (words/chars/
+  headings) + math/quiz/concise flags, a scrollable monospace prompt block, and
+  Use/Build (+Edit/Delete for custom). No LLM/semantic analysis; no
+  `dangerouslySetInnerHTML`; compare state is local-only (never persisted).
+- **Verification:** `npm run build` green; `npm run test:style-compare` 20/20;
+  `python -m compileall api pipeline` green; `git diff --check` clean; docker
+  `build`+`up` green (served bundle/CSS contain the compare markup + grid);
+  `/api/styles/{id}` leak-scanned (built-in + custom) — none; `smoke_release.py`
+  **28/28**. (`npm run test`/verify-assets is a pre-existing stale failure on
+  unrelated `App.jsx` mockup checks — fails identically on clean HEAD.)
+- **Visual inspection delegated to user; no automated screenshots required.**
+- **Status: implemented + verified + visually reviewed — committed.**
+
+---
+
 ## Slice 13 — Ask Guide workspace redesign DONE.
 
 - **Slice 13 (Ask Guide workspace UX/layout redesign) is DONE.** Frontend
