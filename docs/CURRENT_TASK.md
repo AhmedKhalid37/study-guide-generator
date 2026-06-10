@@ -5,6 +5,74 @@
 
 ---
 
+## Slice 16 — Post-reskin release audit + checkpoint (implemented + verified, awaiting review).
+
+- **Purpose:** release-audit/checkpoint after the GuideForge reskin + UX phase
+  (Slices 1–15). **No features, no redesign, no roadmap work.** Verify the app is
+  clean, document the reskin phase complete, and make only surgical low-risk
+  fixes the audit turns up.
+- **Audit A (baseline):** Slice 15 committed (`033e7d1`), working tree started
+  clean.
+- **Audit B (build/test):** `npm run build` green; `test:local-model-status`,
+  `test:local-model-command`, `test:local-model-library`, `test:style-compare`
+  all pass; `python -m compileall api pipeline` green; `git diff --check` clean.
+- **Audit C (served app):** `docker compose build` + `up -d` green; `/api/health`
+  `{"ok":true}`; `/api/options` 200 with only non-secret keys. `smoke_release.py`
+  **28 passed / 0 failed / 0 skipped** (incl. the "no key leakage in job details"
+  assertion + full paste/upload/LLM/attachment/outline/ZIP/folder/style-CRUD/
+  rerender flows). Served container bundle confirmed **fresh** (the `sm:grid-cols-2`
+  token removed in this slice is absent from the served JS), not stale host/dev
+  output.
+- **Audit D (semantic CSS / inert utilities):**
+  - Defined `.sg-*` selectors: 773; `sg-*` tokens used: 745. **Undefined in the
+    live render path: 0.** The only two unmatched tokens (`sg-tile-`,
+    `sg-tile-glow`) come from the dynamic `Tile` export in `ClaudeIcons.jsx`,
+    which is **dead** (zero imports/usages) — not in any live path.
+  - **Live inert/old-palette leftovers found:** a handful in the JobDetails
+    drawer body of `RecentJobsPanel.jsx` (stray `text-sm font-bold text-white`
+    headers, `text-slate-*`/`mt-*`/`grid sm:grid-cols-2` on `h3/dt/dd/p/dl/section/
+    span`). These were **inert no-ops, not raw UI** — the `.sg-drawer-body`
+    base element cascade (Slice 5b/15) already styles `section/h3/dl/dt/dd/p` —
+    but they were stripped anyway so the live path carries no leftover palette.
+  - **Dead-file/dead-branch leftovers (left in place, reported):** the
+    non-embedded `RecentJobsPanel` return branch + its `PreviewPanel` helper
+    (lines ~311–393, `bg-navy-900`/`shadow-navy`/`backdrop-blur`/`ember-500`)
+    are **unreachable** — the sole caller (`HomeShortcuts`) always passes
+    `embedded`. Also dead: `Tile` (ClaudeIcons), `MetaRow` (BuilderWorkspace),
+    and the mockup components (`DesktopMockup`, `PhoneMockup`, `BrandMark`,
+    `GlowBackground`, `FallbackImage`, `ImplementationNote`, `MobileScreenPicker`,
+    `PasteGenerationPanel`, `data/mockups.js`, etc.). Not churned (checkpoint
+    slice avoids structural rewrites); recorded for a future dead-code sweep.
+  - **Other live workspaces** (Ask/Builder/Home/Library/LocalModels/Styles/Help/
+    DesktopDashboard): **zero genuine old-palette tokens.** Remaining matches are
+    layout utilities (`flex`/`grid`/`gap-1`) on elements that also carry inline
+    styles or `sg-*` classes, or render acceptably inline — cosmetically
+    negligible, not raw. Deferred (not worth churn).
+- **Audit E (functional):** end-to-end flows validated at the API/data layer via
+  `smoke_release.py` (generation start→done, JobDetails metadata, library
+  folder/move, Exports ZIP, Styles create/use/delete, rerender, outline order).
+  Browser-driven visual walkthrough + screenshots are **operator-owned** (per
+  standing instruction); not produced here.
+- **Audit F (security):** `/api/options`, `/api/styles`, `/api/provider-settings`,
+  `/api/local-model/status` carry **no raw keys/tokens/secrets**; provider DTO
+  exposes only `configured`/`key_source`/last-4 `key_hint`/`base_url_host`;
+  local-model DTO exposes no token/socket/abs-path/executable/argv/Authorization;
+  served JS bundle contains no `.env` secret (and not even the last-4 hint).
+- **Fixes made (1 file, frontend-only):** `frontend/src/components/RecentJobsPanel.jsx`
+  — stripped inert Tailwind/old-palette className tokens off live drawer-body
+  `h3/dt/dd/p/dl/section/span` elements (now styled solely by the existing
+  `.sg-drawer-body` semantic cascade); the failed-job title span and `MetaTerm`
+  values use small inline `var(--*)` styles matching the in-file pattern. **No
+  CSS file change needed** (the semantic rules already existed). No behaviour,
+  handlers, endpoints, payloads, tab ids, artifact links, drawer-open contract,
+  or data surface changed.
+- **Docs:** this entry + `NEXT_CHAT_HANDOFF.md` (reskin/UX phase complete through
+  Slice 16; next phase = correctness/measurement, starting with deterministic
+  math verification).
+- **Status: implemented + verified, awaiting review before commit.**
+
+---
+
 ## Slice 15 — RecentJobsPanel + JobDetails body reskin (DONE / committed).
 
 - **Slice 15 closes the last Slice 11 reskin debt:** the JobDetails drawer

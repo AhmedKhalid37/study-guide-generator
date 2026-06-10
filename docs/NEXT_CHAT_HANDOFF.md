@@ -6,16 +6,50 @@
 > stable overview see `PROJECT_CONTEXT.md`; canonical brief is `../CLAUDE.md`.
 
 ## Current position
-- **Branch (trunk / PR target):** `chrome-renderer-v1`
-- **Trunk includes:** `af0ec0e` (Ask Slice 1 design), `2634f63` (Ask Slice 2 context
-  inventory), `a29a405` (Ask Slice 3 context preparation), and the inserted Ask
-  workspace shell, on top of the validated LMM group and prior feature groups.
-- **Active work branch:** `lmm-phase2g11-final-hardening` — Local Model Manager
-  Phase 2G11 final hardening/regression pass.
-  **NEXT = pause LMM Phase 2. Resume only with a separately designed
-  approve-root flow or packaging slice. App-suggested settings remain deferred.**
+- **Branch (trunk / PR target):** `chrome-renderer-v1` (all reskin slices land here).
+- **Phase:** the **GuideForge reskin + UX phase is COMPLETE through Slice 16.**
+  Slices 1–15 reskinned every workspace to semantic GuideForge CSS (Tailwind
+  utilities are inert in this app — live UI uses real `.sg-*` / element-cascade
+  rules); Slice 16 is the post-reskin **release audit + checkpoint**.
+- **HEAD before Slice 16:** `033e7d1` (Slice 15). Slice 16 is **implemented +
+  verified, awaiting review before commit** — once committed, update this line
+  with the Slice 16 hash.
+- **Slice 16 result:** live render path is clean — **0 undefined `sg-*`**, **0
+  live raw/old-palette leftovers** (the few that existed in the JobDetails drawer
+  body were inert no-ops already covered by the `.sg-drawer-body` cascade and were
+  stripped). Remaining old-palette lives only in **dead, unreachable code**
+  (non-embedded `RecentJobsPanel`/`PreviewPanel` branch, `Tile`, `MetaRow`, the
+  mockup components) — left in place, logged for a future dead-code sweep. Build,
+  4 frontend harnesses, `compileall`, Docker build/up, and `smoke_release.py`
+  (28/0/0) all green; security scan clean (no keys/tokens/socket/paths in any
+  served API or the JS bundle).
+- **Stale-test caveat (still relevant):** the legacy `npm run test` / verify-assets
+  harnesses reference the old `App.jsx` mockup tree and are **not** release
+  blockers — treat their failures as pre-existing/irrelevant unless newly broken.
+- **Screenshots / visual review are operator-owned** — Claude Code does not produce
+  them; the operator does visual inspection and supplies screenshots if needed.
+- **NEXT recommended phase = correctness / measurement layer**, starting with
+  **deterministic math verification** (the reskin/UX phase is closed; this is the
+  natural next direction, not more UI work). LMM Phase 2 remains **paused** —
+  resume only with a separately designed approve-root or packaging slice;
+  app-suggested settings remain deferred.
 
 ## What just landed
+- **Slice 16 — post-reskin release audit + checkpoint** (this branch,
+  `chrome-renderer-v1`). Full validation pass after Slices 1–15: build + 4 pure
+  frontend harnesses + `compileall` + Docker build/up + `smoke_release.py`
+  (28 passed / 0 failed / 0 skipped) all green. Semantic-CSS audit (773 defined
+  `.sg-*`, 0 undefined in the live path), inert-utility/old-palette audit (live
+  path clean after a 1-file surgical strip of inert tokens in
+  `RecentJobsPanel.jsx`; dead-branch/dead-file leftovers reported, not churned),
+  and a security quick-scan (no raw secrets in `/api/options`, `/api/styles`,
+  `/api/provider-settings`, `/api/local-model/status`, JobDetails, or the served
+  bundle). **Frontend-only, 1 file changed, no behaviour/endpoint/payload/data
+  changes.** See `CURRENT_TASK.md` for the per-audit detail. Status: awaiting
+  review before commit.
+- **Local Model Manager Phase 2G11 — final hardening/regression pass** (branch
+  `lmm-phase2g11-final-hardening`). Added the pure/offline final harness
+  `test_scripts/test_lmm_phase2_final_regression.py`. It validates the
 - **Local Model Manager Phase 2G11 — final hardening/regression pass** (branch
   `lmm-phase2g11-final-hardening`). Added the pure/offline final harness
   `test_scripts/test_lmm_phase2_final_regression.py`. It validates the

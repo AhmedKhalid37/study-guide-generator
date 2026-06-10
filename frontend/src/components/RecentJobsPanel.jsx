@@ -443,7 +443,7 @@ function AttachmentDetails({ manifest }) {
   return (
     <section>
       <div className="sg-head-row">
-        <h3 className="text-sm font-bold text-white">Attached sources</h3>
+        <h3>Attached sources</h3>
         <div className="sg-chip-row">
           <AttachmentPill count={summary.count} />
           {summary.hasWarnings && <WarningPill count={summary.warningCount} />}
@@ -483,8 +483,8 @@ function AttachmentDetails({ manifest }) {
 function MetaTerm({ label, value, mono = false }) {
   return (
     <div>
-      <dt className="text-slate-500">{label}</dt>
-      <dd className={`mt-1 break-words text-slate-200 ${mono ? "font-mono text-xs" : "font-medium"}`}>
+      <dt>{label}</dt>
+      <dd style={{ wordBreak: "break-word", fontFamily: mono ? "var(--mono)" : undefined, fontSize: mono ? "13px" : undefined }}>
         {value || "unavailable"}
       </dd>
     </div>
@@ -493,7 +493,7 @@ function MetaTerm({ label, value, mono = false }) {
 
 function ArtifactLinkGrid({ jobId, artifacts }) {
   if (!artifacts?.length) {
-    return <p className="mt-3 text-sm text-slate-400">No artifacts available</p>;
+    return <p style={{ marginTop: 12 }}>No artifacts available</p>;
   }
 
   return (
@@ -638,7 +638,7 @@ export function JobDetailsDrawer({ open, onClose, loading, error, details, style
                   {style && <StylePill style={style} />}
                   {folder && <FolderPill folder={folder} />}
                 </div>
-                <dl className="mt-4 grid gap-3 text-sm sm:grid-cols-2">
+                <dl>
                   <MetaTerm label="Created" value={manifest.created_at} />
                   <MetaTerm label="Input type" value={manifest.input_type || manifest.path_mode} />
                   <MetaTerm
@@ -832,7 +832,7 @@ function FailedJobPanel({ manifest, renderLog, validation, jobId, onRetry, onClo
       <div className="sg-head-row">
         <div className="sg-chip-row">
           <AlertCircle style={{ color: "var(--red)" }} />
-          <span className="text-sm font-bold text-white">Generation failed</span>
+          <span style={{ color: "var(--text)", fontWeight: 600, fontSize: 13.5 }}>Generation failed</span>
           <ErrorCategoryBadge category={category} />
         </div>
         <div className="sg-btn-row">
@@ -888,9 +888,9 @@ function FailedJobPanel({ manifest, renderLog, validation, jobId, onRetry, onClo
 
 function DetailsSection({ title, children }) {
   return (
-    <section className="rounded-2xl border border-white/10 bg-white/[0.035] p-4">
-      <h3 className="text-sm font-bold text-white">{title}</h3>
-      <div className="mt-3">{children}</div>
+    <section>
+      <h3>{title}</h3>
+      <div style={{ marginTop: 10 }}>{children}</div>
     </section>
   );
 }
@@ -1019,7 +1019,7 @@ function OutlineComplianceTab({ jobId, manifest }) {
   return (
     <div className="sg-tab-stack">
       <div className="sg-head-row">
-        <h3 className="text-sm font-bold text-white">Outline Compliance</h3>
+        <h3>Outline Compliance</h3>
         <div className="sg-chip-row">
           {counts.found > 0 && <span className="sg-tag sg-tag-green">{counts.found} found</span>}
           {counts.renamed > 0 && <span className="sg-tag sg-tag-amber">{counts.renamed} renamed</span>}
@@ -1174,7 +1174,7 @@ function SectionRegenerateTab({ jobId, manifest, onRegenerated }) {
   return (
     <div className="sg-tab-stack">
       <div>
-        <h3 className="text-sm font-bold text-white">Select a section</h3>
+        <h3>Select a section</h3>
         <div className="sg-stack" style={{ marginTop: 8, maxHeight: 224, overflowY: "auto", paddingRight: 4 }}>
           {sections.map((section) => (
             <button
@@ -1368,7 +1368,7 @@ function EditMarkdownTab({ jobId, onSaved }) {
     <div className="sg-tab-stack">
       <div className="sg-head-row">
         <div className="sg-chip-row">
-          <h3 className="text-sm font-bold text-white">Edit Markdown</h3>
+          <h3>Edit Markdown</h3>
           {isDirty && <span className="sg-tag sg-tag-amber">unsaved</span>}
           {saveOk && !isDirty && <span className="sg-tag sg-tag-green">saved</span>}
         </div>
@@ -1542,7 +1542,7 @@ function VersionHistoryTab({ jobId, onReverted }) {
 
   return (
     <div className="sg-tab-stack">
-      <h3 className="text-sm font-bold text-white">{versions.length} version{versions.length !== 1 ? "s" : ""}</h3>
+      <h3>{versions.length} version{versions.length !== 1 ? "s" : ""}</h3>
 
       {revertError && (
         <p className="sg-notice sg-notice-red">{revertError}</p>
@@ -1748,7 +1748,7 @@ function QuizTab({ jobId, manifest }) {
     <div className="sg-tab-stack">
       {/* Config panel */}
       <section>
-        <h3 className="text-sm font-bold text-white" style={{ marginBottom: 12 }}>Generate Quiz</h3>
+        <h3 style={{ marginBottom: 12 }}>Generate Quiz</h3>
 
         <div className="sg-stack">
           <div>
@@ -1842,7 +1842,7 @@ function QuizTab({ jobId, manifest }) {
 
       {quizzes !== null && quizzes.length > 0 && (
         <section>
-          <h3 className="text-sm font-bold text-white" style={{ marginBottom: 8 }}>Saved Quizzes</h3>
+          <h3 style={{ marginBottom: 8 }}>Saved Quizzes</h3>
           <div className="sg-stack">
             {[...quizzes].reverse().map((q) => {
               const isActive = activeQuiz?.n === q.n;
@@ -1869,7 +1869,7 @@ function QuizTab({ jobId, manifest }) {
         <section>
           <div className="sg-head-row" style={{ marginBottom: 12 }}>
             <div>
-              <h3 className="text-sm font-bold text-white">
+              <h3>
                 Quiz #{activeQuiz.n} · {activeQuiz.item_count} questions
               </h3>
               <p className="sg-hint" style={{ marginTop: 2 }}>
