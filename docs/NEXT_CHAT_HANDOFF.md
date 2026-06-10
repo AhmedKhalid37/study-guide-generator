@@ -6,6 +6,9 @@
 > stable overview see `PROJECT_CONTEXT.md`; canonical brief is `../CLAUDE.md`.
 
 ## Current position
+- **Branch in progress:** `slice22-jobdetails-math-verification-ui`, created from
+  `chrome-renderer-v1`. Slice 22 is implemented + verified but intentionally
+  uncommitted. Do not commit unless explicitly asked; do not force-push.
 - **Branch (trunk / PR target):** `chrome-renderer-v1` (all reskin slices land here).
 - **Phase:** the **GuideForge reskin + UX phase is COMPLETE** (Slices 1–15
   reskinned every workspace to semantic GuideForge CSS — Tailwind utilities are
@@ -25,6 +28,15 @@
 - **Slice 20 (eval harness Phase 1 — deterministic scoring framework) is
   implemented + verified, PENDING REVIEW before commit** — once committed, update
   this line with the hash.
+- **Slice 22 implemented + verified:** frontend-only, read-only JobDetails UI for
+  Slice 21's per-job `math_verification.json`. The artifact is still intentionally
+  excluded from generic artifact lists. `JobDetailsDrawer` has a new
+  `Verification` tab that fetches `/api/jobs/{id}/artifacts/math_verification.json`
+  on demand via a small API helper, then `MathVerificationPanel` renders
+  completed/skipped/404/malformed/fetch-error states. Completed reports show
+  summary counts and a bounded compact claim list. No backend, pipeline, prompt,
+  provider, `/api/jobs/llm`, job mutation, artifact writing, guide-lint
+  integration, or `validation.json` schema change.
 - **Slice 20 result (measurement spine only):** added `test_scripts/eval/`
   (`run_eval.py` CLI + `score_guide.py` pure core + `golden/sample.json` +
   fixtures + READMEs). It scores guide Markdown against a JSON **golden spec**
@@ -113,6 +125,20 @@
   app-suggested settings remain deferred.
 
 ## What just landed
+- **Slice 22 — JobDetails math verification artifact UI** (branch
+  `slice22-jobdetails-math-verification-ui`, implemented + verified, uncommitted).
+  Added
+  `frontend/src/mathVerification.js`, `frontend/src/components/MathVerificationPanel.jsx`,
+  a generic read-only `getJobArtifact()` helper, a `Verification` JobDetails tab,
+  compact semantic CSS for claim rows, and
+  `frontend/scripts/verify-math-verification.mjs` wired into `npm test`.
+  UI fetches `math_verification.json` only when the tab is opened and handles
+  completed, skipped, missing/404, malformed/unexpected, invalid JSON, and
+  fetch/network error states. Read-only only: no rerun verifier action, no job
+  mutation, no artifact writes, and no backend/pipeline behavior changes.
+  Validation green: build, full `npm test`, helper harness, `compileall`,
+  math-verifier tests, guide-lint tests, eval-harness tests, offline eval all,
+  `git diff --check`, and `smoke_release.py` (29/0/0).
 - **Slice 17 — hygiene checkpoint: dead-file sweep + `npm test` repair** (this
   branch, `chrome-renderer-v1`, PENDING REVIEW). Deleted the proven-unreachable
   mockup/legacy presentational set + 5 mockup PNGs + obsolete `verify-assets.mjs`

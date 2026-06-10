@@ -3189,6 +3189,27 @@ details.sg-mdl-helper > summary::-webkit-details-marker { display: none; }
 .sg-card-row.warn { border-color: var(--amber-soft); background: var(--amber-soft); }
 .sg-card-row.bad  { border-color: var(--red-soft);   background: var(--red-soft); }
 
+/* compact math-verification claim rows */
+.sg-mathv-list { margin-top: 10px; }
+.sg-mathv-claim {
+  border: 1px solid var(--card-border); background: var(--card); border-radius: 11px;
+  padding: 11px 12px; min-width: 0;
+}
+.sg-mathv-claim.mismatch { border-color: var(--red-soft); background: rgba(239,68,68,0.05); }
+.sg-mathv-claim.unparseable { border-color: var(--amber-soft); background: rgba(245,158,11,0.06); }
+.sg-mathv-claim-head { display: flex; flex-wrap: wrap; align-items: center; gap: 7px; margin-bottom: 8px; }
+.sg-mathv-line, .sg-mathv-id {
+  font-family: var(--mono); font-size: 12px; color: var(--muted);
+}
+.sg-mathv-values {
+  display: flex; flex-wrap: wrap; gap: 7px; margin-top: 8px;
+  font-family: var(--mono); font-size: 12.5px; color: var(--text-dim);
+}
+.sg-mathv-values span {
+  border: 1px solid var(--card-border); background: var(--card-2); border-radius: 8px;
+  padding: 4px 7px; word-break: break-word;
+}
+
 /* header row: title left, trailing chips/actions right */
 .sg-head-row { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px; }
 .sg-chip-row { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }

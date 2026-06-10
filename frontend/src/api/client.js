@@ -812,6 +812,27 @@ export function artifactUrl(jobId, artifactName) {
   )}`;
 }
 
+export async function getJobArtifact(jobId, artifactName) {
+  const response = await fetch(artifactUrl(jobId, artifactName), {
+    headers: { Accept: "application/json" },
+  });
+  if (!response.ok) {
+    const error = new Error(
+      response.status === 404 ? "Artifact not found" : `Artifact request failed: ${response.status}`
+    );
+    error.status = response.status;
+    throw error;
+  }
+  try {
+    return await response.json();
+  } catch {
+    const error = new Error("Artifact response was not valid JSON");
+    error.status = response.status;
+    error.code = "invalid_json";
+    throw error;
+  }
+}
+
 export function apiUrl(path) {
   return `${API_BASE_URL}${path}`;
 }

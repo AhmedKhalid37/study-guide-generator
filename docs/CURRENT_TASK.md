@@ -5,6 +5,45 @@
 
 ---
 
+## Slice 22 — JobDetails math verification artifact UI (DONE — uncommitted).
+
+- **Purpose:** add the first read-only JobDetails surface for the Slice 21
+  per-job `math_verification.json` artifact without adding it to the generic
+  artifact grid/list.
+- **Scope guardrails:** frontend read-only UI only. No backend job behavior, no
+  pipeline behavior, no prompt/provider changes, no `/api/jobs/llm` request-field
+  changes, no `validation.json` schema change, no guide-lint integration, no
+  artifact writes, no rerun button, and no raw HTML/`dangerouslySetInnerHTML`.
+- **UI placement:** `JobDetailsDrawer` now has a `Verification` tab. Opening that
+  tab mounts `MathVerificationPanel`, which fetches
+  `GET /api/jobs/{id}/artifacts/math_verification.json` on demand. The existing
+  `Artifacts` section remains unchanged and still does not list
+  `math_verification.json`.
+- **Frontend files:** `frontend/src/api/client.js` adds a bounded JSON artifact
+  reader; `frontend/src/mathVerification.js` contains pure artifact
+  classification/bounding helpers; `frontend/src/components/MathVerificationPanel.jsx`
+  renders the read-only panel; `RecentJobsPanel.jsx` adds the tab mount;
+  `design-system.css` adds compact semantic claim-row styles; `frontend/package.json`
+  chains the new helper harness.
+- **States handled:** completed artifacts show `report.summary` total / ok /
+  mismatch / unparseable and a bounded, compact claim list prioritizing mismatch
+  and unparseable claims; skipped artifacts show the safe skipped message; 404
+  older jobs show "not available"; unexpected shapes and invalid JSON show
+  malformed-artifact messaging; network/fetch failures show fetch-error
+  messaging.
+- **Validation:** `npm --prefix frontend run build` green; `npm --prefix frontend
+  run test` green (now includes the math verification helper harness);
+  `node frontend/scripts/verify-math-verification.mjs` green; `python -m
+  compileall api pipeline test_scripts` green; `python
+  test_scripts/test_math_verifier.py` → 74/74; `python
+  test_scripts/test_guide_lint.py` → 64/64; `python
+  test_scripts/test_eval_harness.py` → 59/59; `python
+  test_scripts/eval/run_eval.py --offline --all` → 3 guides scored; `git diff
+  --check` clean; `python test_scripts/smoke_release.py` → 29 passed / 0 failed
+  / 0 skipped.
+
+---
+
 ## Slice 20 — Eval harness Phase 1: deterministic scoring framework + golden specs (DONE — reviewed + committed).
 
 - **Purpose:** third **correctness / measurement** slice. Build the first
