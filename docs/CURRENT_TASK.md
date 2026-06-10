@@ -5,6 +5,70 @@
 
 ---
 
+## Slice 25B — Ask lexical retrieval hygiene (DONE — uncommitted).
+
+- **Purpose:** improve the existing deterministic local-only lexical (tf-idf) Ask
+  retrieval with cheap, explainable changes, then prove the effect against the
+  Slice 25A baseline. No embeddings / LanceDB / vector search / reranker /
+  cross-encoder / new ML dependency — lexical hygiene only.
+- **Root cause (from 25A):** the index and query both tokenised with a bare
+  `[a-z0-9]{2,}` lowercaser and **no stopword/plural hygiene**. Common function
+  words ("the", "it", "on") flooded scoring (idf≈1 but high tf), so unrelated
+  sections out-scored the right one on a paraphrased query.
+- **Change — new shared module `pipeline/ask_lexical.py`:**
+  - `lexical_terms(text)` → normalised term-frequency dict, used by **both** the
+    index build and the query scorer so they can never drift apart.
+  - `STOPWORDS` — small built-in English function-word set (articles, pronouns,
+    auxiliaries, prepositions, conjunctions, common question/determiner words).
+    Deliberately excludes domain vocabulary; tokens like `l2`, `f1`, `sigmoid`,
+    `dropout` survive intact.
+  - `normalize_token` — conservative **regular `+s` plural** folding only
+    (single trailing `-s`, guarded against doubled `ss` and short tokens), so
+    `example`/`examples` and `weight`/`weights` fold to the same stem. No `-es`
+    rule (would break singular/plural symmetry) and **no verb-tense stemming**
+    (`-ing`/`-ed`) — that risks mangling tokens like `string`/`based` for little
+    gain.
+- **Wiring:** `ask_context._term_freqs` and `ask_sessions._terms` now both
+  delegate to `lexical_terms` (the old per-module `_TERM_RE` and the now-unused
+  `Counter` import in `ask_sessions` were removed). Segmentation is unchanged;
+  only stopword filtering + plural folding are new.
+- **Index/cache compatibility:** the index *shape* is unchanged (still
+  `terms` + `doc_freq`), but their *contents* are now normalised. `INDEX_VERSION`
+  bumped `1 → 2` so any existing v1 cache is treated as stale by `_cache_valid`
+  and **rebuilt automatically** on the next `prepare_context` — no user action,
+  no manual cache deletion, and no chance of mixing old un-normalised index terms
+  with new query terms. See `DECISIONS.md` → "Ask index version bump on lexical-
+  hygiene change".
+- **Baseline before → after (k=5, `test_ask_retrieval_relevance.py`):**
+  - Blocking cases **unchanged**: `hit_rate@5 = 1.0`, `mrr = 0.9`, `missing = []`
+    (4 keyword guide queries rank #1; the source-page query ranks #2).
+  - Paraphrase **known-weakness** case ("model memorizes training data…"):
+    **rank 5 → rank 1** on this fixture. Stopword removal killed the function-word
+    noise so the residual content-word overlap (`model`, `new`) ranks the
+    Overfitting section first.
+- **Honest remaining weakness:** this is still *lexical overlap*, not semantics.
+  The paraphrase improved only because it shares a couple of content words with
+  the target; a paraphrase with **zero** shared content words would still miss.
+  The case is therefore kept `known_weakness: true` (non-blocking) and embedding/
+  semantic retrieval remains future work. The harness `retrieval`/`version`
+  labels and the fixture `note` were updated to record this.
+- **Tests:** new `test_scripts/test_ask_lexical_hygiene.py` (34 checks) locks in
+  stopword filtering, plural folding, technical-token survival, the
+  index==query tokeniser invariant, a clean `doc_freq`/chunk-terms (no stopword
+  leak), the four blocking keyword cases staying #1, and the paraphrase reaching
+  #1. Existing Ask tests (`test_ask_context_prepare` 28, `test_ask_context_inventory`
+  11, `test_ask_local_chat` 45) still pass.
+- **Scope guardrails (verified):** no UI/frontend change; no provider/model/
+  local-server/LLM call; no LanceDB/embeddings/vector/reranker/cross-encoder/new
+  ML dependency; no `/api/ask/*` or other route/field change; no Ask
+  chat/session API behaviour change beyond retrieval ranking; no prompt change;
+  no OCR/extraction change; no citation-directive change; no artifact-schema
+  (`validation.json` / `math_verification.json` / `extraction_metadata.json`)
+  change; no PDF/Chromium render-pipeline change. No secrets/tokens/paths
+  exposed (fixture is synthetic ML study text; redaction helpers untouched).
+
+---
+
 ## Slice 25A — Ask retrieval relevance harness + lexical baseline (DONE — uncommitted).
 
 - **Purpose:** establish an offline, deterministic baseline of the *current*

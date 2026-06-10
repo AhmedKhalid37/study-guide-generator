@@ -1394,3 +1394,35 @@ to force a pass or a miss. Blocking pass/fail covers only the keyword/source-mar
 cases; the weakness is reported as the motivation for future semantic retrieval, not a
 regression. The harness adds no LanceDB/embeddings/vector-DB/reranking/new dependency
 and changes no Ask runtime, prompt, route, UI, or artifact behavior.
+
+## Ask index version bump on lexical-hygiene change (Slice 25B)
+Slice 25B introduced stopword filtering + conservative plural folding into Ask
+retrieval via a shared `pipeline/ask_lexical.py::lexical_terms`, used by **both** the
+index build (`ask_context`) and the query scorer (`ask_sessions`). The cached index
+shape is unchanged (still `terms` + `doc_freq`), but the *contents* of those maps are
+now normalised differently than a Slice-25A (v1) cache.
+
+**Why `INDEX_VERSION` is bumped `1 → 2` rather than left alone:** an index built with the
+old tokeniser stores un-normalised, stopword-laden terms; a query scored with the new
+tokeniser produces stopword-filtered, plural-folded terms. Scoring a new-style query
+against an old-style index would silently mismatch (e.g. query `weight` never matching
+indexed `weights`), degrading retrieval without any error. Bumping the version makes
+`_cache_valid` reject any v1 cache so `prepare_context` rebuilds it automatically on the
+next call — no user action, no manual cache deletion, and no possibility of mixing the
+two tokenisations. The version lives outside `content_hash` (which still reflects only
+guide/source content), so the bump invalidates caches purely on format, as intended.
+
+**Why a single shared `lexical_terms` for index *and* query:** the index/query tokeniser
+must be identical or retrieval breaks; centralising it in one module (instead of the
+previous duplicated per-module `_TERM_RE`) makes that invariant structural, and a focused
+test asserts `ask_context._term_freqs == ask_sessions._terms == lexical_terms`.
+
+**Why plural folding is single trailing `-s` only (no `-es`, no `-ing`/`-ed` stemming):**
+the goal is for a singular and its regular plural to fold to the *same* stem so a query
+matches the index. A single `-s` strip does that for the common `word + s` case
+(`example`/`examples`); an `-es` rule would map `examples → exampl` while `example →
+example`, breaking the symmetry it was meant to create. Verb-tense stemming was rejected
+because it mangles technical tokens (`string → str`, `based → bas`) for little gain. The
+result stays deterministic and explainable, and the recorded paraphrase weakness improved
+rank 5 → 1 on the fixture purely from removing function-word noise — but it is kept
+`known_weakness: true` because that win is still lexical overlap, not semantics.

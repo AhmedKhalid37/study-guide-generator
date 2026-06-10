@@ -6,20 +6,30 @@
 > stable overview see `PROJECT_CONTEXT.md`; canonical brief is `../CLAUDE.md`.
 
 ## Current position
-- **Branch in progress:** `slice25a-ask-retrieval-baseline`, created from
-  `chrome-renderer-v1` after Slice 24A was committed (`226767c`). Slice 25A is
-  implemented and intentionally uncommitted. Do not commit unless explicitly
-  asked; do not force-push.
-- **Slice 25A (Ask retrieval relevance harness + lexical baseline):** test/docs
-  only. Adds `test_scripts/test_ask_retrieval_relevance.py` +
-  `test_scripts/fixtures/ask_retrieval/` (guide.md, source.txt, queries.json). It
-  measures the current local-only lexical (tf-idf) Ask retrieval offline via the
-  real boundary — `ask_context.prepare_context`/`load_index` +
-  `ask_sessions._score_chunks`/`retrieve_chunks` over a temp job dir — and reports
-  `hit_at_k` / `rank` / `reciprocal_rank` / `mrr`. Baseline at k=5:
-  `hit_rate@5=1.0`, `mrr=0.9`; one paraphrase **known-weakness** case (non-blocking)
-  honestly shows the correct section dropping to rank 5. **No** retrieval/runtime/
-  prompt/provider/route/UI/embeddings/dependency change. See `CURRENT_TASK.md`.
+- **Branch in progress:** `slice25b-ask-lexical-retrieval-hygiene`, created from
+  `chrome-renderer-v1`. Slice 25B is implemented and intentionally **uncommitted**.
+  Do not commit unless explicitly asked; do not force-push. (Slice 25A —
+  `2e97f73` — is already committed on the trunk.)
+- **Slice 25B (Ask lexical retrieval hygiene):** backend retrieval-ranking +
+  tests/docs. New shared `pipeline/ask_lexical.py::lexical_terms` adds **stopword
+  filtering** + conservative **single-`-s` plural folding**, used by **both** the
+  index build (`ask_context._term_freqs`) and the query scorer
+  (`ask_sessions._terms`) so they can't drift. `INDEX_VERSION` bumped `1 → 2` so
+  existing Ask caches rebuild automatically (no manual deletion; index *shape*
+  unchanged). Measured against the 25A baseline (k=5): blocking cases
+  **unchanged** (`hit_rate@5=1.0`, `mrr=0.9`), and the paraphrase known-weakness
+  case improves **rank 5 → 1** on the fixture — but it stays `known_weakness:
+  true` because that win is still lexical overlap, not semantics (embeddings
+  remain future work). New `test_scripts/test_ask_lexical_hygiene.py` (34 checks)
+  locks it in. **No** UI/provider/LLM-call/LanceDB/embeddings/reranking/prompt/
+  OCR/extraction/citation/artifact-schema/route/render-pipeline change. See
+  `CURRENT_TASK.md` and `DECISIONS.md` → "Ask index version bump on lexical-
+  hygiene change".
+- **Slice 25A (Ask retrieval relevance harness + lexical baseline) is committed**
+  on `chrome-renderer-v1` as `2e97f73`: test/docs only —
+  `test_scripts/test_ask_retrieval_relevance.py` +
+  `test_scripts/fixtures/ask_retrieval/`. Established the offline baseline 25B
+  measures against. See `CURRENT_TASK.md`.
 - **Slice 24A (persist per-page extraction metadata artifact) is committed** on
   `chrome-renderer-v1` as `226767c`. See `CURRENT_TASK.md` for its details.
 - **Branch (trunk / PR target):** `chrome-renderer-v1` (all reskin slices land here).

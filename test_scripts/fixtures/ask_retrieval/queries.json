@@ -43,7 +43,7 @@
       "query": "Why does my model memorize the examples it was trained on but do badly on brand new unseen inputs?",
       "expect": {"source_type": "guide", "labels": ["Overfitting and Regularization"]},
       "known_weakness": true,
-      "note": "Paraphrase with no shared keywords (overfitting/regularization/generalize). Lexical tf-idf retrieval is expected to struggle here; recorded as a non-blocking known weakness motivating future embedding/semantic retrieval."
+      "note": "Paraphrase with no shared topic keywords (overfitting/regularization/generalize). Slice 25A baseline: rank 5 (common-word noise let unrelated sections win). Slice 25B lexical hygiene (stopword filter + plural folding) removed that noise so the residual content-word overlap ('model', 'new') now ranks the Overfitting section at rank 1 on THIS fixture. Kept non-blocking on purpose: this is still lexical overlap, not semantics — a paraphrase with zero shared content words would remain unsolved, so embedding/semantic retrieval is still future work."
     }
   ]
 }

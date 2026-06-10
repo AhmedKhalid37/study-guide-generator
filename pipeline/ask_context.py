@@ -34,13 +34,18 @@ from collections import Counter
 from datetime import datetime
 from pathlib import Path
 
+from pipeline.ask_lexical import lexical_terms
 from pipeline.job_manager import Job
 
 # Cache identity. ``INDEX_VERSION`` is bumped if the chunk/index *format* ever
 # changes so a stale-format cache is treated as invalid and rebuilt. It is kept
 # OUT of ``content_hash`` so the hash reflects guide/source content only.
+# v2 (Slice 25B): indexed ``terms``/``doc_freq`` now use the shared lexical
+# normaliser (stopword filter + plural folding). Bumping the version invalidates
+# any v1 cache so it is rebuilt automatically on the next prepare — no user
+# action and no risk of mixing old un-normalised terms with new query terms.
 CACHE_KIND = "ask_context_index"
-INDEX_VERSION = 1
+INDEX_VERSION = 2
 
 # Job-relative cache location (no host path is ever returned to a client).
 _CACHE_SUBDIR = ("ask", "cache")
@@ -61,8 +66,8 @@ _SUMMARY_SAMPLE = 24
 _GUIDE_HEADING_RE = re.compile(r"^#{1,6}[ \t]+(.+?)[ \t]*$")
 # Source page anchor emitted by PDF extraction, e.g. "## Page 12".
 _PAGE_ANCHOR_RE = re.compile(r"^##[ \t]+Page[ \t]+(\d+)\b", re.IGNORECASE)
-# Lexical terms: lowercased alphanumeric runs (length >= 2 to drop noise).
-_TERM_RE = re.compile(r"[a-z0-9]{2,}")
+# Lexical term extraction (segmentation + stopword/plural hygiene) lives in
+# ``ask_lexical`` so the index and the query scorer normalise identically.
 # Paragraph boundary: one or more blank (whitespace-only) lines.
 _PARA_SPLIT_RE = re.compile(r"\n[ \t]*\n")
 _SK_RE = re.compile(r"\bsk-[A-Za-z0-9_\-]{8,}\b")
@@ -88,8 +93,8 @@ def _approx_tokens(char_count: int) -> int:
 
 
 def _term_freqs(text: str) -> dict[str, int]:
-    """Term-frequency map of lowercased alphanumeric terms for one chunk."""
-    return dict(Counter(_TERM_RE.findall(text.lower())))
+    """Normalised term-frequency map for one chunk (shared lexical hygiene)."""
+    return lexical_terms(text)
 
 
 def _redact_chunk_text(text: str) -> str:

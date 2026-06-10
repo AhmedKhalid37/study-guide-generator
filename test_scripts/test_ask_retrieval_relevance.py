@@ -152,8 +152,8 @@ def build_report(index: dict, queries: dict) -> dict:
 
     return {
         "harness": "ask_retrieval_relevance",
-        "version": 1,
-        "retrieval": "local-only lexical tf-idf (ask_context + ask_sessions)",
+        "version": 2,
+        "retrieval": "local-only lexical tf-idf with stopword + plural hygiene (ask_context + ask_sessions + ask_lexical)",
         "top_k": top_k,
         "index_stats": {
             "guide_chunk_count": index.get("guide_chunk_count"),

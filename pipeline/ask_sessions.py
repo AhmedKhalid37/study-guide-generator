@@ -17,12 +17,12 @@ import re
 import shutil
 import tempfile
 import uuid
-from collections import Counter
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Callable
 
 from pipeline import ask_context, ask_inventory
+from pipeline.ask_lexical import lexical_terms
 from pipeline.job_manager import JOBS_DIR, Job
 from pipeline.llm_client import LLMProviderError, MissingLLMConfigError, generate_chat_completion
 from pipeline.provider_config import build_provider_config, get_local_model_status
@@ -44,7 +44,6 @@ RETRIEVAL_TOKEN_BUDGET = max(
 CHARS_PER_TOKEN = 4
 LOCAL_THINKING_MODEL_CONTROL = "/no_think"
 
-_TERM_RE = re.compile(r"[a-z0-9]{2,}")
 _SESSION_ID_RE = re.compile(r"^ask_[a-f0-9]{32}$")
 _SK_RE = re.compile(r"\bsk-[A-Za-z0-9_\-]{8,}\b")
 _AUTH_RE = re.compile(r"(?i)\bAuthorization\s*:\s*Bearer\s+[A-Za-z0-9._\-]+")
@@ -74,8 +73,13 @@ def _redact_text(value: str) -> str:
     return text
 
 
-def _terms(text: str) -> Counter[str]:
-    return Counter(_TERM_RE.findall(text.lower()))
+def _terms(text: str) -> dict[str, int]:
+    """Query terms via the shared lexical normaliser (stopword + plural hygiene).
+
+    Must stay identical to the index-side tokenisation in ``ask_context`` so a
+    query term can match an indexed term.
+    """
+    return lexical_terms(text)
 
 
 def _approx_tokens(text_or_chars: str | int) -> int:
