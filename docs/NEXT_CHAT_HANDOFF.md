@@ -6,12 +6,36 @@
 > stable overview see `PROJECT_CONTEXT.md`; canonical brief is `../CLAUDE.md`.
 
 ## Current position
-- **Working tree:** **Slice 29 (hybrid-OCR design, docs-only) implemented but
-  uncommitted** on branch `slice29-hybrid-ocr-design` (branched from trunk after
-  Slice 28). The correctness/measurement sequence is committed on the trunk
-  through **Slice 28** (trunk HEAD = `f3bb0ad`, "Slice 28: Add JobDetails guide
-  lint UI"). Do not commit unless explicitly asked; do not force-push.
-- **Slice 29 (hybrid OCR & scan-aware extraction architecture):** docs-only.
+- **Working tree:** **Slice 30 (PDF page visual-signal metadata) implemented but
+  uncommitted** on branch `slice30-pdf-page-visual-signals` (branched from trunk
+  after Slice 29 merged). **Slice 29 (hybrid-OCR design, docs-only) is committed
+  `d0b91f1` and merged to trunk** (trunk HEAD = `d0b91f1`, "Slice 29: Document
+  hybrid OCR architecture"). Do not commit Slice 30 unless explicitly asked; do
+  not force-push.
+- **Slice 30 (PDF page visual-signal metadata):** backend/pipeline metadata +
+  tests/docs only — the first implementation step after the Slice 29 design. Adds
+  cheap, additive, advisory-only per-PDF-page visual/object signals to
+  `extraction_metadata.json` so a **future** slice can classify scanned/image-heavy
+  pages and route OCR. New `pipeline/extract.py::_pdf_visual_signals(page)`
+  collects, per processed page in `_extract_pdf`'s loop: `image_object_count`
+  (`page.get_images`), `drawing_object_count` (`page.get_drawings`),
+  `has_images`/`has_drawings`, `page_width`/`page_height` (`page.rect`), and an
+  optional `visual_warnings` list of safe degrade categories. Merged via
+  `_pdf_page_metadata(..., visual=...)` and carried through the sanitiser
+  `extraction_metadata.py::_safe_page` (whitelisted + coerced; smuggled keys still
+  stripped). Each signal degrades independently to `None` on any PyMuPDF failure —
+  **never raises, never changes extraction text / mode / method / job status**, and
+  no image bytes/paths/text enter the metadata. Artifact bumped `version: 1 → 2`
+  (both `completed` and `skipped`) per the Slice 29 rule; all v1 keys unchanged,
+  new fields optional/additive (missing = "not measured"). New
+  `test_scripts/test_pdf_visual_signals.py` (44 checks, fake-page based — no fitz
+  needed) + updated `test_extraction_metadata.py` (version 1→2 + visual asserts).
+  **No** OCR routing/heuristic, page-classification (Slice 31), Mistral/cloud OCR,
+  provider, prompt, `/api/jobs/llm` field, frontend/UI, Ask/retrieval, LanceDB/
+  embeddings, generic `ARTIFACTS`/export-bundle, render-pipeline, generation-gating,
+  or other artifact-schema change.
+- **Slice 29 (hybrid OCR & scan-aware extraction architecture):** docs-only,
+  **committed `d0b91f1`, merged to trunk**.
   New `docs/HYBRID_OCR_DESIGN.md` decides the architecture before any OCR code —
   current extraction flow (grounded in `pipeline/extract.py` /
   `extraction_metadata.py` / `run_llm_job.py` / `api/server.py`), a page

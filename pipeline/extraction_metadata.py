@@ -46,7 +46,7 @@ def write_extraction_metadata(job: Job, sources: list[dict[str, Any]]) -> None:
     artifact_path = job.extraction_metadata_json
     try:
         payload = {
-            "version": 1,
+            "version": 2,
             "kind": "extraction_metadata",
             "status": "completed",
             "sources": sources,
@@ -73,7 +73,7 @@ def write_skipped_extraction_metadata(
 def _write_skipped(job: Job, reason: str, safe_message: str) -> None:
     try:
         payload = {
-            "version": 1,
+            "version": 2,
             "kind": "extraction_metadata",
             "status": "skipped",
             "reason": reason,
@@ -85,7 +85,7 @@ def _write_skipped(job: Job, reason: str, safe_message: str) -> None:
 
 
 def _safe_page(page: dict[str, Any]) -> dict[str, Any]:
-    return {
+    record: dict[str, Any] = {
         "page": int(page.get("page") or 0),
         "method": _safe_method(page.get("method")),
         "text_chars": max(0, int(page.get("text_chars") or 0)),
@@ -93,6 +93,54 @@ def _safe_page(page: dict[str, Any]) -> dict[str, Any]:
         "has_page_anchor": bool(page.get("has_page_anchor")),
         "warnings": _safe_warnings(page.get("warnings", [])),
     }
+    # Additive, advisory-only visual/object signals (Slice 30). Numeric/boolean
+    # only; each value is carried through unknown-safe (None / null) when the
+    # extractor could not measure it. Only emitted when the extractor supplied the
+    # key, so a version-1 page record (no visual signals) stays byte-identical.
+    if "image_object_count" in page:
+        record["image_object_count"] = _safe_count(page.get("image_object_count"))
+    if "drawing_object_count" in page:
+        record["drawing_object_count"] = _safe_count(page.get("drawing_object_count"))
+    if "has_images" in page:
+        record["has_images"] = _safe_bool_or_none(page.get("has_images"))
+    if "has_drawings" in page:
+        record["has_drawings"] = _safe_bool_or_none(page.get("has_drawings"))
+    if "page_width" in page:
+        record["page_width"] = _safe_dimension(page.get("page_width"))
+    if "page_height" in page:
+        record["page_height"] = _safe_dimension(page.get("page_height"))
+    if "visual_warnings" in page:
+        record["visual_warnings"] = _safe_warnings(page.get("visual_warnings", []))
+    return record
+
+
+def _safe_count(value: Any) -> int | None:
+    """Non-negative integer count, or None when the signal was not measured."""
+    if value is None:
+        return None
+    try:
+        return max(0, int(value))
+    except (TypeError, ValueError):
+        return None
+
+
+def _safe_bool_or_none(value: Any) -> bool | None:
+    if value is None:
+        return None
+    return bool(value)
+
+
+def _safe_dimension(value: Any) -> float | None:
+    """Finite, non-negative page dimension, or None when unknown."""
+    if value is None:
+        return None
+    try:
+        number = float(value)
+    except (TypeError, ValueError):
+        return None
+    if number != number or number in (float("inf"), float("-inf")):  # NaN / inf guard
+        return None
+    return round(max(0.0, number), 2)
 
 
 def _safe_method(method: Any) -> str:

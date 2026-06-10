@@ -219,10 +219,17 @@ def _extract_pdf(path: Path, pages: Iterable[int] | None = None) -> ExtractionRe
             # stays the original page number for the anchor below.
             if selected is not None and index not in selected:
                 continue
+            # Advisory-only visual/object signals (image/drawing counts, page
+            # dimensions). Collected once per processed page; never changes the
+            # extracted text or which path a page takes. Degrades to unknown-safe
+            # values on any failure.
+            visual = _pdf_visual_signals(page)
             body = page.get_text("text").strip()
             if _is_meaningful_page_text(body):
                 blocks.append(f"## Page {index}\n{body}")
-                page_metadata.append(_pdf_page_metadata(index, "embedded_text", body, has_page_anchor=True))
+                page_metadata.append(
+                    _pdf_page_metadata(index, "embedded_text", body, has_page_anchor=True, visual=visual)
+                )
                 used_text = True
                 continue
 
@@ -232,7 +239,9 @@ def _extract_pdf(path: Path, pages: Iterable[int] | None = None) -> ExtractionRe
             page_ocr = _ocr_page(page) if ocr_ready else ""
             if page_ocr:
                 blocks.append(f"## Page {index}\n{page_ocr}")
-                page_metadata.append(_pdf_page_metadata(index, "ocr", page_ocr, has_page_anchor=True))
+                page_metadata.append(
+                    _pdf_page_metadata(index, "ocr", page_ocr, has_page_anchor=True, visual=visual)
+                )
                 used_ocr = True
             elif body:
                 # OCR produced nothing (or is unavailable) but the page had a little
@@ -246,6 +255,7 @@ def _extract_pdf(path: Path, pages: Iterable[int] | None = None) -> ExtractionRe
                         body,
                         has_page_anchor=True,
                         warnings=page_warnings,
+                        visual=visual,
                     )
                 )
                 used_text = True
@@ -261,6 +271,7 @@ def _extract_pdf(path: Path, pages: Iterable[int] | None = None) -> ExtractionRe
                         "",
                         has_page_anchor=False,
                         warnings=page_warnings,
+                        visual=visual,
                     )
                 )
 
@@ -309,8 +320,9 @@ def _pdf_page_metadata(
     *,
     has_page_anchor: bool,
     warnings: list[str] | None = None,
+    visual: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
-    return {
+    record: dict[str, Any] = {
         "page": int(page),
         "method": method,
         "text_chars": len(text),
@@ -318,6 +330,74 @@ def _pdf_page_metadata(
         "has_page_anchor": bool(has_page_anchor),
         "warnings": list(warnings or []),
     }
+    # Additive, advisory-only visual/object signals (Slice 30). Always merged so
+    # the per-page schema is uniform; values are unknown-safe (None / null) when a
+    # signal could not be collected. Never affects the legacy fields above.
+    if visual:
+        record.update(visual)
+    return record
+
+
+def _pdf_visual_signals(page) -> dict[str, Any]:
+    """Cheap, additive per-page visual/object signals for future OCR routing.
+
+    Advisory-only and **never raises**. Uses PyMuPDF read-only inspections
+    (``page.get_images()`` / ``page.get_drawings()`` / ``page.rect``) that do not
+    rasterise the page and do not change the extracted text or which extraction
+    path a page takes. Returns numeric/boolean signals only — no image bytes,
+    object data, file paths, or text.
+
+    Each signal degrades independently: if a PyMuPDF method is missing or a single
+    call fails, that field falls back to an unknown-safe value (``None`` count,
+    ``None`` bool) and a short category is recorded in ``visual_warnings`` (no
+    exception text, no paths). Extraction itself is unaffected.
+    """
+    image_count: int | None
+    drawing_count: int | None
+    has_images: bool | None
+    has_drawings: bool | None
+    page_width: float | None
+    page_height: float | None
+    visual_warnings: list[str] = []
+
+    try:
+        images = page.get_images(full=False)
+        image_count = len(images) if images is not None else 0
+        has_images = image_count > 0
+    except Exception:
+        image_count = None
+        has_images = None
+        visual_warnings.append("visual_image_signal_unavailable")
+
+    try:
+        drawings = page.get_drawings()
+        drawing_count = len(drawings) if drawings is not None else 0
+        has_drawings = drawing_count > 0
+    except Exception:
+        drawing_count = None
+        has_drawings = None
+        visual_warnings.append("visual_drawing_signal_unavailable")
+
+    try:
+        rect = page.rect
+        page_width = round(float(rect.width), 2)
+        page_height = round(float(rect.height), 2)
+    except Exception:
+        page_width = None
+        page_height = None
+        visual_warnings.append("visual_dimension_signal_unavailable")
+
+    signals: dict[str, Any] = {
+        "image_object_count": image_count,
+        "drawing_object_count": drawing_count,
+        "has_images": has_images,
+        "has_drawings": has_drawings,
+        "page_width": page_width,
+        "page_height": page_height,
+    }
+    if visual_warnings:
+        signals["visual_warnings"] = visual_warnings
+    return signals
 
 
 def _preprocess_ocr_image(image: "Image.Image") -> "Image.Image":

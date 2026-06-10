@@ -1491,3 +1491,26 @@ verification slice (Slice 35) gates the actual provider implementation (Slice 36
 existing provider registry/secret store or get a dedicated `ocr_provider_settings`
 store — either way they follow the established server-side-only, write-only,
 key-less-DTO invariant (only `configured`/`key_source`/`key_hint`/`base_url_host`).
+
+## Slice 30 — `extraction_metadata.json` bumped to `version: 2` for additive PDF visual signals
+Slice 30 adds optional, advisory-only per-PDF-page visual/object signals
+(`image_object_count`, `drawing_object_count`, `has_images`, `has_drawings`,
+`page_width`, `page_height`, and an optional `visual_warnings` list) and bumps the
+artifact from `version: 1` to `version: 2`. **Why bump now and not stay on v1:** the
+Slice 29 design fixed the rule "keep `version: 1` readable forever; bump to
+`version: 2` the moment the *first* new field actually ships." Slice 30 is that
+moment, so the writer now emits `version: 2`. The bump applies to **both** the
+`completed` and `skipped` payloads so a single writer version describes the whole
+artifact; the `skipped` shape itself gained no fields. **Why this is safe for v1
+readers:** the new fields are purely additive and optional — all v1 keys remain
+present with identical meaning, and a reader that ignores unknown keys (or treats
+missing new keys as "not measured") is unaffected. **Why the fields live behind
+`_safe_page` / `_pdf_visual_signals`:** the sanitiser still whitelists fields, so
+the new keys are individually coerced (non-negative int counts, finite
+non-negative float dimensions, `None` for unknown) and smuggled keys (paths, image
+bytes, auth-like names) are still stripped. Collection is **degrade-not-fail**:
+each PyMuPDF probe (`get_images` / `get_drawings` / `rect`) is independently
+guarded and falls back to `None` plus a safe `visual_warnings` category, never an
+exception, never extraction-text/mode/method/job-status change. This slice
+**only collects data** — page classification (Slice 31) and any OCR routing remain
+deferred; no classification field is emitted yet.

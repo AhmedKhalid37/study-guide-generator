@@ -162,7 +162,7 @@ def test_pdf_attachment_writes_completed_metadata() -> None:
 
         check("completed/artifact-exists", job.extraction_metadata_json.exists())
         artifact = _read_artifact(job)
-        check("completed/version", artifact.get("version") == 1, str(artifact.get("version")))
+        check("completed/version", artifact.get("version") == 2, str(artifact.get("version")))
         check("completed/kind", artifact.get("kind") == "extraction_metadata", str(artifact.get("kind")))
         check("completed/status", artifact.get("status") == "completed", str(artifact.get("status")))
         sources = artifact.get("sources") or []
@@ -178,6 +178,24 @@ def test_pdf_attachment_writes_completed_metadata() -> None:
         check("completed/page-1-chars", pages and pages[0].get("text_chars") == len(TEXT_PAGES[0]), str(pages[:1]))
         check("completed/page-1-words", pages and pages[0].get("word_count", 0) >= 8, str(pages[:1]))
         check("completed/source-warnings", source.get("warnings") == [], str(source.get("warnings")))
+        # Slice 30: additive visual/object signals are present for real PDF pages.
+        page1 = pages[0] if pages else {}
+        check("completed/visual-image-count", page1.get("image_object_count") == 0, str(page1))
+        check("completed/visual-drawing-count-present", "drawing_object_count" in page1, str(page1))
+        check("completed/visual-has-images", page1.get("has_images") is False, str(page1))
+        check("completed/visual-has-drawings", "has_drawings" in page1, str(page1))
+        check(
+            "completed/visual-page-width",
+            isinstance(page1.get("page_width"), (int, float)) and page1.get("page_width") > 0,
+            str(page1),
+        )
+        check(
+            "completed/visual-page-height",
+            isinstance(page1.get("page_height"), (int, float)) and page1.get("page_height") > 0,
+            str(page1),
+        )
+        # Healthy pages carry no degrade warnings for visual collection.
+        check("completed/visual-no-warnings", "visual_warnings" not in page1, str(page1))
         check("completed/no-secret-leak", _scan_for_secret(artifact) is None, str(artifact)[:200])
 
         # Extraction text behavior is unchanged: _attach_sources includes exactly

@@ -5,7 +5,62 @@
 
 ---
 
-## Slice 29 — Hybrid OCR & scan-aware extraction architecture (DESIGN-ONLY — uncommitted on `slice29-hybrid-ocr-design`).
+## Slice 30 — PDF page visual-signal metadata (IMPLEMENTED — uncommitted on `slice30-pdf-page-visual-signals`).
+
+- **Purpose:** the first implementation step after the Slice 29 design. Enrich the
+  per-page PDF `extraction_metadata.json` records with cheap, additive
+  visual/object signals so a **future** slice can classify scanned/image-heavy
+  pages and route OCR. This slice **only collects data** — it does **not** classify
+  pages, decide OCR routing, call any OCR, or change extracted text.
+- **Fields added (per PDF page, advisory-only, numeric/boolean):**
+  - `image_object_count` — `len(page.get_images(full=False))`; `None` if unmeasured.
+  - `drawing_object_count` — `len(page.get_drawings())`; `None` if unmeasured.
+  - `has_images` / `has_drawings` — booleans derived from the counts; `None` if
+    unmeasured.
+  - `page_width` / `page_height` — from `page.rect` (points, 2-dp); `None` if
+    unmeasured.
+  - `visual_warnings` — only present when a signal failed; carries safe category
+    strings (`visual_image_signal_unavailable`, `visual_drawing_signal_unavailable`,
+    `visual_dimension_signal_unavailable`) — never exception text or paths.
+- **Where collected:** `pipeline/extract.py::_pdf_visual_signals(page)`, called once
+  per processed page inside `_extract_pdf`'s loop (after the page-selection skip,
+  before/around the existing text/OCR decision). Merged into the page record by
+  `_pdf_page_metadata(..., visual=...)`. Carried through the artifact sanitiser
+  `pipeline/extraction_metadata.py::_safe_page` (whitelisted + coerced).
+- **Versioning:** `extraction_metadata.json` bumped `version: 1 → 2` (both the
+  `completed` and `skipped` payloads) per the Slice 29 rule "bump to v2 when the
+  first new field ships". All v1 keys remain present and unchanged; new fields are
+  optional/additive; missing new keys mean "not measured", never an error.
+- **Degrade-not-fail:** `_pdf_visual_signals` never raises — each of the three
+  signal groups is independently guarded; on failure the field is `None` and a safe
+  category is appended to `visual_warnings`. Extraction text, mode/method, job
+  status, and all other artifacts are untouched. No image bytes, object data,
+  paths, or text ever enter the metadata.
+- **Scope guard — NO change to:** extraction text output, OCR behaviour/routing,
+  page classification (deferred to Slice 31), Mistral/cloud OCR, provider settings,
+  prompts, `/api/jobs/llm` request fields, frontend/UI, Ask/retrieval,
+  LanceDB/embeddings, the generic `ARTIFACTS`/export-bundle lists, the
+  PDF/Chromium render pipeline, or generation gating. No `validation.json` /
+  `math_verification.json` / `guide_lint.json` schema change.
+- **Files changed:** `pipeline/extract.py`, `pipeline/extraction_metadata.py`,
+  `test_scripts/test_extraction_metadata.py` (version 1→2 + visual-field
+  assertions), `test_scripts/test_pdf_visual_signals.py` (new),
+  `docs/CURRENT_TASK.md`, `docs/NEXT_CHAT_HANDOFF.md`, `docs/DECISIONS.md`.
+- **Validation:** `npm --prefix frontend run build` ✓ · `npm --prefix frontend run
+  test` ✓ · `python -m compileall api pipeline test_scripts` ✓ · backend suites
+  (`test_math_verifier` 74/74, `test_guide_lint` 74/74, `test_eval_harness` 64/64,
+  `test_page_anchor_reachability` 21/21, `test_source_page_citations` 19/19,
+  `test_extraction_metadata` 9/9, `test_ask_retrieval_relevance` 12/0,
+  `test_ask_lexical_hygiene` 34/0, `test_guide_lint_artifact` 26/26,
+  `test_pdf_visual_signals` 44/44) ✓ · `eval/run_eval.py --offline --all` ✓ ·
+  `git diff --check` ✓ · `smoke_release.py` 29/0 ✓. Host Python lacks PyMuPDF, so
+  the PDF-attachment + route sections of `test_extraction_metadata.py` SKIP
+  (documented behaviour); the visual-signal logic is fully covered by the
+  fake-page tests in `test_pdf_visual_signals.py` and runs end-to-end in Docker.
+
+---
+
+## Slice 29 — Hybrid OCR & scan-aware extraction architecture (DESIGN-ONLY — committed `d0b91f1`, merged to `chrome-renderer-v1`).
 
 - **Purpose:** decide the architecture for hybrid OCR, scan-aware extraction, and
   a future OCR-provider boundary (with Mistral OCR as a candidate cloud provider)
