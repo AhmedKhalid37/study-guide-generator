@@ -417,8 +417,8 @@ export function FolderPill({ folder }) {
 
 function AttachmentPill({ count }) {
   return (
-    <span className="inline-flex w-fit items-center gap-1.5 rounded-full border border-emerald-400/25 bg-emerald-400/10 px-2 py-0.5 text-[11px] font-bold text-emerald-200">
-      <Paperclip className="h-3 w-3" />
+    <span className="sg-tag sg-tag-green">
+      <Paperclip />
       {count} {count === 1 ? "source" : "sources"}
     </span>
   );
@@ -426,8 +426,8 @@ function AttachmentPill({ count }) {
 
 function WarningPill({ count }) {
   return (
-    <span className="inline-flex w-fit items-center gap-1.5 rounded-full border border-amber-300/30 bg-amber-300/10 px-2 py-0.5 text-[11px] font-bold text-amber-100">
-      <AlertCircle className="h-3 w-3" />
+    <span className="sg-tag sg-tag-amber">
+      <AlertCircle />
       {count || 1} warning{count === 1 ? "" : "s"}
     </span>
   );
@@ -441,34 +441,34 @@ function AttachmentDetails({ manifest }) {
 
   const summary = attachmentSummary(manifest);
   return (
-    <div className="mt-5 rounded-xl border border-white/10 bg-white/[0.035] p-3">
-      <div className="flex items-center justify-between gap-3">
-        <p className="text-sm font-bold text-white">Attached sources</p>
-        <div className="flex flex-wrap justify-end gap-1.5">
+    <section>
+      <div className="sg-head-row">
+        <h3 className="text-sm font-bold text-white">Attached sources</h3>
+        <div className="sg-chip-row">
           <AttachmentPill count={summary.count} />
           {summary.hasWarnings && <WarningPill count={summary.warningCount} />}
         </div>
       </div>
-      <div className="mt-3 grid gap-2">
+      <div className="sg-stack" style={{ marginTop: 12 }}>
         {attachments.map((attachment, index) => {
           const warnings = attachment.warnings ?? [];
           return (
-            <div key={`${attachment.filename}-${index}`} className="rounded-lg border border-white/[0.08] bg-[#070B14] p-2.5">
-              <div className="flex items-center justify-between gap-2">
-                <span className="min-w-0 truncate text-xs font-bold text-slate-100">{attachment.filename}</span>
-                <span className={`rounded-full border px-2 py-0.5 text-[10px] font-bold ${attachment.status === "extracted" ? "border-emerald-400/25 bg-emerald-400/10 text-emerald-200" : "border-amber-300/30 bg-amber-300/10 text-amber-100"}`}>
+            <div key={`${attachment.filename}-${index}`} className="sg-att-item">
+              <div className="sg-att-item-top">
+                <span className="sg-att-name">{attachment.filename}</span>
+                <span className={`sg-tag ${attachment.status === "extracted" ? "sg-tag-green" : "sg-tag-amber"}`}>
                   {attachment.status || "unknown"}
                 </span>
               </div>
-              <div className="mt-2 flex flex-wrap gap-1.5 text-[10.5px] font-semibold text-slate-400">
+              <div className="sg-att-meta">
                 <span>{attachment.mode || attachment.extension || "unsupported"}</span>
                 <span>{Number(attachment.extracted_chars || 0).toLocaleString()} chars</span>
                 {attachment.truncated && <span>truncated</span>}
               </div>
               {warnings.length > 0 && (
-                <div className="mt-2 grid gap-1 text-[11px] leading-4 text-amber-100">
+                <div className="sg-stack" style={{ marginTop: 8 }}>
                   {warnings.map((warning, warningIndex) => (
-                    <p key={warningIndex}>{warning}</p>
+                    <p key={warningIndex} className="sg-notice sg-notice-amber">{warning}</p>
                   ))}
                 </div>
               )}
@@ -476,7 +476,7 @@ function AttachmentDetails({ manifest }) {
           );
         })}
       </div>
-    </div>
+    </section>
   );
 }
 
@@ -609,15 +609,15 @@ export function JobDetailsDrawer({ open, onClose, loading, error, details, style
 
         <div className="sg-drawer-body">
           {loading && (
-            <div className="flex min-h-72 items-center justify-center gap-3 text-slate-300">
-              <Loader2 className="h-5 w-5 animate-spin text-ember-500" />
+            <div className="recent-state">
+              <Loader2 className="sg-spin" />
               <span>Loading details...</span>
             </div>
           )}
 
           {!loading && error && (
-            <div className="flex min-h-72 items-center justify-center gap-3 text-red-200">
-              <AlertCircle className="h-5 w-5" />
+            <div className="recent-state" style={{ color: "var(--red)" }}>
+              <AlertCircle />
               <span>Could not load job details</span>
             </div>
           )}
@@ -706,9 +706,9 @@ export function JobDetailsDrawer({ open, onClose, loading, error, details, style
 
               {extractionWarnings.length > 0 && (
                 <DetailsSection title="Extraction warnings">
-                  <div className="grid gap-2">
+                  <div className="sg-stack">
                     {extractionWarnings.map((warning, index) => (
-                      <p key={index} className="rounded-lg border border-amber-300/20 bg-amber-300/10 p-3 text-xs leading-5 text-amber-100">
+                      <p key={index} className="sg-notice sg-notice-amber">
                         {warning}
                       </p>
                     ))}
@@ -758,11 +758,7 @@ const CATEGORY_LABELS = {
 
 function ErrorCategoryBadge({ category }) {
   const label = CATEGORY_LABELS[category] || category || "Error";
-  return (
-    <span className="inline-flex items-center rounded-full border border-red-400/30 bg-red-400/10 px-3 py-1 text-xs font-bold text-red-200">
-      {label}
-    </span>
-  );
+  return <span className="sg-tag sg-tag-red">{label}</span>;
 }
 
 // Non-blocking notice for jobs that finished with renderable bad math. The guide
@@ -832,64 +828,55 @@ function FailedJobPanel({ manifest, renderLog, validation, jobId, onRetry, onClo
   }
 
   return (
-    <section className="rounded-2xl border border-red-400/20 bg-red-400/[0.04] p-4">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div className="flex flex-wrap items-center gap-2">
-          <AlertCircle className="h-4 w-4 shrink-0 text-red-400" />
+    <section className="sg-danger-card">
+      <div className="sg-head-row">
+        <div className="sg-chip-row">
+          <AlertCircle style={{ color: "var(--red)" }} />
           <span className="text-sm font-bold text-white">Generation failed</span>
           <ErrorCategoryBadge category={category} />
         </div>
-        <div className="flex gap-2">
+        <div className="sg-btn-row">
           {(hasLog || validation?.available) && (
-            <button
-              type="button"
-              onClick={() => setLogsExpanded((v) => !v)}
-              className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-white/10 bg-white/[0.04] px-3 text-xs font-bold text-slate-300 transition hover:border-white/20 hover:text-white"
-            >
-              {logsExpanded ? <ChevronUp className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
+            <button type="button" onClick={() => setLogsExpanded((v) => !v)}>
+              {logsExpanded ? <ChevronUp /> : <ChevronDown />}
               View logs
             </button>
           )}
-          <button
-            type="button"
-            onClick={handleRetry}
-            disabled={retrying}
-            className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-ember-500/50 bg-ember-500/10 px-3 text-xs font-bold text-ember-300 transition hover:border-ember-500 hover:text-white disabled:cursor-not-allowed disabled:opacity-50"
-          >
+          <button type="button" onClick={handleRetry} disabled={retrying} className="sg-btn-accent">
             {retrying
-              ? <><Loader2 className="h-3.5 w-3.5 animate-spin" /> Retrying…</>
-              : <><RefreshCw className="h-3.5 w-3.5" /> Try again</>}
+              ? <><Loader2 className="sg-spin" /> Retrying…</>
+              : <><RefreshCw /> Try again</>}
           </button>
         </div>
       </div>
 
       {message && (
-        <p className="mt-3 rounded-lg border border-red-400/15 bg-[#070B14] p-3 text-xs leading-5 text-red-200">
+        <p className="sg-notice sg-notice-red" style={{ marginTop: 12 }}>
           {message}
         </p>
       )}
 
       {retryError && (
-        <p className="mt-2 text-xs text-red-300">{retryError}</p>
+        <p className="sg-notice sg-notice-red" style={{ marginTop: 8 }}>{retryError}</p>
       )}
 
       {logsExpanded && (
-        <div className="mt-4 grid gap-3">
+        <div className="sg-stack" style={{ marginTop: 14 }}>
           {hasLog && renderLog.last_lines?.length > 0 && (
             <div>
-              <p className="mb-1.5 text-[11px] font-bold uppercase tracking-wide text-slate-500">Render log (last lines)</p>
-              <pre className="max-h-48 overflow-auto rounded-xl border border-white/10 bg-[#070B14] p-3 text-xs leading-5 text-slate-300">
+              <p className="sg-sub-label" style={{ marginBottom: 6 }}>Render log (last lines)</p>
+              <pre className="sg-pre">
                 {renderLog.last_lines.join("\n")}
               </pre>
             </div>
           )}
           {validation?.available && validation.error_count > 0 && (
             <div>
-              <p className="mb-1.5 text-[11px] font-bold uppercase tracking-wide text-slate-500">
+              <p className="sg-sub-label" style={{ marginBottom: 6 }}>
                 Math validation — {validation.error_count} issue{validation.error_count !== 1 ? "s" : ""}
               </p>
-              <p className="text-xs text-amber-200">
-                Download <span className="font-mono">validation.json</span> from Artifacts for the full expression list.
+              <p className="sg-hint">
+                Download <span style={{ fontFamily: "var(--mono)" }}>validation.json</span> from Artifacts for the full expression list.
               </p>
             </div>
           )}
@@ -919,7 +906,7 @@ function ValidationSummary({ validation, manifest }) {
   const displayBlocks = validation?.display_blocks ?? fallback?.display_blocks ?? 0;
   const inlineFormulas = validation?.inline_formulas ?? fallback?.inline_formulas ?? 0;
   return (
-    <div className="grid gap-3 sm:grid-cols-3">
+    <div className="sg-grid-3">
       <InfoTile
         icon={ok ? CheckCircle2 : AlertCircle}
         label="Status"
@@ -934,13 +921,13 @@ function ValidationSummary({ validation, manifest }) {
 
 function RenderLogSummary({ renderLog }) {
   if (!renderLog?.available) {
-    return <p className="text-sm text-slate-400">Render log is not available.</p>;
+    return <p className="sg-hint">Render log is not available.</p>;
   }
   return (
-    <div className="grid gap-3">
+    <div className="sg-stack">
       <InfoTile label="Lines" value={String(renderLog.line_count || 0)} tone="neutral" />
       {renderLog.last_lines?.length > 0 && (
-        <pre className="max-h-36 overflow-auto rounded-xl border border-white/10 bg-[#070B14] p-3 text-xs leading-5 text-slate-300">
+        <pre className="sg-pre">
           {renderLog.last_lines.join("\n")}
         </pre>
       )}
@@ -949,14 +936,13 @@ function RenderLogSummary({ renderLog }) {
 }
 
 function InfoTile({ icon: Icon, label, value, tone = "neutral" }) {
-  const toneClass = tone === "good" ? "text-emerald-200" : tone === "warn" ? "text-amber-100" : "text-slate-100";
   return (
-    <div className="rounded-xl border border-white/10 bg-[#070B14] p-3">
-      <div className="flex items-center gap-2 text-[11px] font-bold uppercase tracking-[0.12em] text-slate-500">
-        {Icon && <Icon className="h-3.5 w-3.5" />}
+    <div className={`sg-tile${tone === "good" ? " good" : tone === "warn" ? " warn" : ""}`}>
+      <div className="sg-tile-label">
+        {Icon && <Icon />}
         {label}
       </div>
-      <div className={`mt-2 text-sm font-bold ${toneClass}`}>{value}</div>
+      <div className="sg-tile-value">{value}</div>
     </div>
   );
 }
@@ -1000,8 +986,8 @@ function OutlineComplianceTab({ jobId, manifest }) {
 
   if (loading) {
     return (
-      <div className="flex min-h-48 items-center justify-center gap-3 text-slate-300">
-        <Loader2 className="h-5 w-5 animate-spin text-ember-500" />
+      <div className="recent-state">
+        <Loader2 className="sg-spin" />
         <span>Checking outline compliance…</span>
       </div>
     );
@@ -1009,8 +995,8 @@ function OutlineComplianceTab({ jobId, manifest }) {
 
   if (error) {
     return (
-      <div className="flex min-h-48 items-center justify-center gap-2 text-red-300 text-sm">
-        <AlertCircle className="h-4 w-4 shrink-0" />
+      <div className="recent-state" style={{ color: "var(--red)" }}>
+        <AlertCircle />
         {error}
       </div>
     );
@@ -1018,7 +1004,7 @@ function OutlineComplianceTab({ jobId, manifest }) {
 
   if (!compliance?.has_outline) {
     return (
-      <div className="flex min-h-48 items-center justify-center text-slate-400 text-sm">
+      <div className="recent-state">
         No outline was set for this guide.
       </div>
     );
@@ -1031,29 +1017,17 @@ function OutlineComplianceTab({ jobId, manifest }) {
   );
 
   return (
-    <div className="grid gap-4">
-      <div className="flex flex-wrap items-center justify-between gap-3">
+    <div className="sg-tab-stack">
+      <div className="sg-head-row">
         <h3 className="text-sm font-bold text-white">Outline Compliance</h3>
-        <div className="flex flex-wrap gap-1.5 text-[11px]">
-          {counts.found > 0 && (
-            <span className="rounded-full border border-emerald-400/25 bg-emerald-400/10 px-2 py-0.5 font-bold text-emerald-200">
-              {counts.found} found
-            </span>
-          )}
-          {counts.renamed > 0 && (
-            <span className="rounded-full border border-amber-300/30 bg-amber-300/10 px-2 py-0.5 font-bold text-amber-200">
-              {counts.renamed} renamed
-            </span>
-          )}
-          {counts.missing > 0 && (
-            <span className="rounded-full border border-red-400/30 bg-red-400/10 px-2 py-0.5 font-bold text-red-200">
-              {counts.missing} missing
-            </span>
-          )}
+        <div className="sg-chip-row">
+          {counts.found > 0 && <span className="sg-tag sg-tag-green">{counts.found} found</span>}
+          {counts.renamed > 0 && <span className="sg-tag sg-tag-amber">{counts.renamed} renamed</span>}
+          {counts.missing > 0 && <span className="sg-tag sg-tag-red">{counts.missing} missing</span>}
         </div>
       </div>
 
-      <ol className="grid gap-2">
+      <ol className="sg-stack">
         {sections.map((section, i) => {
           const isFound = section.status === "found";
           const isRenamed = section.status === "renamed";
@@ -1061,37 +1035,28 @@ function OutlineComplianceTab({ jobId, manifest }) {
           return (
             <li
               key={i}
-              className={`flex items-start gap-3 rounded-xl border p-3 text-xs ${
-                isFound
-                  ? "border-emerald-400/20 bg-emerald-400/[0.04]"
-                  : isRenamed
-                  ? "border-amber-300/20 bg-amber-300/[0.04]"
-                  : "border-red-400/20 bg-red-400/[0.04]"
-              }`}
+              className={`sg-card-row ${isFound ? "good" : isRenamed ? "warn" : "bad"}`}
+              style={{ display: "flex", alignItems: "flex-start", gap: 10 }}
             >
-              <span className="mt-0.5 shrink-0">
-                {isFound && <CheckCircle2 className="h-3.5 w-3.5 text-emerald-400" />}
-                {isRenamed && <AlertTriangle className="h-3.5 w-3.5 text-amber-300" />}
-                {isMissing && <XCircle className="h-3.5 w-3.5 text-red-400" />}
+              <span style={{ flex: "none", marginTop: 1 }}>
+                {isFound && <CheckCircle2 style={{ color: "var(--green)" }} />}
+                {isRenamed && <AlertTriangle style={{ color: "var(--amber)" }} />}
+                {isMissing && <XCircle style={{ color: "var(--red)" }} />}
               </span>
-              <div className="min-w-0 flex-1">
-                <p className={`font-semibold ${isFound ? "text-emerald-200" : isRenamed ? "text-amber-200" : "text-red-200"}`}>
+              <div style={{ minWidth: 0, flex: 1 }}>
+                <p style={{ fontWeight: 600, color: isFound ? "#6EE7B7" : isRenamed ? "#F4C76B" : "#FCA5A5" }}>
                   {section.required_title}
                 </p>
                 {isRenamed && section.matched_heading && (
-                  <p className="mt-0.5 text-[11px] text-slate-400">
-                    Found as: <span className="text-amber-300">{section.matched_heading}</span>
+                  <p className="sg-hint" style={{ marginTop: 2 }}>
+                    Found as: <span style={{ color: "#F4C76B" }}>{section.matched_heading}</span>
                   </p>
                 )}
                 {isMissing && (
-                  <p className="mt-0.5 text-[11px] text-slate-500">Not found in the guide</p>
+                  <p className="sg-hint" style={{ marginTop: 2 }}>Not found in the guide</p>
                 )}
               </div>
-              <span className={`shrink-0 rounded-full border px-2 py-0.5 text-[10px] font-bold ${
-                isFound ? "border-emerald-400/25 text-emerald-300" :
-                isRenamed ? "border-amber-300/30 text-amber-300" :
-                "border-red-400/30 text-red-300"
-              }`}>
+              <span className={`sg-tag ${isFound ? "sg-tag-green" : isRenamed ? "sg-tag-amber" : "sg-tag-red"}`}>
                 {section.status}
               </span>
             </li>
@@ -1099,7 +1064,7 @@ function OutlineComplianceTab({ jobId, manifest }) {
         })}
       </ol>
 
-      <p className="text-[11px] text-slate-500">
+      <p className="sg-hint">
         Compliance is checked by comparing the required outline titles against the headings in the guide's Markdown.
       </p>
     </div>
@@ -1180,8 +1145,8 @@ function SectionRegenerateTab({ jobId, manifest, onRegenerated }) {
 
   if (loadError) {
     return (
-      <div className="flex min-h-48 items-center justify-center gap-2 text-red-300 text-sm">
-        <AlertCircle className="h-4 w-4 shrink-0" />
+      <div className="recent-state" style={{ color: "var(--red)" }}>
+        <AlertCircle />
         {loadError}
       </div>
     );
@@ -1189,8 +1154,8 @@ function SectionRegenerateTab({ jobId, manifest, onRegenerated }) {
 
   if (sections === null) {
     return (
-      <div className="flex min-h-48 items-center justify-center gap-3 text-slate-300">
-        <Loader2 className="h-5 w-5 animate-spin text-ember-500" />
+      <div className="recent-state">
+        <Loader2 className="sg-spin" />
         <span>Loading sections…</span>
       </div>
     );
@@ -1198,7 +1163,7 @@ function SectionRegenerateTab({ jobId, manifest, onRegenerated }) {
 
   if (sections.length === 0) {
     return (
-      <div className="flex min-h-48 items-center justify-center text-slate-400 text-sm">
+      <div className="recent-state">
         No heading sections found in this guide.
       </div>
     );
@@ -1207,41 +1172,33 @@ function SectionRegenerateTab({ jobId, manifest, onRegenerated }) {
   const canRegenerate = selectedIdx !== null && (action !== "custom" || instruction.trim()) && provider.trim();
 
   return (
-    <div className="grid gap-4">
+    <div className="sg-tab-stack">
       <div>
         <h3 className="text-sm font-bold text-white">Select a section</h3>
-        <div className="mt-2 grid gap-1.5 max-h-56 overflow-y-auto pr-1">
+        <div className="sg-stack" style={{ marginTop: 8, maxHeight: 224, overflowY: "auto", paddingRight: 4 }}>
           {sections.map((section) => (
             <button
               key={section.index}
               type="button"
               onClick={() => { setSelectedIdx(section.index); setSuccessMsg(null); setRegenError(null); }}
-              className={`w-full rounded-lg border px-3 py-2 text-left text-xs transition ${
-                selectedIdx === section.index
-                  ? "border-ember-500/60 bg-ember-500/[0.08] text-white"
-                  : "border-white/10 bg-white/[0.03] text-slate-300 hover:border-white/20 hover:text-white"
-              }`}
+              className={`sg-opt-btn${selectedIdx === section.index ? " sel" : ""}`}
             >
-              <span className="font-mono text-[10px] text-slate-500 mr-2">
+              <span style={{ fontFamily: "var(--mono)", fontSize: 10, color: "var(--muted)", marginRight: 8 }}>
                 {"#".repeat(section.heading_level)}
               </span>
-              <span className="font-semibold">{section.heading_text || "(untitled)"}</span>
+              <span style={{ fontWeight: 600 }}>{section.heading_text || "(untitled)"}</span>
             </button>
           ))}
         </div>
       </div>
 
       {selectedIdx !== null && (
-        <div className="grid gap-3 rounded-xl border border-white/10 bg-white/[0.025] p-3">
+        <div className="sg-form-sub">
           <div>
-            <label className="block text-[11px] font-bold uppercase tracking-wide text-slate-500 mb-1">
+            <label className="sg-sub-label" style={{ display: "block", marginBottom: 4 }}>
               Action
             </label>
-            <select
-              value={action}
-              onChange={(e) => setAction(e.target.value)}
-              className="w-full rounded-lg border border-white/10 bg-[#070B14] px-3 py-2 text-xs text-slate-200 outline-none focus:border-ember-500/40"
-            >
+            <select value={action} onChange={(e) => setAction(e.target.value)}>
               {SECTION_ACTIONS.map((a) => (
                 <option key={a.value} value={a.value}>{a.label}</option>
               ))}
@@ -1250,7 +1207,7 @@ function SectionRegenerateTab({ jobId, manifest, onRegenerated }) {
 
           {action === "custom" && (
             <div>
-              <label className="block text-[11px] font-bold uppercase tracking-wide text-slate-500 mb-1">
+              <label className="sg-sub-label" style={{ display: "block", marginBottom: 4 }}>
                 Instruction
               </label>
               <textarea
@@ -1258,22 +1215,18 @@ function SectionRegenerateTab({ jobId, manifest, onRegenerated }) {
                 onChange={(e) => setInstruction(e.target.value)}
                 placeholder="Describe what you want done to this section…"
                 rows={3}
-                className="w-full rounded-lg border border-white/10 bg-[#070B14] px-3 py-2 text-xs text-slate-200 placeholder-slate-600 outline-none focus:border-ember-500/40 resize-y"
+                style={{ minHeight: 84 }}
               />
             </div>
           )}
 
-          <div className="grid grid-cols-2 gap-2">
+          <div className="sg-grid-2">
             <div>
-              <label className="block text-[11px] font-bold uppercase tracking-wide text-slate-500 mb-1">
+              <label className="sg-sub-label" style={{ display: "block", marginBottom: 4 }}>
                 Provider
               </label>
               {configuredProviders.length > 0 ? (
-                <select
-                  value={provider}
-                  onChange={(e) => { setProvider(e.target.value); setModel(""); }}
-                  className="w-full rounded-lg border border-white/10 bg-[#070B14] px-3 py-2 text-xs text-slate-200 outline-none focus:border-ember-500/40"
-                >
+                <select value={provider} onChange={(e) => { setProvider(e.target.value); setModel(""); }}>
                   <option value="">Select provider…</option>
                   {configuredProviders.map((p) => (
                     <option key={p.id} value={p.id}>{p.display_name}</option>
@@ -1285,20 +1238,15 @@ function SectionRegenerateTab({ jobId, manifest, onRegenerated }) {
                   value={provider}
                   onChange={(e) => setProvider(e.target.value)}
                   placeholder="e.g. deepseek"
-                  className="w-full rounded-lg border border-white/10 bg-[#070B14] px-3 py-2 text-xs text-slate-200 placeholder-slate-600 outline-none focus:border-ember-500/40"
                 />
               )}
             </div>
             <div>
-              <label className="block text-[11px] font-bold uppercase tracking-wide text-slate-500 mb-1">
+              <label className="sg-sub-label" style={{ display: "block", marginBottom: 4 }}>
                 Model
               </label>
               {configuredProviders.length > 0 && provider ? (
-                <select
-                  value={model}
-                  onChange={(e) => setModel(e.target.value)}
-                  className="w-full rounded-lg border border-white/10 bg-[#070B14] px-3 py-2 text-xs text-slate-200 outline-none focus:border-ember-500/40"
-                >
+                <select value={model} onChange={(e) => setModel(e.target.value)}>
                   <option value="">Default</option>
                   {(configuredProviders.find((p) => p.id === provider)?.available_models ?? []).map((m) => (
                     <option key={m} value={m}>{m}</option>
@@ -1310,22 +1258,21 @@ function SectionRegenerateTab({ jobId, manifest, onRegenerated }) {
                   value={model}
                   onChange={(e) => setModel(e.target.value)}
                   placeholder="default"
-                  className="w-full rounded-lg border border-white/10 bg-[#070B14] px-3 py-2 text-xs text-slate-200 placeholder-slate-600 outline-none focus:border-ember-500/40"
                 />
               )}
             </div>
           </div>
 
           {regenError && (
-            <p className="rounded-lg border border-red-400/20 bg-red-400/10 p-2.5 text-xs text-red-300">
+            <p className="sg-notice sg-notice-red">
               {regenError}
             </p>
           )}
 
           {successMsg && (
-            <p className="rounded-lg border border-emerald-400/20 bg-emerald-400/10 p-2.5 text-xs text-emerald-200">
+            <p className="sg-notice sg-notice-green">
               {successMsg}{" "}
-              <span className="text-slate-400">To undo, open the Version History tab.</span>
+              <span style={{ color: "var(--muted)" }}>To undo, open the Version History tab.</span>
             </p>
           )}
 
@@ -1333,18 +1280,19 @@ function SectionRegenerateTab({ jobId, manifest, onRegenerated }) {
             type="button"
             onClick={handleRegenerate}
             disabled={!canRegenerate || regenerating}
-            className="inline-flex h-9 items-center justify-center gap-2 rounded-lg border border-ember-500/50 bg-ember-500/10 px-4 text-xs font-bold text-ember-300 transition hover:border-ember-500 hover:text-white disabled:cursor-not-allowed disabled:opacity-40"
+            className="sg-btn-accent"
+            style={{ justifyContent: "center" }}
           >
             {regenerating ? (
-              <><Loader2 className="h-3.5 w-3.5 animate-spin" /> Regenerating…</>
+              <><Loader2 className="sg-spin" /> Regenerating…</>
             ) : (
-              <><Sparkles className="h-3.5 w-3.5" /> Regenerate Section</>
+              <><Sparkles /> Regenerate Section</>
             )}
           </button>
         </div>
       )}
 
-      <p className="text-[11px] text-slate-500">
+      <p className="sg-hint">
         Only the selected section is rewritten. A version snapshot is created automatically — use Version History to revert.
       </p>
     </div>
@@ -1400,8 +1348,8 @@ function EditMarkdownTab({ jobId, onSaved }) {
 
   if (loadError) {
     return (
-      <div className="flex min-h-48 items-center justify-center gap-2 text-red-300 text-sm">
-        <AlertCircle className="h-4 w-4 shrink-0" />
+      <div className="recent-state" style={{ color: "var(--red)" }}>
+        <AlertCircle />
         {loadError}
       </div>
     );
@@ -1409,63 +1357,46 @@ function EditMarkdownTab({ jobId, onSaved }) {
 
   if (text === null) {
     return (
-      <div className="flex min-h-48 items-center justify-center gap-3 text-slate-300">
-        <Loader2 className="h-5 w-5 animate-spin text-ember-500" />
+      <div className="recent-state">
+        <Loader2 className="sg-spin" />
         <span>Loading markdown…</span>
       </div>
     );
   }
 
   return (
-    <div className="grid gap-4">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div className="flex items-center gap-2">
+    <div className="sg-tab-stack">
+      <div className="sg-head-row">
+        <div className="sg-chip-row">
           <h3 className="text-sm font-bold text-white">Edit Markdown</h3>
-          {isDirty && (
-            <span className="rounded-full border border-amber-300/30 bg-amber-300/10 px-2 py-0.5 text-[10px] font-bold text-amber-200">
-              unsaved
-            </span>
-          )}
-          {saveOk && !isDirty && (
-            <span className="rounded-full border border-emerald-400/30 bg-emerald-400/10 px-2 py-0.5 text-[10px] font-bold text-emerald-200">
-              saved
-            </span>
-          )}
+          {isDirty && <span className="sg-tag sg-tag-amber">unsaved</span>}
+          {saveOk && !isDirty && <span className="sg-tag sg-tag-green">saved</span>}
         </div>
-        <div className="flex gap-2">
-          <button
-            type="button"
-            onClick={() => setShowPreview((v) => !v)}
-            className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-white/10 bg-white/[0.04] px-3 text-xs font-bold text-slate-300 transition hover:border-white/20 hover:text-white"
-          >
-            {showPreview ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
+        <div className="sg-btn-row">
+          <button type="button" onClick={() => setShowPreview((v) => !v)}>
+            {showPreview ? <EyeOff /> : <Eye />}
             {showPreview ? "Hide Preview" : "Show Preview"}
           </button>
-          <button
-            type="button"
-            onClick={handleSave}
-            disabled={saving || !isDirty}
-            className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-ember-500/50 bg-ember-500/10 px-3 text-xs font-bold text-ember-300 transition hover:border-ember-500 hover:text-white disabled:cursor-not-allowed disabled:opacity-40"
-          >
+          <button type="button" onClick={handleSave} disabled={saving || !isDirty} className="sg-btn-accent">
             {saving ? (
-              <><Loader2 className="h-3.5 w-3.5 animate-spin" /> Saving…</>
+              <><Loader2 className="sg-spin" /> Saving…</>
             ) : (
-              <><RefreshCw className="h-3.5 w-3.5" /> Save & Re-render</>
+              <><RefreshCw /> Save & Re-render</>
             )}
           </button>
         </div>
       </div>
 
       {saveError && (
-        <p className="rounded-lg border border-red-400/20 bg-red-400/10 p-2.5 text-xs text-red-300">{saveError}</p>
+        <p className="sg-notice sg-notice-red">{saveError}</p>
       )}
 
-      <div className={showPreview ? "grid gap-3 lg:grid-cols-2" : ""}>
+      <div className={showPreview ? "sg-grid-2" : ""}>
         <textarea
           value={text}
           onChange={(e) => { setText(e.target.value); setSaveOk(false); }}
           spellCheck={false}
-          className="min-h-[480px] w-full rounded-xl border border-white/10 bg-[#070B14] p-3 font-mono text-xs leading-5 text-slate-200 outline-none focus:border-ember-500/40 resize-y"
+          style={{ minHeight: 480, fontSize: 13, lineHeight: 1.5 }}
         />
         {showPreview && (
           <iframe
@@ -1473,12 +1404,12 @@ function EditMarkdownTab({ jobId, onSaved }) {
             src={`/api/jobs/${encodeURIComponent(jobId)}/artifacts/final.html?disposition=inline`}
             title="HTML preview"
             sandbox="allow-same-origin allow-scripts"
-            className="min-h-[480px] w-full rounded-xl border border-white/10 bg-white"
+            style={{ minHeight: 480, width: "100%", borderRadius: 11, border: "1px solid var(--card-border)", background: "#fff" }}
           />
         )}
       </div>
 
-      <p className="text-[11px] text-slate-500">
+      <p className="sg-hint">
         Saving re-renders PDF and HTML from the edited markdown. A version snapshot is created automatically before each save.
       </p>
     </div>
@@ -1579,16 +1510,16 @@ function VersionHistoryTab({ jobId, onReverted }) {
   }
 
   const SOURCE_LABELS = {
-    generated: { label: "Generated", tone: "border-sky-400/25 bg-sky-400/10 text-sky-200" },
-    edited: { label: "Edited", tone: "border-violet-400/30 bg-violet-400/10 text-violet-200" },
-    rerendered: { label: "Re-rendered", tone: "border-white/10 bg-white/[0.04] text-slate-300" },
-    reverted: { label: "Reverted", tone: "border-amber-300/30 bg-amber-300/10 text-amber-200" },
+    generated: { label: "Generated", tone: "sg-tag-indigo" },
+    edited: { label: "Edited", tone: "sg-tag-indigo" },
+    rerendered: { label: "Re-rendered", tone: "" },
+    reverted: { label: "Reverted", tone: "sg-tag-amber" },
   };
 
   if (loadError) {
     return (
-      <div className="flex min-h-48 items-center justify-center gap-2 text-red-300 text-sm">
-        <AlertCircle className="h-4 w-4 shrink-0" />
+      <div className="recent-state" style={{ color: "var(--red)" }}>
+        <AlertCircle />
         {loadError}
       </div>
     );
@@ -1596,61 +1527,47 @@ function VersionHistoryTab({ jobId, onReverted }) {
 
   if (currentText === null) {
     return (
-      <div className="flex min-h-48 items-center justify-center gap-3 text-slate-300">
-        <Loader2 className="h-5 w-5 animate-spin text-ember-500" />
+      <div className="recent-state">
+        <Loader2 className="sg-spin" />
         <span>Loading history…</span>
       </div>
     );
   }
 
   if (versions.length === 0) {
-    return <p className="mt-4 text-sm text-slate-400">No version history yet.</p>;
+    return <p className="sg-hint" style={{ marginTop: 16 }}>No version history yet.</p>;
   }
 
   const latestVersion = versions[versions.length - 1]?.version;
 
   return (
-    <div className="grid gap-3">
+    <div className="sg-tab-stack">
       <h3 className="text-sm font-bold text-white">{versions.length} version{versions.length !== 1 ? "s" : ""}</h3>
 
       {revertError && (
-        <p className="rounded-lg border border-red-400/20 bg-red-400/10 p-2.5 text-xs text-red-300">{revertError}</p>
+        <p className="sg-notice sg-notice-red">{revertError}</p>
       )}
 
-      <div className="grid gap-2">
+      <div className="sg-stack">
         {[...versions].reverse().map((v) => {
           const isLatest = v.version === latestVersion;
-          const srcInfo = SOURCE_LABELS[v.source] ?? { label: v.source, tone: "border-white/10 bg-white/[0.04] text-slate-300" };
+          const srcInfo = SOURCE_LABELS[v.source] ?? { label: v.source, tone: "" };
           const isExpanded = expandedDiff === v.version;
           const vDiff = isExpanded ? diffContent[v.version] : undefined;
           const diff = vDiff !== undefined && currentText !== null ? computeLineDiff(vDiff, currentText) : null;
 
           return (
-            <div key={v.version} className="rounded-xl border border-white/10 bg-white/[0.035] p-3">
-              <div className="flex flex-wrap items-center justify-between gap-2">
-                <div className="flex flex-wrap items-center gap-2">
-                  <span className="font-mono text-xs font-bold text-white">v{v.version}</span>
-                  <span className={`rounded-full border px-2 py-0.5 text-[10px] font-bold ${srcInfo.tone}`}>
-                    {srcInfo.label}
-                  </span>
-                  {isLatest && (
-                    <span className="rounded-full border border-emerald-400/25 bg-emerald-400/10 px-2 py-0.5 text-[10px] font-bold text-emerald-200">
-                      current
-                    </span>
-                  )}
-                  <span className="text-[11px] text-slate-500">{v.created_at}</span>
+            <div key={v.version} className="sg-card-row">
+              <div className="sg-head-row">
+                <div className="sg-chip-row">
+                  <span style={{ fontFamily: "var(--mono)", fontWeight: 700, color: "var(--text)" }}>v{v.version}</span>
+                  <span className={`sg-tag ${srcInfo.tone}`}>{srcInfo.label}</span>
+                  {isLatest && <span className="sg-tag sg-tag-green">current</span>}
+                  <span className="sg-hint">{v.created_at}</span>
                 </div>
-                <div className="flex gap-2">
-                  <button
-                    type="button"
-                    onClick={() => handleToggleDiff(v.version)}
-                    className="inline-flex h-7 items-center gap-1.5 rounded-lg border border-white/10 bg-white/[0.04] px-2.5 text-[11px] font-bold text-slate-300 transition hover:border-white/20 hover:text-white"
-                  >
-                    {loadingDiff === v.version ? (
-                      <Loader2 className="h-3 w-3 animate-spin" />
-                    ) : (
-                      <Eye className="h-3 w-3" />
-                    )}
+                <div className="sg-btn-row">
+                  <button type="button" onClick={() => handleToggleDiff(v.version)}>
+                    {loadingDiff === v.version ? <Loader2 className="sg-spin" /> : <Eye />}
                     {isExpanded ? "Hide" : "Diff vs current"}
                   </button>
                   {!isLatest && (
@@ -1658,13 +1575,9 @@ function VersionHistoryTab({ jobId, onReverted }) {
                       type="button"
                       onClick={() => handleRevert(v.version)}
                       disabled={reverting !== null}
-                      className="inline-flex h-7 items-center gap-1.5 rounded-lg border border-ember-500/40 bg-ember-500/10 px-2.5 text-[11px] font-bold text-ember-300 transition hover:border-ember-500 hover:text-white disabled:cursor-not-allowed disabled:opacity-40"
+                      className="sg-btn-accent"
                     >
-                      {reverting === v.version ? (
-                        <Loader2 className="h-3 w-3 animate-spin" />
-                      ) : (
-                        <RotateCcw className="h-3 w-3" />
-                      )}
+                      {reverting === v.version ? <Loader2 className="sg-spin" /> : <RotateCcw />}
                       Restore
                     </button>
                   )}
@@ -1672,15 +1585,15 @@ function VersionHistoryTab({ jobId, onReverted }) {
               </div>
 
               {isExpanded && (
-                <div className="mt-3">
+                <div style={{ marginTop: 12 }}>
                   {loadingDiff === v.version || vDiff === undefined ? (
-                    <div className="flex h-12 items-center gap-2 text-xs text-slate-400">
-                      <Loader2 className="h-3.5 w-3.5 animate-spin text-ember-500" /> Loading…
+                    <div className="sg-row sg-hint">
+                      <Loader2 className="sg-spin" /> Loading…
                     </div>
                   ) : vDiff === null ? (
-                    <p className="text-xs text-red-300">Could not load version content.</p>
+                    <p className="sg-notice sg-notice-red">Could not load version content.</p>
                   ) : isLatest ? (
-                    <pre className="max-h-72 overflow-auto rounded-lg border border-white/10 bg-[#070B14] p-2.5 font-mono text-[11px] leading-5 text-slate-300 whitespace-pre-wrap">{vDiff}</pre>
+                    <pre className="sg-pre">{vDiff}</pre>
                   ) : diff ? (
                     <DiffView diff={diff} />
                   ) : null}
@@ -1691,7 +1604,7 @@ function VersionHistoryTab({ jobId, onReverted }) {
         })}
       </div>
 
-      <p className="text-[11px] text-slate-500">
+      <p className="sg-hint">
         Restoring a version creates a new snapshot — history is never deleted.
       </p>
     </div>
@@ -1704,38 +1617,34 @@ function DiffView({ diff }) {
   const hasChanges = diff.some((l) => l.type !== "same" && l.type !== "info");
 
   if (!hasChanges) {
-    return <p className="text-xs text-slate-400">No differences — versions are identical.</p>;
+    return <p className="sg-hint">No differences — versions are identical.</p>;
   }
 
   const addedCount = diff.filter((l) => l.type === "added").length;
   const removedCount = diff.filter((l) => l.type === "removed").length;
 
   return (
-    <div className="grid gap-2">
-      <div className="flex items-center justify-between gap-3">
-        <div className="flex gap-2 text-[11px]">
-          {addedCount > 0 && <span className="text-emerald-300">+{addedCount} added</span>}
-          {removedCount > 0 && <span className="text-red-300">−{removedCount} removed</span>}
+    <div className="sg-stack">
+      <div className="sg-head-row">
+        <div className="sg-chip-row">
+          {addedCount > 0 && <span style={{ color: "#6EE7B7", fontSize: 12 }}>+{addedCount} added</span>}
+          {removedCount > 0 && <span style={{ color: "#FCA5A5", fontSize: 12 }}>−{removedCount} removed</span>}
         </div>
-        <button
-          type="button"
-          onClick={() => setShowUnchanged((v) => !v)}
-          className="text-[11px] text-slate-500 hover:text-slate-300"
-        >
+        <button type="button" onClick={() => setShowUnchanged((v) => !v)}>
           {showUnchanged ? "Hide unchanged" : "Show all lines"}
         </button>
       </div>
-      <pre className="max-h-72 overflow-auto rounded-lg border border-white/10 bg-[#070B14] p-2.5 font-mono text-[11px] leading-5 whitespace-pre-wrap">
+      <pre className="sg-pre">
         {diff.map((line, i) => {
           if (line.type === "same" && !showUnchanged) return null;
           const cls =
-            line.type === "added" ? "text-emerald-300 bg-emerald-900/20" :
-            line.type === "removed" ? "text-red-300 bg-red-900/20 line-through opacity-70" :
-            line.type === "info" ? "text-slate-500 italic" :
-            "text-slate-400";
+            line.type === "added" ? "sg-diff-add" :
+            line.type === "removed" ? "sg-diff-del" :
+            line.type === "info" ? "sg-diff-info" :
+            "sg-diff-same";
           const prefix = line.type === "added" ? "+ " : line.type === "removed" ? "− " : "  ";
           return (
-            <span key={i} className={`block ${cls}`}>{prefix}{line.text}</span>
+            <span key={i} className={`sg-diff-line ${cls}`}>{prefix}{line.text}</span>
           );
         })}
       </pre>
@@ -1836,17 +1745,17 @@ function QuizTab({ jobId, manifest }) {
   const canGenerate = questionTypes.length > 0 && !generating;
 
   return (
-    <div className="grid gap-5">
+    <div className="sg-tab-stack">
       {/* Config panel */}
-      <section className="rounded-2xl border border-white/10 bg-white/[0.035] p-4">
-        <h3 className="text-sm font-bold text-white mb-3">Generate Quiz</h3>
+      <section>
+        <h3 className="text-sm font-bold text-white" style={{ marginBottom: 12 }}>Generate Quiz</h3>
 
-        <div className="grid gap-3">
+        <div className="sg-stack">
           <div>
-            <label className="block text-[11px] font-bold uppercase tracking-wide text-slate-500 mb-2">
+            <label className="sg-sub-label" style={{ display: "block", marginBottom: 8 }}>
               Question Types
             </label>
-            <div className="flex flex-wrap gap-2">
+            <div className="sg-chip-row">
               {QUIZ_TYPE_OPTIONS.map((opt) => {
                 const checked = questionTypes.includes(opt.value);
                 return (
@@ -1854,13 +1763,9 @@ function QuizTab({ jobId, manifest }) {
                     key={opt.value}
                     type="button"
                     onClick={() => toggleType(opt.value)}
-                    className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-[11px] font-bold transition ${
-                      checked
-                        ? "border-ember-500/60 bg-ember-500/15 text-ember-300"
-                        : "border-white/10 bg-white/[0.035] text-slate-400 hover:border-white/20 hover:text-white"
-                    }`}
+                    className={checked ? "sg-btn-accent" : undefined}
                   >
-                    {checked && <CheckCircle2 className="h-3 w-3" />}
+                    {checked && <CheckCircle2 />}
                     {opt.label}
                   </button>
                 );
@@ -1868,44 +1773,32 @@ function QuizTab({ jobId, manifest }) {
             </div>
           </div>
 
-          <div className="grid grid-cols-3 gap-2">
+          <div className="sg-grid-3">
             <div>
-              <label className="block text-[11px] font-bold uppercase tracking-wide text-slate-500 mb-1">
+              <label className="sg-sub-label" style={{ display: "block", marginBottom: 4 }}>
                 Count
               </label>
-              <select
-                value={count}
-                onChange={(e) => setCount(Number(e.target.value))}
-                className="w-full rounded-lg border border-white/10 bg-[#070B14] px-3 py-2 text-xs text-slate-200 outline-none focus:border-ember-500/40"
-              >
+              <select value={count} onChange={(e) => setCount(Number(e.target.value))}>
                 {QUIZ_COUNT_OPTIONS.map((n) => (
                   <option key={n} value={n}>{n} questions</option>
                 ))}
               </select>
             </div>
             <div>
-              <label className="block text-[11px] font-bold uppercase tracking-wide text-slate-500 mb-1">
+              <label className="sg-sub-label" style={{ display: "block", marginBottom: 4 }}>
                 Difficulty
               </label>
-              <select
-                value={difficulty}
-                onChange={(e) => setDifficulty(e.target.value)}
-                className="w-full rounded-lg border border-white/10 bg-[#070B14] px-3 py-2 text-xs text-slate-200 outline-none focus:border-ember-500/40"
-              >
+              <select value={difficulty} onChange={(e) => setDifficulty(e.target.value)}>
                 {QUIZ_DIFFICULTY_OPTIONS.map((d) => (
                   <option key={d} value={d}>{d.charAt(0).toUpperCase() + d.slice(1)}</option>
                 ))}
               </select>
             </div>
             <div>
-              <label className="block text-[11px] font-bold uppercase tracking-wide text-slate-500 mb-1">
+              <label className="sg-sub-label" style={{ display: "block", marginBottom: 4 }}>
                 Focus
               </label>
-              <select
-                value={focus}
-                onChange={(e) => setFocus(e.target.value)}
-                className="w-full rounded-lg border border-white/10 bg-[#070B14] px-3 py-2 text-xs text-slate-200 outline-none focus:border-ember-500/40"
-              >
+              <select value={focus} onChange={(e) => setFocus(e.target.value)}>
                 {QUIZ_FOCUS_OPTIONS.map((f) => (
                   <option key={f.value} value={f.value}>{f.label}</option>
                 ))}
@@ -1914,7 +1807,7 @@ function QuizTab({ jobId, manifest }) {
           </div>
 
           {genError && (
-            <p className="rounded-lg border border-red-400/20 bg-red-400/10 p-2.5 text-xs text-red-300">
+            <p className="sg-notice sg-notice-red">
               {genError}
             </p>
           )}
@@ -1923,12 +1816,13 @@ function QuizTab({ jobId, manifest }) {
             type="button"
             onClick={handleGenerate}
             disabled={!canGenerate}
-            className="inline-flex h-9 items-center justify-center gap-2 rounded-lg border border-ember-500/50 bg-ember-500/10 px-4 text-xs font-bold text-ember-300 transition hover:border-ember-500 hover:text-white disabled:cursor-not-allowed disabled:opacity-40"
+            className="sg-btn-accent"
+            style={{ justifyContent: "center" }}
           >
             {generating ? (
-              <><Loader2 className="h-3.5 w-3.5 animate-spin" /> Generating…</>
+              <><Loader2 className="sg-spin" /> Generating…</>
             ) : (
-              <><Sparkles className="h-3.5 w-3.5" /> Generate Quiz</>
+              <><Sparkles /> Generate Quiz</>
             )}
           </button>
         </div>
@@ -1936,20 +1830,20 @@ function QuizTab({ jobId, manifest }) {
 
       {/* Previously generated quizzes */}
       {quizzesError && (
-        <p className="text-xs text-red-300">{quizzesError}</p>
+        <p className="sg-notice sg-notice-red">{quizzesError}</p>
       )}
 
       {quizzes === null && !quizzesError && (
-        <div className="flex items-center gap-2 text-xs text-slate-400">
-          <Loader2 className="h-3.5 w-3.5 animate-spin text-ember-500" />
+        <div className="sg-row sg-hint">
+          <Loader2 className="sg-spin" />
           Loading quizzes…
         </div>
       )}
 
       {quizzes !== null && quizzes.length > 0 && (
-        <section className="rounded-2xl border border-white/10 bg-white/[0.035] p-4">
-          <h3 className="text-sm font-bold text-white mb-2">Saved Quizzes</h3>
-          <div className="grid gap-1.5">
+        <section>
+          <h3 className="text-sm font-bold text-white" style={{ marginBottom: 8 }}>Saved Quizzes</h3>
+          <div className="sg-stack">
             {[...quizzes].reverse().map((q) => {
               const isActive = activeQuiz?.n === q.n;
               const types = (q.config?.question_types ?? []).join(", ");
@@ -1958,15 +1852,11 @@ function QuizTab({ jobId, manifest }) {
                   key={q.n}
                   type="button"
                   onClick={() => handleLoadQuiz(q.n)}
-                  className={`w-full rounded-xl border px-3 py-2 text-left text-xs transition ${
-                    isActive
-                      ? "border-ember-500/60 bg-ember-500/[0.08] text-white"
-                      : "border-white/10 bg-[#070B14] text-slate-300 hover:border-white/20 hover:text-white"
-                  }`}
+                  className={`sg-opt-btn${isActive ? " sel" : ""}`}
                 >
-                  <span className="font-bold">Quiz #{q.n}</span>
-                  <span className="ml-2 text-slate-400">{q.item_count} questions · {types} · {q.config?.difficulty}</span>
-                  <span className="ml-2 text-slate-500">{q.created_at?.slice(0, 10)}</span>
+                  <span style={{ fontWeight: 700 }}>Quiz #{q.n}</span>
+                  <span style={{ marginLeft: 8, color: "var(--muted)" }}>{q.item_count} questions · {types} · {q.config?.difficulty}</span>
+                  <span style={{ marginLeft: 8, color: "var(--muted)" }}>{q.created_at?.slice(0, 10)}</span>
                 </button>
               );
             })}
@@ -1976,31 +1866,30 @@ function QuizTab({ jobId, manifest }) {
 
       {/* Active quiz display */}
       {activeQuiz && (
-        <section className="rounded-2xl border border-white/10 bg-white/[0.035] p-4">
-          <div className="flex flex-wrap items-center justify-between gap-3 mb-3">
+        <section>
+          <div className="sg-head-row" style={{ marginBottom: 12 }}>
             <div>
               <h3 className="text-sm font-bold text-white">
                 Quiz #{activeQuiz.n} · {activeQuiz.item_count} questions
               </h3>
-              <p className="mt-0.5 text-[11px] text-slate-400">
+              <p className="sg-hint" style={{ marginTop: 2 }}>
                 {(activeQuiz.config?.question_types ?? []).join(", ")} · {activeQuiz.config?.difficulty} · {activeQuiz.config?.focus}
               </p>
             </div>
-            <div className="flex flex-wrap gap-2">
+            <div className="sg-btn-row">
               <button
                 type="button"
                 onClick={() => { setShowAnswers((v) => !v); setOpenAnswerIdx(null); }}
-                className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-white/10 bg-white/[0.04] px-3 text-xs font-bold text-slate-300 transition hover:border-white/20 hover:text-white"
               >
-                {showAnswers ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
+                {showAnswers ? <EyeOff /> : <Eye />}
                 {showAnswers ? "Hide All Answers" : "Show All Answers"}
               </button>
             </div>
           </div>
 
           {/* Export buttons */}
-          <div className="flex flex-wrap gap-2 mb-4 pb-3 border-b border-white/10">
-            <span className="self-center text-[11px] font-bold uppercase tracking-wide text-slate-500">Export:</span>
+          <div className="sg-btn-row" style={{ marginBottom: 16, paddingBottom: 12, borderBottom: "1px solid var(--hairline)", alignItems: "center" }}>
+            <span className="sg-sub-label" style={{ alignSelf: "center" }}>Export:</span>
             {[
               { format: "csv", label: "CSV" },
               { format: "anki_tsv", label: "Anki TSV" },
@@ -2010,16 +1899,16 @@ function QuizTab({ jobId, manifest }) {
                 key={format}
                 href={quizExportUrl(jobId, activeQuiz.n, format)}
                 download
-                className="inline-flex h-7 items-center gap-1.5 rounded-lg border border-white/10 bg-white/[0.04] px-3 text-[11px] font-bold text-slate-300 transition hover:border-ember-500/60 hover:text-white"
+                className="sg-modal-action"
               >
-                <Download className="h-3 w-3" />
+                <Download />
                 {label}
               </a>
             ))}
           </div>
 
           {/* Questions list */}
-          <div className="grid gap-3">
+          <div className="sg-stack">
             {(activeQuiz.items ?? []).map((item, idx) => {
               const answerVisible = showAnswers || openAnswerIdx === idx;
               return (
@@ -2050,36 +1939,29 @@ function QuizQuestionCard({ item, index, answerVisible, onToggleAnswer, showAllA
   }[item.type] ?? item.type;
 
   const typeTone = {
-    mcq: "border-sky-400/25 bg-sky-400/10 text-sky-200",
-    true_false: "border-violet-400/30 bg-violet-400/10 text-violet-200",
-    fill_blank: "border-amber-300/30 bg-amber-300/10 text-amber-100",
-    short_answer: "border-emerald-400/25 bg-emerald-400/10 text-emerald-200",
-    flashcards: "border-ember-500/30 bg-ember-500/10 text-ember-200",
-  }[item.type] ?? "border-white/10 bg-white/[0.04] text-slate-300";
+    mcq: "sg-tag-indigo",
+    true_false: "",
+    fill_blank: "sg-tag-amber",
+    short_answer: "sg-tag-green",
+    flashcards: "sg-tag-indigo",
+  }[item.type] ?? "";
 
   return (
-    <div className="rounded-xl border border-white/10 bg-[#070B14] p-3">
-      <div className="flex items-start justify-between gap-2">
-        <div className="flex items-start gap-2 min-w-0">
-          <span className="mt-0.5 shrink-0 grid h-5 w-5 place-items-center rounded bg-white/[0.06] font-mono text-[10px] font-bold text-slate-400">
+    <div className="sg-card-row">
+      <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 8 }}>
+        <div style={{ display: "flex", alignItems: "flex-start", gap: 8, minWidth: 0 }}>
+          <span className="sg-idx" style={{ marginTop: 1 }}>
             {index + 1}
           </span>
-          <div className="min-w-0">
-            <p className="text-xs font-semibold text-slate-100 leading-5">{item.question}</p>
+          <div style={{ minWidth: 0 }}>
+            <p style={{ fontWeight: 600, color: "var(--text)" }}>{item.question}</p>
             {item.type === "mcq" && item.options && (
-              <ul className="mt-2 grid gap-1">
+              <ul className="sg-stack" style={{ marginTop: 8 }}>
                 {item.options.map((opt, oi) => {
                   const letter = opt.charAt(0).toUpperCase();
                   const isCorrect = answerVisible && letter === (item.answer ?? "").toUpperCase();
                   return (
-                    <li
-                      key={oi}
-                      className={`rounded-lg border px-2.5 py-1 text-[11px] transition ${
-                        isCorrect
-                          ? "border-emerald-400/30 bg-emerald-400/10 text-emerald-200 font-bold"
-                          : "border-white/[0.06] bg-white/[0.025] text-slate-300"
-                      }`}
-                    >
+                    <li key={oi} className={`sg-q-opt${isCorrect ? " correct" : ""}`}>
                       {opt}
                     </li>
                   );
@@ -2088,15 +1970,11 @@ function QuizQuestionCard({ item, index, answerVisible, onToggleAnswer, showAllA
             )}
           </div>
         </div>
-        <div className="shrink-0 flex items-center gap-1.5">
-          <span className={`rounded-full border px-2 py-0.5 text-[10px] font-bold ${typeTone}`}>
-            {typeLabel}
-          </span>
-        </div>
+        <span className={`sg-tag ${typeTone}`}>{typeLabel}</span>
       </div>
 
       {item.topic && (
-        <p className="mt-2 text-[10px] text-slate-500 ml-7">Topic: {item.topic}</p>
+        <p className="sg-hint" style={{ marginTop: 8, marginLeft: 30 }}>Topic: {item.topic}</p>
       )}
 
       {/* Answer toggle (individual) — only when not showing all answers */}
@@ -2104,17 +1982,17 @@ function QuizQuestionCard({ item, index, answerVisible, onToggleAnswer, showAllA
         <button
           type="button"
           onClick={onToggleAnswer}
-          className="mt-2 ml-7 inline-flex items-center gap-1.5 text-[11px] font-bold text-slate-500 transition hover:text-ember-300"
+          style={{ marginTop: 8, marginLeft: 30 }}
         >
-          {answerVisible ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
+          {answerVisible ? <ChevronUp /> : <ChevronDown />}
           {answerVisible ? "Hide answer" : "Show answer"}
         </button>
       )}
 
       {answerVisible && (
-        <div className="mt-2 ml-7 rounded-lg border border-emerald-400/20 bg-emerald-400/[0.06] px-3 py-2">
-          <p className="text-[11px] font-bold uppercase tracking-wide text-emerald-500 mb-0.5">Answer</p>
-          <p className="text-xs text-emerald-200">{item.answer}</p>
+        <div className="sg-card-row good" style={{ marginTop: 8, marginLeft: 30 }}>
+          <p className="sg-sub-label" style={{ color: "#6EE7B7", marginBottom: 2 }}>Answer</p>
+          <p style={{ color: "#6EE7B7" }}>{item.answer}</p>
         </div>
       )}
     </div>

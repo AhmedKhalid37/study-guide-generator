@@ -3113,3 +3113,116 @@ details.sg-mdl-helper > summary::-webkit-details-marker { display: none; }
 .sg-help-command-empty p { margin-top: 4px; font-size: 12.5px; line-height: 1.5; color: var(--muted); }
 .sg-help-note { display: flex; align-items: flex-start; gap: 9px; font-size: 12.5px; line-height: 1.5; color: var(--text-dim); }
 .sg-help-note svg { width: 14px; height: 14px; flex: none; margin-top: 1px; color: #6EE7B7; }
+
+/* =========================================================================
+   RecentJobs + JobDetails body — Slice 15 (frontend visual/CSS only).
+   Closes the Slice 11 reskin debt: the JobDetails drawer body/tab content
+   still rendered with inert Tailwind utilities (badges concatenating, tiles
+   and cards with no surface, code/log blocks unstyled, notices uncoloured).
+   These semantic classes sit on top of the Slice 5b .sg-drawer-body element
+   baseline and reuse the existing pill/card/token vocabulary. No behaviour,
+   handlers, endpoints, or data exposure change — markup/class only.
+   ========================================================================= */
+
+/* default icon size inside the drawer body — Tailwind h-x/w-x are inert, so
+   lucide icons would otherwise fall back to their 24px intrinsic size. Scoped
+   rules below (.sg-tag svg, .sg-idx, etc.) come later and win where needed. */
+.sg-drawer-body svg { width: 16px; height: 16px; flex: none; }
+.sg-drawer-body .sg-spin { animation: sg-spin .8s linear infinite; }
+
+/* dense status / category tag (smaller than .pill; reuses pill tones) */
+.sg-tag {
+  display: inline-flex; align-items: center; gap: 5px;
+  padding: 3px 9px; border-radius: var(--r-pill);
+  font-size: 12.5px; font-weight: 600; white-space: nowrap;
+  border: 1px solid var(--card-border); background: var(--card); color: var(--text-dim);
+}
+.sg-tag svg { width: 13px; height: 13px; }
+.sg-tag-green  { border-color: var(--green-soft);  background: var(--green-soft);  color: #6EE7B7; }
+.sg-tag-amber  { border-color: var(--amber-soft);  background: var(--amber-soft);  color: #F4C76B; }
+.sg-tag-red    { border-color: var(--red-soft);    background: var(--red-soft);    color: #FCA5A5; }
+.sg-tag-indigo { border-color: var(--indigo-soft); background: var(--indigo-soft); color: #A5A8F8; }
+
+/* responsive metric/field grids (replace inert grid-cols-* utilities) */
+.sg-grid-2 { display: grid; gap: 10px; }
+.sg-grid-3 { display: grid; gap: 10px; }
+@media (min-width: 560px) {
+  .sg-grid-2 { grid-template-columns: 1fr 1fr; }
+  .sg-grid-3 { grid-template-columns: repeat(3, 1fr); }
+}
+
+/* info tile (validation / render-log summary) */
+.sg-tile { border: 1px solid var(--card-border); background: var(--card); border-radius: 11px; padding: 11px 12px; }
+.sg-tile-label { display: flex; align-items: center; gap: 6px; font: 600 11px var(--mono); text-transform: uppercase; letter-spacing: 0.08em; color: var(--muted); }
+.sg-tile-label svg { width: 14px; height: 14px; }
+.sg-tile-value { margin-top: 7px; font-size: 15px; font-weight: 600; color: var(--text); }
+.sg-tile.good .sg-tile-value { color: #6EE7B7; }
+.sg-tile.warn .sg-tile-value { color: #F4C76B; }
+
+/* scrollable code / log / markdown block */
+.sg-pre {
+  max-height: 280px; overflow: auto; margin: 0;
+  border: 1px solid var(--card-border); background: #0E0E10; border-radius: 10px;
+  padding: 11px 12px;
+  font-family: var(--mono); font-size: 12.5px; line-height: 1.55; color: var(--text-dim);
+  white-space: pre-wrap; word-break: break-word;
+}
+.sg-pre-tall { max-height: 480px; }
+
+/* inline notice paragraphs (warnings / errors / success) */
+.sg-notice {
+  border: 1px solid var(--card-border); background: var(--card); border-radius: 10px;
+  padding: 10px 12px; font-size: 13.5px; line-height: 1.5; color: var(--text-dim);
+  word-break: break-word;
+}
+.sg-notice-amber { border-color: var(--amber-soft); background: var(--amber-soft); color: #F4C76B; }
+.sg-notice-red   { border-color: var(--red-soft);   background: var(--red-soft);   color: #FCA5A5; }
+.sg-notice-green { border-color: var(--green-soft); background: var(--green-soft); color: #6EE7B7; }
+
+/* danger panel (failed-job section) — beats the .sg-drawer-body section base */
+.sg-drawer-body section.sg-danger-card { border-color: var(--red-soft); background: rgba(239,68,68,0.05); }
+
+/* generic stack + bordered card-row (version / outline / quiz / saved items) */
+.sg-stack { display: grid; gap: 10px; }
+.sg-card-row { border: 1px solid var(--card-border); background: var(--card); border-radius: 11px; padding: 11px 12px; }
+.sg-card-row.good { border-color: var(--green-soft); background: var(--green-soft); }
+.sg-card-row.warn { border-color: var(--amber-soft); background: var(--amber-soft); }
+.sg-card-row.bad  { border-color: var(--red-soft);   background: var(--red-soft); }
+
+/* header row: title left, trailing chips/actions right */
+.sg-head-row { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px; }
+.sg-chip-row { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.sg-btn-row { display: flex; flex-wrap: wrap; gap: 8px; }
+
+/* accent button variant (override the gray cascade for primary actions) */
+.sg-drawer-body button.sg-btn-accent { border-color: var(--indigo); background: var(--indigo-soft); color: #C7C9FB; }
+.sg-drawer-body button.sg-btn-accent:hover:not(:disabled) { color: var(--text); border-color: var(--indigo); }
+.sg-drawer-body button:disabled { opacity: 0.45; cursor: not-allowed; }
+
+/* selectable option button (section picker / saved-quiz / type toggle) */
+.sg-drawer-body button.sg-opt-btn { width: 100%; justify-content: flex-start; text-align: left; }
+.sg-drawer-body button.sg-opt-btn.sel { border-color: var(--indigo); background: var(--indigo-soft); color: var(--text); }
+
+/* small monospace index badge */
+.sg-idx { display: grid; place-items: center; width: 22px; height: 22px; flex: none; border-radius: 6px; background: var(--card-2); border: 1px solid var(--card-border); font: 700 11px var(--mono); color: var(--muted); }
+
+/* diff view lines */
+.sg-diff-line { display: block; }
+.sg-diff-add  { color: #6EE7B7; background: rgba(52,211,153,0.10); }
+.sg-diff-del  { color: #FCA5A5; background: rgba(239,68,68,0.10); text-decoration: line-through; opacity: 0.8; }
+.sg-diff-info { color: var(--muted); font-style: italic; }
+.sg-diff-same { color: var(--muted); }
+
+/* quiz question option list */
+.sg-q-opt { border: 1px solid var(--card-border); background: var(--card-2); border-radius: 8px; padding: 6px 10px; font-size: 13px; color: var(--text-dim); }
+.sg-q-opt.correct { border-color: var(--green-soft); background: var(--green-soft); color: #6EE7B7; font-weight: 600; }
+
+/* attachment item row inside the drawer */
+.sg-att-item { border: 1px solid var(--card-border); background: var(--card); border-radius: 10px; padding: 10px 11px; }
+.sg-att-item-top { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.sg-att-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13px; font-weight: 600; color: var(--text); }
+.sg-att-meta { margin-top: 7px; display: flex; flex-wrap: wrap; gap: 8px; font-size: 12px; font-weight: 550; color: var(--muted); }
+
+/* small section/label headings inside body sub-blocks */
+.sg-sub-label { font: 600 11px var(--mono); text-transform: uppercase; letter-spacing: 0.08em; color: var(--muted); }
+.sg-hint { font-size: 12.5px; line-height: 1.5; color: var(--muted); }

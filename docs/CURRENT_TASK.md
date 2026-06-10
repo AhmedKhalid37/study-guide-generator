@@ -5,6 +5,49 @@
 
 ---
 
+## Slice 15 — RecentJobsPanel + JobDetails body reskin (DONE / committed).
+
+- **Slice 15 closes the last Slice 11 reskin debt:** the JobDetails drawer
+  **body/tab content** still rendered with inert Tailwind utilities (badges
+  concatenating, tiles/cards with no surface, code/log blocks unstyled, notices
+  uncoloured, oversized 24px lucide icons). **Frontend visual/CSS/markup only** —
+  no backend/API/pipeline changes; every handler, endpoint, payload, tab id,
+  artifact link, retry/rerender/section-regen/revert flow, and the
+  `useImperativeHandle({ openJob })` drawer-opening contract are untouched.
+- **Files changed (2, frontend-only):**
+  `frontend/src/components/RecentJobsPanel.jsx` (markup/className swaps across the
+  drawer body: Details, Quiz, Outline-compliance, Sections, Edit-Markdown,
+  Version-History tabs + FailedJobPanel, AttachmentDetails, Validation/Render-log
+  tiles, DiffView, QuizQuestionCard) and `frontend/src/design-system.css`
+  (additive **"RecentJobs + JobDetails body — Slice 15"** block).
+- **Scope A (Recent list):** the Home Recent/Favorite cards already used the
+  semantic `Panel`/`ItemCard`/`ProviderPill` system (Slice 11/12) — left as-is.
+  The dead non-embedded `PreviewPanel` branch was not churned.
+- **Scope B/C (drawer body):** new semantic classes layered on the existing
+  Slice 5b `.sg-drawer-body` element cascade — `.sg-tag(+tones)`,
+  `.sg-tile/.sg-tile-value`, `.sg-pre`, `.sg-notice(+tones)`, `.sg-danger-card`,
+  `.sg-card-row(+good/warn/bad)`, `.sg-stack`, `.sg-grid-2/3`, `.sg-head-row`,
+  `.sg-chip-row`, `.sg-btn-row`, `.sg-btn-accent`, `.sg-opt-btn`, `.sg-idx`,
+  `.sg-diff-*`, `.sg-q-opt`, `.sg-att-item`, plus a generic
+  `.sg-drawer-body svg{16px}` default (Tailwind `h-x/w-x` are inert) and
+  `.sg-drawer-body .sg-spin` so loaders actually spin. Reuses `.pill`,
+  `.recent-state`, `.sg-form-sub`, `.sg-modal-action`, `.sg-tab-stack`,
+  `.sg-art-*`, `.sg-row*` where they already fit.
+- **Safety:** pure class/markup change — no new data surfaced; no secrets, keys,
+  host paths, tokens, socket paths, raw argv, or hidden prompts exposed; no
+  `dangerouslySetInnerHTML`/raw HTML; no new deps; no Tailwind utilities revived
+  (no `.grid`/`.flex`-by-name rules). Larger Slice 5b density baseline kept.
+- **Verification:** `npm run build` green; `python -m compileall api pipeline`
+  green; `git diff --check` clean; `git diff` is **frontend-only (2 files)**;
+  `docker compose up -d --build` green (healthy) and the **container-built served
+  bundle** confirmed to contain the new CSS + JSX classes; `smoke_release.py`
+  **28 passed / 0 failed / 0 skipped** (incl. no-key-leak assertions; provider LLM
+  flows exercise untouched backend). Screenshots delegated to the operator; no
+  automated screenshots.
+- **Status: implemented + verified, awaiting review before commit.**
+
+---
+
 ## Slice 14 — Styles "Compare styles" feature DONE.
 
 - **Slice 14 adds a real Compare Styles feature to the Styles workspace.** This is
