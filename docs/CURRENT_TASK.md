@@ -5,6 +5,77 @@
 
 ---
 
+## Slice 18 — Deterministic math verification core: pure module + fixtures (DONE — reviewed + committed).
+
+- **Purpose:** first **correctness / measurement** slice after the reskin/hygiene
+  phase. Add a deterministic, safe verifier that inspects generated guide
+  Markdown/text and checks **simple numeric math claims** (`2 + 3 = 5`, `sqrt(16)
+  = 4`, `exp(1.43) / (1 + exp(1.43)) ≈ 0.806`, …), producing a structured report
+  with per-claim verdicts `ok` / `mismatch` / `unparseable`. **Pure core only.**
+- **Scope guardrails honored:** **no** job-pipeline integration, **no** artifact
+  writing, **no** `validation.json` change, **no** API routes, **no** frontend/UI/
+  JobDetails change, **no** prompt change, **no** render/OCR/math-sanitizer rewrite.
+  `pipeline/math_validator.py` (KaTeX render validation) is **untouched** — this is
+  a deliberately separate concept (numeric correctness, not render syntax).
+- **New file — `pipeline/math_verifier.py`:**
+  - Public API: `verify_math_claims(text, *, source_name=None, tolerance_abs=1e-6,
+    tolerance_rel=1e-3) -> MathVerificationReport`. Dataclasses `ClaimResult` /
+    `MathVerificationReport` with `to_dict()` / `to_json()`; report shape =
+    `{version, source_name, summary{total,ok,mismatch,unparseable}, claims[...]}`.
+  - **Extraction (Tier A, line-based):** `expr <rel> number` where `rel` ∈
+    `=`, `≈`, `~=`, `→`, `->` (normalized to exact `=` / approx `≈`); chained
+    `a = b ≈ c` handled as adjacent pairs. Skips fenced code blocks (``` / ~~~)
+    and inline code spans; unwraps `$…$`, `$$…$$`, `\(…\)`, `\[…\]`. A prose
+    lead-in is trimmed to the trailing expression **only** when bounded by a
+    non-word char, so `x + 2 = 5` stays `unparseable` (never a false `2`).
+  - **Normalizer (deliberately limited):** unicode minus `−`→`-`; `×`,`·`,
+    `\times`,`\cdot`→`*`; `÷`→`/`; `^`→`**`; `√(…)`/`\sqrt{…}`; `\frac{a}{b}`;
+    `\left`/`\right` removal; thousands commas; `π`→`pi`; `e`/`exp`; constants
+    `pi`/`e`/`tau`.
+  - **Evaluation safety:** stdlib `ast` parse + explicit whitelist walk —
+    **no `eval`/`exec`**, no attribute access, no names beyond whitelisted
+    constants, no imports/FS/network/process. Allowed funcs: `sqrt, exp, log,
+    ln, log10, log2, sin, cos, tan, abs`. Bounds: text ≤ 200k chars, line ≤ 2k,
+    expr ≤ 200 chars / ≤ 100 tokens / ≤ 120 AST nodes, `**` exponent ≤ 100 /
+    base ≤ 1e6, ≤ 5000 claims. Every verifier exception → `unparseable` (never
+    `mismatch`); attribute/dunder/string payloads are rejected unexecuted.
+  - **Tolerance:** `ok` if abs diff ≤ `1e-6` OR rel diff ≤ `1e-3`; approximate
+    (`≈`) claims additionally allow one unit-in-last-place of the claimed literal
+    (chained-rounding slack) — e.g. `0.8057 ≈ 0.806` and the logistic example are
+    `ok`, while real near-misses (`1/3 ≈ 0.350`, `2 + 3 ≈ 5.4`) stay `mismatch`.
+  - **Optional CLI:** `python -m pipeline.math_verifier <file>` prints the JSON
+    report (stdout only — no file writes).
+- **Dependency decision:** **none added.** SymPy *is* installed in the host env
+  (1.14.0) but is **not** listed in `requirements.txt` and is **not used** — a
+  stdlib `ast`+`math` evaluator is safer (explicit whitelist, no parser surprises,
+  no hang risk) and keeps the backend dependency set unchanged.
+- **Tests / fixtures:** `test_scripts/test_math_verifier.py` (plain-Python
+  assertion style, run `python test_scripts/test_math_verifier.py`) — **74/74
+  PASS**. Covers good claims, mismatches, unparseable (units/variables/symbolic/
+  prose), Markdown safety (fenced + inline code, `$…$`/`\[…\]` wrappers),
+  normalization, tolerance/rounding, chained claims, line numbers, safety guards
+  (long expr rejected, unknown function rejected, malicious `__import__`/attribute/
+  `open` payloads not executed → `unparseable`, pow-blowup + div-by-zero guarded),
+  report JSON round-trip, and four fixtures under
+  `test_scripts/fixtures/math_verifier/` (`good_claims.md`, `mismatch_claims.md`,
+  `unparseable_claims.md`, `code_block.md`).
+- **Validation (all green):** `npm --prefix frontend run build`; `npm --prefix
+  frontend run test` (full maintained chain); `python -m compileall api pipeline`;
+  `python test_scripts/test_math_verifier.py` → 74/74; `git diff --check` clean;
+  `python test_scripts/smoke_release.py` → **28 passed / 0 failed / 0 skipped**
+  (live app unchanged — verifier is not imported by the server).
+- **Pure-core scope (reconfirmed at commit):** Slice 18 is **math-correctness core
+  only** — **no** job-pipeline integration, **no** artifact writing, **no**
+  `validation.json` field, **no** API route, **no** prompt change, and **no**
+  frontend/UI/JobDetails surfacing. The verifier is not imported by `api/server.py`
+  or any pipeline stage.
+- **Status:** **DONE** — reviewed, approved, and committed.
+  Next (separate, designed slice): decide whether/how to integrate the verifier
+  (job-stage report / `validation.json` / JobDetails) — generation must never fail
+  on it.
+
+---
+
 ## Slice 17 — Hygiene checkpoint: dead-file sweep + test-chain repair (DONE — reviewed + committed).
 
 - **Purpose:** hygiene checkpoint after committed Slice 16 (`eaa1263`) and Slice 15

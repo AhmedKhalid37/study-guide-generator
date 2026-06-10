@@ -12,11 +12,30 @@
   inert in this app, live UI uses real `.sg-*` / element-cascade rules). Slice 16
   was the post-reskin **release audit + checkpoint**; Slice 17 is the follow-on
   **hygiene checkpoint** (dead-file sweep + `npm test` chain repair). With Slice 17
-  the reskin/UX phase is closed and the codebase is clean — **the next phase is the
-  correctness / measurement layer, starting with deterministic math verification.**
-- **HEAD:** `eaa1263` (Slice 16, committed). Slice 17 is **implemented + verified,
-  PENDING REVIEW before commit** — once committed, update this line with the
-  Slice 17 hash.
+  the reskin/UX phase is closed and the codebase is clean — **the correctness /
+  measurement phase has now begun with Slice 18 (deterministic math verification).**
+- **HEAD:** Slice 18 (deterministic math-correctness verifier, **pure core only**)
+  is **committed** on `chrome-renderer-v1`, immediately after Slice 17 (`ff214fd`);
+  run `git log --oneline -1` for the exact hash. Slice 18 added a standalone module
+  + tests only — **no** job/artifact/API/prompt/frontend/UI integration.
+- **Slice 18 result (pure core only):** added `pipeline/math_verifier.py`, a safe,
+  deterministic numeric-correctness verifier (`verify_math_claims(text, *,
+  source_name=None)` → JSON-serializable report with per-claim `ok` / `mismatch` /
+  `unparseable`). Conservative Tier-A, line-based extraction of `expression
+  <relation> number` claims (`=`, `≈`, `~=`, `->`, `→`); skips fenced/inline code;
+  unwraps `$…$` / `$$…$$` / `\(…\)` / `\[…\]`; small safe normalizer (unicode minus,
+  `×·\times\cdot`→`*`, `÷`→`/`, `^`→`**`, `√`/`\sqrt`/`\frac`, `π`, `e`/`exp`).
+  Evaluation is a stdlib `ast`-walk whitelist (no `eval`, no attribute access, no
+  names beyond `pi`/`e`/`tau`, bounded length/tokens/nodes/exponent) — every
+  verifier error downgrades to `unparseable`, never `mismatch`. **NOT wired into
+  jobs / artifacts / API / frontend / `validation.json`** — it is **separate from
+  `math_validator.py`** (which validates KaTeX rendering, not numeric values).
+  **No new dependency** — SymPy is installed in the host env but unused/not added;
+  a stdlib AST evaluator is safer and dependency-free. Tests
+  `test_scripts/test_math_verifier.py` (74/74) + fixtures under
+  `test_scripts/fixtures/math_verifier/`; build, `npm test`, `compileall`, diff
+  check, and `smoke_release.py` (28/0/0) all green. Optional CLI:
+  `python -m pipeline.math_verifier <file>`.
 - **Slice 17 result:** carried out the dead-code sweep Slice 16 had deferred —
   `git rm` of the proven-unreachable mockup/legacy presentational set (`BrandMark`,
   `Chip`, `ClaudeIcons`, `DesktopMockup`, `FallbackImage`, `Field`, `GlowBackground`,
@@ -38,9 +57,11 @@
   "treat `npm test` failures as pre-existing" caveat no longer applies.)
 - **Screenshots / visual review are operator-owned** — Claude Code does not produce
   them; the operator does visual inspection and supplies screenshots if needed.
-- **NEXT recommended phase = correctness / measurement layer**, starting with
-  **deterministic math verification** (the reskin/UX phase is closed; this is the
-  natural next direction, not more UI work). LMM Phase 2 remains **paused** —
+- **NEXT after Slice 18 = decide on integration of the math verifier** (e.g.
+  optional job-stage report / `validation.json` field / JobDetails surfacing) —
+  that integration is intentionally **out of scope for Slice 18** and must be its
+  own designed slice; the verifier must never make guide generation fail. LMM
+  Phase 2 remains **paused** —
   resume only with a separately designed approve-root or packaging slice;
   app-suggested settings remain deferred.
 
