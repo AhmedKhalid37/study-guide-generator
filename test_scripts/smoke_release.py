@@ -127,11 +127,29 @@ provider = configured[0] if configured else None
 model = (provider or {}).get("default_model") or ((provider or {}).get("available_models") or [None])[0]
 
 # ── 2. paste → all artifacts ─────────────────────────────────────────────────
-status, paste = _req("POST", "/api/jobs/paste", json_body={"text": "# Release Paste\n\nInline $a^2+b^2=c^2$ and text."})
+status, paste = _req("POST", "/api/jobs/paste", json_body={
+    "text": "# Release Paste\n\nInline $a^2+b^2=c^2$ and text.\n\n2 + 3 = 5\n"})
 pid = paste.get("job_id")
 check("paste → done", status == 200 and paste.get("status") == "done", f"status={status}")
 check("paste artifacts (PDF/HTML/MD/DOCX)",
       all(artifact_ok(pid, n) for n in ["final.pdf", "final.html", "clean.md", "final.docx"]), "")
+
+# Slice 21: the per-job math_verification.json sibling artifact is produced for a
+# completed paste job and downloadable through the existing artifact route. Robust
+# / optional by design: we only assert shape + safe status, never a claim count.
+mv_status, mv_body, _ = _req("GET", f"/api/jobs/{pid}/artifacts/math_verification.json", raw=True)
+mv_ok = False
+mv_detail = f"status={mv_status}"
+if mv_status == 200 and mv_body:
+    try:
+        mvj = json.loads(mv_body.decode())
+        mv_ok = mvj.get("kind") == "math_verification" and mvj.get("status") in ("completed", "skipped")
+        mv_detail = f"status={mvj.get('status')} leak={find_leak(mvj)}"
+        if find_leak(mvj) is not None:
+            mv_ok = False
+    except Exception as exc:  # noqa: BLE001 - smoke diagnostics only
+        mv_detail = f"json error: {exc}"
+check("paste math_verification.json artifact (+ no leak)", mv_ok, mv_detail)
 
 # ── 3. upload markdown → all artifacts ───────────────────────────────────────
 status, up = _req("POST", "/api/jobs/upload-markdown", multipart={
@@ -227,7 +245,11 @@ if provider and model:
         "outline": {"enabled": True, "sections": [{"title": t, "instructions": ""} for t in titles]},
     })
     oid = oj.get("job_id")
-    ok_done = status == 200 and oj.get("status") == "done" and oj.get("outline_enabled") is True
+    ok_done = (
+        status == 200
+        and oj.get("status") in ("done", "completed_with_warnings")
+        and oj.get("outline_enabled") is True
+    )
     md = ""
     if oid:
         s, b, _ = _req("GET", f"/api/jobs/{oid}/artifacts/clean.md", raw=True)

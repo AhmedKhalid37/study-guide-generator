@@ -110,6 +110,14 @@ class Job:
         return self.dir / "validation.json"
 
     @property
+    def math_verification_json(self) -> Path:
+        # Slice 21: sibling correctness artifact holding the deterministic numeric
+        # math-verification report (pipeline/math_verifier.py). Intentionally a
+        # SEPARATE file from validation.json - that KaTeX-render report keeps its
+        # own stable schema and is never merged with numeric verification.
+        return self.dir / "math_verification.json"
+
+    @property
     def render_log(self) -> Path:
         return self.logs_dir / "render.log"
 

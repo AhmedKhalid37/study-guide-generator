@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import json
 import shutil
 import sys
 from pathlib import Path
@@ -148,6 +149,11 @@ def run_raw_markdown_pipeline(job: Job, *, theme: str, strict_math: bool) -> Job
             file=sys.stderr,
         )
 
+    # Slice 21: persist a per-job math_verification.json sibling artifact from the
+    # final, sanitized clean.md. Advisory-only and fully defensive - it never
+    # changes job status, never blocks the render below, and never fails the job.
+    _write_math_verification(job)
+
     # Last safe checkpoint before the uninterruptible Chromium render: a cancel
     # requested up to here skips the render entirely. Once render_pdf starts we
     # let it finish (no process killing).
@@ -216,6 +222,59 @@ def rerender_job(job: Job, *, theme: str | None = None, strict_math: bool | None
 
 def _run_raw_markdown_pipeline(job: Job, *, theme: str, strict_math: bool) -> Job:
     return run_raw_markdown_pipeline(job, theme=theme, strict_math=strict_math)
+
+
+def _write_math_verification(job: Job) -> None:
+    """Persist a per-job ``math_verification.json`` sibling artifact (Slice 21).
+
+    Runs the deterministic Slice 18 numeric verifier
+    (:func:`pipeline.math_verifier.verify_math_claims`) against the final,
+    sanitized ``clean.md`` and records its report. This is **advisory only**:
+
+      * It NEVER fails the job, NEVER changes the visible job status, and NEVER
+        blocks PDF/HTML/DOCX rendering.
+      * Zero extracted claims is a normal ``completed`` result (summary total 0).
+      * Mismatched / unparseable claims are recorded; they do not fail the job.
+      * Any unexpected error degrades to a small ``skipped`` artifact carrying a
+        safe message and NO traceback. Tracebacks/expression bodies are never
+        written to the artifact, and only the exception *type name* is logged.
+
+    The verifier (``math_verifier``) is the numeric-correctness checker and is
+    deliberately distinct from ``math_validator`` (KaTeX render validation, whose
+    ``validation.json`` schema is untouched by this artifact).
+    """
+    artifact_path = job.math_verification_json
+    try:
+        from pipeline.math_verifier import verify_math_claims
+
+        text = job.clean_md.read_text(encoding="utf-8", errors="replace")
+        report = verify_math_claims(text, source_name="clean.md")
+        payload = {
+            "version": 1,
+            "kind": "math_verification",
+            "status": "completed",
+            "source": "clean.md",
+            "report": report.to_dict(),
+        }
+        job.save_text(artifact_path, json.dumps(payload, indent=2) + "\n")
+    except Exception as exc:  # never let verification break a job
+        try:
+            payload = {
+                "version": 1,
+                "kind": "math_verification",
+                "status": "skipped",
+                "reason": "verifier_error",
+                "safe_message": "Math verification could not be completed.",
+            }
+            job.save_text(artifact_path, json.dumps(payload, indent=2) + "\n")
+        except Exception:
+            pass  # writing the degraded artifact must itself never raise
+        # Log only the exception TYPE - never its message/args, which could echo
+        # guide content or a path - so the artifact and logs stay clean.
+        print(
+            f"Math verification skipped ({type(exc).__name__}); job continues.",
+            file=sys.stderr,
+        )
 
 
 def _validation_error_message(result) -> str:

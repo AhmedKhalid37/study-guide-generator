@@ -3744,6 +3744,14 @@ def _ensure_docx(job: Job, *, regenerate: bool = False) -> Path | None:
 
 
 def _artifact_path(job: Job, artifact_name: str) -> tuple[Path, str]:
+    # Slice 21: the math-verification sibling artifact is downloadable through the
+    # existing per-file route, but is intentionally NOT in ARTIFACTS - keeping it
+    # out of _artifact_urls/_artifact_details means no new row appears in the
+    # JobDetails UI this slice (backend/pipeline-only integration). It is reached
+    # only by an exact, fixed filename, so no path traversal is introduced.
+    if artifact_name == "math_verification.json":
+        return job.math_verification_json, "application/json"
+
     artifact = ARTIFACTS.get(artifact_name)
     if artifact is None:
         raise HTTPException(status_code=404, detail="Artifact not found.")
