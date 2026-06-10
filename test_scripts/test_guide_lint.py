@@ -18,7 +18,11 @@ import sys
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
-from pipeline.guide_lint import GuideLintReport, lint_guide_markdown
+from pipeline.guide_lint import (
+    GuideLintReport,
+    extract_source_page_anchors,
+    lint_guide_markdown,
+)
 
 FIXTURE_DIR = os.path.join(os.path.dirname(__file__), "fixtures", "guide_lint")
 
@@ -248,6 +252,55 @@ def test_expected_none_no_findings() -> None:
     check("sections/none-arg", _by_rule(report, "missing_section") == [])
 
 
+# ── Source page citation plausibility ─────────────────────────────────────────
+
+def test_page_anchor_extraction() -> None:
+    source = "# Notes\n\n## Page 3\nAlpha\n\n## Page 5\nBeta\n"
+    check("citations/anchor-extract", extract_source_page_anchors(source) == {3, 5})
+
+
+def test_page_citations_valid_single_and_range() -> None:
+    md = "# H\n\nFact from the source (p. 3). Range fact (pp. 3-5).\n"
+    report = _lint(md, available_source_pages=[3, 4, 5])
+    check("citations/valid-clean", _by_rule(report, "page_citation_range") == [], str(report.to_dict()))
+
+
+def test_page_citation_outside_available_pages() -> None:
+    md = "# H\n\nThis definition has an impossible citation (p. 9).\n"
+    report = _lint(md, available_source_pages=[1, 2, 3])
+    findings = _by_rule(report, "page_citation_range")
+    check("citations/out-of-range-one", len(findings) == 1, str(report.to_dict()))
+    check("citations/out-of-range-warning", findings and findings[0].severity == "warning")
+    check("citations/out-of-range-message", findings and "9" in findings[0].message)
+
+
+def test_page_citation_range_gap_warns() -> None:
+    md = "# H\n\nThis spans an unavailable page (pp. 3-5).\n"
+    report = _lint(md, available_source_pages=[3, 5])
+    findings = _by_rule(report, "page_citation_range")
+    check("citations/range-gap", len(findings) == 1, str(report.to_dict()))
+    check("citations/range-gap-message", findings and "4" in findings[0].message)
+
+
+def test_page_citation_no_anchors_supplied_warns_when_enabled() -> None:
+    md = "# H\n\nInvented-looking citation (page 3).\n"
+    report = _lint(md, available_source_pages=[])
+    findings = _by_rule(report, "page_citation_range")
+    check("citations/no-anchors-warning", len(findings) == 1, str(report.to_dict()))
+
+
+def test_page_citation_checker_disabled_by_default() -> None:
+    md = "# H\n\nCitation text (page 999).\n"
+    report = _lint(md)
+    check("citations/default-disabled", _by_rule(report, "page_citation_range") == [])
+
+
+def test_page_citation_in_code_ignored() -> None:
+    md = "# H\n\n```\nNot a real citation: p. 999\n```\n"
+    report = _lint(md, available_source_pages=[1])
+    check("citations/code-ignored", _by_rule(report, "page_citation_range") == [])
+
+
 # ── KaTeX bridge ───────────────────────────────────────────────────────────────
 
 def test_katex_valid_no_render_error() -> None:
@@ -353,6 +406,13 @@ if __name__ == "__main__":
     test_expected_missing_one()
     test_expected_normalization()
     test_expected_none_no_findings()
+    test_page_anchor_extraction()
+    test_page_citations_valid_single_and_range()
+    test_page_citation_outside_available_pages()
+    test_page_citation_range_gap_warns()
+    test_page_citation_no_anchors_supplied_warns_when_enabled()
+    test_page_citation_checker_disabled_by_default()
+    test_page_citation_in_code_ignored()
     test_katex_valid_no_render_error()
     test_katex_invalid_finding_or_skip()
     test_katex_disabled_no_katex_findings()

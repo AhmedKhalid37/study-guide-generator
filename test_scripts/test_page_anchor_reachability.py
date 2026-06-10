@@ -1,10 +1,9 @@
 #!/usr/bin/env python3
 """Focused proof for Slice 23A: page anchors reach LLM prompt assembly.
 
-This is intentionally a measurement test, not a generation-behavior test. It
+This is intentionally a measurement test, not a generation-output test. It
 proves that source text containing extraction-style ``## Page N`` anchors
-survives into the model-facing user message assembled by ``pipeline.orchestrator``
-without enabling citation directives or assuming rendered guide citations exist.
+survives into the model-facing user message assembled by ``pipeline.orchestrator``.
 
     python test_scripts/test_page_anchor_reachability.py
 """
@@ -19,6 +18,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from pipeline.job_manager import Job  # noqa: E402
 from pipeline.orchestrator import (  # noqa: E402
+    SOURCE_PAGE_CITATION_DIRECTIVE,
     build_messages,
     build_messages_for_preset,
 )
@@ -70,9 +70,8 @@ def test_direct_template_prompt_preserves_anchors() -> None:
         user_content.find("## Page 1") < user_content.find("## Page 2"),
     )
     check(
-        "direct/template: no page-citation directive enabled by default",
-        "Do not invent page numbers" not in system_content
-        and "(page N)" not in system_content,
+        "direct/template: page-citation directive enabled for anchored source",
+        SOURCE_PAGE_CITATION_DIRECTIVE in system_content,
     )
     check(
         "direct/template: no generated citation is assumed",
@@ -144,9 +143,8 @@ def test_preset_prompt_uses_source_as_user_message_verbatim() -> None:
     check("preset: Page 1 anchor reaches user message", "## Page 1" in user_content)
     check("preset: Page 2 anchor reaches user message", "## Page 2" in user_content)
     check(
-        "preset: no page-citation directive enabled by default",
-        "Do not invent page numbers" not in system_content
-        and "(page N)" not in system_content,
+        "preset: page-citation directive enabled for anchored source",
+        SOURCE_PAGE_CITATION_DIRECTIVE in system_content,
     )
 
 

@@ -60,6 +60,7 @@ def test_load_valid_spec() -> None:
     check("spec/loads", spec.get("id") == "sample_nn_part3", str(spec.get("id")))
     check("spec/has-sections", "Overview" in (spec.get("expected_sections") or []))
     check("spec/has-concepts", "backpropagation" in (spec.get("required_concepts") or []))
+    check("spec/has-source-page-anchors", spec.get("source_page_anchors") == [1, 2])
 
 
 def test_invalid_spec_rejected() -> None:
@@ -68,6 +69,7 @@ def test_invalid_spec_rejected() -> None:
         ("missing-id", {"title": "no id here"}),
         ("bad-sections", {"id": "x", "expected_sections": "Overview"}),
         ("bad-concepts", {"id": "x", "required_concepts": [1, 2, 3]}),
+        ("bad-page-anchors", {"id": "x", "source_page_anchors": ["1"]}),
     ]
     for label, payload in bad_cases:
         try:
@@ -168,6 +170,28 @@ def test_lint_integration_bad_structure() -> None:
     check("lint/bad-has-findings", summary.get("total", 0) >= 3, str(summary))
     check("lint/bad-lower-score", score < 0.8, str(score))
     check("lint/top-findings-capped", len(top) <= score_guide.MAX_TOP_FINDINGS)
+
+
+def test_lint_integration_page_citation_plausibility() -> None:
+    good = "## Overview\n\nA valid cited definition (p. 2).\n"
+    score, summary, top = score_guide.score_lint(
+        good,
+        ["Overview"],
+        available_source_pages=[1, 2],
+    )
+    check("lint/citation-valid-no-warning", summary.get("warning", 0) == 0, str(summary))
+    bad = "## Overview\n\nAn impossible cited definition (pp. 2-4).\n"
+    score, summary, top = score_guide.score_lint(
+        bad,
+        ["Overview"],
+        available_source_pages=[1, 2],
+    )
+    check("lint/citation-invalid-warning", summary.get("warning", 0) == 1, str(summary))
+    check(
+        "lint/citation-invalid-top-finding",
+        top and top[0]["rule"] == "page_citation_range",
+        str(top),
+    )
 
 
 # ── Overall scoring on the three fixtures ─────────────────────────────────────────
@@ -361,6 +385,7 @@ if __name__ == "__main__":
     test_math_integration_bad()
     test_lint_integration_clean()
     test_lint_integration_bad_structure()
+    test_lint_integration_page_citation_plausibility()
     test_score_clean_guide()
     test_score_bad_math_guide()
     test_score_bad_structure_guide()
