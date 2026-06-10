@@ -5,6 +5,98 @@
 
 ---
 
+## Slice 20 — Eval harness Phase 1: deterministic scoring framework + golden specs (DONE — reviewed + committed).
+
+- **Purpose:** third **correctness / measurement** slice. Build the first
+  **deterministic evaluation harness** for guide quality — the *measurement spine*
+  that lets us score guide outputs using the pure correctness modules from Slice 18
+  (math verifier) and Slice 19 (guide lint) **before** we optimize prompts, OCR,
+  retrieval, or styles. This slice **measures**, it does not improve generation.
+- **Scope guardrails honored:** **no** generation-prompt change, **no** provider
+  behavior change, **no** `/api/jobs/llm` request-field change, **no** Builder/
+  JobDetails UI change, **no** job-artifact integration of math/lint, **no** writes
+  to live `jobs/`/`library/`/`config/` (offline never touches the API; the optional
+  live mode only POSTs to the existing no-provider `/api/jobs/paste`). **No**
+  LLM-judge, **no** embeddings/LanceDB, **no** OCR/retrieval/citation changes. **No
+  new dependency** — JSON specs (stdlib), reusing Slice 18/19 modules.
+- **New area — `test_scripts/eval/`:**
+  - `score_guide.py` — pure, importable scoring core. `build_result(spec,
+    guide_text, *, guide_path, mode, artifacts, run_katex) -> dict` plus the
+    per-metric scorers `score_concepts`, `score_must_not_claim`, `score_math`
+    (reuses `pipeline.math_verifier.verify_math_claims`), `score_lint` (reuses
+    `pipeline.guide_lint.lint_guide_markdown`, KaTeX **off** by default for fast
+    offline runs), `score_artifacts`, and `compute_overall`. Spec validation via
+    `validate_spec` / `SpecError`.
+  - `run_eval.py` — CLI: `--offline` (required; no keys/Docker/LLM), `--all`
+    (every golden spec × its `offline_guides`), `--live` (optional; submits the
+    spec's `source_path` to `/api/jobs/paste`, fetches `clean.md`, scores it +
+    probes artifact presence; times out cleanly, records only the API **host**,
+    never the full URL). Writes a JSON result + appends `summary.csv`; **scans
+    every result for credential-looking field names/values and blocks the write
+    on a suspected secret**.
+  - `golden/sample.json` + `golden/README.md`; `fixtures/` (`sample_source.md`,
+    `sample_good_guide.md`, `sample_bad_math_guide.md`,
+    `sample_bad_structure_guide.md`) + `fixtures/README.md`; `results/README.md`
+    (generated `*.json`/`*.csv` git-ignored). Top-level `README.md`.
+- **Spec format — JSON (not YAML):** stdlib-only, so offline scoring needs no
+  extra dependency and runs identically on host and in the non-root Docker image
+  (same dependency-free stance as Slice 18 declining SymPy). A `.yaml`/`.yml`
+  loader is used only if PyYAML is importable; committed specs stay `.json`.
+  Fields: `id` (required), `title`, `source_kind`, `source_path` (required for
+  `--live`), `expected_sections`, `required_concepts`, `must_not_claim`,
+  `known_numbers` (advisory/reserved this slice), `offline_guides`.
+- **Scoring metrics (all `[0,1]`, higher better):** `concepts` = found/total by
+  normalized substring match; `must_not_claim` = (total−violations)/total; `math`
+  = `(ok + 0.75·unparseable)/total` (mismatches earn **no** credit, unparseable
+  earns partial — never fails on unparseable, never on zero claims); `lint` =
+  `clamp(1 − (0.20·errors + 0.05·warnings))` (info ignored); `artifacts` =
+  present/expected (live only; `null`/not-applicable offline); `overall` =
+  weighted mean (`.30/.25/.20/.15/.10`) **renormalized** over non-null components.
+- **Regression comparison:** keyed on `(spec_id, mode, guide)` — a result is
+  compared to the most recent prior result for *that same guide* (never a
+  different guide that shares the spec), reporting previous/current overall, the
+  delta, and per-metric deltas. **Non-blocking** this slice. Result filenames are
+  guide-keyed (`<spec>__<mode>__<guide>__<run_id>.json`) with a collision counter.
+- **Result shape:** `{version, run_id, mode, spec_id, spec_title, guide_path,
+  scores{overall,concepts,math,lint,must_not_claim,artifacts}, details{
+  missing_concepts, must_not_claim_violations, math_summary, lint_summary,
+  lint_top_findings, artifacts}, regression?}`.
+- **Tests / fixtures:** `test_scripts/test_eval_harness.py` (plain-Python
+  assertion style) — **59/59 PASS**. Covers valid/invalid spec loading, concept
+  matching + normalization, must-not-claim detection, math + lint integration on
+  fixtures, scoring clean / bad-math / bad-structure guides + ordering, artifact
+  scoring, overall renormalization, the JSON result shape, previous-run comparison
+  (incl. different-guide isolation), the `--all` CLI, and the no-secret guarantee
+  (clean result clean; planted `sk-…` value blocks the write; `api_key` field name
+  caught).
+- **Validation:** `npm --prefix frontend run build`; `npm --prefix frontend run
+  test`; `python -m compileall api pipeline test_scripts`; `python
+  test_scripts/test_math_verifier.py` → 74/74; `python test_scripts/test_guide_lint.py`
+  → 64/64; `python test_scripts/test_eval_harness.py` → 59/59; `python
+  test_scripts/eval/run_eval.py --offline --all` → 3 guides scored; `git diff
+  --check` clean — **all green.** `python test_scripts/smoke_release.py` → 26
+  passed / 2 failed / 0 skipped; the 2 failures (LLM attachment + outline flows)
+  are **environmental, not a regression** — the host hit its thread/process limit
+  so Chromium could not fork to render PDFs (`pthread_create: Resource temporarily
+  unavailable (11)`; confirmed by a direct paste probe returning "PDF rendering
+  failed: Chromium failed to render the PDF"). Slice 20 adds **zero**
+  server/pipeline/frontend code, so it cannot affect `/api/jobs/llm` or PDF
+  rendering. The optional live eval mode hit the same host PDF fork limit and
+  failed cleanly through its graceful error path — exactly as designed.
+- **Status:** **DONE — reviewed + committed.** Approval condition was one final
+  smoke retry after freeing host resources; the environmental Chromium fork limit
+  was traced to the app container's cgroup `PidsLimit=256` being saturated by
+  ~179 zombie/`<defunct>` Chromium children (uid 10001) from earlier failed
+  renders. Resolved by restarting the container (no runtime `jobs/`/`library/`/
+  `config/` data deleted); smoke retried after the restart. Slice 20 adds **zero**
+  server/pipeline/frontend code, so it cannot affect `/api/jobs/llm` or PDF
+  rendering regardless of the smoke outcome.
+  Next (separate, designed phase): eval Phase 2 may add an LLM-judge layer and/or
+  a curated golden dataset, or we begin surfacing the verifier + linter as a
+  job-stage advisory report — none of which start without their own slice.
+
+---
+
 ## Slice 19 — Deterministic guide-lint core: pure advisory module + fixtures (DONE — reviewed + committed).
 
 - **Purpose:** second **correctness / measurement** slice. Add a deterministic,

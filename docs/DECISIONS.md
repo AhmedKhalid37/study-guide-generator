@@ -1315,3 +1315,35 @@ not assume any Tailwind utility "just works." Do **not** rely on Tailwind for ne
 visual work unless the Tailwind pipeline is **deliberately restored** (add the
 `@tailwind` directives to an imported stylesheet + confirm the utility layer is
 emitted) as its own explicit, separately-reviewed slice.
+
+## Eval harness uses JSON golden specs and a deterministic-only scoring spine (Slice 20)
+The first guide-quality eval harness (`test_scripts/eval/`) is deliberately a
+**deterministic measurement spine**, not a generation improvement. It scores guide
+Markdown using only the pure Slice 18 math verifier, the Slice 19 linter, and
+simple normalized string checks (concept coverage, must-not-claim) — **no**
+LLM-judge, **no** embeddings/LanceDB, **no** retrieval/OCR. Establishing a stable,
+reproducible baseline first gives every later (fuzzier, model-based) metric a fixed
+reference to compare against, and keeps the harness runnable offline with no
+provider keys, no Docker, and no network.
+
+**Spec format = JSON, not YAML.** PyYAML is importable in the host env, but JSON is
+in the standard library, so JSON specs run identically on the host and inside the
+non-root Docker image with zero added dependency — the same dependency-free stance
+that led Slice 18 to decline SymPy. A `.yaml`/`.yml` loader is offered only when
+PyYAML happens to be present; the committed golden specs stay `.json`.
+
+**Scope guardrails (must hold for this phase):** the harness must not touch
+generation prompts, provider behavior, `/api/jobs/llm` fields, the Builder/
+JobDetails UI, or job artifacts, and must not integrate the math verifier / guide
+lint into `validation.json`. Offline mode never calls the API; the optional live
+mode uses only the existing **no-provider** `/api/jobs/paste` endpoint, records only
+the API host (never a full URL), and writes results solely under its output dir.
+Every result is scanned for credential-looking field names/values and the write is
+**blocked** on a suspected secret. Generated result `*.json`/`*.csv` are git-ignored
+(only fixtures/specs/READMEs are tracked); large eval inputs go under the git-ignored
+`test_scripts/eval/inputs/`.
+
+**Regression comparison is keyed on `(spec_id, mode, guide)`** so a run is compared
+against the last time *that same guide* was scored — never a different guide that
+shares the spec — and it is **non-blocking** in this phase (a regression reports a
+delta, it never fails the run).

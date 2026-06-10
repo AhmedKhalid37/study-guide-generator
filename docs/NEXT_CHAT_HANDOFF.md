@@ -22,6 +22,29 @@
   `chrome-renderer-v1` (immediately after Slice 18 `2c47d03`) — see the commit log
   for the hash. **Pure advisory core only:** no job integration, no artifact, no
   API, no `validation.json`, no prompt, no frontend/UI.
+- **Slice 20 (eval harness Phase 1 — deterministic scoring framework) is
+  implemented + verified, PENDING REVIEW before commit** — once committed, update
+  this line with the hash.
+- **Slice 20 result (measurement spine only):** added `test_scripts/eval/`
+  (`run_eval.py` CLI + `score_guide.py` pure core + `golden/sample.json` +
+  fixtures + READMEs). It scores guide Markdown against a JSON **golden spec**
+  using the Slice 18 verifier (`math`), the Slice 19 linter (`lint`), and simple
+  normalized string checks (`concepts`, `must_not_claim`); live mode adds an
+  `artifacts` metric. `overall` = renormalized weighted mean over the non-null
+  metrics. **Offline mode is required and dependency-free** (no keys/Docker/LLM):
+  `python test_scripts/eval/run_eval.py --offline --all`. Optional `--live` POSTs
+  to the existing **no-provider** `/api/jobs/paste` only. Results are JSON +
+  `summary.csv` under `test_scripts/eval/results/` (**git-ignored**; only fixtures/
+  specs/READMEs are tracked); every result is **secret-scanned before write**.
+  Regression comparison is keyed on `(spec_id, mode, guide)` and is **non-blocking**.
+  **No** prompt/provider/`/api/jobs/llm`/Builder/JobDetails/artifact/OCR/retrieval/
+  embedding/LanceDB/LLM-judge change; **no new dependency** (JSON specs, stdlib).
+  Tests `test_scripts/test_eval_harness.py` (59/59); build, `npm test`,
+  `compileall`, `test_math_verifier` (74/74), `test_guide_lint` (64/64),
+  `--offline --all`, and diff check all green. `smoke_release.py` = 26/2/0; the 2
+  failures are **environmental** (host thread limit → Chromium can't fork to
+  render PDFs: `pthread_create: Resource temporarily unavailable (11)`), **not a
+  regression** — Slice 20 adds no server/pipeline/frontend code.
 - **Slice 19 result (pure advisory core only):** added `pipeline/guide_lint.py`,
   `lint_guide_markdown(markdown, *, source_name=None, expected_sections=None,
   run_katex=True) -> GuideLintReport` — a JSON-serializable findings report

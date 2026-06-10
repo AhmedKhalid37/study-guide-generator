@@ -12,3 +12,8 @@ __pycache__/
 .env
 .env.save
 frontend/dist/
+
+# Eval harness (Slice 20): reproducible run artifacts + large inputs are not source.
+test_scripts/eval/results/*.json
+test_scripts/eval/results/*.csv
+test_scripts/eval/inputs/

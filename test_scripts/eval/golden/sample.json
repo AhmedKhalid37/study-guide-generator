@@ -1,0 +1,31 @@
+{
+  "id": "sample_nn_part3",
+  "title": "Sample Neural Network Guide",
+  "source_kind": "markdown_fixture",
+  "source_path": "test_scripts/eval/fixtures/sample_source.md",
+  "expected_sections": [
+    "Overview",
+    "Key Concepts",
+    "Worked Examples",
+    "Practice Questions"
+  ],
+  "required_concepts": [
+    "activation function",
+    "backpropagation",
+    "gradient descent"
+  ],
+  "must_not_claim": [
+    "softmax outputs can be negative"
+  ],
+  "known_numbers": [
+    {
+      "label": "logistic example",
+      "claim": "exp(1.43) / (1 + exp(1.43)) ≈ 0.806"
+    }
+  ],
+  "offline_guides": [
+    "test_scripts/eval/fixtures/sample_good_guide.md",
+    "test_scripts/eval/fixtures/sample_bad_math_guide.md",
+    "test_scripts/eval/fixtures/sample_bad_structure_guide.md"
+  ]
+}
