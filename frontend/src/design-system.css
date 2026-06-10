@@ -3197,6 +3197,9 @@ details.sg-mdl-helper > summary::-webkit-details-marker { display: none; }
 }
 .sg-mathv-claim.mismatch { border-color: var(--red-soft); background: rgba(239,68,68,0.05); }
 .sg-mathv-claim.unparseable { border-color: var(--amber-soft); background: rgba(245,158,11,0.06); }
+/* guide-lint finding severities reuse the compact claim-row layout */
+.sg-mathv-claim.error { border-color: var(--red-soft); background: rgba(239,68,68,0.05); }
+.sg-mathv-claim.warning { border-color: var(--amber-soft); background: rgba(245,158,11,0.06); }
 .sg-mathv-claim-head { display: flex; flex-wrap: wrap; align-items: center; gap: 7px; margin-bottom: 8px; }
 .sg-mathv-line, .sg-mathv-id {
   font-family: var(--mono); font-size: 12px; color: var(--muted);

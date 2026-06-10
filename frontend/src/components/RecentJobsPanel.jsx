@@ -17,6 +17,7 @@ import {
   FileText,
   FolderClosed,
   Layers,
+  FileCheck2,
   ListChecks,
   Loader2,
   Paperclip,
@@ -52,6 +53,7 @@ import Panel from "./Panel";
 import ItemCard from "./ItemCard";
 import ProviderPill from "./ProviderPill";
 import MathVerificationPanel from "./MathVerificationPanel";
+import GuideLintPanel from "./GuideLintPanel";
 
 const artifactLinks = [
   { name: "final.pdf", label: "PDF", key: "final_pdf", icon: Download },
@@ -564,6 +566,7 @@ export function JobDetailsDrawer({ open, onClose, loading, error, details, style
   const tabs = [
     { key: "details", label: "Details" },
     { key: "verification", label: "Verification", icon: CheckCircle2 },
+    { key: "guide-lint", label: "Guide Lint", icon: FileCheck2 },
     { key: "quiz", label: "Quiz", icon: BookOpen, disabled: !canEdit },
     { key: "outline", label: "Outline", icon: ListChecks, disabled: !canEdit },
     { key: "sections", label: "Sections", icon: Layers, disabled: !canEdit },
@@ -726,6 +729,10 @@ export function JobDetailsDrawer({ open, onClose, loading, error, details, style
 
           {!loading && !error && manifest && drawerTab === "verification" && (
             <MathVerificationPanel jobId={manifest.id} />
+          )}
+
+          {!loading && !error && manifest && drawerTab === "guide-lint" && (
+            <GuideLintPanel jobId={manifest.id} />
           )}
 
           {!loading && !error && manifest && drawerTab === "outline" && canEdit && (

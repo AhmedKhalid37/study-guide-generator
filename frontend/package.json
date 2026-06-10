@@ -7,7 +7,7 @@
     "dev": "vite",
     "build": "vite build",
     "preview": "vite preview",
-    "test": "node scripts/verify-shortcut-status.mjs && node scripts/verify-shortcut-repair.mjs && node scripts/verify-shortcut-activation.mjs && node scripts/verify-shortcut-form.mjs && node scripts/verify-local-model-status.mjs && node scripts/verify-local-model-command.mjs && node scripts/verify-local-model-library.mjs && node scripts/verify-ask-guide.mjs && node scripts/verify-style-compare.mjs && node scripts/verify-math-verification.mjs",
+    "test": "node scripts/verify-shortcut-status.mjs && node scripts/verify-shortcut-repair.mjs && node scripts/verify-shortcut-activation.mjs && node scripts/verify-shortcut-form.mjs && node scripts/verify-local-model-status.mjs && node scripts/verify-local-model-command.mjs && node scripts/verify-local-model-library.mjs && node scripts/verify-ask-guide.mjs && node scripts/verify-style-compare.mjs && node scripts/verify-math-verification.mjs && node scripts/verify-guide-lint.mjs",
     "test:shortcut-status": "node scripts/verify-shortcut-status.mjs",
     "test:shortcut-repair": "node scripts/verify-shortcut-repair.mjs",
     "test:shortcut-activation": "node scripts/verify-shortcut-activation.mjs",
@@ -18,7 +18,8 @@
     "test:local-model-library": "node scripts/verify-local-model-library.mjs",
     "test:ask-guide": "node scripts/verify-ask-guide.mjs",
     "test:style-compare": "node scripts/verify-style-compare.mjs",
-    "test:math-verification": "node scripts/verify-math-verification.mjs"
+    "test:math-verification": "node scripts/verify-math-verification.mjs",
+    "test:guide-lint": "node scripts/verify-guide-lint.mjs"
   },
   "dependencies": {
     "@fontsource-variable/inter": "^5.2.8",

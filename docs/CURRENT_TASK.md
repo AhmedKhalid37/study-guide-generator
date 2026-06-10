@@ -5,7 +5,58 @@
 
 ---
 
-## Slice 27 — Persist guide_lint.json advisory artifact (DONE — uncommitted on `slice27-guide-lint-artifact`).
+## Slice 28 — JobDetails guide-lint UI tab (DONE — uncommitted on `slice28-jobdetails-guide-lint-ui`).
+
+- **Purpose:** surface the per-job `guide_lint.json` artifact (Slice 27) in the
+  JobDetails drawer as a read-only, advisory panel, closing the
+  visibility-parity gap with the math-verification UI (Slice 22). Frontend/UI
+  only — **no** backend, pipeline, or artifact-schema change.
+- **Pattern:** mirrors the Slice 22 math-verification UI architecture exactly:
+  - `frontend/src/guideLintArtifact.js` — pure, React-free normalizer
+    (`summarizeGuideLintArtifact`, `safeLintExcerpt`, `GUIDE_LINT_ARTIFACT`).
+  - `frontend/src/components/GuideLintPanel.jsx` — drawer panel component.
+  - `frontend/scripts/verify-guide-lint.mjs` — plain-node helper harness, wired
+    into the `test` chain + a `test:guide-lint` script in `frontend/package.json`.
+- **UI placement:** new **"Guide Lint"** tab in the JobDetails drawer tab bar
+  (`RecentJobsPanel.jsx`), placed immediately after **Verification**, icon
+  `FileCheck2`. Available for any job (not gated on `canEdit`), mirroring the
+  Verification tab; the panel itself renders a calm "not available" state for
+  jobs without the artifact.
+- **Lazy fetch:** `GuideLintPanel` fetches `guide_lint.json` via the existing
+  `getJobArtifact(jobId, "guide_lint.json")` client helper in a `useEffect`. The
+  panel is only mounted when `drawerTab === "guide-lint"`, so the request fires
+  only when the tab is opened (and re-fires if `jobId` changes).
+- **States handled:** loading · completed (status chip by worst severity, source
+  `clean.md`, summary tiles total/errors/warnings/info, top findings sorted
+  error→warning→info with severity tag, rule, message, line) · skipped (safe
+  message) · missing 404 ("No guide-lint artifact is available for this job") ·
+  malformed / wrong kind ("could not be read") · fetch/network error (safe
+  generic message). Copy stays explicitly advisory ("checks structure,
+  formatting, and math-render risk — not whether the content is correct").
+- **Compact view:** findings capped at `GUIDE_LINT_DISPLAY_LIMIT` (8) with a
+  "N additional findings hidden" note; excerpts whitespace-collapsed/truncated;
+  no `dangerouslySetInnerHTML`; no raw URLs/paths/secrets surfaced.
+- **CSS:** reuses the existing compact `sg-mathv-claim` row layout; added two
+  severity-tint rules (`.sg-mathv-claim.error`, `.sg-mathv-claim.warning`) in
+  `design-system.css` alongside the math `.mismatch`/`.unparseable` tints.
+- **Scope guard — NO change to:** backend, pipeline, artifact schema, generic
+  artifact lists, Exports bundles, prompts, provider/model behavior,
+  `/api/jobs/llm` request fields, OCR/extraction, Ask/retrieval,
+  LanceDB/embeddings, or the PDF/Chromium render pipeline. No rerun/recompute
+  button; no job mutation.
+- **Validation:** `npm --prefix frontend run build` ✓ · `npm --prefix frontend
+  run test` (incl. new `verify-guide-lint.mjs`, 22 checks) ✓ · `python -m
+  compileall api pipeline test_scripts` ✓ · math_verifier / guide_lint /
+  eval_harness / page_anchor_reachability / source_page_citations /
+  extraction_metadata / ask_retrieval_relevance / ask_lexical_hygiene /
+  guide_lint_artifact test scripts ✓ · `run_eval.py --offline --all` ✓ ·
+  `git diff --check` ✓. `smoke_release.py` requires a live server at
+  `localhost:8000` (end-to-end Docker check) and was not run in the host-only
+  environment — frontend-only changes, backend unchanged.
+
+---
+
+## Slice 27 — Persist guide_lint.json advisory artifact (DONE — committed on trunk as `0d73f24`).
 
 - **Purpose:** close the correctness-visibility asymmetry where math verification
   is persisted as a per-job artifact (Slice 21) but the deterministic guide-lint

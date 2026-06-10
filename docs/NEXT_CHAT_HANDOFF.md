@@ -6,11 +6,22 @@
 > stable overview see `PROJECT_CONTEXT.md`; canonical brief is `../CLAUDE.md`.
 
 ## Current position
-- **Working tree:** **Slice 27 implemented but uncommitted** on branch
-  `slice27-guide-lint-artifact` (branched from trunk after Slice 26). The
-  correctness/measurement sequence is committed on the trunk through **Slice 26**
-  (trunk HEAD = `a9263f0`, "Slice 26: Reconcile project handoff docs"). Do not
+- **Working tree:** **Slice 28 implemented but uncommitted** on branch
+  `slice28-jobdetails-guide-lint-ui` (branched from trunk after Slice 27). The
+  correctness/measurement sequence is committed on the trunk through **Slice 27**
+  (trunk HEAD = `0d73f24`, "Slice 27: Persist guide lint job artifact"). Do not
   commit unless explicitly asked; do not force-push.
+- **Slice 28 (JobDetails guide-lint UI tab):** frontend/UI only. New read-only
+  **"Guide Lint"** tab in the JobDetails drawer (`RecentJobsPanel.jsx`, after
+  Verification), backed by `GuideLintPanel.jsx` + the pure normalizer
+  `frontend/src/guideLintArtifact.js`, lazy-fetching `guide_lint.json` via the
+  existing `getJobArtifact` helper only when the tab opens. Renders completed
+  (summary + top findings, advisory copy), skipped, missing-404, malformed, and
+  fetch-error states. New `frontend/scripts/verify-guide-lint.mjs` wired into the
+  frontend `test` chain (+ `test:guide-lint`). Two severity-tint CSS rules added
+  for the reused compact finding rows. **No** backend/pipeline/artifact-schema/
+  generic-list/Exports/prompt/provider/request-field/OCR/Ask/retrieval/
+  render-pipeline change; no rerun button; no job mutation.
 - **Slice 27 (persist `guide_lint.json` advisory artifact):** backend/pipeline +
   tests/docs only. New `_write_guide_lint(job)` in
   `pipeline/run_markdown_job.py` runs the Slice 19 deterministic guide-lint core
@@ -39,10 +50,10 @@
   "uncommitted / PENDING REVIEW / branch in progress" wording in them — those
   slices are all on the trunk now.
 - **Immediate next planned slice (in order):** (1) persist `guide_lint.json`
-  advisory artifact — **DONE (Slice 27, uncommitted on `slice27-guide-lint-artifact`)**;
-  then (2) JobDetails guide-lint UI (read-only, mirror Slice 22), then (3) eval
-  golden corpus / baseline, then (4) true Anki `.apkg` export core. (2)–(4) not
-  started.
+  advisory artifact — **DONE (Slice 27, committed on trunk `0d73f24`)**;
+  (2) JobDetails guide-lint UI (read-only, mirror Slice 22) — **DONE (Slice 28,
+  uncommitted on `slice28-jobdetails-guide-lint-ui`)**; then (3) eval golden
+  corpus / baseline, then (4) true Anki `.apkg` export core. (3)–(4) not started.
 - **Slice 25B (Ask lexical retrieval hygiene):** backend retrieval-ranking +
   tests/docs. New shared `pipeline/ask_lexical.py::lexical_terms` adds **stopword
   filtering** + conservative **single-`-s` plural folding**, used by **both** the
