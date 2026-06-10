@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import mimetypes
 import os
 import re
 import sys
@@ -11,6 +12,11 @@ from typing import Any
 
 from pipeline.job_manager import Job, JobCancelled
 from pipeline.extract import ExtractionError, extract_file
+from pipeline.extraction_metadata import (
+    pdf_source_metadata,
+    write_extraction_metadata,
+    write_skipped_extraction_metadata,
+)
 from pipeline.llm_client import LLMConfig, LLMProviderError, MissingLLMConfigError
 from pipeline.orchestrator import generate_study_guide
 from pipeline.run_markdown_job import MarkdownJobError, run_raw_markdown_pipeline
@@ -176,6 +182,8 @@ def _attach_sources(
     sections: list[str] = []
     files: list[dict[str, Any]] = []
     warnings: list[str] = []
+    extraction_metadata_sources: list[dict[str, Any]] = []
+    pdf_metadata_unavailable = False
     total_chars = 0
 
     for index, attachment in enumerate(attachments, start=1):
@@ -210,6 +218,24 @@ def _attach_sources(
             entry["mode"] = result.mode
             entry["warnings"] = result.warnings
 
+            if saved_path.suffix.lower() == ".pdf":
+                try:
+                    source_metadata = pdf_source_metadata(
+                        filename=safe_name,
+                        content_type=_content_type_for(saved_path),
+                        extraction_metadata=result.metadata,
+                    )
+                    if source_metadata is None:
+                        pdf_metadata_unavailable = True
+                    else:
+                        extraction_metadata_sources.append(source_metadata)
+                except Exception as exc:
+                    pdf_metadata_unavailable = True
+                    print(
+                        f"Extraction metadata source skipped ({type(exc).__name__}); job continues.",
+                        file=sys.stderr,
+                    )
+
             remaining = max(MAX_TOTAL_ATTACHMENT_CHARS - total_chars, 0)
             if not extracted_text:
                 warning = f"{safe_name}: no text could be extracted."
@@ -241,8 +267,15 @@ def _attach_sources(
             warnings.append(warning)
             entry["status"] = "failed"
             entry["warnings"] = [warning]
+            if saved_path.suffix.lower() == ".pdf":
+                pdf_metadata_unavailable = True
 
         files.append(entry)
+
+    if pdf_metadata_unavailable:
+        write_skipped_extraction_metadata(job)
+    elif extraction_metadata_sources:
+        write_extraction_metadata(job, extraction_metadata_sources)
 
     if not sections:
         return source_text, {
@@ -276,6 +309,13 @@ def _safe_filename(filename: str, *, fallback: str) -> str:
     name = Path(filename or fallback).name
     name = re.sub(r"[^A-Za-z0-9._-]+", "_", name).strip("._")
     return name or fallback
+
+
+def _content_type_for(path: Path) -> str:
+    guessed, _encoding = mimetypes.guess_type(path.name)
+    if path.suffix.lower() == ".pdf":
+        return "application/pdf"
+    return guessed or "application/octet-stream"
 
 
 def _dedupe(items: list[str]) -> list[str]:

@@ -118,6 +118,10 @@ class Job:
         return self.dir / "math_verification.json"
 
     @property
+    def extraction_metadata_json(self) -> Path:
+        return self.dir / "extraction_metadata.json"
+
+    @property
     def render_log(self) -> Path:
         return self.logs_dir / "render.log"
 

@@ -6,10 +6,10 @@
 > stable overview see `PROJECT_CONTEXT.md`; canonical brief is `../CLAUDE.md`.
 
 ## Current position
-- **Branch in progress:** `slice23b-source-page-citations`, created from
-  `chrome-renderer-v1` after Slice 23A. Slice 23B is implemented as a small
-  prompt/output-behavior measurement slice and intentionally uncommitted. Do not
-  commit unless explicitly asked; do not force-push.
+- **Branch in progress:** `slice24a-extraction-metadata-artifact`, created from
+  `chrome-renderer-v1` after Slice 23B. Slice 24A is implemented and
+  intentionally uncommitted. Do not commit unless explicitly asked; do not
+  force-push.
 - **Branch (trunk / PR target):** `chrome-renderer-v1` (all reskin slices land here).
 - **Phase:** the **GuideForge reskin + UX phase is COMPLETE** (Slices 1–15
   reskinned every workspace to semantic GuideForge CSS — Tailwind utilities are
@@ -53,7 +53,7 @@
   frontend/UI, provider, OCR, extraction, retrieval, `validation.json`,
   `math_verification.json`, or `/api/jobs/llm` request-field change.
 - **Slice 23B result (source page-citation directive + checks):** implemented
-  uncommitted on `slice23b-source-page-citations`. `pipeline/orchestrator.py`
+  on the Slice 23B branch before Slice 24A. `pipeline/orchestrator.py`
   conditionally inserts `SOURCE_PAGE_CITATION_DIRECTIVE` when source text contains
   `## Page N` anchors, in both template and preset prompt paths. The directive
   asks for compact `(p. 3)` / `(pp. 3-5)` citations for factual claims, examples,
@@ -72,6 +72,25 @@
   No frontend/UI, JobDetails, backend route, provider, `/api/jobs/llm` field,
   OCR/extraction, retrieval/Ask, `validation.json`, `math_verification.json`,
   guide-lint artifact, or render/PDF pipeline changes.
+- **Slice 24A result (PDF extraction metadata artifact):** implemented
+  uncommitted on `slice24a-extraction-metadata-artifact`. `pipeline/extract.py`
+  records per-page PDF extraction metadata while preserving the existing text
+  output path (`## Page N` anchors, embedded-text/OCR decisions, warnings, modes,
+  and page selections remain behaviorally unchanged). `pipeline/run_llm_job.py`
+  writes `extraction_metadata.json` after PDF attachment extraction and before
+  the LLM call. Artifact shape is `{version:1, kind:"extraction_metadata",
+  status:"completed", sources:[...]}` with source filename/content type/page
+  count/warnings and page method/text char/word count/page-anchor/warnings. Safe
+  failure writes a skipped artifact (`reason: "metadata_unavailable"`) best
+  effort, logs only exception type, and never changes job status. `api/server.py`
+  exact-special-cases `GET /api/jobs/{id}/artifacts/extraction_metadata.json`,
+  but the file is not in `ARTIFACTS`, export bundles, `_artifact_urls`, or
+  `_artifact_details`, so generic UI/JobDetails artifact lists do not expose it.
+  Coverage is PDF attachments only; non-PDF attachments are omitted. New focused
+  test: `test_scripts/test_extraction_metadata.py`. No frontend/UI, prompt,
+  provider, OCR heuristic, page-selection, `/api/jobs/llm` request-field,
+  `validation.json`, `math_verification.json`, Ask/retrieval, VLM, or
+  PDF/Chromium render-pipeline changes.
 - **Slice 20 result (measurement spine only):** added `test_scripts/eval/`
   (`run_eval.py` CLI + `score_guide.py` pure core + `golden/sample.json` +
   fixtures + READMEs). It scores guide Markdown against a JSON **golden spec**

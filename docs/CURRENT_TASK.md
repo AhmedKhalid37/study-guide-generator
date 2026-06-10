@@ -5,6 +5,48 @@
 
 ---
 
+## Slice 24A — Persist per-page extraction metadata artifact (DONE — uncommitted).
+
+- **Purpose:** persist lightweight per-page extraction metadata for uploaded PDF
+  attachments as a per-job artifact, creating measurement/audit groundwork for
+  later hybrid OCR work without changing extraction behavior.
+- **Artifact:** `extraction_metadata.json` is written as a sibling job artifact
+  only when PDF attachment metadata is available, with shape
+  `{version: 1, kind: "extraction_metadata", status: "completed", sources: [...]}`.
+  Each PDF source records `filename`, `content_type`, `page_count`, source
+  `warnings`, and page records with `page`, `method`, `text_chars`,
+  `word_count`, `has_page_anchor`, and `warnings`.
+- **Skipped shape:** if metadata collection/writing cannot be completed safely,
+  the helper writes `{version: 1, kind: "extraction_metadata", status: "skipped",
+  reason: "metadata_unavailable", safe_message: ...}` on a best-effort basis.
+  Failures never fail job creation, never change job status, and logs include
+  only the exception type.
+- **Collection point:** `pipeline/extract.py::_extract_pdf(...)` now records page
+  metadata while it makes the existing embedded-text vs OCR decision. The text
+  blocks, `## Page N` anchors, mode calculation, warnings, OCR availability
+  checks, and page-selection behavior are otherwise unchanged.
+- **Pipeline/API integration:** `pipeline/run_llm_job.py::_attach_sources(...)`
+  writes PDF metadata after attachment extraction and before the LLM call.
+  `pipeline/job_manager.py` adds `Job.extraction_metadata_json`.
+  `api/server.py::_artifact_path(...)` exact-special-cases
+  `extraction_metadata.json`, so it is downloadable at
+  `GET /api/jobs/{id}/artifacts/extraction_metadata.json`.
+- **Not listed:** `extraction_metadata.json` is intentionally not added to
+  `ARTIFACTS`, export bundle selectors, `_artifact_urls(...)`, or
+  `_artifact_details(...)`, so generic UI artifact lists / JobDetails remain
+  unchanged in this slice.
+- **Attachment coverage:** PDFs only. Non-PDF attachments are omitted from this
+  artifact.
+- **Tests:** added `test_scripts/test_extraction_metadata.py` for completed and
+  skipped artifact shape, no secret-like leakage, no generic artifact-list
+  exposure, and PDF attachment integration when PyMuPDF is available.
+- **Scope guardrails:** no frontend/UI, prompt, provider, OCR heuristic,
+  page-selection, `/api/jobs/llm` request-field, `validation.json`,
+  `math_verification.json`, Ask/retrieval, VLM, or PDF/Chromium render-pipeline
+  changes.
+
+---
+
 ## Slice 23B — Source page-citation directive + checks (DONE — uncommitted).
 
 - **Purpose:** add model-facing guidance that uses the Slice 23A proof: when

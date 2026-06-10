@@ -6,6 +6,7 @@ import shutil
 from collections.abc import Iterable
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Any
 
 
 SUPPORTED_EXTENSIONS = {
@@ -38,6 +39,7 @@ class ExtractionResult:
     text: str
     mode: str
     warnings: list[str]
+    metadata: dict[str, Any] | None = None
 
 
 @dataclass(frozen=True)
@@ -167,13 +169,13 @@ def _extract_pdf(path: Path, pages: Iterable[int] | None = None) -> ExtractionRe
             f"the file may be corrupt or an unreadable scan ({type(exc).__name__})"
         ) from exc
     with document_ctx as document:
+        page_count = int(document.page_count)
         # Resolve the optional page selection against the real page count. Pages
         # are 1-based and refer to ORIGINAL page numbers; out-of-range entries are
         # dropped (not clamped) so a stray "page 999" can't pull in the last page,
         # and so anchors stay truthful. None => no filter => process every page.
         selected: set[int] | None = None
         if pages is not None:
-            page_count = int(document.page_count)
             requested = {int(p) for p in pages}
             selected = {p for p in requested if 1 <= p <= page_count}
             out_of_range = sorted(requested - selected)
@@ -187,7 +189,12 @@ def _extract_pdf(path: Path, pages: Iterable[int] | None = None) -> ExtractionRe
                     f"None of the selected pages fall within this {page_count}-page PDF; "
                     "no pages were extracted."
                 )
-                return ExtractionResult("", "pdf_text", warnings)
+                return ExtractionResult(
+                    "",
+                    "pdf_text",
+                    warnings,
+                    _pdf_metadata(page_count=page_count, pages=[], warnings=warnings),
+                )
         # Prefix each page with a "## Page N" anchor (mirroring the pptx "Slide N"
         # marker) so positional references survive extraction — study-guide prompts
         # cite these. The index is the physical page number; blank pages are dropped
@@ -202,6 +209,7 @@ def _extract_pdf(path: Path, pages: Iterable[int] | None = None) -> ExtractionRe
         ocr_ready, ocr_unavailable_reason = _ocr_available()
 
         blocks: list[str] = []
+        page_metadata: list[dict[str, Any]] = []
         used_text = False
         used_ocr = False
         wanted_ocr = False
@@ -214,6 +222,7 @@ def _extract_pdf(path: Path, pages: Iterable[int] | None = None) -> ExtractionRe
             body = page.get_text("text").strip()
             if _is_meaningful_page_text(body):
                 blocks.append(f"## Page {index}\n{body}")
+                page_metadata.append(_pdf_page_metadata(index, "embedded_text", body, has_page_anchor=True))
                 used_text = True
                 continue
 
@@ -223,13 +232,37 @@ def _extract_pdf(path: Path, pages: Iterable[int] | None = None) -> ExtractionRe
             page_ocr = _ocr_page(page) if ocr_ready else ""
             if page_ocr:
                 blocks.append(f"## Page {index}\n{page_ocr}")
+                page_metadata.append(_pdf_page_metadata(index, "ocr", page_ocr, has_page_anchor=True))
                 used_ocr = True
             elif body:
                 # OCR produced nothing (or is unavailable) but the page had a little
                 # embedded text — keep it rather than dropping the page entirely.
                 blocks.append(f"## Page {index}\n{body}")
+                page_warnings = ["ocr_unavailable"] if not ocr_ready else ["ocr_empty_fallback_embedded_text"]
+                page_metadata.append(
+                    _pdf_page_metadata(
+                        index,
+                        "embedded_text",
+                        body,
+                        has_page_anchor=True,
+                        warnings=page_warnings,
+                    )
+                )
                 used_text = True
-            # else: genuinely blank page → dropped (numbering preserved by index).
+            else:
+                # Genuinely blank/unreadable page -> dropped from text output
+                # (numbering preserved by index), but still represented in the
+                # audit metadata.
+                page_warnings = ["ocr_unavailable"] if not ocr_ready else ["no_text_extracted"]
+                page_metadata.append(
+                    _pdf_page_metadata(
+                        index,
+                        "none",
+                        "",
+                        has_page_anchor=False,
+                        warnings=page_warnings,
+                    )
+                )
 
         if wanted_ocr and not ocr_ready and ocr_unavailable_reason:
             warnings.append(ocr_unavailable_reason)
@@ -247,7 +280,44 @@ def _extract_pdf(path: Path, pages: Iterable[int] | None = None) -> ExtractionRe
             # all-or-nothing path did, so downstream "no text extracted" handling
             # is unchanged.
             mode = "pdf_ocr" if wanted_ocr else "pdf_text"
-        return ExtractionResult(text, mode, warnings)
+        return ExtractionResult(
+            text,
+            mode,
+            warnings,
+            _pdf_metadata(page_count=page_count, pages=page_metadata, warnings=warnings),
+        )
+
+
+def _pdf_metadata(
+    *,
+    page_count: int,
+    pages: list[dict[str, Any]],
+    warnings: list[str],
+) -> dict[str, Any]:
+    return {
+        "kind": "pdf_extraction",
+        "page_count": int(page_count),
+        "pages": pages,
+        "warnings": list(warnings),
+    }
+
+
+def _pdf_page_metadata(
+    page: int,
+    method: str,
+    text: str,
+    *,
+    has_page_anchor: bool,
+    warnings: list[str] | None = None,
+) -> dict[str, Any]:
+    return {
+        "page": int(page),
+        "method": method,
+        "text_chars": len(text),
+        "word_count": len(re.findall(r"\w+", text)),
+        "has_page_anchor": bool(has_page_anchor),
+        "warnings": list(warnings or []),
+    }
 
 
 def _preprocess_ocr_image(image: "Image.Image") -> "Image.Image":
