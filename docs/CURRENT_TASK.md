@@ -5,6 +5,73 @@
 
 ---
 
+## Slice 27 — Persist guide_lint.json advisory artifact (DONE — uncommitted on `slice27-guide-lint-artifact`).
+
+- **Purpose:** close the correctness-visibility asymmetry where math verification
+  is persisted as a per-job artifact (Slice 21) but the deterministic guide-lint
+  core (Slice 19) was still only a test/CLI tool. This slice persists a per-job
+  `guide_lint.json` advisory artifact; **no UI** (JobDetails surfacing is a later
+  slice, mirroring Slice 22).
+- **Pattern:** mirrors the Slice 21 `math_verification.json` contract exactly —
+  advisory-only, **never** fails a job, **never** changes job status, **never**
+  blocks the render, downloadable by exact artifact name, and **not** added to
+  generic artifact lists / Exports / Library / JobDetails this slice.
+- **Where lint runs:** `pipeline/run_markdown_job.py::run_raw_markdown_pipeline`,
+  in the new helper `_write_guide_lint(job)`, called immediately after
+  `_write_math_verification(job)` — i.e. after the sanitized `clean.md` is saved
+  and `validation.json` is written, before the Chromium render. Both job entry
+  paths (`run_llm_job` and the paste/markdown paths) flow through this shared
+  pipeline, so the artifact is produced for every successfully-sanitized job.
+- **Artifact shape (completed):**
+  ```json
+  {"version": 1, "kind": "guide_lint", "status": "completed",
+   "source": "clean.md", "report": { …GuideLintReport.to_dict()… }}
+  ```
+  **Degraded (lint crash):**
+  ```json
+  {"version": 1, "kind": "guide_lint", "status": "skipped",
+   "reason": "lint_error", "safe_message": "Guide lint could not be completed."}
+  ```
+- **expected_sections / available_source_pages — NOT passed (documented):**
+  - `expected_sections`: the job manifest only stores canonical section-toggle
+    keys (e.g. `key_concepts`), not the heading text the LLM actually emits, so
+    feeding them to the heading matcher would yield unreliable / noisy
+    `missing_section` findings. Wiring real expected headings is deferred.
+  - `available_source_pages`: source page anchors are not reliably available at
+    this point without invasive source-text plumbing (and are absent for paste /
+    Markdown-upload jobs), so the optional page-citation check stays disabled to
+    keep the slice non-invasive. Lint still runs all other rules + the existing
+    Node/KaTeX render bridge (which itself degrades to an info finding when
+    unavailable — it never crashes the helper).
+- **Degrade-not-fail:** any exception from the lint core (or the read) is caught;
+  a small `skipped` artifact is written instead, and **only the exception type
+  name** is logged to stderr (`Guide lint skipped (X); job continues.`) — never
+  the message/args, traceback, paths, or guide content. Writing the degraded
+  artifact is itself wrapped so it can never raise.
+- **Plumbing:** new `Job.guide_lint_json` property (`pipeline/job_manager.py`,
+  `<job>/guide_lint.json`, sibling of `math_verification.json`); exact-name
+  special-case in `api/server.py::_artifact_path` returning
+  `(job.guide_lint_json, "application/json")` — kept OUT of `ARTIFACTS`, so it
+  never appears in `_artifact_urls` / `_artifact_details` (no generic list row)
+  and is reached only by the fixed filename `guide_lint.json` (no traversal).
+- **Tests:** new `test_scripts/test_guide_lint_artifact.py` (26 host checks, +1
+  route check that runs only in Docker where FastAPI is importable): completed
+  shape, structural-findings recorded without failing the job, zero-findings
+  total 0, lint-crash → safe `skipped` (no traceback / no exc message),
+  secret-name + key-like value scan on both completed and skipped artifacts,
+  `validation.json` + `math_verification.json` left byte-identical, guide_lint
+  report shape/version, and (Docker-only) the download route resolving the exact
+  name while staying out of `ARTIFACTS` / urls / details and still 404-ing a
+  traversal name.
+- **Untouched (verified):** no frontend/UI/JobDetails change; no generic artifact
+  list / Exports ZIP inclusion; no `validation.json` / `math_verification.json` /
+  `extraction_metadata.json` schema change; no prompt / provider / model change;
+  no `/api/jobs/llm` request-field change; no OCR/extraction change; no
+  Ask/retrieval/LanceDB/embeddings change; no PDF/Chromium render change; no
+  generation gating/failing on lint.
+
+---
+
 ## Slice 25B — Ask lexical retrieval hygiene (DONE — committed `ae44a85`, trunk HEAD).
 
 - **Purpose:** improve the existing deterministic local-only lexical (tf-idf) Ask

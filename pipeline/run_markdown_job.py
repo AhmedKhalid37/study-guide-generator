@@ -154,6 +154,11 @@ def run_raw_markdown_pipeline(job: Job, *, theme: str, strict_math: bool) -> Job
     # changes job status, never blocks the render below, and never fails the job.
     _write_math_verification(job)
 
+    # Slice 27: persist a per-job guide_lint.json sibling artifact from the same
+    # final, sanitized clean.md. Same advisory contract as math verification:
+    # never changes job status, never blocks the render, never fails the job.
+    _write_guide_lint(job)
+
     # Last safe checkpoint before the uninterruptible Chromium render: a cancel
     # requested up to here skips the render entirely. Once render_pdf starts we
     # let it finish (no process killing).
@@ -273,6 +278,74 @@ def _write_math_verification(job: Job) -> None:
         # guide content or a path - so the artifact and logs stay clean.
         print(
             f"Math verification skipped ({type(exc).__name__}); job continues.",
+            file=sys.stderr,
+        )
+
+
+def _write_guide_lint(job: Job) -> None:
+    """Persist a per-job ``guide_lint.json`` sibling artifact (Slice 27).
+
+    Runs the deterministic Slice 19 structural advisory core
+    (:func:`pipeline.guide_lint.lint_guide_markdown`) against the final,
+    sanitized ``clean.md`` and records its report. This is **advisory only**,
+    mirroring the math-verification artifact contract:
+
+      * It NEVER fails the job, NEVER changes the visible job status, and NEVER
+        blocks PDF/HTML/DOCX rendering.
+      * Zero findings is a normal ``completed`` result (summary total 0).
+      * Structural findings (empty headings, broken tables, unbalanced math,
+        KaTeX render issues) are recorded; they do not fail the job.
+      * Any unexpected error degrades to a small ``skipped`` artifact carrying a
+        safe message and NO traceback. Tracebacks/expression bodies are never
+        written to the artifact, and only the exception *type name* is logged.
+
+    Lint scope choices for this slice (kept deliberately small):
+
+      * ``expected_sections`` is NOT passed. The job manifest only stores
+        canonical section-toggle keys (e.g. ``key_concepts``), not the actual
+        heading text the LLM emits, so feeding them to the heading matcher would
+        produce unreliable / noisy ``missing_section`` findings. Wiring real
+        expected headings is left to a later slice.
+      * ``available_source_pages`` is NOT passed. Source page anchors are not
+        reliably available here without invasive source-text plumbing (and are
+        absent for paste / Markdown-upload jobs), so the optional page-citation
+        check is left disabled to keep this slice non-invasive.
+
+    The guide-lint core (``guide_lint``) is the structural checker and is
+    deliberately distinct from ``math_validator`` (KaTeX render validation, whose
+    ``validation.json`` schema is untouched by this artifact) and from
+    ``math_verifier`` (numeric ``math_verification.json``).
+    """
+    artifact_path = job.guide_lint_json
+    try:
+        from pipeline.guide_lint import lint_guide_markdown
+
+        text = job.clean_md.read_text(encoding="utf-8", errors="replace")
+        report = lint_guide_markdown(text, source_name="clean.md")
+        payload = {
+            "version": 1,
+            "kind": "guide_lint",
+            "status": "completed",
+            "source": "clean.md",
+            "report": report.to_dict(),
+        }
+        job.save_text(artifact_path, json.dumps(payload, indent=2) + "\n")
+    except Exception as exc:  # never let linting break a job
+        try:
+            payload = {
+                "version": 1,
+                "kind": "guide_lint",
+                "status": "skipped",
+                "reason": "lint_error",
+                "safe_message": "Guide lint could not be completed.",
+            }
+            job.save_text(artifact_path, json.dumps(payload, indent=2) + "\n")
+        except Exception:
+            pass  # writing the degraded artifact must itself never raise
+        # Log only the exception TYPE - never its message/args, which could echo
+        # guide content or a path - so the artifact and logs stay clean.
+        print(
+            f"Guide lint skipped ({type(exc).__name__}); job continues.",
             file=sys.stderr,
         )
 

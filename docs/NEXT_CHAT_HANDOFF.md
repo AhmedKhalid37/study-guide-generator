@@ -6,10 +6,28 @@
 > stable overview see `PROJECT_CONTEXT.md`; canonical brief is `../CLAUDE.md`.
 
 ## Current position
-- **Working tree:** clean. The correctness/measurement sequence is **fully
-  committed** on the trunk through **Slice 25B**. **HEAD = `ae44a85`** ("Slice 25B:
-  Improve Ask lexical retrieval hygiene"). Do not commit unless explicitly asked;
-  do not force-push.
+- **Working tree:** **Slice 27 implemented but uncommitted** on branch
+  `slice27-guide-lint-artifact` (branched from trunk after Slice 26). The
+  correctness/measurement sequence is committed on the trunk through **Slice 26**
+  (trunk HEAD = `a9263f0`, "Slice 26: Reconcile project handoff docs"). Do not
+  commit unless explicitly asked; do not force-push.
+- **Slice 27 (persist `guide_lint.json` advisory artifact):** backend/pipeline +
+  tests/docs only. New `_write_guide_lint(job)` in
+  `pipeline/run_markdown_job.py` runs the Slice 19 deterministic guide-lint core
+  against the final sanitized `clean.md` (right after `_write_math_verification`)
+  and writes `<job>/guide_lint.json` (`version`/`kind`/`status`/`source`/`report`,
+  or a safe `skipped`+`lint_error` artifact on any failure). New
+  `Job.guide_lint_json` property and an exact-name special-case in
+  `api/server.py::_artifact_path` (`GET /api/jobs/{id}/artifacts/guide_lint.json`),
+  kept OUT of `ARTIFACTS` so no generic list row appears. `expected_sections` and
+  `available_source_pages` are intentionally **not** passed (manifest stores only
+  canonical section keys, not emitted headings; source page anchors aren't
+  reliably available here) — documented in `CURRENT_TASK.md`. Advisory-only:
+  never fails/changes job status, never blocks render. New
+  `test_scripts/test_guide_lint_artifact.py` (26 host checks; +1 Docker-only route
+  check). **No** UI/JobDetails/generic-list/Exports/validation.json/
+  math_verification.json/extraction_metadata.json/prompt/provider/request-field/
+  OCR/Ask/retrieval/render-pipeline/generation-gating change.
 - **Committed slice sequence (most recent first):** 25B Ask lexical retrieval
   hygiene (`ae44a85`) · 25A Ask retrieval relevance baseline (`2e97f73`) · 24A PDF
   `extraction_metadata.json` (`226767c`) · 23B source page-citation directive +
@@ -21,10 +39,10 @@
   "uncommitted / PENDING REVIEW / branch in progress" wording in them — those
   slices are all on the trunk now.
 - **Immediate next planned slice (in order):** (1) persist `guide_lint.json`
-  advisory artifact (mirror the Slice 21 `math_verification.json` pattern; advisory
-  only, must never fail a job), then (2) JobDetails guide-lint UI (read-only, mirror
-  Slice 22), then (3) eval golden corpus / baseline, then (4) true Anki `.apkg`
-  export core. None started.
+  advisory artifact — **DONE (Slice 27, uncommitted on `slice27-guide-lint-artifact`)**;
+  then (2) JobDetails guide-lint UI (read-only, mirror Slice 22), then (3) eval
+  golden corpus / baseline, then (4) true Anki `.apkg` export core. (2)–(4) not
+  started.
 - **Slice 25B (Ask lexical retrieval hygiene):** backend retrieval-ranking +
   tests/docs. New shared `pipeline/ask_lexical.py::lexical_terms` adds **stopword
   filtering** + conservative **single-`-s` plural folding**, used by **both** the

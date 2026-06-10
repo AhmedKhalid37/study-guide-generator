@@ -3753,6 +3753,8 @@ def _artifact_path(job: Job, artifact_name: str) -> tuple[Path, str]:
         return job.math_verification_json, "application/json"
     if artifact_name == "extraction_metadata.json":
         return job.extraction_metadata_json, "application/json"
+    if artifact_name == "guide_lint.json":
+        return job.guide_lint_json, "application/json"
 
     artifact = ARTIFACTS.get(artifact_name)
     if artifact is None:

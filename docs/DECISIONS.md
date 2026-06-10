@@ -1426,3 +1426,27 @@ because it mangles technical tokens (`string → str`, `based → bas`) for litt
 result stays deterministic and explainable, and the recorded paraphrase weakness improved
 rank 5 → 1 on the fixture purely from removing function-word noise — but it is kept
 `known_weakness: true` because that win is still lexical overlap, not semantics.
+
+## guide_lint.json lints clean.md without expected_sections / source pages (Slice 27)
+Slice 27 persists a per-job `guide_lint.json` advisory artifact, mirroring the Slice 21
+`math_verification.json` contract (advisory-only, never fails/changes job status, never
+blocks render, downloadable by exact name, not surfaced in generic artifact lists/UI).
+The lint runs in `run_raw_markdown_pipeline._write_guide_lint`, against the final
+sanitized `clean.md`, immediately after `_write_math_verification`.
+
+**Why `expected_sections` is not passed:** `guide_lint`'s `expected_sections` matches
+against the document's emitted headings, but the only section information persisted on a
+job is the manifest's `include_sections` — canonical *toggle keys* (e.g. `key_concepts`,
+`practice_questions`), not the heading text the LLM actually writes. Normalising those
+keys and matching them against headings would produce unreliable, mostly-false
+`missing_section` warnings. Surfacing real expected headings is left to a later slice
+rather than shipping a noisy check now.
+
+**Why `available_source_pages` is not passed:** the optional page-citation plausibility
+check needs the source page anchors (`## Page N`) from the extracted source text, which
+is not reliably reachable at this pipeline point without invasive source-text plumbing
+and does not exist at all for paste / Markdown-upload jobs. To keep the slice small and
+non-invasive the check stays disabled; all other rules plus the existing Node/KaTeX
+render bridge still run (the bridge already degrades to an info finding when Node/KaTeX
+is unavailable, so it never crashes the helper). Both omissions are recorded in
+`CURRENT_TASK.md` so the next slice knows what to wire.

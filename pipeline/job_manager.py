@@ -122,6 +122,14 @@ class Job:
         return self.dir / "extraction_metadata.json"
 
     @property
+    def guide_lint_json(self) -> Path:
+        # Slice 27: sibling structural-advisory artifact holding the deterministic
+        # guide-lint report (pipeline/guide_lint.py). Like math_verification.json
+        # it is advisory-only and kept SEPARATE from validation.json - it never
+        # changes job status and is not merged with the KaTeX-render report.
+        return self.dir / "guide_lint.json"
+
+    @property
     def render_log(self) -> Path:
         return self.logs_dir / "render.log"
 
