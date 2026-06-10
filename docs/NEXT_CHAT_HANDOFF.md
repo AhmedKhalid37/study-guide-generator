@@ -15,9 +15,31 @@
   the reskin/UX phase is closed and the codebase is clean — **the correctness /
   measurement phase has now begun with Slice 18 (deterministic math verification).**
 - **HEAD:** Slice 18 (deterministic math-correctness verifier, **pure core only**)
-  is **committed** on `chrome-renderer-v1`, immediately after Slice 17 (`ff214fd`);
-  run `git log --oneline -1` for the exact hash. Slice 18 added a standalone module
-  + tests only — **no** job/artifact/API/prompt/frontend/UI integration.
+  is **committed** on `chrome-renderer-v1` as `2c47d03` (immediately after Slice 17
+  `ff214fd`). Slice 18 added a standalone module + tests only — **no**
+  job/artifact/API/prompt/frontend/UI integration.
+- **Slice 19 (deterministic guide-lint core, pure advisory only) is committed** on
+  `chrome-renderer-v1` (immediately after Slice 18 `2c47d03`) — see the commit log
+  for the hash. **Pure advisory core only:** no job integration, no artifact, no
+  API, no `validation.json`, no prompt, no frontend/UI.
+- **Slice 19 result (pure advisory core only):** added `pipeline/guide_lint.py`,
+  `lint_guide_markdown(markdown, *, source_name=None, expected_sections=None,
+  run_katex=True) -> GuideLintReport` — a JSON-serializable findings report
+  (`summary{total,error,warning,info}` + `findings[{id,rule,severity,line,message,
+  excerpt}]`). Rules: `empty_heading` (nested-aware), broken-table family
+  (`separator_without_header`/`header_separator_mismatch`/`malformed_separator`/
+  `body_row_mismatch`, all warnings — conservative), `unbalanced_math` (`$$`/`\(`/
+  `\[` = error, single `$` = warning for currency ambiguity), KaTeX bridge
+  (`katex_render` error / `katex_skipped` info — **reuses** `scripts/validate_math.js`
+  via `pipeline.math_validator.validate`, degrades gracefully when Node/KaTeX is
+  missing), and `missing_section` (normalized, order not enforced). Fenced code +
+  inline code are excluded; input is never mutated; no HTML/`dangerouslySetInnerHTML`.
+  **NOT wired into jobs / artifacts / API / frontend / `validation.json`**;
+  `math_validator.py` is reused unchanged and `math_verifier.py` is untouched; **no
+  new dependency**. Tests `test_scripts/test_guide_lint.py` (64/64) + fixtures under
+  `test_scripts/fixtures/guide_lint/`; build, `npm test`, `compileall`,
+  `test_math_verifier` (74/74), diff check, and `smoke_release.py` (28/0/0) all
+  green. Optional CLI: `python -m pipeline.guide_lint <file>`.
 - **Slice 18 result (pure core only):** added `pipeline/math_verifier.py`, a safe,
   deterministic numeric-correctness verifier (`verify_math_claims(text, *,
   source_name=None)` → JSON-serializable report with per-claim `ok` / `mismatch` /
@@ -57,10 +79,12 @@
   "treat `npm test` failures as pre-existing" caveat no longer applies.)
 - **Screenshots / visual review are operator-owned** — Claude Code does not produce
   them; the operator does visual inspection and supplies screenshots if needed.
-- **NEXT after Slice 18 = decide on integration of the math verifier** (e.g.
-  optional job-stage report / `validation.json` field / JobDetails surfacing) —
-  that integration is intentionally **out of scope for Slice 18** and must be its
-  own designed slice; the verifier must never make guide generation fail. LMM
+- **NEXT after Slice 19 = decide on integration of the correctness modules** —
+  the math verifier (Slice 18) and the guide linter (Slice 19) are both pure cores;
+  a future designed slice decides how/whether to surface them (optional job-stage
+  advisory report / `validation.json` field / JobDetails surfacing). That
+  integration is intentionally **out of scope** for both slices, and neither the
+  verifier nor the linter may ever make guide generation fail. LMM
   Phase 2 remains **paused** —
   resume only with a separately designed approve-root or packaging slice;
   app-suggested settings remain deferred.

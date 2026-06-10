@@ -5,6 +5,86 @@
 
 ---
 
+## Slice 19 — Deterministic guide-lint core: pure advisory module + fixtures (DONE — reviewed + committed).
+
+- **Purpose:** second **correctness / measurement** slice. Add a deterministic,
+  **advisory-only** linter that scans generated guide Markdown for *structural and
+  rendering-risk* issues, producing a JSON-serializable findings report. **Pure
+  core only** — it never mutates input, never fails generation, and is wired into
+  nothing.
+- **Scope guardrails honored:** **no** frontend change, **no** API change, **no**
+  job-pipeline integration, **no** artifact writing, **no** prompt change, **no**
+  render/OCR/math-sanitizer rewrite. `pipeline/math_validator.py` (KaTeX render
+  validation) is **reused, not modified**; `pipeline/math_verifier.py` (Slice 18)
+  is **untouched**. No new dependency.
+- **New file — `pipeline/guide_lint.py`:**
+  - Public API: `lint_guide_markdown(markdown, *, source_name=None,
+    expected_sections=None, run_katex=True) -> GuideLintReport`. Dataclasses
+    `LintFinding` / `GuideLintReport` with `to_dict()` / `to_json()`; report shape
+    = `{version, source_name, summary{total,error,warning,info}, findings[...]}`,
+    each finding `{id, rule, severity, line, message, excerpt}`.
+  - **Rules implemented:**
+    1. `empty_heading` (warning) — heading with no body before the next heading;
+       whitespace-only counts as empty; a parent heading whose body lives under a
+       deeper child heading is **not** flagged; a heading is not flagged when it
+       has a paragraph/list/table/math block/image/code block under it.
+    2. broken-table family (warning, conservative — never `error`):
+       `separator_without_header`, `header_separator_mismatch` (header vs separator
+       column count), `malformed_separator` (header followed by an invalid
+       separator-candidate row), `body_row_mismatch` (body row column count).
+    3. `unbalanced_math` — unbalanced `$$…$$`/`\(…\)`/`\[…\]` (**error**) and
+       unbalanced single `$` (**warning**, since it is ambiguous with unescaped
+       currency). Escaped `\$` is ignored.
+    4. `katex_render` (error) / `katex_skipped` (info) — **reuses** the existing
+       Node/KaTeX bridge (`scripts/validate_math.js` via
+       `pipeline.math_validator.validate`) by writing the Markdown to a transient
+       temp file (never a job artifact) and reading the result. If Node/KaTeX is
+       unavailable or the subprocess raises, it degrades to a single `katex_skipped`
+       info finding — it never crashes linting and never changes math-validation
+       behavior. Verified live: node + katex present → invalid `$\frac{1}$` yields
+       a real `katex_render` error; valid math yields nothing.
+    5. `missing_section` (warning) — when `expected_sections` is provided, each
+       entry is matched against headings by normalized text (lowercase, punctuation
+       → space, collapsed spaces) with equality or substring fallback (len ≥ 3).
+       Order is **not** enforced this slice.
+  - **Markdown safety:** fenced code blocks (``` / ~~~, marker-tracked) are excluded
+    from heading/table/math checks; inline code spans are excluded from math checks;
+    input is never mutated; no `dangerouslySetInnerHTML`, no HTML rendering.
+  - **Bounds:** text ≤ 200k chars, ≤ 2000 findings, KaTeX subprocess timeout 30s,
+    excerpts ≤ 160 chars.
+  - **Optional CLI:** `python -m pipeline.guide_lint <file>` prints the JSON report
+    (stdout only — no file writes).
+- **Intentionally unsupported / deferred:** setext (underline) headings (ATX only),
+  GFM cell-alignment correctness, escaped-pipe cell counting, table content/semantic
+  checks, link/image-target validation, spelling/readability, and any
+  job/`validation.json`/UI integration. All deferred to later designed slices.
+- **Tests / fixtures:** `test_scripts/test_guide_lint.py` (plain-Python assertion
+  style, run `python test_scripts/test_guide_lint.py`) — **64/64 PASS**. Covers a
+  clean guide (0 findings), empty headings (same-level/whitespace/nested/parent +
+  each body type), broken tables (each rule + valid table not flagged), math
+  delimiters (balanced inline/display + unbalanced `$`/`$$`/`\(`/`\[`), fenced-code
+  safety (broken table / unbalanced math / heading-like text inside a fence all
+  ignored), expected sections (all-present / missing-one / normalization / `None`),
+  KaTeX (valid passes, invalid → render finding or skip, disabled, no-crash), input
+  immutability, non-string/empty input, and the JSON report shape. Five fixtures
+  under `test_scripts/fixtures/guide_lint/` (`clean_guide.md`, `empty_headings.md`,
+  `broken_tables.md`, `math_delimiters.md`, `code_safety.md`).
+- **Validation (all green):** `npm --prefix frontend run build`; `npm --prefix
+  frontend run test` (full maintained chain); `python -m compileall api pipeline`;
+  `python test_scripts/test_math_verifier.py` → 74/74; `python
+  test_scripts/test_guide_lint.py` → 64/64; `git diff --check` clean; `python
+  test_scripts/smoke_release.py` → **28 passed / 0 failed / 0 skipped** (live app
+  unchanged — guide-lint is not imported by the server).
+- **Status:** **DONE — reviewed + committed** on `chrome-renderer-v1`. **Pure
+  advisory guide-lint core only:** no job integration, no artifact, no API, no
+  `validation.json`, no prompt, no frontend/UI. Next (separate, designed slice):
+  the **eval-harness Phase 1** (deterministic scoring framework over the Slice 18
+  verifier + Slice 19 linter), then decide whether/how to surface the verifier +
+  linter (job-stage advisory report / `validation.json` / JobDetails) — generation
+  must never fail on either.
+
+---
+
 ## Slice 18 — Deterministic math verification core: pure module + fixtures (DONE — reviewed + committed).
 
 - **Purpose:** first **correctness / measurement** slice after the reskin/hygiene
