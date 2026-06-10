@@ -25,6 +25,7 @@ import {
   deleteShortcut,
   exportShortcutUrl,
   exportShortcutsUrl,
+  getLibrary,
   getOptions,
   getStyles,
   importShortcuts,
@@ -78,27 +79,65 @@ import {
   STATUS_VALID
 } from "../shortcutStatus";
 
-// Decorative provider marks for the hero badge cluster (no behaviour).
-// Decorative only. Sizes/positions are kept inside the 540px cluster
-// (left% · 5.4 + size ≤ ~500) so nothing clips against the hero's overflow.
+// Provider marks for the hero badge cluster. Sizes/positions are kept inside the
+// 540px cluster (left% · 5.4 + size ≤ ~500) so nothing clips against the hero's
+// overflow. Each real provider carries static, curated hover copy (model name +
+// strength + how GuideForge uses it) — purely informational, nothing dynamic or
+// sensitive. EVERY real badge uses the white circular treatment (variant
+// "light") so all provider marks read as centred glyphs on matching white
+// circles — no badge looks like a dark circle next to the others. There is no
+// ghost/empty badge: the cluster shows only real providers.
 const HERO_BADGES = [
-  { x: 38, y: 30, size: 84, src: deepseekMark, dark: true },
-  { x: 58, y: 8, size: 88, src: qwenMark },
-  { x: 76, y: 40, size: 76, src: gemmaMark },
-  { x: 50, y: 64, size: 60, src: geminiMark },
-  { x: 80, y: 12, size: 64, src: mistralMark },
-  { x: 78, y: 66, size: 56, ghost: true }
+  {
+    x: 38,
+    y: 30,
+    size: 84,
+    src: deepseekMark,
+    variant: "light",
+    bigMark: true,
+    name: "DeepSeek V4 Pro",
+    blurb: "Strong reasoning model used for thorough, long-form study guides."
+  },
+  {
+    x: 58,
+    y: 8,
+    size: 88,
+    src: qwenMark,
+    variant: "light",
+    name: "Qwen 3.7 Max / Plus",
+    blurb: "High-coverage model used for dense exam and cram guide generation."
+  },
+  {
+    x: 76,
+    y: 40,
+    size: 76,
+    src: gemmaMark,
+    variant: "light",
+    name: "Gemma 4 / Local",
+    blurb: "Local model path for private, offline GuideForge workflows."
+  },
+  {
+    x: 50,
+    y: 64,
+    size: 60,
+    src: geminiMark,
+    variant: "light",
+    // Lowest badge in the cluster — open its popover upward so the hero's
+    // overflow clip never cuts it off at the bottom edge.
+    pop: "up",
+    name: "Gemini 3.1",
+    blurb: "Multimodal-capable provider option for visual and source-understanding workflows."
+  },
+  {
+    x: 80,
+    y: 12,
+    size: 64,
+    src: mistralMark,
+    variant: "light",
+    name: "Mistral OCR",
+    blurb: "High-accuracy ingestion helper for scanned or image-heavy source material."
+  }
 ];
-
-// Quick Launch pastel fills, cycled across the cards in order (the same four
-// design-system fills the stat cards used): bluegray → sage → cream → lavender.
-const PASTEL_FILLS = ["bluegray", "sage", "cream", "lavender"];
-const PASTEL_VAR = {
-  bluegray: "var(--pastel-bluegray)",
-  sage: "var(--pastel-sage)",
-  cream: "var(--pastel-cream)",
-  lavender: "var(--pastel-lavender)"
-};
 
 // How many Quick Launch cards are visible at once before the carousel arrows
 // page the rest into view.
@@ -121,12 +160,15 @@ const STATUS_CHIP_CLASSES = {
 
 // ── Home page ───────────────────────────────────────────────────────────────
 
+// How many guides each Home panel shows before its "View all" link takes over.
+const HOME_PANEL_CAP = 5;
+
 export default function HomeShortcuts({
-  jobs = [],
   jobsRefreshKey,
   onActivateShortcut,
   onNewGuide,
   onNavigate,
+  onOpenLibraryView,
   currentBuilderSetup
 }) {
   const [shortcuts, setShortcuts] = useState([]);
@@ -185,12 +227,27 @@ export default function HomeShortcuts({
 
   const pinned = useMemo(() => shortcuts.filter((s) => s.pinned), [shortcuts]);
 
-  // Favorite guides — derived ONLY from the jobs already passed to Home (no
-  // extra fetch). The lower-left panel lists these.
-  const favorites = useMemo(
-    () => (Array.isArray(jobs) ? jobs : []).filter((job) => job.favorite === true),
-    [jobs]
-  );
+  // Favorite guides — loaded from the FULL library (`/api/library`), not the
+  // recent-20 `jobs` prop. The prop is a capped, newest-first slice from
+  // `/api/jobs?limit=20`, so favorites on older guides (or favorites toggled in
+  // Library after this page first loaded) could fall outside it. Reading the
+  // full library here means every real favorite shows regardless of age, and a
+  // refresh on `jobsRefreshKey` (plus the remount that happens each time Home is
+  // re-opened) keeps it current after a guide is favorited elsewhere.
+  const [favorites, setFavorites] = useState([]);
+  useEffect(() => {
+    let cancelled = false;
+    getLibrary({ sort: "newest" })
+      .then((data) => {
+        if (cancelled) return;
+        const all = Array.isArray(data?.jobs) ? data.jobs : [];
+        setFavorites(all.filter((job) => job.favorite === true));
+      })
+      .catch(() => !cancelled && setFavorites([]));
+    return () => {
+      cancelled = true;
+    };
+  }, [jobsRefreshKey]);
 
   // Imperative handle to the embedded Recent Guides panel so the Favorite cards
   // can open the SAME job-details drawer by reusing its openJobDetails — no
@@ -212,9 +269,20 @@ export default function HomeShortcuts({
       />
 
       <div className="split mt32">
-        <FavoriteGuidesPanel favorites={favorites} onOpenJob={openJobDetails} />
+        <FavoriteGuidesPanel
+          favorites={favorites}
+          cap={HOME_PANEL_CAP}
+          onOpenJob={openJobDetails}
+          onViewAll={onOpenLibraryView ? () => onOpenLibraryView("favorites") : null}
+        />
         <div>
-          <RecentJobsPanel ref={recentRef} embedded refreshKey={jobsRefreshKey} />
+          <RecentJobsPanel
+            ref={recentRef}
+            embedded
+            refreshKey={jobsRefreshKey}
+            maxItems={HOME_PANEL_CAP}
+            onViewAll={onOpenLibraryView ? () => onOpenLibraryView("recent") : null}
+          />
         </div>
       </div>
 
@@ -287,20 +355,33 @@ function topFindingMessages(shortcut, cap = 3) {
   return messages.slice(0, cap);
 }
 
-// Hero banner — decorative provider badge cluster + headline + Getting Started.
+// Hero banner — provider badge cluster + headline + Getting Started. The badges
+// are decorative flourish but each real provider reveals a curated hover popover
+// (model + strengths + GuideForge usage). The cluster stays aria-hidden so the
+// popovers are a mouse/pointer enhancement only and never clutter the a11y tree.
 function Hero({ onGetStarted }) {
   return (
     <div className="hero">
       <div className="badge-cluster" aria-hidden="true">
-        {HERO_BADGES.map((badge, index) => (
-          <div
-            key={index}
-            className={`prov-badge ${badge.ghost ? "ghost" : badge.dark ? "dark" : "light"}`}
-            style={{ left: `${badge.x}%`, top: `${badge.y}%`, width: badge.size, height: badge.size }}
-          >
-            {badge.src && <img src={badge.src} alt="" className="prov-badge-mark" />}
-          </div>
-        ))}
+        {HERO_BADGES.map((badge, index) => {
+          const variant = badge.ghost ? "ghost" : badge.variant || "default";
+          const hasInfo = Boolean(badge.name && badge.blurb);
+          return (
+            <div
+              key={index}
+              className={`prov-badge ${variant}${hasInfo ? " has-info" : ""}${badge.bigMark ? " big-mark" : ""}`}
+              style={{ left: `${badge.x}%`, top: `${badge.y}%`, width: badge.size, height: badge.size }}
+            >
+              {badge.src && <img src={badge.src} alt="" className="prov-badge-mark" />}
+              {hasInfo && (
+                <span className={`prov-pop${badge.pop === "up" ? " up" : ""}`} role="presentation">
+                  <span className="prov-pop-name">{badge.name}</span>
+                  <span className="prov-pop-blurb">{badge.blurb}</span>
+                </span>
+              )}
+            </div>
+          );
+        })}
       </div>
       <div className="hero-content">
         <h1>Meet GuideForge — your exam-focused study guide builder</h1>
@@ -494,11 +575,10 @@ function QuickLaunch({ pinned, loading, error, onCustomize, onActivate, onInspec
             className="ql-track"
             style={{ "--ql-cols": Math.min(pinned.length, QUICK_LAUNCH_PAGE) }}
           >
-            {pinned.map((shortcut, index) => (
+            {pinned.map((shortcut) => (
               <LaunchCard
                 key={shortcut.id}
                 shortcut={shortcut}
-                fill={PASTEL_FILLS[index % PASTEL_FILLS.length]}
                 onActivate={() => onActivate(shortcut)}
                 onInspect={() => onInspect(shortcut)}
               />
@@ -510,11 +590,13 @@ function QuickLaunch({ pinned, loading, error, onCustomize, onActivate, onInspec
   );
 }
 
-// A single Quick Launch shortcut as a pastel card (title centred, details
-// left-aligned). Activation gating stays on the LEGACY `valid` boolean — the
-// parent's requestActivate owns the real routing — and the StatusPill is purely
-// informational, shown only for degraded/broken shortcuts.
-function LaunchCard({ shortcut, fill, onActivate, onInspect }) {
+// A single Quick Launch shortcut as a dark glass card (title centred, details
+// left-aligned) matching the rest of the app — transparent dark fill, soft-white
+// border, white title + muted supporting text, silver hover sheen. Activation
+// gating stays on the LEGACY `valid` boolean — the parent's requestActivate owns
+// the real routing — and the StatusPill is purely informational, shown only for
+// degraded/broken shortcuts.
+function LaunchCard({ shortcut, onActivate, onInspect }) {
   const invalid = shortcut.valid === false;
   const typeLabel = TYPE_LABELS[shortcut.type] || shortcut.type;
   const reasonHint = invalid ? invalidHint(shortcut) : null;
@@ -522,7 +604,6 @@ function LaunchCard({ shortcut, fill, onActivate, onInspect }) {
   const badge = statusBadge(status);
   // Valid shortcuts stay quiet (no pill); degraded/broken surface a StatusPill.
   const showBadge = status === STATUS_DEGRADED || status === STATUS_BROKEN;
-  const description = invalid ? reasonHint : shortcut.description || summarizePayload(shortcut);
 
   function handleInspect(event) {
     event.stopPropagation();
@@ -537,8 +618,7 @@ function LaunchCard({ shortcut, fill, onActivate, onInspect }) {
   return (
     <button
       type="button"
-      className="btn-reset ql-card"
-      style={{ background: PASTEL_VAR[fill] || PASTEL_VAR.bluegray }}
+      className="btn-reset ql-card glass"
       onClick={onActivate}
       title={invalid ? reasonHint : summarizePayload(shortcut)}
       aria-disabled={invalid ? "true" : undefined}
@@ -571,7 +651,8 @@ function LaunchCard({ shortcut, fill, onActivate, onInspect }) {
         </span>
       </div>
       <div className="ql-title">{shortcut.name}</div>
-      <div className="ql-desc">{description}</div>
+      {/* Card shows only icon · title · type · arrow — the full description lives
+          in the Customize list and the Inspector, not on the launch card. */}
       <div className="ql-meta">
         <span className="ql-type">{typeLabel}</span>
         <span className="ql-go" aria-hidden="true">{Icon.chevronRight()}</span>
@@ -584,7 +665,7 @@ function LaunchCard({ shortcut, fill, onActivate, onInspect }) {
 //
 // Lower-left panel: jobs already in hand that are flagged favorite, as clickable
 // ItemCards that open the shared job-details drawer. No new API calls.
-function FavoriteGuidesPanel({ favorites, onOpenJob }) {
+function FavoriteGuidesPanel({ favorites, cap = null, onOpenJob, onViewAll }) {
   if (!favorites || favorites.length === 0) {
     return (
       <Panel title="Favorite Guides">
@@ -592,10 +673,16 @@ function FavoriteGuidesPanel({ favorites, onOpenJob }) {
       </Panel>
     );
   }
+  const visible = cap ? favorites.slice(0, cap) : favorites;
+  const viewAll = onViewAll ? (
+    <button type="button" className="panel-link btn-reset" onClick={onViewAll}>
+      View all
+    </button>
+  ) : null;
   return (
-    <Panel title="Favorite Guides">
+    <Panel title="Favorite Guides" action={viewAll}>
       <div className="col">
-        {favorites.map((job) => {
+        {visible.map((job) => {
           const providerModel = jobProviderModel(job);
           return (
             <ItemCard

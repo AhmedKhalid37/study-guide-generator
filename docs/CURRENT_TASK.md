@@ -5,6 +5,51 @@
 
 ---
 
+## Slice 12 — Home & Library UX polish DONE.
+
+- **Slice 12 (Home + Library UX polish) is DONE.** Frontend visual/UX only — no
+  backend routes, payloads, job/shortcut ids, or pipeline behavior changed.
+- **Files changed:** `frontend/src/components/DesktopDashboard.jsx`,
+  `frontend/src/components/HomeShortcuts.jsx`,
+  `frontend/src/components/LibraryWorkspace.jsx`,
+  `frontend/src/components/RecentJobsPanel.jsx`,
+  `frontend/src/design-system.css`.
+- **Original review blockers and the fixes applied:**
+  - **Stale/capped favorites →** Home "Favorite Guides" now loads real favorites
+    from the full `/api/library` (newest sort) instead of the capped recent-20
+    `jobs` prop Home was previously handed; the obsolete `jobs` fetch/prop wiring
+    in `DesktopDashboard` was removed. Favorites refresh on `jobsRefreshKey` so a
+    favorite toggled elsewhere shows on return to Home.
+  - **Quick Launch cards →** simplified to icon / title / type (+ status pill only
+    when degraded/broken); dropped the pastel fills and the inline description.
+    Cards now use the shared dark `glass` treatment and the **silver hover sheen
+    no longer clips**.
+  - **Provider badges →** every real badge uses the white circular treatment
+    (`variant: "light"`) so all marks read as centred glyphs on matching white
+    circles (no odd dark circle).
+  - **Provider tooltip copy →** each real badge carries curated, non-sensitive
+    hover copy (model name + strength + how GuideForge uses it); cluster stays
+    `aria-hidden`.
+  - **Ghost/empty badge removed →** the cluster now renders only real providers.
+  - **Library favorites filter + Home deep-links →** added a **Favorites** filter
+    chip and a **Title Z–A** sort to Library (search / filter / sort / folder /
+    trash / selection / bulk behavior all preserved); Home "View all" links on the
+    Favorite and Recent panels deep-link into Library via the existing
+    `libraryView` nonce channel (`favorites` presets the new filter + reveals the
+    filter bar; `recent` opens newest). Both panels are capped at 5 items on Home.
+  - **Library folder rail →** ends naturally under the folder controls when short
+    and grows only as needed.
+- **Security preserved:** no keys/tokens/paths/secrets in the DOM; badge copy is
+  static curated text, nothing dynamic or sensitive.
+- **Live verification:** local browser pass confirmed (Quick Launch hover no
+  longer clips, white provider circles, working favorites, Home→Library
+  deep-links, favorites filter), no horizontal overflow at 1920/1440.
+- **Verification:** build green; `compileall` green; `git diff --check` clean;
+  `smoke_release.py` 28/28 (checked with the known unrelated LLM
+  `outline use → followed in order` ordering flake only — clean on re-run).
+
+---
+
 ## Slice 11 — Final QA / polish sweep (HomeShortcuts + ShortcutInspector) DONE.
 
 - **Slice 11 (GuideForge UI reskin — final QA pass) is DONE.** Visual/CSS/markup

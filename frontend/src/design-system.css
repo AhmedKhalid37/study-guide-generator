@@ -2766,3 +2766,142 @@ details.sg-mdl-helper > summary::-webkit-details-marker { display: none; }
 .sg-act.ok { border-color: rgba(52,211,153,0.4); background: var(--green-soft); color: #6EE7B7; }
 .sg-act.ok:hover:not(:disabled) { background: rgba(52,211,153,0.24); }
 .sg-act.sm { height: 32px; font-size: 13px; padding: 0 11px; }
+
+/* =========================================================================
+   Home + Library UX polish — Slice 12
+   (additive only — overrides earlier .ql-* / .prov-badge / .sg-folder-rail
+   rules via higher-specificity selectors; nothing above is deleted)
+   ========================================================================= */
+
+/* ── Scope A — Quick Launch glass cards ──────────────────────────────────────
+   Replaces the per-card pastel fills with the app's dark-glass treatment:
+   transparent dark surface, soft-white border, white title + muted text, and a
+   silver hover sheen. Each override carries the extra .glass class so it wins
+   over the base .ql-* rules without touching them. */
+.ql-card.glass {
+  position: relative;
+  overflow: hidden;
+  background:
+    linear-gradient(180deg, rgba(255,255,255,0.055) 0%, rgba(255,255,255,0.018) 100%),
+    rgba(18,18,21,0.72);
+  border: 1px solid rgba(255,255,255,0.16);
+  color: var(--text);
+  box-shadow: inset 0 1px 0 rgba(255,255,255,0.05);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+}
+/* diagonal sheen that fades in on hover for a premium feel */
+.ql-card.glass::after {
+  content: "";
+  position: absolute; inset: 0;
+  background: linear-gradient(120deg, transparent 32%, rgba(255,255,255,0.10) 50%, transparent 68%);
+  opacity: 0;
+  transition: opacity .2s ease;
+  pointer-events: none;
+}
+.ql-card.glass:hover {
+  transform: translateY(-2px) scale(1.012);
+  border-color: rgba(255,255,255,0.42);
+  box-shadow:
+    0 16px 38px rgba(0,0,0,0.42),
+    0 0 0 1px rgba(255,255,255,0.08),
+    inset 0 1px 0 rgba(255,255,255,0.12);
+}
+.ql-card.glass:hover::after { opacity: 1; }
+.ql-card.glass[aria-disabled="true"] { opacity: 0.55; }
+
+/* keep the card content above the sheen layer */
+.ql-card.glass > * { position: relative; z-index: 1; }
+
+/* consistent icon treatment — emoji sits in a soft circular chip */
+.ql-card.glass .ql-emoji {
+  display: grid; place-items: center;
+  width: 46px; height: 46px;
+  border-radius: 50%;
+  background: rgba(255,255,255,0.06);
+  border: 1px solid rgba(255,255,255,0.12);
+  font-size: 23px;
+}
+.ql-card.glass .ql-title { color: var(--text); }
+.ql-card.glass .ql-desc  { color: var(--muted); }
+.ql-card.glass .ql-type  { color: var(--muted); }
+.ql-card.glass .ql-go    { color: var(--muted); }
+.ql-card.glass:hover .ql-go { color: var(--text); }
+.ql-card.glass .ql-inspect { color: var(--muted); }
+.ql-card.glass .ql-inspect:hover { background: rgba(255,255,255,0.08); color: var(--text); }
+/* status pills revert to dark-theme soft tones (the light-bg .ql-pill overrides
+   are only for the old pastel cards) */
+.ql-card.glass .ql-pill { border: 0; }
+.ql-card.glass .ql-pill.pill-amber { background: var(--amber-soft); color: #F4C76B; }
+.ql-card.glass .ql-pill.pill-amber .dot { background: var(--amber); }
+.ql-card.glass .ql-pill.pill-red { background: var(--red-soft); color: #FCA5A5; }
+.ql-card.glass .ql-pill.pill-red .dot { background: var(--red); }
+
+/* ── Scope D — Library folder rail height ────────────────────────────────────
+   The rail ends just under the create-folder controls instead of stretching to
+   the full page height when there are few folders. align-self:flex-start drops
+   the default stretch so the rail is content-height; max-height:100% caps it to
+   the row so the custom-folder list (.sg-folder-scroll) scrolls only when the
+   folder count actually needs the room. The job-list column is unaffected. */
+.sg-folder-rail { align-self: flex-start; max-height: 100%; }
+
+/* ── Scope E — Provider badge cluster polish ─────────────────────────────────
+   DeepSeek now uses the white circular badge so its light mark reads as a
+   centred glyph (no "white box inside a dark circle"); .big-mark scales it to
+   sit visually like the other marks while staying inside the circle (≤~70% keeps
+   the square corners within the circle, so no clipping is needed on the badge).
+   Each real provider reveals a curated hover popover. */
+.prov-badge.big-mark .prov-badge-mark { width: 70%; height: 70%; }
+
+/* labelled badges accept pointer events (the cluster itself stays pass-through),
+   and the hovered one lifts above its neighbours so its popover reads cleanly. */
+.prov-badge.has-info { pointer-events: auto; cursor: default; }
+.prov-badge.has-info:hover { z-index: 20; }
+
+/* Popover opens inward (leftward, toward the hero interior) and downward by
+   default so it stays clear of the hero's clipped right/top edges; the lowest
+   badge flips upward via .up. */
+.prov-pop {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 50%;
+  width: 224px;
+  display: flex; flex-direction: column; gap: 6px;
+  padding: 12px 14px;
+  border-radius: 12px;
+  border: 1px solid var(--card-border-2);
+  background: rgba(16,16,18,0.97);
+  box-shadow: 0 18px 44px rgba(0,0,0,0.55);
+  text-align: left;
+  opacity: 0; visibility: hidden;
+  transform: translateY(6px);
+  transition: opacity .16s ease, transform .16s ease, visibility .16s;
+  pointer-events: none;
+  z-index: 21;
+}
+.prov-pop.up { top: auto; bottom: calc(100% + 8px); transform: translateY(-6px); }
+.prov-badge.has-info:hover .prov-pop {
+  opacity: 1; visibility: visible; transform: translateY(0);
+}
+.prov-pop-name { font-size: 14px; font-weight: 700; color: var(--text); letter-spacing: -0.01em; }
+.prov-pop-blurb { font-size: 12.5px; line-height: 1.45; color: var(--text-dim); }
+
+/* =========================================================================
+   Slice 12 — review fixes
+   ========================================================================= */
+
+/* #2 — Quick Launch hover must never clip. The viewport scrolls horizontally
+   (overflow-x:auto, which forces overflow-y to auto as well), so a lifted +
+   scaled card would otherwise be cut at the row's top/bottom edge and the
+   downward hover shadow would be sheared off. The `overflow` clip region is the
+   PADDING box, so padding inside the scroll container gives the hover transform
+   room to breathe without being clipped. Vertical padding lives on the viewport
+   (the scroll box); horizontal padding lives on the track (the scrolled
+   content) so the first/last card keep their inset at both scroll ends. */
+.ql-viewport { padding: 12px 0 28px; }
+.ql-track { padding: 0 8px; }
+
+/* #3 — simplified card: with the description removed the card is shorter and
+   reads as icon (top) · title (centred) · type + arrow (bottom). The reduced
+   min-height keeps it feeling intentional rather than empty. */
+.ql-card.glass { min-height: 154px; }

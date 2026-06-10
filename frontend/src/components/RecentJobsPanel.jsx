@@ -95,7 +95,7 @@ function attachmentSummary(job) {
   };
 }
 
-function RecentJobsPanel({ refreshKey = 0, embedded = false, onSelectedJobChange }, ref) {
+function RecentJobsPanel({ refreshKey = 0, embedded = false, onSelectedJobChange, maxItems = null, onViewAll = null }, ref) {
   const [jobs, setJobs] = useState([]);
   const [selectedJobId, setSelectedJobId] = useState(null);
   const [selectedJob, setSelectedJob] = useState(null);
@@ -205,8 +205,20 @@ function RecentJobsPanel({ refreshKey = 0, embedded = false, onSelectedJobChange
   // the job-load effect fetches it whether or not it is in the recent list.
   useImperativeHandle(ref, () => ({ openJob: openJobDetails }), [openJobDetails]);
 
+  // On Home the embedded panel shows only the first `maxItems` guides with a
+  // working "View all" that deep-links into the Library (newest sort). When no
+  // handler/cap is provided the panel behaves exactly as before.
+  const visibleJobs = maxItems ? jobs.slice(0, maxItems) : jobs;
+  const viewAllAction = onViewAll ? (
+    <button type="button" className="panel-link btn-reset" onClick={onViewAll}>
+      View all
+    </button>
+  ) : (
+    <span className="panel-link">View all</span>
+  );
+
   const listPanel = (
-    <Panel title="Recent Guides" action={<span className="panel-link">View all</span>}>
+    <Panel title="Recent Guides" action={viewAllAction}>
       {loadingJobs && (
         <div className="recent-state">
           <Loader2 className="h-5 w-5 animate-spin" style={{ color: "var(--muted)" }} />
@@ -227,7 +239,7 @@ function RecentJobsPanel({ refreshKey = 0, embedded = false, onSelectedJobChange
 
       {!loadingJobs && !jobsError && jobs.length > 0 && (
         <div className="col">
-          {jobs.map((job) => {
+          {visibleJobs.map((job) => {
             const selected = selectedJobId === job.id;
             const providerModel = formatProviderModel(job);
             const sources = attachmentSummary(job);

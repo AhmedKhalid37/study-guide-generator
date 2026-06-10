@@ -9,7 +9,6 @@ import HomeShortcuts from "./HomeShortcuts";
 import Icon from "./Icon";
 import Button, { IconButton } from "./Button";
 import { INPUT_TO_SOURCE } from "../shortcutMeta";
-import { getJobs } from "../api/client";
 
 // Sidebar nav, grouped to match the reskin reference. The ids and order are the
 // real activeSection ids consumed below — only the icon keys (resolved against
@@ -66,7 +65,6 @@ export default function DesktopDashboard() {
   const [selectedStyle, setSelectedStyle] = useState("exam_cram");
   const [jobsRefreshKey, setJobsRefreshKey] = useState(0);
   const [latestJob, setLatestJob] = useState(null);
-  const [jobs, setJobs] = useState([]);
   // Builder prefill from a builder_setup shortcut: { payload, nonce }.
   const [builderPrefill, setBuilderPrefill] = useState(null);
   // Library view requested by a library_view/tool shortcut: { view, nonce }.
@@ -75,14 +73,6 @@ export default function DesktopDashboard() {
   const [builderSetup, setBuilderSetup] = useState(null);
   // Collapsed sidebar — local UI state only, persisted across reloads.
   const [sidebarCollapsed, setSidebarCollapsed] = useState(readSidebarCollapsed);
-
-  useEffect(() => {
-    let cancelled = false;
-    getJobs().then((data) => !cancelled && setJobs(data.jobs ?? [])).catch(() => !cancelled && setJobs([]));
-    return () => {
-      cancelled = true;
-    };
-  }, [jobsRefreshKey]);
 
   useEffect(() => {
     try {
@@ -99,6 +89,14 @@ export default function DesktopDashboard() {
   const openBuilder = useCallback((source = "llm") => {
     setBuilderSource(source);
     setActiveSection("builder");
+  }, []);
+
+  // Open Library on a preset view requested from Home (e.g. "favorites" /
+  // "recent" deep-links). Reuses the same libraryView nonce channel the
+  // library_view shortcuts use, so LibraryWorkspace presets its filter/sort.
+  const openLibraryView = useCallback((view) => {
+    setLibraryView({ view, nonce: Date.now() });
+    setActiveSection("library");
   }, []);
 
   const handleJobCreated = useCallback((job) => {
@@ -158,11 +156,11 @@ export default function DesktopDashboard() {
         <div className="content scroll">
           {activeSection === "home" && (
             <HomeShortcuts
-              jobs={jobs}
               jobsRefreshKey={jobsRefreshKey}
               onActivateShortcut={handleActivateShortcut}
               onNewGuide={() => openBuilder()}
               onNavigate={setActiveSection}
+              onOpenLibraryView={openLibraryView}
               currentBuilderSetup={builderSetup}
             />
           )}

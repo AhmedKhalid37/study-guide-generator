@@ -47,10 +47,11 @@ const SORTS = [
   { id: "newest", label: "Newest" },
   { id: "oldest", label: "Oldest" },
   { id: "title", label: "Title A–Z" },
+  { id: "title_desc", label: "Title Z–A" },
   { id: "status", label: "Status" }
 ];
 
-const emptyFilters = { status: "", provider: "", style: "", mode: "", hasAttachments: false, hasWarnings: false };
+const emptyFilters = { status: "", provider: "", style: "", mode: "", favorite: false, hasAttachments: false, hasWarnings: false };
 
 // Special pseudo-folder id for the Trash view.
 const TRASH_VIEW = "__trash__";
@@ -144,8 +145,16 @@ export default function LibraryWorkspace({ refreshKey = 0, onOpenBuilder, initia
       const failed = data.jobs.map((j) => j.status).find((s) => String(s || "").includes("failed"));
       setFilters({ ...emptyFilters, status: failed || "" });
       setSort("newest");
+    } else if (view === "favorites") {
+      // Home "View all favorites" deep-link: preset the favorites filter (only
+      // favourites shown) and reveal the filter bar so it's visible/clearable.
+      setSelectedFolder("all");
+      setQ("");
+      setFilters({ ...emptyFilters, favorite: true });
+      setSort("newest");
+      setShowFilters(true);
     } else {
-      // recent / all / pinned / favorites — favorites already float to the top.
+      // recent / all / pinned — favourites still float to the top within sort.
       setSelectedFolder("all");
       setQ("");
       setFilters(emptyFilters);
@@ -273,6 +282,7 @@ export default function LibraryWorkspace({ refreshKey = 0, onOpenBuilder, initia
     (filters.provider ? 1 : 0) +
     (filters.style ? 1 : 0) +
     (filters.mode ? 1 : 0) +
+    (filters.favorite ? 1 : 0) +
     (filters.hasAttachments ? 1 : 0) +
     (filters.hasWarnings ? 1 : 0);
 
@@ -290,6 +300,7 @@ export default function LibraryWorkspace({ refreshKey = 0, onOpenBuilder, initia
       if (filters.provider && String(job.provider || "").toLowerCase() !== filters.provider.toLowerCase()) return false;
       if (filters.style && job.prompt_name !== filters.style) return false;
       if (filters.mode && (job.input_type || job.path_mode) !== filters.mode) return false;
+      if (filters.favorite && !job.favorite) return false;
       if (filters.hasAttachments && !((job.attachment_summary?.count || 0) > 0)) return false;
       if (filters.hasWarnings && !(job.attachment_summary?.has_warnings || job.error)) return false;
       return true;
@@ -298,6 +309,7 @@ export default function LibraryWorkspace({ refreshKey = 0, onOpenBuilder, initia
     const created = (job) => String(job.created_at || job.id || "");
     if (sort === "oldest") list = [...list].sort((a, b) => created(a).localeCompare(created(b)));
     else if (sort === "title") list = [...list].sort((a, b) => String(a.title || "").localeCompare(String(b.title || "")));
+    else if (sort === "title_desc") list = [...list].sort((a, b) => String(b.title || "").localeCompare(String(a.title || "")));
     else if (sort === "status") list = [...list].sort((a, b) => String(a.status || "").localeCompare(String(b.status || "")));
     else list = [...list].sort((a, b) => created(b).localeCompare(created(a)));
     // Favorites float to the top regardless of sort; Array.prototype.sort is
@@ -1238,6 +1250,9 @@ function FilterBar({ filters, setFilters, statuses, providers, styleChoices, mod
         options={styleChoices.map(([id, name]) => ({ value: id, label: name }))}
       />
       <FilterSelect label="Input" value={filters.mode} onChange={(value) => set("mode", value)} options={modes} />
+      <ToggleChip active={filters.favorite} onClick={() => set("favorite", !filters.favorite)}>
+        <Star size={12} /> Favorites
+      </ToggleChip>
       <ToggleChip active={filters.hasAttachments} onClick={() => set("hasAttachments", !filters.hasAttachments)}>
         <Paperclip size={12} /> Attachments
       </ToggleChip>
