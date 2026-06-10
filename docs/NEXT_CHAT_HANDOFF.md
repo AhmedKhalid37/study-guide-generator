@@ -6,10 +6,22 @@
 > stable overview see `PROJECT_CONTEXT.md`; canonical brief is `../CLAUDE.md`.
 
 ## Current position
-- **Branch in progress:** `slice24a-extraction-metadata-artifact`, created from
-  `chrome-renderer-v1` after Slice 23B. Slice 24A is implemented and
-  intentionally uncommitted. Do not commit unless explicitly asked; do not
-  force-push.
+- **Branch in progress:** `slice25a-ask-retrieval-baseline`, created from
+  `chrome-renderer-v1` after Slice 24A was committed (`226767c`). Slice 25A is
+  implemented and intentionally uncommitted. Do not commit unless explicitly
+  asked; do not force-push.
+- **Slice 25A (Ask retrieval relevance harness + lexical baseline):** test/docs
+  only. Adds `test_scripts/test_ask_retrieval_relevance.py` +
+  `test_scripts/fixtures/ask_retrieval/` (guide.md, source.txt, queries.json). It
+  measures the current local-only lexical (tf-idf) Ask retrieval offline via the
+  real boundary — `ask_context.prepare_context`/`load_index` +
+  `ask_sessions._score_chunks`/`retrieve_chunks` over a temp job dir — and reports
+  `hit_at_k` / `rank` / `reciprocal_rank` / `mrr`. Baseline at k=5:
+  `hit_rate@5=1.0`, `mrr=0.9`; one paraphrase **known-weakness** case (non-blocking)
+  honestly shows the correct section dropping to rank 5. **No** retrieval/runtime/
+  prompt/provider/route/UI/embeddings/dependency change. See `CURRENT_TASK.md`.
+- **Slice 24A (persist per-page extraction metadata artifact) is committed** on
+  `chrome-renderer-v1` as `226767c`. See `CURRENT_TASK.md` for its details.
 - **Branch (trunk / PR target):** `chrome-renderer-v1` (all reskin slices land here).
 - **Phase:** the **GuideForge reskin + UX phase is COMPLETE** (Slices 1–15
   reskinned every workspace to semantic GuideForge CSS — Tailwind utilities are

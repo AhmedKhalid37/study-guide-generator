@@ -1,0 +1,23 @@
+## Page 1
+
+Lecture 1 slide. Neural networks are trained with backpropagation. The chain
+rule is applied from the output layer back toward the input layer to compute the
+gradient of the loss with respect to each weight.
+
+## Page 2
+
+Lecture 2 slide. The sigmoid function maps a linear score to a probability
+between zero and one. Logistic regression uses this logistic curve and is fit by
+minimizing the cross-entropy loss.
+
+## Page 3
+
+Lecture 3 slide. Regularization controls overfitting. L2 and L1 penalties shrink
+the weights, and dropout removes units at random during training to improve
+generalization.
+
+## Page 4
+
+Lecture 4 slide. The confusion matrix summarizes classifier errors. Precision
+and recall are derived from true positives, false positives, and false
+negatives, and the F1 score combines them.

@@ -5,6 +5,44 @@
 
 ---
 
+## Slice 25A — Ask retrieval relevance harness + lexical baseline (DONE — uncommitted).
+
+- **Purpose:** establish an offline, deterministic baseline of the *current*
+  local-only lexical (tf-idf) Ask retrieval **before** any LanceDB / embeddings /
+  reranking / context-compression work. Measurement only — no retrieval change.
+- **Retrieval boundary used (real code, no server/model/provider/Docker):**
+  - `pipeline/ask_context.py::prepare_context(...)` builds the deterministic
+    chunk + lexical index from a job's `clean.md` (guide) + `extracted.txt`
+    (source); `load_index(...)` reads it back.
+  - `pipeline/ask_sessions.py::_score_chunks(...)` / `retrieve_chunks(...)` are
+    the exact functions Ask uses at chat time to rank + budget-select chunks.
+  - The harness writes the fixture into a **temp** job dir (`Job(id, root=tmp)`),
+    never touching real `jobs/`, `library/`, or `config/`.
+- **Harness:** `test_scripts/test_ask_retrieval_relevance.py` (offline, no keys,
+  no LLM call). Fixtures under `test_scripts/fixtures/ask_retrieval/`:
+  `guide.md` (4 topic sections), `source.txt` (4 `## Page N` source slides),
+  `queries.json` (6 query→expected-target cases, one flagged `known_weakness`).
+- **Metrics (JSON-serializable, deterministic):** per-case `rank`, `hit_at_k`,
+  `reciprocal_rank`, and the budgeted public-retrieval result; aggregate
+  `hit_rate_at_k`, `mrr`, and a `missing` list over blocking cases. Known-weakness
+  cases are reported but **non-blocking**. Run with `--json` for the full report.
+- **Baseline result (k=5):** `hit_rate@5 = 1.0`, `mrr = 0.9`, `missing = []` over
+  the 5 blocking cases (4 keyword guide queries rank #1; the source-page query
+  ranks #2). The paraphrase **known-weakness** case ("model memorizes training
+  data…", with no shared keywords) is the honest weakness: the correct section
+  drops to **rank 5** (reciprocal rank 0.2), behind three unrelated sections,
+  because lexical scoring has no stopword removal or semantic match. Recorded
+  as-is (not forced), motivating future embedding/semantic retrieval.
+- **Scope guardrails (verified):** Ask runtime/chat/session/prompt behavior
+  unchanged; no provider/model/local-server call; no LanceDB/embeddings/vector
+  DB/reranking/new ML dependency; no frontend/UI; no `/api/ask/*` or
+  `/api/jobs/llm` route/field change; no OCR/extraction, citation-directive, or
+  artifact-schema (`validation.json` / `math_verification.json` /
+  `extraction_metadata.json`) change; no PDF/Chromium render-pipeline change. No
+  secrets/tokens/paths exposed (fixture is synthetic ML study text).
+
+---
+
 ## Slice 24A — Persist per-page extraction metadata artifact (DONE — uncommitted).
 
 - **Purpose:** persist lightweight per-page extraction metadata for uploaded PDF

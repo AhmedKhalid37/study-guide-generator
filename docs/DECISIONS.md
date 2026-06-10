@@ -1368,3 +1368,29 @@ prompt baseline is unchanged.
 `pipeline.guide_lint` can warn when supplied available source pages are missing
 from a cited `p.` / `pp.` / `page` reference, but it is not wired into live
 generation, job artifacts, UI, `validation.json`, or `math_verification.json`.
+
+## Ask retrieval baseline measures the full ranking, weaknesses stay non-blocking
+Slice 25A adds an offline relevance harness (`test_scripts/test_ask_retrieval_relevance.py`)
+that measures the *current* local-only lexical (tf-idf) Ask retrieval before any
+embedding/reranking work. It reuses the real boundary —
+`ask_context.prepare_context`/`load_index` to build the index and
+`ask_sessions._score_chunks`/`retrieve_chunks` to rank — over a synthetic fixture
+written into a temp job dir, so no `jobs/`/`library/`/`config/` is touched and no
+server/model/provider is needed.
+
+**Why rank/MRR are computed from `_score_chunks` (the full ranking) rather than only
+the budgeted `retrieve_chunks` output:** the budgeted public retrieval truncates by
+token budget + `MAX_RETRIEVED_CHUNKS`, which would make `rank`/`mrr` depend on budget
+tuning instead of the underlying relevance ordering. The baseline reads the full
+deterministic ranking for `rank`/`reciprocal_rank`/`mrr`, and *additionally* runs the
+real budgeted `retrieve_chunks` to record what production would actually hand the
+model — both are reported.
+
+**Why the paraphrase case is `known_weakness: true` and non-blocking:** a query with no
+shared keywords ("model memorizes the training data…") is exactly where lexical tf-idf
+is weakest. The harness records its real rank honestly (it drops to rank 5, behind
+unrelated sections, vs rank 1 for keyword queries) instead of engineering the fixture
+to force a pass or a miss. Blocking pass/fail covers only the keyword/source-marker
+cases; the weakness is reported as the motivation for future semantic retrieval, not a
+regression. The harness adds no LanceDB/embeddings/vector-DB/reranking/new dependency
+and changes no Ask runtime, prompt, route, UI, or artifact behavior.

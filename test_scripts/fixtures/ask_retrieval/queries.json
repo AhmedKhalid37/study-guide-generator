@@ -1,0 +1,49 @@
+{
+  "version": 1,
+  "top_k": 5,
+  "description": "Baseline query set for the local-only lexical Ask retrieval. Strength cases share vocabulary with the target section; the known-weakness case is a paraphrase that the current lexical (tf-idf) retrieval is not expected to handle well. Baselines are recorded honestly, not forced to pass.",
+  "cases": [
+    {
+      "id": "backprop-keyword",
+      "query": "How does backpropagation compute the gradient using the chain rule?",
+      "expect": {"source_type": "guide", "labels": ["Backpropagation"]},
+      "known_weakness": false,
+      "note": "Direct keyword overlap with the Backpropagation section."
+    },
+    {
+      "id": "sigmoid-keyword",
+      "query": "What is the sigmoid logistic function used for in logistic regression?",
+      "expect": {"source_type": "guide", "labels": ["Logistic Regression and the Sigmoid Function"]},
+      "known_weakness": false,
+      "note": "Direct keyword overlap with the logistic regression section."
+    },
+    {
+      "id": "regularization-keyword",
+      "query": "How do L2 regularization and dropout reduce overfitting?",
+      "expect": {"source_type": "guide", "labels": ["Overfitting and Regularization"]},
+      "known_weakness": false,
+      "note": "Direct keyword overlap with the regularization section."
+    },
+    {
+      "id": "confusion-keyword",
+      "query": "What do precision and recall mean in a confusion matrix?",
+      "expect": {"source_type": "guide", "labels": ["Confusion Matrix and Evaluation Metrics"]},
+      "known_weakness": false,
+      "note": "Direct keyword overlap with the evaluation metrics section."
+    },
+    {
+      "id": "source-page-chain-rule",
+      "query": "Which lecture slide explains the chain rule from the output layer back to the input layer?",
+      "expect": {"source_type": "source", "pages": [1]},
+      "known_weakness": false,
+      "note": "Should surface the source page marker for the backpropagation slide."
+    },
+    {
+      "id": "overfitting-paraphrase",
+      "query": "Why does my model memorize the examples it was trained on but do badly on brand new unseen inputs?",
+      "expect": {"source_type": "guide", "labels": ["Overfitting and Regularization"]},
+      "known_weakness": true,
+      "note": "Paraphrase with no shared keywords (overfitting/regularization/generalize). Lexical tf-idf retrieval is expected to struggle here; recorded as a non-blocking known weakness motivating future embedding/semantic retrieval."
+    }
+  ]
+}
