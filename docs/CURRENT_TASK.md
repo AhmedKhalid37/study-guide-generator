@@ -5,6 +5,43 @@
 
 ---
 
+## Slice 13 — Ask Guide workspace redesign DONE.
+
+- **Slice 13 (Ask Guide workspace UX/layout redesign) is DONE.** Frontend
+  UX/layout-only — no backend/API/pipeline changes; Ask endpoints, payloads,
+  session ids, cache semantics, prepare-context behavior, citation parsing, and
+  message response handling are untouched.
+- **Files changed:** `frontend/src/components/AskGuideWorkspace.jsx`,
+  `frontend/src/components/DesktopDashboard.jsx`,
+  `frontend/src/components/HelpWorkspace.jsx` (new),
+  `frontend/src/design-system.css` (additive "Ask Guide redesign — Slice 13" +
+  Help block).
+- **Redesign:** chat-first layout; a compact selected-guide / local-model /
+  session **status bar** (model + green/red connection dot, selected guide,
+  prepared status, chat count, with **Refresh chats** + **New chat** actions); a
+  **collapsible guide selector** (collapses once a guide is selected, expands to a
+  client-side title search + list); **collapsible right-rail details** (Chats,
+  Context sources, Preparation, Local model, and conditional Latest answer
+  context — the last three collapsed by default); and a new frontend-only **Help
+  workspace** hosting the manual local-model / llama-server setup instructions
+  (reuses `CommandHelper`), wired to the previously-dead Help nav row. Ask's
+  Local-model card now links to Help instead of embedding the command block.
+- **Preserved:** local-only Ask behavior (no cloud fallback / provider switching),
+  session/cache semantics, prepare-context behavior, citation safety, retrieved
+  metadata safety (metadata only — never chunk bodies), local-model gating,
+  handlers, API calls, and payloads. `/no_think` is never surfaced; no secrets,
+  host paths, argv, tokens, socket paths, or URLs are exposed; no new
+  dependencies; no Tailwind utilities revived; larger Slice 5b density baseline
+  kept.
+- **Verification:** build green; local-model status/command/library harnesses
+  green; `compileall` green; `git diff --check` clean; `docker compose build && up`
+  green (container serves the new bundle — new Ask/Help markup + CSS confirmed in
+  the served JS/CSS); `smoke_release.py` **28/28** (clean run — outline-order
+  assertion passed).
+- **Visual inspection delegated to user; no automated screenshots required.**
+
+---
+
 ## Slice 12 — Home & Library UX polish DONE.
 
 - **Slice 12 (Home + Library UX polish) is DONE.** Frontend visual/UX only — no

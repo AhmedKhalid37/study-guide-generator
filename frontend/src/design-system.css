@@ -2905,3 +2905,139 @@ details.sg-mdl-helper > summary::-webkit-details-marker { display: none; }
    reads as icon (top) · title (centred) · type + arrow (bottom). The reduced
    min-height keeps it feeling intentional rather than empty. */
 .ql-card.glass { min-height: 154px; }
+
+/* =========================================================================
+   Ask Guide redesign — Slice 13.
+   Real semantic CSS only (Tailwind utilities are inert in this app). Built on
+   the Slice 5b density baseline; indigo is the accent/selection hue (matching
+   the rest of the app). Frontend UX/layout only — no Ask logic, handlers,
+   state, endpoints, payloads, session/cache semantics, citation/metadata
+   safety, or local-model gating changed. This block reskins the new chat-first
+   layout (compact status bar · collapsible guide selector · chat column ·
+   collapsible right-rail cards) and the new frontend-only Help workspace. It
+   reuses the existing Ask classes (.sg-ask-pill / .sg-ask-tag / .sg-ask-metric*
+   / .sg-ask-notice* / .sg-ask-guide* / .sg-ask-bubble* / .sg-ask-composer /
+   .sg-ask-session* / .sg-ask-inventory / .sg-ask-local) and the shared
+   .sg-cta / .sg-btn-sm / .sg-page-head / .sg-mdl-* systems. The old three-part
+   .sg-ask-body / .sg-ask-picker / .sg-ask-chat-col / .sg-ask-rail / .sg-ask-center
+   rules above are now unused but left intact (additive policy).
+   ========================================================================= */
+
+/* ---- Compact status + action bar ---- */
+.sg-ask-statusbar {
+  flex: none; margin-top: 16px;
+  display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px;
+  padding: 11px 14px; border-radius: var(--r-card); border: 1px solid var(--card-border); background: var(--card);
+}
+.sg-ask-stat-group { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 22px; min-width: 0; }
+.sg-ask-stat { display: flex; align-items: center; gap: 9px; min-width: 0; }
+.sg-ask-stat-ico { display: grid; place-items: center; width: 26px; height: 26px; flex: none; border-radius: 8px; background: var(--card-2); color: #A5A8F8; }
+.sg-ask-stat-ico svg { width: 14px; height: 14px; }
+.sg-ask-stat-body { display: flex; flex-direction: column; min-width: 0; }
+.sg-ask-stat-k { font-size: 10.5px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em; color: var(--label); }
+.sg-ask-stat-v { max-width: 240px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13px; font-weight: 600; color: var(--text); }
+.sg-ask-stat-v.ok { color: #6EE7B7; }
+.sg-ask-statusbar-actions { display: flex; align-items: center; gap: 8px; flex: none; }
+
+/* connection dot */
+.sg-ask-dot { width: 9px; height: 9px; flex: none; border-radius: 50%; background: var(--muted); }
+.sg-ask-dot.on { background: #34D399; box-shadow: 0 0 0 3px rgba(52,211,153,0.18); }
+.sg-ask-dot.off { background: #F87171; box-shadow: 0 0 0 3px rgba(248,113,113,0.16); }
+.sg-ask-dot.wait { background: #F4C76B; box-shadow: 0 0 0 3px rgba(244,199,107,0.16); }
+
+/* ---- Collapsible guide selector ---- */
+.sg-ask-selector { flex: none; margin-top: 12px; border-radius: var(--r-card); border: 1px solid var(--card-border); background: var(--card); overflow: hidden; }
+.sg-ask-selector-head { display: flex; align-items: center; gap: 11px; width: 100%; padding: 12px 14px; background: none; border: 0; cursor: pointer; text-align: left; color: inherit; font: inherit; }
+.sg-ask-selector-head:hover { background: var(--card-2); }
+.sg-ask-selector-ico { display: grid; place-items: center; width: 30px; height: 30px; flex: none; border-radius: 9px; background: var(--card-2); color: #A5A8F8; }
+.sg-ask-selector.open .sg-ask-selector-ico { background: var(--indigo-soft); }
+.sg-ask-selector-ico svg { width: 15px; height: 15px; }
+.sg-ask-selector-summary { display: flex; flex-direction: column; min-width: 0; flex: 1; }
+.sg-ask-selector-label { font-size: 10.5px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em; color: var(--label); }
+.sg-ask-selector-value { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 14px; font-weight: 600; color: var(--text); }
+.sg-ask-selector-hint { flex: none; font-size: 12px; font-weight: 600; color: var(--muted); }
+.sg-ask-selector-chevron { flex: none; color: var(--muted); transition: transform .15s; }
+.sg-ask-selector.open .sg-ask-selector-chevron { transform: rotate(90deg); }
+.sg-ask-selector-body { padding: 0 14px 14px; border-top: 1px solid var(--hairline); }
+.sg-ask-selector-bar { display: flex; align-items: center; gap: 10px; padding: 14px 0; }
+.sg-ask-selector-search { flex: 1; min-width: 0; display: flex; align-items: center; gap: 8px; height: 36px; padding: 0 11px; border-radius: var(--r-inner); border: 1px solid var(--card-border); background: #131315; transition: border-color .15s; }
+.sg-ask-selector-search:focus-within { border-color: var(--card-border-2); }
+.sg-ask-selector-search svg { width: 15px; height: 15px; flex: none; color: var(--muted); }
+.sg-ask-selector-search input { flex: 1; min-width: 0; border: 0; background: none; outline: none; color: var(--text); font: inherit; font-size: 13.5px; }
+.sg-ask-selector-search input::placeholder { color: var(--muted); }
+.sg-ask-selector-search input:disabled { cursor: not-allowed; }
+.sg-ask-selector-list { display: flex; flex-direction: column; gap: 8px; max-height: 342px; overflow-y: auto; }
+
+/* ---- Main split: chat column + details rail ---- */
+.sg-ask-main { flex: 1; min-height: 0; margin-top: 12px; display: grid; grid-template-columns: minmax(0, 1fr) minmax(304px, 358px); gap: 18px; }
+.sg-ask-chatcol { min-width: 0; min-height: 0; display: flex; }
+.sg-ask-railcol { min-width: 0; min-height: 0; overflow-y: auto; padding-bottom: 4px; }
+
+@media (max-width: 1040px) {
+  .sg-ask-main { display: flex; flex-direction: column; overflow-y: auto; }
+  .sg-ask-railcol { overflow-y: visible; min-height: auto; }
+  .sg-ask-chatcol { min-height: 0; }
+  .sg-ask-chat2 { min-height: 460px; max-width: none; }
+}
+
+/* ---- Chat column (chat-first card) ---- */
+.sg-ask-chat2 { flex: 1; min-height: 0; width: 100%; max-width: 960px; margin: 0 auto; display: flex; flex-direction: column; overflow: hidden; border-radius: var(--r-card); border: 1px solid var(--card-border); background: var(--bg); }
+.sg-ask-chathead { flex: none; display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 11px 16px; border-bottom: 1px solid var(--hairline); }
+.sg-ask-chathead-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; color: var(--muted); }
+.sg-ask-chathead-actions { display: flex; align-items: center; gap: 8px; flex: none; }
+
+/* empty-state inline actions (Prepare / help link sit below the block copy) */
+.sg-ask-empty-help { margin-top: 12px; }
+
+/* ---- Collapsible right-rail cards (native <details>) ---- */
+.sg-ask-card { border-radius: var(--r-card); border: 1px solid var(--card-border); background: var(--card); overflow: hidden; }
+.sg-ask-card > summary { list-style: none; }
+.sg-ask-card > summary::-webkit-details-marker { display: none; }
+.sg-ask-card-summary { display: flex; align-items: center; gap: 10px; padding: 12px 14px; cursor: pointer; }
+.sg-ask-card-summary:hover { background: var(--card-2); }
+.sg-ask-card-ico { display: grid; place-items: center; width: 28px; height: 28px; flex: none; border-radius: 9px; background: var(--card-2); color: #A5A8F8; }
+.sg-ask-card[open] .sg-ask-card-ico { background: var(--indigo-soft); }
+.sg-ask-card-ico svg { width: 14px; height: 14px; }
+.sg-ask-card-titles { display: flex; flex-direction: column; min-width: 0; flex: 1; }
+.sg-ask-card-title { font-size: 13.5px; font-weight: 600; color: var(--text); }
+.sg-ask-card-status { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; color: var(--muted); }
+.sg-ask-card-chevron { flex: none; color: var(--muted); transition: transform .15s; }
+.sg-ask-card[open] .sg-ask-card-chevron { transform: rotate(90deg); }
+.sg-ask-card-body { padding: 0 14px 14px; }
+.sg-ask-card-body > * + * { margin-top: 12px; }
+
+/* full-width Prepare button + help link inside rail cards */
+.sg-ask-prep-btn { width: 100%; justify-content: center; }
+.sg-ask-help-link { width: 100%; justify-content: center; }
+
+/* =========================================================================
+   Help workspace — Slice 13 (frontend-only).
+   GuideForge-styled help page. Reuses the shared .sg-page-head + .sg-mdl-*
+   (CommandHelper) systems; no secrets, host paths, argv, tokens, or URLs are
+   rendered — the command helper carries a model placeholder only.
+   ========================================================================= */
+.sg-help { max-width: 1100px; margin: 0 auto; display: flex; flex-direction: column; gap: 24px; }
+.sg-help-section { display: flex; flex-direction: column; gap: 16px; border-radius: var(--r-card); border: 1px solid var(--card-border); background: var(--card); padding: 20px; }
+.sg-help-section-head { display: flex; align-items: flex-start; gap: 12px; }
+.sg-help-section-ico { display: grid; place-items: center; width: 38px; height: 38px; flex: none; border-radius: var(--r-inner); background: var(--indigo-soft); color: #A5A8F8; }
+.sg-help-section-ico svg { width: 18px; height: 18px; }
+.sg-help-section-head h2 { font-family: var(--serif); font-size: 20px; font-weight: 500; letter-spacing: -0.01em; color: var(--text); }
+.sg-help-section-head p { margin-top: 4px; font-size: 13.5px; line-height: 1.5; color: var(--muted); }
+.sg-help-grid { display: grid; gap: 12px; grid-template-columns: repeat(auto-fit, minmax(238px, 1fr)); }
+.sg-help-step { display: flex; align-items: flex-start; gap: 12px; border-radius: var(--r-inner); border: 1px solid var(--card-border); background: var(--card-2); padding: 14px; }
+.sg-help-step-n { display: grid; place-items: center; width: 24px; height: 24px; flex: none; border-radius: 50%; background: var(--indigo); color: #fff; font-size: 12.5px; font-weight: 700; }
+.sg-help-step-ico { display: grid; place-items: center; width: 28px; height: 28px; flex: none; border-radius: 9px; background: var(--card); color: #A5A8F8; }
+.sg-help-step-ico svg { width: 15px; height: 15px; }
+.sg-help-step > div { min-width: 0; }
+.sg-help-step strong { display: block; font-size: 14px; font-weight: 600; color: var(--text); }
+.sg-help-step p { margin-top: 4px; font-size: 12.5px; line-height: 1.5; color: var(--muted); }
+.sg-help-step code { font-family: var(--mono); font-size: 11.5px; padding: 1px 5px; border-radius: 5px; background: var(--card); border: 1px solid var(--card-border); color: var(--text-dim); }
+.sg-help-inline-link { background: none; border: 0; padding: 0; font: inherit; font-weight: 600; color: #A5A8F8; cursor: pointer; text-decoration: underline; }
+.sg-help-inline-link:hover { color: #C7C9FB; }
+.sg-help-command .sg-mdl-helper { margin-top: 0; }
+.sg-help-command-empty { display: flex; align-items: flex-start; gap: 10px; border-radius: var(--r-inner); border: 1px solid var(--card-border); background: var(--card-2); padding: 14px; }
+.sg-help-command-empty > svg { width: 16px; height: 16px; flex: none; margin-top: 1px; color: #A5A8F8; }
+.sg-help-command-empty strong { display: block; font-size: 13.5px; font-weight: 600; color: var(--text); }
+.sg-help-command-empty p { margin-top: 4px; font-size: 12.5px; line-height: 1.5; color: var(--muted); }
+.sg-help-note { display: flex; align-items: flex-start; gap: 9px; font-size: 12.5px; line-height: 1.5; color: var(--text-dim); }
+.sg-help-note svg { width: 14px; height: 14px; flex: none; margin-top: 1px; color: #6EE7B7; }

@@ -5,6 +5,7 @@ import LibraryWorkspace from "./LibraryWorkspace";
 import ExportsWorkspace from "./ExportsWorkspace";
 import ProviderSettingsWorkspace from "./ProviderSettingsWorkspace";
 import AskGuideWorkspace from "./AskGuideWorkspace";
+import HelpWorkspace from "./HelpWorkspace";
 import HomeShortcuts from "./HomeShortcuts";
 import Icon from "./Icon";
 import Button, { IconButton } from "./Button";
@@ -176,7 +177,8 @@ export default function DesktopDashboard() {
             />
           )}
           {activeSection === "models" && <ProviderSettingsWorkspace />}
-          {activeSection === "ask" && <AskGuideWorkspace />}
+          {activeSection === "ask" && <AskGuideWorkspace onOpenHelp={() => setActiveSection("help")} />}
+          {activeSection === "help" && <HelpWorkspace onNavigate={setActiveSection} />}
           {activeSection === "styles" && (
             <StylesWorkspace selectedStyle={selectedStyle} onSelectStyle={setSelectedStyle} onOpenBuilder={openBuilder} />
           )}
@@ -254,8 +256,15 @@ function Sidebar({ activeSection, onNavigate, collapsed, onToggleCollapse }) {
 
         <div className="nav-section">
           <div className="nav-label">Settings</div>
-          {/* Help & Settings have no dedicated workspace yet — presentational rows. */}
-          <Button variant="bare" className="nav-item" title={tip("Help")}>
+          {/* Help routes to the Help workspace (local-model setup + Ask tour);
+              Settings has no dedicated workspace yet — presentational row. */}
+          <Button
+            variant="bare"
+            className={`nav-item ${activeSection === "help" ? "active" : ""}`.trim()}
+            aria-current={activeSection === "help" ? "page" : undefined}
+            title={tip("Help")}
+            onClick={() => onNavigate("help")}
+          >
             {Icon.help()}
             <span>Help</span>
           </Button>

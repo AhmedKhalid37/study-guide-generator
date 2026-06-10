@@ -7,6 +7,7 @@ import {
   CircleSlash,
   Eraser,
   FileText,
+  HelpCircle,
   Loader2,
   MessageSquareText,
   Plus,
@@ -28,7 +29,6 @@ import {
   getAskJobs,
   getAskSession,
   getAskSessions,
-  getLocalModelCommandProfile,
   getLocalModelStatus,
   prepareAskJobContext,
   sendAskSessionMessage,
@@ -59,15 +59,6 @@ import {
   sessionStatusLabel,
 } from "../askGuide";
 import {
-  COPY_COPIED,
-  COPY_FAILED,
-  COPY_IDLE,
-  commandAvailable,
-  commandNotes,
-  commandProfiles,
-  profileById,
-} from "../localModelCommand";
-import {
   STATE_NOT_CONFIGURED,
   STATE_OFFLINE,
   STATE_REACHABLE,
@@ -77,7 +68,6 @@ import {
   statusLatencyMs,
   statusModelCount,
 } from "../localModelStatus";
-import { CommandHelper } from "./LocalModelsPanel";
 
 // Map the CSS-agnostic tone keys to the Ask-Guide pill modifier classes
 // (design-system.css → "Ask Guide — Slice 7"). Kept as a lookup so every pill
@@ -95,7 +85,7 @@ const LOCAL_LABEL = {
   [STATE_NOT_CONFIGURED]: "Not configured",
 };
 
-export default function AskGuideWorkspace() {
+export default function AskGuideWorkspace({ onOpenHelp }) {
   const [jobs, setJobs] = useState([]);
   const [jobsLoading, setJobsLoading] = useState(true);
   const [jobsError, setJobsError] = useState(null);
@@ -109,9 +99,6 @@ export default function AskGuideWorkspace() {
   const [localStatus, setLocalStatus] = useState(null);
   const [localLoading, setLocalLoading] = useState(true);
   const [localError, setLocalError] = useState(null);
-  const [commandData, setCommandData] = useState(null);
-  const [selectedProfileId, setSelectedProfileId] = useState(null);
-  const [copyState, setCopyState] = useState(COPY_IDLE);
   const [session, setSession] = useState(null);
   const [sessionSummaries, setSessionSummaries] = useState([]);
   const [sessionsLoading, setSessionsLoading] = useState(false);
@@ -123,6 +110,10 @@ export default function AskGuideWorkspace() {
   const [chatError, setChatError] = useState(null);
   const [lastRetrievedChunks, setLastRetrievedChunks] = useState([]);
   const [lastLocalModel, setLastLocalModel] = useState(null);
+  // Guide selector collapse — open while no guide is chosen, collapsed once one
+  // is selected (so the picker stops dominating the page). A manual toggle lets
+  // the user reopen it to switch guides.
+  const [pickerOpen, setPickerOpen] = useState(true);
 
   const selectedJob = useMemo(
     () => jobs.find((job) => job.id === selectedJobId) || null,
@@ -180,19 +171,12 @@ export default function AskGuideWorkspace() {
     loadLocalStatus();
   }, [loadJobs, loadLocalStatus]);
 
+  // Collapse the guide selector once a guide is selected; reopen it when none is
+  // available. Runs only when the selection identity changes, so a manual
+  // open/close stays put until the next real selection change.
   useEffect(() => {
-    let cancelled = false;
-    getLocalModelCommandProfile()
-      .then((data) => {
-        if (!cancelled) setCommandData(data);
-      })
-      .catch(() => {
-        if (!cancelled) setCommandData(null);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, []);
+    setPickerOpen(!selectedJobId);
+  }, [selectedJobId]);
 
   useEffect(() => {
     if (!selectedJobId) {
@@ -397,10 +381,6 @@ export default function AskGuideWorkspace() {
     }
   }, [draftMessage, ensureSession, loadLocalStatus, loadSessions, messages.length, selectedJobId, sending]);
 
-  const activeProfile = profileById(commandData, selectedProfileId);
-  const profiles = commandProfiles(commandData);
-  const helperNotes = commandNotes(commandData);
-  const canCopy = commandAvailable(activeProfile);
   const localState = localServerState(localStatus);
   const localReachable = localState === STATE_REACHABLE;
   const readyState = readinessState(context);
@@ -416,69 +396,70 @@ export default function AskGuideWorkspace() {
     sending,
   });
 
-  const onCopyCommand = useCallback(async () => {
-    if (!activeProfile?.command) return;
-    try {
-      if (navigator?.clipboard?.writeText) {
-        await navigator.clipboard.writeText(activeProfile.command);
-        setCopyState(COPY_COPIED);
-      } else {
-        setCopyState(COPY_FAILED);
-      }
-    } catch {
-      setCopyState(COPY_FAILED);
-    }
-    setTimeout(() => setCopyState(COPY_IDLE), 2600);
-  }, [activeProfile]);
+  // The local model "currently used" label — the server's selected/default model
+  // id (already-safe strings the backend chose to expose), falling back to the
+  // model named on the last answer. Never a URL, key, or path.
+  const localModelName =
+    (typeof localStatus?.selected_model === "string" && localStatus.selected_model) ||
+    (typeof localStatus?.default_model === "string" && localStatus.default_model) ||
+    (lastLocalModel?.model || null);
+
+  // Whether the standing "prepare context" affordance should be reachable from
+  // the chat empty state (guide ready, not yet prepared, nothing in flight).
+  const canPrepareNow = Boolean(selectedJob) && !contextLoading && !prepareLoading && readyState === "ready" && !prepReady;
 
   return (
     <div className="sg-ask">
       <div className="sg-ask-head">
         <div className="sg-ask-head-titles">
           <h1>Ask Your Guide</h1>
-          <p>Select a generated guide and prepare its context.</p>
-        </div>
-        <div className="sg-ask-head-actions">
-          <Pill tone={localReachable ? "ready" : "warning"}>
-            {localLoading ? <Loader2 size={12} className="sg-spin" /> : localReachable ? <Check size={12} /> : <WifiOff size={12} />}
-            {localLoading ? "Checking local model" : `Local model: ${LOCAL_LABEL[localState] || "Status unavailable"}`}
-          </Pill>
-          <button type="button" className="sg-ghost-button" onClick={loadJobs} disabled={jobsLoading}>
-            {jobsLoading ? <Loader2 size={15} className="sg-spin" /> : <RefreshCw size={15} />}
-            <span>Refresh guides</span>
-          </button>
+          <p>Chat with a generated guide through your local model — grounded, cited, and fully local.</p>
         </div>
       </div>
 
-      <div className="sg-ask-body">
-        <GuidePicker
-          jobs={jobs}
-          loading={jobsLoading}
-          error={jobsError}
-          selectedJobId={selectedJobId}
-          onSelect={setSelectedJobId}
-        />
+      <StatusActionBar
+        job={selectedJob}
+        localModelName={localModelName}
+        localReachable={localReachable}
+        localLoading={localLoading}
+        localState={localState}
+        prep={prep}
+        prepReady={prepReady}
+        sessionCount={sessionSummaries.length}
+        sessionsLoading={sessionsLoading}
+        sessionAction={sessionAction}
+        onRefreshChats={() => loadSessions(selectedJobId)}
+        onNewChat={onNewSession}
+      />
 
-        <main className="sg-ask-chat-col">
-          <ChatReadinessPanel
+      <GuideSelector
+        jobs={jobs}
+        loading={jobsLoading}
+        error={jobsError}
+        selectedJob={selectedJob}
+        selectedJobId={selectedJobId}
+        open={pickerOpen}
+        onToggle={() => setPickerOpen((value) => !value)}
+        onSelect={setSelectedJobId}
+        onReload={loadJobs}
+      />
+
+      <div className="sg-ask-main">
+        <main className="sg-ask-chatcol">
+          <ChatPanel
             job={selectedJob}
-            context={context}
-            contextLoading={contextLoading}
             contextError={contextError}
-            readyState={readyState}
-            prepareResult={prepareResult}
-            prepareLoading={prepareLoading}
             prepareError={prepareError}
-            prep={prep}
+            readyState={readyState}
+            contextLoading={contextLoading}
+            prepareLoading={prepareLoading}
             prepReady={prepReady}
-            localReachable={localReachable}
-            localState={localState}
+            canPrepareNow={canPrepareNow}
             onPrepare={onPrepare}
             chat={chat}
             messages={messages}
             session={session}
             sessionAction={sessionAction}
-            onNewSession={onNewSession}
             onClearSession={onClearSession}
             onDeleteSession={onDeleteSession}
             draftMessage={draftMessage}
@@ -486,18 +467,24 @@ export default function AskGuideWorkspace() {
             sending={sending}
             chatError={chatError}
             onSendMessage={onSendMessage}
+            localReachable={localReachable}
+            onOpenHelp={onOpenHelp}
           />
         </main>
 
-        <aside className="sg-ask-rail">
-          <ContextRail
+        <aside className="sg-ask-railcol">
+          <DetailsRail
             job={selectedJob}
             context={context}
             contextLoading={contextLoading}
             contextError={contextError}
+            readyState={readyState}
             prepareResult={prepareResult}
             prepareError={prepareError}
+            prepareLoading={prepareLoading}
             prep={prep}
+            prepReady={prepReady}
+            onPrepare={onPrepare}
             localStatus={localStatus}
             localError={localError}
             localLoading={localLoading}
@@ -515,23 +502,7 @@ export default function AskGuideWorkspace() {
             }}
             onNewSession={onNewSession}
             onRefreshSessions={() => loadSessions(selectedJobId)}
-            commandProps={
-              canCopy
-                ? {
-                    profiles,
-                    activeProfile,
-                    selectedProfileId,
-                    onSelectProfile: (id) => {
-                      setSelectedProfileId(id);
-                      setCopyState(COPY_IDLE);
-                    },
-                    copyState,
-                    onCopy: onCopyCommand,
-                    notes: helperNotes,
-                    prominent: localState === STATE_OFFLINE || localState === STATE_NOT_CONFIGURED,
-                  }
-                : null
-            }
+            onOpenHelp={onOpenHelp}
           />
         </aside>
       </div>
@@ -539,80 +510,190 @@ export default function AskGuideWorkspace() {
   );
 }
 
-function GuidePicker({ jobs, loading, error, selectedJobId, onSelect }) {
+// Compact status + action strip (inspired by the Builder action bar). Surfaces
+// the four facts that matter at a glance — local model + connection dot, the
+// selected guide, prepared status, and chat count — plus the two primary chat
+// actions. No new backend behaviour: Refresh chats reloads the session list and
+// New chat reuses the existing new-session flow.
+function StatusActionBar({
+  job,
+  localModelName,
+  localReachable,
+  localLoading,
+  localState,
+  prep,
+  prepReady,
+  sessionCount,
+  sessionsLoading,
+  sessionAction,
+  onRefreshChats,
+  onNewChat,
+}) {
+  const dotClass = localLoading ? "wait" : localReachable ? "on" : "off";
   return (
-    <aside className="sg-ask-picker">
-      <div className="sg-ask-picker-head">
-        <div>
-          <h2>Generated guides</h2>
-          <p>{loading ? "Loading…" : `${jobs.length} eligible`}</p>
+    <div className="sg-ask-statusbar">
+      <div className="sg-ask-stat-group">
+        <div className="sg-ask-stat" title={`Local model · ${LOCAL_LABEL[localState] || "status unavailable"}`}>
+          <span className={`sg-ask-dot ${dotClass}`} aria-hidden="true" />
+          <span className="sg-ask-stat-body">
+            <span className="sg-ask-stat-k">Local model</span>
+            <span className="sg-ask-stat-v">
+              {localLoading ? "Checking…" : localModelName || (localReachable ? "Reachable" : LOCAL_LABEL[localState] || "Unavailable")}
+            </span>
+          </span>
         </div>
-        <Search size={16} />
-      </div>
-
-      {error && <Notice tone="error" title="Guide list unavailable" text={error} />}
-      {!loading && !error && jobs.length === 0 && (
-        <div className="sg-ask-noguides">
-          <BookOpen size={20} />
-          <strong>No generated guides yet</strong>
-          <span>Generate a guide in Builder first, then return here to prepare it for Ask.</span>
+        <div className="sg-ask-stat">
+          <span className="sg-ask-stat-ico"><BookOpen size={14} /></span>
+          <span className="sg-ask-stat-body">
+            <span className="sg-ask-stat-k">Guide</span>
+            <span className="sg-ask-stat-v">{job ? safeText(job.title, "Untitled guide") : "No guide selected"}</span>
+          </span>
         </div>
-      )}
-
-      <div className="sg-ask-guide-list">
-        {loading
-          ? Array.from({ length: 4 }, (_, i) => <SkeletonGuide key={i} />)
-          : jobs.map((job) => {
-              const active = job.id === selectedJobId;
-              return (
-                <button
-                  key={job.id}
-                  type="button"
-                  onClick={() => onSelect(job.id)}
-                  className={`sg-ask-guide${active ? " active" : ""}`}
-                >
-                  <div className="sg-ask-guide-top">
-                    <FileText size={15} className="sg-ask-guide-glyph" />
-                    <div className="sg-ask-guide-main">
-                      <strong className="sg-ask-guide-title">{safeText(job.title, "Untitled guide")}</strong>
-                      <span className="sg-ask-guide-date">{formatDate(job.updated_at || job.created_at)}</span>
-                    </div>
-                    {active && <ChevronRight size={15} className="sg-ask-guide-chevron" />}
-                  </div>
-                  <div className="sg-ask-chips">
-                    <MiniChip>{safeText(job.status, "status unavailable")}</MiniChip>
-                    {job.provider && <MiniChip>{job.provider}</MiniChip>}
-                    {job.model && <MiniChip>{job.model}</MiniChip>}
-                    {job.generator_preset && <MiniChip>{job.generator_preset}</MiniChip>}
-                  </div>
-                  <p className="sg-ask-guide-summary">{guideSourceSummary(job)}</p>
-                </button>
-              );
-            })}
+        <div className="sg-ask-stat">
+          <span className="sg-ask-stat-ico"><Sparkles size={14} /></span>
+          <span className="sg-ask-stat-body">
+            <span className="sg-ask-stat-k">Context</span>
+            <span className={`sg-ask-stat-v${prepReady ? " ok" : ""}`}>{job ? prep.label : "—"}</span>
+          </span>
+        </div>
+        <div className="sg-ask-stat">
+          <span className="sg-ask-stat-ico"><MessageSquareText size={14} /></span>
+          <span className="sg-ask-stat-body">
+            <span className="sg-ask-stat-k">Chats</span>
+            <span className="sg-ask-stat-v">{sessionsLoading ? "…" : formatCount(sessionCount)}</span>
+          </span>
+        </div>
       </div>
-    </aside>
+      <div className="sg-ask-statusbar-actions">
+        <button type="button" className="sg-btn-sm" onClick={onRefreshChats} disabled={!job || sessionsLoading || sessionAction !== null}>
+          {sessionsLoading ? <Loader2 size={13} className="sg-spin" /> : <RefreshCw size={13} />}
+          <span>Refresh chats</span>
+        </button>
+        <button type="button" className="sg-btn-sm accent" onClick={onNewChat} disabled={!job || sessionAction !== null}>
+          {sessionAction === "new" ? <Loader2 size={13} className="sg-spin" /> : <Plus size={13} />}
+          <span>New chat</span>
+        </button>
+      </div>
+    </div>
   );
 }
 
-function ChatReadinessPanel({
+// Collapsible guide selector. Collapsed, it shows just the selected guide as a
+// summary line; expanded, it reveals a client-side title search + the eligible
+// guide list. It no longer occupies a permanent left column.
+function GuideSelector({ jobs, loading, error, selectedJob, selectedJobId, open, onToggle, onSelect, onReload }) {
+  const [query, setQuery] = useState("");
+  const filtered = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    if (!q) return jobs;
+    return jobs.filter((job) => safeText(job.title, "untitled guide").toLowerCase().includes(q));
+  }, [jobs, query]);
+
+  const summaryText = loading
+    ? "Loading guides…"
+    : selectedJob
+      ? safeText(selectedJob.title, "Untitled guide")
+      : jobs.length > 0
+        ? `${jobs.length} eligible — choose a guide`
+        : "No generated guides yet";
+
+  return (
+    <section className={`sg-ask-selector${open ? " open" : ""}`}>
+      <button type="button" className="sg-ask-selector-head" onClick={onToggle} aria-expanded={open}>
+        <span className="sg-ask-selector-ico"><BookOpen size={15} /></span>
+        <span className="sg-ask-selector-summary">
+          <span className="sg-ask-selector-label">Guide</span>
+          <span className="sg-ask-selector-value">{summaryText}</span>
+        </span>
+        <span className="sg-ask-selector-hint">{open ? "Hide" : "Change"}</span>
+        <ChevronRight size={16} className="sg-ask-selector-chevron" />
+      </button>
+
+      {open && (
+        <div className="sg-ask-selector-body">
+          <div className="sg-ask-selector-bar">
+            <div className="sg-ask-selector-search">
+              <Search size={15} />
+              <input
+                value={query}
+                onChange={(event) => setQuery(event.target.value)}
+                placeholder="Search guides…"
+                disabled={loading || jobs.length === 0}
+                aria-label="Search generated guides"
+              />
+            </div>
+            <button type="button" className="sg-btn-sm" onClick={onReload} disabled={loading}>
+              {loading ? <Loader2 size={13} className="sg-spin" /> : <RefreshCw size={13} />}
+              <span>Refresh</span>
+            </button>
+          </div>
+
+          {error && <Notice tone="error" title="Guide list unavailable" text={error} />}
+          {!loading && !error && jobs.length === 0 && (
+            <div className="sg-ask-noguides">
+              <BookOpen size={20} />
+              <strong>No generated guides yet</strong>
+              <span>Generate a guide in Builder first, then return here to prepare it for Ask.</span>
+            </div>
+          )}
+          {!loading && !error && jobs.length > 0 && filtered.length === 0 && (
+            <p className="sg-ask-muted">No guides match “{query.trim()}”.</p>
+          )}
+
+          <div className="sg-ask-selector-list">
+            {loading
+              ? Array.from({ length: 4 }, (_, i) => <SkeletonGuide key={i} />)
+              : filtered.map((job) => {
+                  const active = job.id === selectedJobId;
+                  return (
+                    <button
+                      key={job.id}
+                      type="button"
+                      onClick={() => onSelect(job.id)}
+                      className={`sg-ask-guide${active ? " active" : ""}`}
+                    >
+                      <div className="sg-ask-guide-top">
+                        <FileText size={15} className="sg-ask-guide-glyph" />
+                        <div className="sg-ask-guide-main">
+                          <strong className="sg-ask-guide-title">{safeText(job.title, "Untitled guide")}</strong>
+                          <span className="sg-ask-guide-date">{formatDate(job.updated_at || job.created_at)}</span>
+                        </div>
+                        {active && <ChevronRight size={15} className="sg-ask-guide-chevron" />}
+                      </div>
+                      <div className="sg-ask-chips">
+                        <MiniChip>{safeText(job.status, "status unavailable")}</MiniChip>
+                        {job.provider && <MiniChip>{job.provider}</MiniChip>}
+                        {job.model && <MiniChip>{job.model}</MiniChip>}
+                        {job.generator_preset && <MiniChip>{job.generator_preset}</MiniChip>}
+                      </div>
+                      <p className="sg-ask-guide-summary">{guideSourceSummary(job)}</p>
+                    </button>
+                  );
+                })}
+          </div>
+        </div>
+      )}
+    </section>
+  );
+}
+
+// The chat-focused centre column: an optional session toolbar, the message
+// stream (or empty/blocked state), and the composer. All message-send behaviour
+// is unchanged; the composer placeholder communicates the disabled reason.
+function ChatPanel({
   job,
-  context,
-  contextLoading,
   contextError,
-  readyState,
-  prepareResult,
-  prepareLoading,
   prepareError,
-  prep,
+  readyState,
+  contextLoading,
+  prepareLoading,
   prepReady,
-  localReachable,
-  localState,
+  canPrepareNow,
   onPrepare,
   chat,
   messages,
   session,
   sessionAction,
-  onNewSession,
   onClearSession,
   onDeleteSession,
   draftMessage,
@@ -620,162 +701,107 @@ function ChatReadinessPanel({
   sending,
   chatError,
   onSendMessage,
+  localReachable,
+  onOpenHelp,
 }) {
-  const reasons = readinessReasons(context);
-  const title = safeText(context?.title || job?.title, "Select a guide");
   const canSend = chat.enabled && draftMessage.trim().length > 0;
   return (
-    <div className="sg-ask-center">
-      <section className="sg-ask-readiness">
-        <div className="sg-ask-readiness-head">
-          <span className="sg-ask-readiness-icon">
-            <MessageSquareText size={20} />
-          </span>
-          <div className="sg-ask-readiness-main">
-            <div className="sg-ask-readiness-titlerow">
-              <h2 className="sg-ask-readiness-title">{title}</h2>
-              <Pill tone={prep.tone}>{prep.label}</Pill>
-            </div>
-            <p className="sg-ask-readiness-desc">
-              Prepare this guide once, then ask grounded questions through the local model. Sessions are created lazily on first send.
-            </p>
-            {session?.sessionId && (
-              <div className="sg-ask-session-line">
-                <p>{sessionStatusLabel(session)}</p>
-                <button type="button" className="sg-btn-sm" onClick={onClearSession} disabled={sessionAction !== null || messages.length === 0}>
-                  <Eraser size={13} />
-                  <span>Clear chat</span>
-                </button>
-                <button type="button" className="sg-btn-sm danger" onClick={onDeleteSession} disabled={sessionAction !== null}>
-                  <Trash2 size={13} />
-                  <span>Delete</span>
-                </button>
-              </div>
-            )}
+    <section className="sg-ask-chat2">
+      {session?.sessionId && (
+        <div className="sg-ask-chathead">
+          <span className="sg-ask-chathead-label">{sessionStatusLabel(session)}</span>
+          <div className="sg-ask-chathead-actions">
+            <button type="button" className="sg-btn-sm" onClick={onClearSession} disabled={sessionAction !== null || messages.length === 0}>
+              <Eraser size={13} />
+              <span>Clear</span>
+            </button>
+            <button type="button" className="sg-btn-sm danger" onClick={onDeleteSession} disabled={sessionAction !== null}>
+              <Trash2 size={13} />
+              <span>Delete</span>
+            </button>
           </div>
         </div>
+      )}
 
-        <div className="sg-ask-metric-grid cols-3">
-          <Metric label="Guide chars" value={contextLoading ? "…" : formatCount(context?.guide?.char_count)} />
-          <Metric label="Source chars" value={contextLoading ? "…" : formatCount(context?.source?.char_count)} />
-          <Metric label="Chunks" value={prepareResult?.ready ? formatCount(prepareResult.total_chunk_count) : "Not prepared"} />
-        </div>
-
+      <div className="sg-ask-chat-scroll">
         {contextError && <Notice tone="error" title="Context unavailable" text={contextError} />}
         {prepareError && <Notice tone="error" title="Prepare failed" text={prepareError} />}
-        {!contextError && readyState !== "ready" && !contextLoading && job && (
-          <Notice
-            tone="warning"
-            title="Selected guide is not ready"
-            text={reasons.length ? reasons.join(" ") : "The selected guide is missing required context."}
+
+        {messages.length === 0 ? (
+          <EmptyChatState
+            chat={chat}
+            prepReady={prepReady}
+            localReachable={localReachable}
+            canPrepareNow={canPrepareNow}
+            prepareLoading={prepareLoading}
+            onPrepare={onPrepare}
+            onOpenHelp={onOpenHelp}
           />
-        )}
-        {!localReachable && (
-          <Notice
-            tone="warning"
-            title="Local model offline"
-            text={
-              localState === STATE_NOT_CONFIGURED
-                ? "Configure the Local provider and start a local OpenAI-compatible server before chat is enabled."
-                : "Start your local model server and refresh status before chat is enabled."
-            }
-          />
+        ) : (
+          <div className="sg-ask-msgs">
+            {messages.map((message, index) => (
+              <ChatBubble key={message.id || `${message.role}-${index}`} message={message} />
+            ))}
+          </div>
         )}
 
-        <div className="sg-ask-prep-row">
+        {sending && (
+          <div className="sg-ask-sending">
+            <Loader2 size={14} className="sg-spin" />
+            Asking the local model…
+          </div>
+        )}
+        {chatError && (
+          <Notice
+            tone={chatError.category === "local_offline" || chatError.category === "not_prepared" ? "warning" : "error"}
+            title={chatError.category === "local_offline" ? "Local model offline" : chatError.category === "not_prepared" ? "Prepare context first" : "Message failed"}
+            text={chatError.message}
+          />
+        )}
+        {chatError?.category === "not_prepared" && (
           <button
             type="button"
             onClick={onPrepare}
             disabled={!job || contextLoading || prepareLoading || readyState !== "ready"}
-            className="sg-cta sg-press-btn"
-            title="Build or reuse the safe chunk index for this guide"
+            className="sg-cta sg-press-btn sg-ask-prep-inline"
           >
-            {prepareLoading ? <Loader2 size={15} className="sg-spin" /> : prepReady ? <Check size={15} /> : <Sparkles size={15} />}
-            {prepareLoading ? "Preparing…" : prepReady ? "Prepare again" : "Prepare context"}
+            {prepareLoading ? <Loader2 size={15} className="sg-spin" /> : <Sparkles size={15} />}
+            {prepareLoading ? "Preparing…" : "Prepare context"}
           </button>
-          <span className="sg-ask-prep-hint">
-            {prepReady ? "Context index is ready for local chat." : "Builds guide/source chunks without exposing text."}
-          </span>
-          <button
-            type="button"
-            onClick={onNewSession}
-            disabled={!job || sessionAction !== null}
-            className="sg-btn-sm"
-          >
-            {sessionAction === "new" ? <Loader2 size={13} className="sg-spin" /> : <Plus size={13} />}
-            <span>New chat</span>
-          </button>
-        </div>
-      </section>
+        )}
+      </div>
 
-      <section className="sg-ask-chat">
-        <div className="sg-ask-chat-scroll">
-          {messages.length === 0 ? (
-            <EmptyChatState chat={chat} prepReady={prepReady} localReachable={localReachable} />
-          ) : (
-            <div className="sg-ask-msgs">
-              {messages.map((message, index) => (
-                <ChatBubble key={message.id || `${message.role}-${index}`} message={message} />
-              ))}
-            </div>
-          )}
-          {sending && (
-            <div className="sg-ask-sending">
-              <Loader2 size={14} className="sg-spin" />
-              Asking the local model…
-            </div>
-          )}
-          {chatError && (
-            <Notice
-              tone={chatError.category === "local_offline" || chatError.category === "not_prepared" ? "warning" : "error"}
-              title={chatError.category === "local_offline" ? "Local model offline" : chatError.category === "not_prepared" ? "Prepare context first" : "Message failed"}
-              text={chatError.message}
-            />
-          )}
-          {chatError?.category === "not_prepared" && (
-            <button
-              type="button"
-              onClick={onPrepare}
-              disabled={!job || contextLoading || prepareLoading || readyState !== "ready"}
-              className="sg-cta sg-press-btn sg-ask-prep-inline"
-            >
-              {prepareLoading ? <Loader2 size={15} className="sg-spin" /> : <Sparkles size={15} />}
-              {prepareLoading ? "Preparing…" : "Prepare context"}
-            </button>
-          )}
+      <form
+        className="sg-ask-composer"
+        onSubmit={(event) => {
+          event.preventDefault();
+          if (canSend) onSendMessage();
+        }}
+      >
+        <div className={`sg-ask-input-wrap${chat.enabled ? "" : " disabled"}`}>
+          <textarea
+            disabled={!chat.enabled}
+            value={draftMessage}
+            onChange={(event) => setDraftMessage(safeInputText(event.target.value))}
+            rows={1}
+            className="sg-ask-textarea"
+            placeholder={chat.enabled ? "Ask a question about this guide…" : chat.label}
+          />
+          <button
+            type="submit"
+            disabled={!canSend}
+            className="sg-ask-send"
+            title={chat.enabled ? "Send message" : chat.label}
+          >
+            {sending ? <Loader2 size={15} className="sg-spin" /> : <Send size={15} />}
+          </button>
         </div>
-        <form
-          className="sg-ask-composer"
-          onSubmit={(event) => {
-            event.preventDefault();
-            if (canSend) onSendMessage();
-          }}
-        >
-          <div className={`sg-ask-input-wrap${chat.enabled ? "" : " disabled"}`}>
-            <textarea
-              disabled={!chat.enabled}
-              value={draftMessage}
-              onChange={(event) => setDraftMessage(safeInputText(event.target.value))}
-              rows={1}
-              className="sg-ask-textarea"
-              placeholder={chat.enabled ? "Ask a question about this guide…" : chat.label}
-            />
-            <button
-              type="submit"
-              disabled={!canSend}
-              className="sg-ask-send"
-              title={chat.enabled ? "Send message" : chat.label}
-            >
-              {sending ? <Loader2 size={15} className="sg-spin" /> : <Send size={15} />}
-            </button>
-          </div>
-        </form>
-      </section>
-    </div>
+      </form>
+    </section>
   );
 }
 
-function EmptyChatState({ chat, prepReady, localReachable }) {
+function EmptyChatState({ chat, prepReady, localReachable, canPrepareNow, prepareLoading, onPrepare, onOpenHelp }) {
   const title =
     chat.state === "no_guide"
       ? "Select a guide"
@@ -786,7 +812,7 @@ function EmptyChatState({ chat, prepReady, localReachable }) {
           : "Ready to ask";
   const text =
     chat.state === "no_guide"
-      ? "Choose an eligible generated guide from the list."
+      ? "Choose an eligible generated guide to begin."
       : !prepReady
         ? "Build the guide/source chunk index before sending the first message."
         : !localReachable
@@ -798,6 +824,18 @@ function EmptyChatState({ chat, prepReady, localReachable }) {
       <div>
         <strong>{title}</strong>
         <p>{text}</p>
+        {canPrepareNow && (
+          <button type="button" onClick={onPrepare} className="sg-cta sg-press-btn sg-ask-prep-inline" disabled={prepareLoading}>
+            {prepareLoading ? <Loader2 size={15} className="sg-spin" /> : <Sparkles size={15} />}
+            {prepareLoading ? "Preparing…" : "Prepare context"}
+          </button>
+        )}
+        {!localReachable && chat.state !== "no_guide" && prepReady && onOpenHelp && (
+          <button type="button" onClick={onOpenHelp} className="sg-btn-sm sg-ask-empty-help">
+            <HelpCircle size={13} />
+            <span>Open local model setup help</span>
+          </button>
+        )}
       </div>
     </div>
   );
@@ -941,14 +979,22 @@ function formatScore(value) {
   return Number.isFinite(value) ? value.toFixed(value >= 10 ? 0 : 2) : "0";
 }
 
-function ContextRail({
+// Right-side details area. Each section is a collapsible card; Context sources,
+// Preparation, and Local model are collapsed by default so the page stays calm,
+// while Chats stays open as the primary session switcher. All existing
+// information, warnings, and safety filtering are preserved inside.
+function DetailsRail({
   job,
   context,
   contextLoading,
   contextError,
+  readyState,
   prepareResult,
   prepareError,
+  prepareLoading,
   prep,
+  prepReady,
+  onPrepare,
   localStatus,
   localError,
   localLoading,
@@ -964,19 +1010,38 @@ function ContextRail({
   onSelectSession,
   onNewSession,
   onRefreshSessions,
-  commandProps,
+  onOpenHelp,
 }) {
+  const contextStatus = !job
+    ? "No guide"
+    : contextLoading
+      ? "Loading…"
+      : contextError
+        ? "Unavailable"
+        : readyState === "ready"
+          ? "Ready"
+          : "Not ready";
+
   return (
     <div className="sg-ask-rail-stack">
-      <Panel title="Selected guide" icon={BookOpen}>
-        {!job ? (
-          <p className="sg-ask-muted">Select a generated guide to inspect its context.</p>
-        ) : (
+      <CollapsibleCard icon={MessageSquareText} title="Chats" status={job ? `${formatCount(sessions.length)} saved` : "No guide"} defaultOpen>
+        <SessionManager
+          job={job}
+          sessions={sessions}
+          loading={sessionsLoading}
+          error={sessionsError}
+          action={sessionAction}
+          activeSessionId={activeSessionId}
+          onSelect={onSelectSession}
+          onNew={onNewSession}
+          onRefresh={onRefreshSessions}
+        />
+      </CollapsibleCard>
+
+      <CollapsibleCard icon={FileText} title="Context sources" status={contextStatus}>
+        {!job && <p className="sg-ask-muted">Select a generated guide to inspect its context.</p>}
+        {job && (
           <div className="sg-ask-selguide">
-            <div>
-              <strong className="sg-ask-selguide-title">{safeText(job.title, "Untitled guide")}</strong>
-              <p className="sg-ask-selguide-date">{formatDate(job.updated_at || job.created_at)}</p>
-            </div>
             <div className="sg-ask-chips">
               {job.status && <MiniChip>{job.status}</MiniChip>}
               {job.style && <MiniChip>{job.style}</MiniChip>}
@@ -989,39 +1054,39 @@ function ContextRail({
             </p>
           </div>
         )}
-      </Panel>
-
-      <Panel title="Chat sessions" icon={MessageSquareText}>
-        <SessionManager
-          job={job}
-          sessions={sessions}
-          loading={sessionsLoading}
-          error={sessionsError}
-          action={sessionAction}
-          activeSessionId={activeSessionId}
-          onSelect={onSelectSession}
-          onNew={onNewSession}
-          onRefresh={onRefreshSessions}
-        />
-      </Panel>
-
-      <Panel title="Context sources" icon={FileText}>
         {contextLoading && <InlineLoading label="Loading context inventory" />}
         {contextError && <Notice tone="error" title="Context unavailable" text={contextError} />}
         {!contextLoading && !contextError && context && <ContextInventory context={context} />}
-      </Panel>
+      </CollapsibleCard>
 
-      <Panel title="Preparation" icon={Sparkles}>
+      <CollapsibleCard icon={Sparkles} title="Preparation" status={job ? prep.label : "—"}>
         <div className="sg-ask-panel-row">
           <Pill tone={prep.tone}>{prep.label}</Pill>
           {prepareResult?.cache_status && <MiniChip>{prepareResult.cache_status}</MiniChip>}
         </div>
+        <button
+          type="button"
+          onClick={onPrepare}
+          disabled={!job || contextLoading || prepareLoading || readyState !== "ready"}
+          className="sg-cta sg-press-btn sg-ask-prep-btn"
+          title="Build or reuse the safe chunk index for this guide"
+        >
+          {prepareLoading ? <Loader2 size={15} className="sg-spin" /> : prepReady ? <Check size={15} /> : <Sparkles size={15} />}
+          {prepareLoading ? "Preparing…" : prepReady ? "Prepare again" : "Prepare context"}
+        </button>
+        <p className="sg-ask-muted">
+          {prepReady ? "Context index is ready for local chat." : "Builds guide/source chunks without exposing text."}
+        </p>
         {prepareError && <p className="sg-ask-err-text">{prepareError}</p>}
         {prepareResult?.ready && <PrepareSummary result={prepareResult} />}
-      </Panel>
+      </CollapsibleCard>
 
       {(lastRetrievedChunks.length > 0 || lastLocalModel?.model) && (
-        <Panel title="Latest answer context" icon={MessageSquareText}>
+        <CollapsibleCard
+          icon={MessageSquareText}
+          title="Latest answer context"
+          status={lastLocalModel?.model || `${formatCount(lastRetrievedChunks.length)} chunks`}
+        >
           {lastLocalModel?.model && (
             <p className="sg-ask-muted sg-ask-latest-model">
               Local model: <span>{lastLocalModel.model}</span>
@@ -1035,33 +1100,39 @@ function ContextRail({
               </div>
             </details>
           )}
-        </Panel>
+        </CollapsibleCard>
       )}
 
-      <Panel title="Local model" icon={Server}>
+      <CollapsibleCard icon={Server} title="Local model" status={localLoading ? "Checking…" : LOCAL_LABEL[localState] || "Status unavailable"}>
         <LocalModelSummary
           status={localStatus}
           error={localError}
           loading={localLoading}
           state={localState}
           onRefresh={reloadLocal}
+          onOpenHelp={onOpenHelp}
         />
-        {commandProps && (
-          <div className="sg-ask-cmd">
-            <CommandHelper
-              prominent={commandProps.prominent}
-              profiles={commandProps.profiles}
-              activeProfile={commandProps.activeProfile}
-              selectedProfileId={commandProps.selectedProfileId}
-              onSelectProfile={commandProps.onSelectProfile}
-              copyState={commandProps.copyState}
-              onCopy={commandProps.onCopy}
-              notes={commandProps.notes}
-            />
-          </div>
-        )}
-      </Panel>
+      </CollapsibleCard>
     </div>
+  );
+}
+
+// A reusable collapsible card built on native <details> (accessible, no extra
+// state). The summary always shows icon + title + a compact status line; the
+// detailed content renders only when expanded.
+function CollapsibleCard({ icon: Ico, title, status, defaultOpen = false, children }) {
+  return (
+    <details className="sg-ask-card" {...(defaultOpen ? { open: true } : {})}>
+      <summary className="sg-ask-card-summary">
+        <span className="sg-ask-card-ico"><Ico size={14} /></span>
+        <span className="sg-ask-card-titles">
+          <span className="sg-ask-card-title">{title}</span>
+          {status && <span className="sg-ask-card-status">{status}</span>}
+        </span>
+        <ChevronRight size={15} className="sg-ask-card-chevron" />
+      </summary>
+      <div className="sg-ask-card-body">{children}</div>
+    </details>
   );
 }
 
@@ -1209,7 +1280,7 @@ function PrepareSummary({ result }) {
   );
 }
 
-function LocalModelSummary({ status, error, loading, state, onRefresh }) {
+function LocalModelSummary({ status, error, loading, state, onRefresh, onOpenHelp }) {
   const latency = statusLatencyMs(status);
   const count = statusModelCount(status);
   const selected = typeof status?.selected_model === "string" ? status.selected_model : null;
@@ -1248,21 +1319,13 @@ function LocalModelSummary({ status, error, loading, state, onRefresh }) {
           <span>Chat input stays disabled until the local OpenAI-compatible server is reachable.</span>
         </div>
       )}
+      {onOpenHelp && (
+        <button type="button" className="sg-btn-sm sg-ask-help-link" onClick={onOpenHelp}>
+          <HelpCircle size={13} />
+          <span>Open local model setup help</span>
+        </button>
+      )}
     </div>
-  );
-}
-
-function Panel({ title, icon: Icon, children }) {
-  return (
-    <section className="sg-ask-panel">
-      <div className="sg-ask-panel-head">
-        <span className="sg-ask-panel-icon">
-          <Icon size={14} />
-        </span>
-        <h2>{title}</h2>
-      </div>
-      {children}
-    </section>
   );
 }
 
