@@ -6,10 +6,25 @@
 > stable overview see `PROJECT_CONTEXT.md`; canonical brief is `../CLAUDE.md`.
 
 ## Current position
-- **Branch in progress:** `slice25b-ask-lexical-retrieval-hygiene`, created from
-  `chrome-renderer-v1`. Slice 25B is implemented and intentionally **uncommitted**.
-  Do not commit unless explicitly asked; do not force-push. (Slice 25A —
-  `2e97f73` — is already committed on the trunk.)
+- **Working tree:** clean. The correctness/measurement sequence is **fully
+  committed** on the trunk through **Slice 25B**. **HEAD = `ae44a85`** ("Slice 25B:
+  Improve Ask lexical retrieval hygiene"). Do not commit unless explicitly asked;
+  do not force-push.
+- **Committed slice sequence (most recent first):** 25B Ask lexical retrieval
+  hygiene (`ae44a85`) · 25A Ask retrieval relevance baseline (`2e97f73`) · 24A PDF
+  `extraction_metadata.json` (`226767c`) · 23B source page-citation directive +
+  checks (`1aac60b`) · 23A page-anchor reachability proof (`d4cd95b`) · 22
+  JobDetails math-verification UI (`b932667`) · 21 per-job `math_verification.json`
+  (`a492e3b`) · 20 eval harness Phase 1 (`2078c8d`) · 19 guide-lint core (`9f1becf`)
+  · 18 math-verifier core (`2c47d03`) · 17 hygiene checkpoint (`ff214fd`). The
+  detailed per-slice result bullets below remain accurate; ignore any older
+  "uncommitted / PENDING REVIEW / branch in progress" wording in them — those
+  slices are all on the trunk now.
+- **Immediate next planned slice (in order):** (1) persist `guide_lint.json`
+  advisory artifact (mirror the Slice 21 `math_verification.json` pattern; advisory
+  only, must never fail a job), then (2) JobDetails guide-lint UI (read-only, mirror
+  Slice 22), then (3) eval golden corpus / baseline, then (4) true Anki `.apkg`
+  export core. None started.
 - **Slice 25B (Ask lexical retrieval hygiene):** backend retrieval-ranking +
   tests/docs. New shared `pipeline/ask_lexical.py::lexical_terms` adds **stopword
   filtering** + conservative **single-`-s` plural folding**, used by **both** the
@@ -40,18 +55,19 @@
   **hygiene checkpoint** (dead-file sweep + `npm test` chain repair). With Slice 17
   the reskin/UX phase is closed and the codebase is clean — **the correctness /
   measurement phase has now begun with Slice 18 (deterministic math verification).**
-- **HEAD:** Slice 18 (deterministic math-correctness verifier, **pure core only**)
-  is **committed** on `chrome-renderer-v1` as `2c47d03` (immediately after Slice 17
+- **Slice 18 (deterministic math-correctness verifier, **pure core only**) is
+  committed** on `chrome-renderer-v1` as `2c47d03` (immediately after Slice 17
   `ff214fd`). Slice 18 added a standalone module + tests only — **no**
   job/artifact/API/prompt/frontend/UI integration.
 - **Slice 19 (deterministic guide-lint core, pure advisory only) is committed** on
-  `chrome-renderer-v1` (immediately after Slice 18 `2c47d03`) — see the commit log
-  for the hash. **Pure advisory core only:** no job integration, no artifact, no
-  API, no `validation.json`, no prompt, no frontend/UI.
+  `chrome-renderer-v1` as `9f1becf` (immediately after Slice 18 `2c47d03`). **Pure
+  advisory core only:** no job integration, no artifact, no API, no
+  `validation.json`, no prompt, no frontend/UI. (The advisory `guide_lint.json`
+  artifact + JobDetails UI are the immediate next planned slices — see above.)
 - **Slice 20 (eval harness Phase 1 — deterministic scoring framework) is
-  implemented + verified, PENDING REVIEW before commit** — once committed, update
-  this line with the hash.
-- **Slice 22 implemented + verified:** frontend-only, read-only JobDetails UI for
+  committed** on `chrome-renderer-v1` as `2078c8d`.
+- **Slice 22 (read-only JobDetails math-verification UI) is committed** on
+  `chrome-renderer-v1` as `b932667`. Frontend-only, read-only JobDetails UI for
   Slice 21's per-job `math_verification.json`. The artifact is still intentionally
   excluded from generic artifact lists. `JobDetailsDrawer` has a new
   `Verification` tab that fetches `/api/jobs/{id}/artifacts/math_verification.json`
@@ -190,20 +206,21 @@
   "treat `npm test` failures as pre-existing" caveat no longer applies.)
 - **Screenshots / visual review are operator-owned** — Claude Code does not produce
   them; the operator does visual inspection and supplies screenshots if needed.
-- **NEXT after Slice 19 = decide on integration of the correctness modules** —
-  the math verifier (Slice 18) and the guide linter (Slice 19) are both pure cores;
-  a future designed slice decides how/whether to surface them (optional job-stage
-  advisory report / `validation.json` field / JobDetails surfacing). That
-  integration is intentionally **out of scope** for both slices, and neither the
-  verifier nor the linter may ever make guide generation fail. LMM
-  Phase 2 remains **paused** —
-  resume only with a separately designed approve-root or packaging slice;
-  app-suggested settings remain deferred.
+- **NEXT (immediate, in order):** (1) persist `guide_lint.json` advisory artifact —
+  the guide linter (Slice 19) is still a pure core; the next slice surfaces it as an
+  advisory per-job artifact mirroring Slice 21's `math_verification.json` (advisory
+  only; the linter may **never** make guide generation fail). Then (2) JobDetails
+  guide-lint UI (read-only, mirroring Slice 22), then (3) eval golden corpus /
+  baseline, then (4) true Anki `.apkg` export core. The math verifier (Slice 18) is
+  already surfaced via Slice 21 (`math_verification.json`) + Slice 22 (JobDetails
+  Verification tab). LMM Phase 2 remains **paused** — resume only with a separately
+  designed approve-root or packaging slice; app-suggested settings remain deferred.
 
 ## What just landed
-- **Slice 22 — JobDetails math verification artifact UI** (branch
-  `slice22-jobdetails-math-verification-ui`, implemented + verified, uncommitted).
-  Added
+- **Slice 22 — JobDetails math verification artifact UI** (committed on
+  `chrome-renderer-v1` as `b932667`). Note: Slices 23A–25B landed after this entry
+  was written; see the committed slice sequence under **Current position** for the
+  true most-recent work. Added
   `frontend/src/mathVerification.js`, `frontend/src/components/MathVerificationPanel.jsx`,
   a generic read-only `getJobArtifact()` helper, a `Verification` JobDetails tab,
   compact semantic CSS for claim rows, and

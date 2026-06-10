@@ -5,7 +5,7 @@
 
 ---
 
-## Slice 25B — Ask lexical retrieval hygiene (DONE — uncommitted).
+## Slice 25B — Ask lexical retrieval hygiene (DONE — committed `ae44a85`, trunk HEAD).
 
 - **Purpose:** improve the existing deterministic local-only lexical (tf-idf) Ask
   retrieval with cheap, explainable changes, then prove the effect against the

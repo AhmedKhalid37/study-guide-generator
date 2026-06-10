@@ -166,10 +166,22 @@ request DTOs (Pydantic models such as `LLMJobRequest`), delegating real work to
   trash/purge fencing.
 - `pipeline/extract.py` — attachment extraction + page-level OCR + `preflight_pdf`.
 - `pipeline/math_validator.py` — KaTeX-based math validation (degrade-not-fail).
+- `pipeline/math_verifier.py` — deterministic **numeric**-correctness verifier
+  (Slice 18; distinct from `math_validator.py`, which only checks KaTeX rendering).
+  Wired per-job as the `math_verification.json` artifact (Slice 21) + JobDetails
+  Verification tab (Slice 22).
+- `pipeline/guide_lint.py` — deterministic advisory guide linter (Slice 19, pure
+  core; advisory `guide_lint.json` artifact + JobDetails UI are the next slices —
+  it must never fail a job).
+- `pipeline/ask_lexical.py` — shared Ask lexical tokeniser (`lexical_terms`,
+  stopword + single-`-s` plural folding) used by both the Ask index build and the
+  query scorer so they cannot drift (Slice 25B). The offline eval harness lives
+  under `test_scripts/eval/` (Slice 20).
 - `pipeline/pdf_renderer.py`, `pipeline/html_renderer.py`, `pipeline/docx_renderer.py` —
   artifact renderers. PDF uses headless Chromium via Node.
-- `pipeline/markdown_sanitizer.py`, `pipeline/markdown_sections.py`,
-  `pipeline/section_scorer.py` — markdown clean-up and section parsing/scoring.
+- `pipeline/markdown_sanitizer.py`, `pipeline/markdown_sections.py` — markdown
+  clean-up and section parsing. (There is **no** `pipeline/section_scorer.py`; an
+  earlier draft of this report named one — it does not exist in the tree.)
 - `pipeline/style_store.py`, `pipeline/generator_presets.py`, `pipeline/presets.py`,
   `pipeline/prompt_loader.py` — style registry, generator presets, outline quick-templates.
 - `pipeline/library_store.py`, `pipeline/shortcut_store.py` — library folders + shortcuts.
@@ -973,7 +985,7 @@ attachment-truncation slices (`generator-presets-followups.md`).
 | Extraction / OCR / preflight | `pipeline/extract.py` |
 | Renderers | `pipeline/pdf_renderer.py`, `html_renderer.py`, `docx_renderer.py` |
 | Math | `pipeline/math_validator.py`, `markdown_sanitizer.py` |
-| Sections | `pipeline/markdown_sections.py`, `section_scorer.py` |
+| Sections | `pipeline/markdown_sections.py` |
 | Styles / presets | `pipeline/style_store.py`, `generator_presets.py`, `presets.py`, `prompt_loader.py` |
 | Library / shortcuts | `pipeline/library_store.py`, `shortcut_store.py` |
 | Ask Your Guide | `pipeline/ask_inventory.py`, `ask_context.py`, `ask_sessions.py` |

@@ -7,14 +7,18 @@
 ## Exact current position
 
 - **Branch / PR target:** `chrome-renderer-v1`.
-- **HEAD:** `eaa1263` — "Slice 16: Post-reskin release audit + checkpoint".
+- **HEAD:** `ae44a85` — "Slice 25B: Improve Ask lexical retrieval hygiene". (This
+  doc was first written at Slice 16 / `eaa1263`; the trunk has since advanced
+  through the correctness/measurement sequence Slices 17–25B — see
+  `NEXT_CHAT_HANDOFF.md` for the committed slice list.)
 - **Working tree:** clean (`git status --short` empty; runtime `jobs/`, `config/`,
   `user_prompts/`, `library/`, `.env*` are gitignored).
-- **Validation status:** `smoke_release.py` **28 passed / 0 failed / 0 skipped**;
-  frontend build green; `compileall api pipeline` green; Slice-16 security scan clean
-  (no keys/tokens/socket/paths in any served API or the JS bundle). The default
-  `npm run test` (`verify-assets.mjs`) is **stale/known-bad** (old mockup tree) and is
-  **not** a release blocker.
+- **Validation status:** `smoke_release.py` green; frontend build green;
+  `compileall api pipeline` green; security scans clean (no keys/tokens/socket/paths
+  in any served API or the JS bundle). The default `npm test` is **no longer the
+  stale mockup harness** — Slice 17 rewired it to chain the maintained shortcut /
+  local-model / ask / style-compare / math-verification harnesses, so its failures
+  are now release-relevant.
 
 ## Current app state
 
@@ -60,6 +64,17 @@ handoff) is a **correctness / measurement layer**, not more UI.
 
 ## Strongest next opportunities
 
+> **Status update (post-Slice-25B):** this list was written at Slice 16 as a
+> roadmap-input snapshot; opportunities #1–#5 have since largely landed and are
+> kept here for provenance. Specifically: #1 math-verification core (Slice 18),
+> #2 surface verification per job (Slices 21 `math_verification.json` + 22
+> JobDetails UI), #3 eval harness Phase 1 (Slice 20), #4 deterministic guide-lint
+> core (Slice 19, pure core — artifact/UI still pending), and #5's first steps on
+> Ask retrieval (Slices 25A baseline + 25B lexical hygiene; a vector/embedding
+> upgrade is still future work). The current immediate next slices are: persist
+> `guide_lint.json` advisory artifact → JobDetails guide-lint UI → eval golden
+> corpus/baseline → true Anki `.apkg` export core (see `NEXT_CHAT_HANDOFF.md`).
+
 1. **Deterministic math verification core** — today's "math validation" is **KaTeX
    parse/render only** (does the LaTeX compile), **not** whether the math is *correct*.
    This is the single biggest trust gap. (P0)
@@ -91,9 +106,10 @@ gated, visible correctness layer before adding more generation surface.
   / 3,228 lines / 773 classes**.
 - **Dead code left in place** (documented): non-embedded `RecentJobsPanel`/`PreviewPanel`
   branch, `Tile`, `MetaRow`, mockup components, `PasteGenerationPanel`, `data/mockups.js`.
-- **Stale default `npm run test`** (`verify-assets.mjs`).
-- **Doc drift** — `CLAUDE.md` route list is stale; the deep report references a
-  non-existent `pipeline/section_scorer.py`.
+- **Doc drift** — `CLAUDE.md` route list is summarized (defers to `api/server.py`
+  as authoritative). (The former stale default `npm test` was fixed in Slice 17;
+  the deep report's non-existent `pipeline/section_scorer.py` reference was
+  corrected in the Slice 26 docs-reconciliation checkpoint.)
 - **Scale limits** — JSON-file stores, no pagination (UI loads all jobs; ~150 already on
   disk); Chromium PDF render is the heavy, uninterruptible step.
 - **Security surface to keep guarded** — the LMM exposure list, the two-path
