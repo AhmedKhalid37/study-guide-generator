@@ -6,11 +6,27 @@
 > stable overview see `PROJECT_CONTEXT.md`; canonical brief is `../CLAUDE.md`.
 
 ## Current position
-- **Working tree:** **Slice 28 implemented but uncommitted** on branch
-  `slice28-jobdetails-guide-lint-ui` (branched from trunk after Slice 27). The
-  correctness/measurement sequence is committed on the trunk through **Slice 27**
-  (trunk HEAD = `0d73f24`, "Slice 27: Persist guide lint job artifact"). Do not
-  commit unless explicitly asked; do not force-push.
+- **Working tree:** **Slice 29 (hybrid-OCR design, docs-only) implemented but
+  uncommitted** on branch `slice29-hybrid-ocr-design` (branched from trunk after
+  Slice 28). The correctness/measurement sequence is committed on the trunk
+  through **Slice 28** (trunk HEAD = `f3bb0ad`, "Slice 28: Add JobDetails guide
+  lint UI"). Do not commit unless explicitly asked; do not force-push.
+- **Slice 29 (hybrid OCR & scan-aware extraction architecture):** docs-only.
+  New `docs/HYBRID_OCR_DESIGN.md` decides the architecture before any OCR code —
+  current extraction flow (grounded in `pipeline/extract.py` /
+  `extraction_metadata.py` / `run_llm_job.py` / `api/server.py`), a page
+  classification model, a backward-compatible `extraction_metadata.json` evolution
+  (additive/optional, `version: 1` stays readable), a backend-only OCR provider
+  boundary (`tesseract_local` default + future `mistral` + future local model), a
+  cost/privacy-aware routing policy (cloud opt-in, off by default), large-PDF
+  interaction reusing existing preflight/page-range, Mistral OCR **prerequisites
+  to verify** (not implemented), OCR security/privacy constraints, and a proposed
+  7-slice sequence (Slices 30–36). Also updated `CURRENT_TASK.md`,
+  `NEXT_CHAT_HANDOFF.md`, `DECISIONS.md`. **No** code/test/fixture/dependency/
+  schema/extraction/OCR/prompt/provider/Ask/render change. Proposed next slices:
+  30 image-object signal, 31 classification field, 32 OCR provider boundary
+  refactor, 33 routing core, 34 wire router (local only), 35 Mistral prereq
+  verification (docs), 36 Mistral provider (cloud, opt-in, gated).
 - **Slice 28 (JobDetails guide-lint UI tab):** frontend/UI only. New read-only
   **"Guide Lint"** tab in the JobDetails drawer (`RecentJobsPanel.jsx`, after
   Verification), backed by `GuideLintPanel.jsx` + the pure normalizer

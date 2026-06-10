@@ -5,7 +5,62 @@
 
 ---
 
-## Slice 28 — JobDetails guide-lint UI tab (DONE — uncommitted on `slice28-jobdetails-guide-lint-ui`).
+## Slice 29 — Hybrid OCR & scan-aware extraction architecture (DESIGN-ONLY — uncommitted on `slice29-hybrid-ocr-design`).
+
+- **Purpose:** decide the architecture for hybrid OCR, scan-aware extraction, and
+  a future OCR-provider boundary (with Mistral OCR as a candidate cloud provider)
+  **before** writing any OCR code. Docs only — no application code, no schema, no
+  dependency, no extraction/OCR behaviour change.
+- **Deliverable:** new `docs/HYBRID_OCR_DESIGN.md` covering: (1) the current
+  extraction flow grounded in `pipeline/extract.py` /
+  `pipeline/extraction_metadata.py` / `pipeline/run_llm_job.py` /
+  `api/server.py`; (2) a page-classification model (`embedded_text`,
+  `ocr_fallback`, `likely_scanned`, `blank_or_low_text`, `mixed`, `error`) and the
+  signals that determine each; (3) a backward-compatible `extraction_metadata.json`
+  evolution (additive/optional fields, `version: 1` stays readable, bump to
+  `version: 2` only when a new field ships); (4) a backend-only OCR provider
+  boundary (`tesseract_local` default, future `mistral`, future local model);
+  (5) a cost- & privacy-aware hybrid routing policy (embedded → local → cloud,
+  cloud opt-in/off by default); (6) large-PDF interaction reusing existing
+  preflight + page-range + size guards; (7) Mistral OCR **prerequisites to verify**
+  (endpoint/format, file types, page limits, pricing, output shape, rate limits,
+  privacy/retention, errors) — **not implemented**; (8) OCR security/privacy
+  constraints extending CLAUDE.md invariants; (9) a proposed 7-slice sequence
+  (Slices 30–36).
+- **Grounding facts captured (verified in code, not assumed):**
+  - PDFs read via PyMuPDF (`fitz`) in `_extract_pdf`; `## Page N` anchors use the
+    **original physical** page index; per-page text/OCR decision is already
+    page-level (`_is_meaningful_page_text` ≥ 40 chars or ≥ 5 word tokens →
+    embedded; else per-page Tesseract OCR; else drop).
+  - `extraction_metadata.json` (Slice 24A, `version: 1`) is written in
+    `_attach_sources` after extraction, before the LLM call; per-page `method` ∈
+    `{embedded_text, ocr, none}` and `_safe_method` whitelists
+    `{embedded_text, ocr, none, unknown}`. Downloadable by exact name only; not in
+    generic artifact lists; PDF attachments only.
+  - Preflight (`preflight_pdf` → `POST /api/preflight/pdf` →
+    `_build_pdf_preflight_report`) is OCR-free, produces `scanned_flag`
+    (`text`/`mixed`/`image_heavy`/`unknown`), `verdict`, `recommended_mode`,
+    `allowed_actions`; image-object presence is **not** inspected today (the key
+    new signal the design adds in Slice 30).
+- **Key decisions:** classification is **additive/advisory** next to legacy
+  `method` (never required, unknown-safe); OCR keys follow the existing
+  server-side-only, write-only, key-less-DTO provider pattern; cloud OCR is
+  **opt-in and off by default** (local-first, mirroring Ask staying local-only);
+  OCR is **degrade-not-fail** and never changes job status (same posture as
+  `extraction_metadata.json` / `math_verification.json` / `guide_lint.json`);
+  auto-split stays deferred.
+- **Scope guard — NO change to:** any backend/frontend/pipeline file, tests,
+  fixtures, dependencies, extraction/OCR heuristics, artifact schema, prompts,
+  provider settings, `/api/jobs/llm` request fields, Ask/retrieval, or the
+  PDF/Chromium render pipeline. No Mistral dependency or API call. Updated only
+  `docs/HYBRID_OCR_DESIGN.md` (new), `docs/CURRENT_TASK.md`,
+  `docs/NEXT_CHAT_HANDOFF.md`, `docs/DECISIONS.md`.
+- **Validation (docs-only):** `git diff --check` ✓ · `git diff --name-only` shows
+  docs only ✓. No build/smoke required (no code touched).
+
+---
+
+## Slice 28 — JobDetails guide-lint UI tab (DONE — committed on trunk as `f3bb0ad`).
 
 - **Purpose:** surface the per-job `guide_lint.json` artifact (Slice 27) in the
   JobDetails drawer as a read-only, advisory panel, closing the

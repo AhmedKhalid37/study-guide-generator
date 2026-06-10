@@ -1450,3 +1450,44 @@ non-invasive the check stays disabled; all other rules plus the existing Node/Ka
 render bridge still run (the bridge already degrades to an info finding when Node/KaTeX
 is unavailable, so it never crashes the helper). Both omissions are recorded in
 `CURRENT_TASK.md` so the next slice knows what to wire.
+
+## Hybrid OCR architecture designed before any OCR code (Slice 29)
+Slice 29 is a **docs-only** architecture decision for hybrid OCR / scan-aware
+extraction, captured in `docs/HYBRID_OCR_DESIGN.md`. It deliberately decides the
+shape before adding Mistral OCR, an OCR provider boundary, or any extraction
+behaviour change, so the follow-on slices (30–36) stay small and verifiable.
+
+**Why design-first:** OCR touches the load-bearing extraction path
+(`pipeline/extract.py`), the Slice 24A `extraction_metadata.json` contract, the
+large-PDF preflight, and (for cloud OCR) the security/privacy boundary. Each is a
+place where a casual change regresses behaviour or leaks secrets, so the sequencing
+and invariants are fixed up front rather than discovered mid-implementation.
+
+**Why page classification is additive/advisory, not a `method` replacement:** the
+Slice 24A artifact already ships a per-page `method` ∈ `{embedded_text, ocr, none}`
+with `_safe_method` whitelisting `{embedded_text, ocr, none, unknown}`. The richer
+classification (`embedded_text`, `ocr_fallback`, `likely_scanned`,
+`blank_or_low_text`, `mixed`, `error`) is layered **next to** `method` so existing
+consumers keep working; classification is never required and unknown values coerce
+safely. The schema bump to `version: 2` happens only when a new field actually
+ships, and `version: 1` keys keep their meaning forever.
+
+**Why cloud OCR is opt-in and off by default:** cloud OCR sends page images
+off-box and costs money. Defaulting to local-first (Tesseract or skip-and-warn)
+preserves the app's local-first posture (cf. Ask Your Guide staying local-only),
+and the routing order is embedded-text → local OCR → cloud OCR (cloud last), with
+page-budget caps via the existing preflight + page-range model. OCR stays
+degrade-not-fail: it can never fail a job, block render, or change job status —
+the same advisory posture as `extraction_metadata.json`, `math_verification.json`,
+and `guide_lint.json`.
+
+**Why Mistral OCR is prerequisites-only here:** its current API endpoint/format,
+supported file types, page limits, pricing, output shape (Markdown/text/layout?),
+rate limits, privacy/retention terms, and error behaviour must be verified against
+official docs at implementation time, not assumed. A dedicated docs-only
+verification slice (Slice 35) gates the actual provider implementation (Slice 36).
+
+**Open decision deferred to implementation:** whether OCR provider keys reuse the
+existing provider registry/secret store or get a dedicated `ocr_provider_settings`
+store — either way they follow the established server-side-only, write-only,
+key-less-DTO invariant (only `configured`/`key_source`/`key_hint`/`base_url_host`).
