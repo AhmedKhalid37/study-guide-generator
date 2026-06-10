@@ -53,10 +53,10 @@ const emptyFilters = {
   hasWarnings: false
 };
 
-function statusTone(status) {
-  if (status === "done") return "border-emerald-400/30 bg-emerald-400/10 text-emerald-200";
-  if (String(status || "").includes("failed")) return "border-red-400/30 bg-red-400/10 text-red-200";
-  return "border-amber-300/30 bg-amber-300/10 text-amber-100";
+function statusClass(status) {
+  if (status === "done") return "pill-green";
+  if (String(status || "").includes("failed")) return "pill-red";
+  return "pill-amber";
 }
 
 function jobFolder(job) {
@@ -254,14 +254,14 @@ export default function ExportsWorkspace({ refreshKey = 0, onOpenBuilder }) {
   }, []);
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col p-1">
+    <div className="sg-exp">
       <div className="sg-page-head">
         <div>
           <h1>Exports</h1>
           <p>{filteredJobs.length} of {data.jobs.length} guide{data.jobs.length === 1 ? "" : "s"} · download artifacts or bundle as ZIP</p>
         </div>
         <button type="button" className="sg-cta sg-press-btn" onClick={() => onOpenBuilder?.()}>
-          <Download size={16} stroke="#1A1206" strokeWidth={2.4} />
+          <Download size={16} strokeWidth={2.4} />
           New Guide
         </button>
       </div>
@@ -289,8 +289,8 @@ export default function ExportsWorkspace({ refreshKey = 0, onOpenBuilder }) {
       )}
 
       {error && (
-        <div className="mt-3 flex items-center gap-2 rounded-lg border border-red-400/30 bg-red-400/10 px-4 py-2 text-sm text-red-200">
-          <AlertCircle size={15} />
+        <div className="sg-exp-error">
+          <AlertCircle size={16} />
           <span>{error}</span>
         </div>
       )}
@@ -308,10 +308,9 @@ export default function ExportsWorkspace({ refreshKey = 0, onOpenBuilder }) {
       )}
 
       {!loading && filteredJobs.length > 0 && (
-        <label className="mt-3 inline-flex w-fit cursor-pointer items-center gap-2 px-0.5 text-xs font-semibold text-slate-400 hover:text-slate-200">
+        <label className="sg-selectall">
           <input
             type="checkbox"
-            className="h-3.5 w-3.5 accent-ember-500"
             checked={allVisibleSelected}
             onChange={toggleSelectAllVisible}
           />
@@ -319,19 +318,19 @@ export default function ExportsWorkspace({ refreshKey = 0, onOpenBuilder }) {
         </label>
       )}
 
-      <div className="mt-3 min-h-0 flex-1 overflow-y-auto pr-1">
+      <div className="sg-exp-list">
         {loading ? (
-          <div className="flex min-h-48 items-center justify-center gap-3 text-slate-300">
-            <Loader2 className="h-5 w-5 animate-spin text-ember-500" />
+          <div className="sg-exp-loading">
+            <Loader2 className="sg-spin" />
             <span>Loading exports…</span>
           </div>
         ) : filteredJobs.length === 0 ? (
-          <div className="flex min-h-48 flex-col items-center justify-center gap-2 text-slate-400">
-            <FileArchive className="h-6 w-6 opacity-60" />
+          <div className="sg-exp-empty">
+            <FileArchive />
             <span>No guides match this view.</span>
           </div>
         ) : (
-          <div className="grid gap-2.5">
+          <div className="sg-exp-cards">
             {filteredJobs.map((job) => (
               <ExportCard
                 key={job.id}
@@ -363,18 +362,18 @@ export default function ExportsWorkspace({ refreshKey = 0, onOpenBuilder }) {
 }
 
 function Toolbar({ q, setQ, sort, setSort, showFilters, setShowFilters, activeFilterCount }) {
+  const filterActive = activeFilterCount > 0 || showFilters;
   return (
-    <div className="mt-3 flex flex-wrap items-center gap-2">
-      <div className="flex min-w-0 flex-1 items-center gap-2 rounded-lg border border-white/10 bg-white/[0.04] px-3">
-        <Search size={15} className="shrink-0 text-slate-500" />
+    <div className="sg-exp-toolbar">
+      <div className="sg-search">
+        <Search />
         <input
-          className="h-9 w-full min-w-0 bg-transparent text-sm text-slate-100 outline-none placeholder:text-slate-500"
           placeholder="Search title, id, provider, or style…"
           value={q}
           onChange={(event) => setQ(event.target.value)}
         />
         {q && (
-          <button type="button" className="text-slate-500 hover:text-white" onClick={() => setQ("")}>
+          <button type="button" onClick={() => setQ("")} aria-label="Clear search">
             <X size={14} />
           </button>
         )}
@@ -383,30 +382,18 @@ function Toolbar({ q, setQ, sort, setSort, showFilters, setShowFilters, activeFi
       <button
         type="button"
         onClick={() => setShowFilters((open) => !open)}
-        className={`inline-flex h-9 items-center gap-1.5 rounded-lg border px-3 text-sm font-semibold transition ${
-          activeFilterCount > 0 || showFilters
-            ? "border-ember-500/50 bg-ember-500/10 text-white"
-            : "border-white/10 bg-white/[0.04] text-slate-300 hover:text-white"
-        }`}
+        className={`sg-filter-btn${filterActive ? " active" : ""}`}
       >
         Filters
-        {activeFilterCount > 0 && (
-          <span className="grid h-4 min-w-4 place-items-center rounded-full bg-ember-500 px-1 text-[10px] font-bold text-[#1A1206]">
-            {activeFilterCount}
-          </span>
-        )}
-        <ChevronDown size={14} className={showFilters ? "rotate-180 transition" : "transition"} />
+        {activeFilterCount > 0 && <span className="sg-filter-badge">{activeFilterCount}</span>}
+        <ChevronDown size={14} style={showFilters ? { transform: "rotate(180deg)" } : undefined} />
       </button>
 
-      <label className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-white/10 bg-white/[0.04] px-2 text-sm text-slate-300">
-        <span className="text-xs text-slate-500">Sort</span>
-        <select
-          className="bg-transparent text-sm text-slate-100 outline-none"
-          value={sort}
-          onChange={(event) => setSort(event.target.value)}
-        >
+      <label className="sg-sort">
+        <span>Sort</span>
+        <select value={sort} onChange={(event) => setSort(event.target.value)}>
           {SORTS.map((option) => (
-            <option key={option.id} value={option.id} className="bg-[#0B0F19]">
+            <option key={option.id} value={option.id}>
               {option.label}
             </option>
           ))}
@@ -419,7 +406,7 @@ function Toolbar({ q, setQ, sort, setSort, showFilters, setShowFilters, activeFi
 function FilterBar({ filters, setFilters, statuses, providers, styleChoices, folderChoices, onClear }) {
   const set = (key, value) => setFilters((current) => ({ ...current, [key]: value }));
   return (
-    <div className="mt-2 flex flex-wrap items-center gap-2 rounded-lg border border-white/10 bg-white/[0.02] p-2.5">
+    <div className="sg-filterbar">
       <FilterSelect
         label="Artifact"
         value={filters.artifact}
@@ -440,13 +427,21 @@ function FilterBar({ filters, setFilters, statuses, providers, styleChoices, fol
         onChange={(value) => set("style", value)}
         options={styleChoices.map(([id, name]) => ({ value: id, label: name }))}
       />
-      <ToggleChip active={filters.hasAttachments} onClick={() => set("hasAttachments", !filters.hasAttachments)}>
-        <Paperclip size={12} /> Attachments
-      </ToggleChip>
-      <ToggleChip active={filters.hasWarnings} onClick={() => set("hasWarnings", !filters.hasWarnings)}>
-        <AlertCircle size={12} /> Warnings
-      </ToggleChip>
-      <button type="button" className="ml-auto text-xs font-semibold text-slate-400 hover:text-white" onClick={onClear}>
+      <button
+        type="button"
+        className={`sg-toggle-chip${filters.hasAttachments ? " active" : ""}`}
+        onClick={() => set("hasAttachments", !filters.hasAttachments)}
+      >
+        <Paperclip size={13} /> Attachments
+      </button>
+      <button
+        type="button"
+        className={`sg-toggle-chip${filters.hasWarnings ? " active" : ""}`}
+        onClick={() => set("hasWarnings", !filters.hasWarnings)}
+      >
+        <AlertCircle size={13} /> Warnings
+      </button>
+      <button type="button" className="sg-filter-clear" onClick={onClear}>
         Clear all
       </button>
     </div>
@@ -458,16 +453,12 @@ function FilterSelect({ label, value, onChange, options }) {
     typeof option === "string" ? { value: option, label: option } : option
   );
   return (
-    <label className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-white/10 bg-white/[0.04] px-2 text-xs text-slate-300">
-      <span className="text-slate-500">{label}</span>
-      <select
-        className="max-w-[140px] bg-transparent text-xs text-slate-100 outline-none"
-        value={value}
-        onChange={(event) => onChange(event.target.value)}
-      >
-        <option value="" className="bg-[#0B0F19]">All</option>
+    <label className="sg-filter-field">
+      <span>{label}</span>
+      <select value={value} onChange={(event) => onChange(event.target.value)}>
+        <option value="">All</option>
         {normalized.map((option) => (
-          <option key={option.value} value={option.value} className="bg-[#0B0F19]">
+          <option key={option.value} value={option.value}>
             {option.label}
           </option>
         ))}
@@ -476,29 +467,13 @@ function FilterSelect({ label, value, onChange, options }) {
   );
 }
 
-function ToggleChip({ active, onClick, children }) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      className={`inline-flex h-8 items-center gap-1.5 rounded-lg border px-2.5 text-xs font-semibold transition ${
-        active
-          ? "border-ember-500/50 bg-ember-500/10 text-white"
-          : "border-white/10 bg-white/[0.04] text-slate-300 hover:text-white"
-      }`}
-    >
-      {children}
-    </button>
-  );
-}
-
 function BundleBar({ count, bundleArtifacts, onToggleArtifact, onDownload, onClear, bundling, bundleError }) {
   return (
-    <div className="mt-3 rounded-lg border border-ember-500/40 bg-ember-500/[0.08] px-3 py-2.5">
-      <div className="flex flex-wrap items-center gap-2">
-        <span className="text-sm font-bold text-white">{count} selected</span>
-        <span className="text-xs text-slate-400">Include:</span>
-        <div className="flex flex-wrap items-center gap-1.5">
+    <div className="sg-exp-bundle">
+      <div className="sg-exp-bundle-row">
+        <span className="sg-exp-bundle-count">{count} selected</span>
+        <span className="sg-exp-bundle-label">Include:</span>
+        <div className="sg-exp-fmts">
           {ARTIFACT_TYPES.map((type) => {
             const active = bundleArtifacts.has(type.sel);
             const Icon = type.icon;
@@ -507,40 +482,32 @@ function BundleBar({ count, bundleArtifacts, onToggleArtifact, onDownload, onCle
                 key={type.sel}
                 type="button"
                 onClick={() => onToggleArtifact(type.sel)}
-                className={`inline-flex h-7 items-center gap-1 rounded-full border px-2.5 text-[11px] font-bold transition ${
-                  active
-                    ? "border-ember-500/60 bg-ember-500/20 text-white"
-                    : "border-white/10 bg-white/[0.04] text-slate-300 hover:text-white"
-                }`}
+                className={`sg-exp-fmt${active ? " active" : ""}`}
               >
                 <Icon size={11} /> {type.label}
               </button>
             );
           })}
         </div>
-        <div className="ml-auto flex items-center gap-2">
+        <div className="sg-exp-bundle-actions">
           <button
             type="button"
             onClick={onDownload}
             disabled={bundling || bundleArtifacts.size === 0}
-            className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-ember-500/60 bg-ember-500/15 px-3 text-xs font-bold text-white transition hover:border-ember-500/80 disabled:cursor-not-allowed disabled:opacity-50"
+            className="sg-btn-sm accent"
           >
-            {bundling ? <Loader2 size={13} className="animate-spin" /> : <FileArchive size={13} />}
+            {bundling ? <Loader2 size={13} className="sg-spin" /> : <FileArchive size={13} />}
             {bundling ? "Bundling…" : "Download ZIP"}
           </button>
-          <button
-            type="button"
-            onClick={onClear}
-            className="inline-flex h-8 items-center gap-1 rounded-lg border border-white/10 bg-white/[0.04] px-2.5 text-xs font-bold text-slate-300 transition hover:text-white"
-          >
+          <button type="button" onClick={onClear} className="sg-btn-sm">
             <X size={13} /> Clear
           </button>
         </div>
       </div>
       {bundleArtifacts.size === 0 && (
-        <p className="mt-1.5 text-[11px] text-amber-200">Choose at least one artifact type to bundle.</p>
+        <p className="sg-exp-bundle-note warn">Choose at least one artifact type to bundle.</p>
       )}
-      {bundleError && <p className="mt-1.5 text-[11px] text-red-300">{bundleError}</p>}
+      {bundleError && <p className="sg-exp-bundle-note error">{bundleError}</p>}
     </div>
   );
 }
@@ -553,79 +520,63 @@ function ExportCard({ job, style, folder, selected, onToggleSelect, onDetails, o
   const canRerender = Boolean(availability.clean_md);
 
   return (
-    <div
-      className={`flex gap-3 rounded-xl border p-3 transition ${
-        selected ? "border-ember-500/60 bg-ember-500/[0.08]" : "border-white/10 bg-white/[0.035] hover:border-white/20"
-      }`}
-    >
-      <label className="flex shrink-0 items-start pt-0.5" onClick={(event) => event.stopPropagation()}>
+    <div className={`sg-job-card${selected ? " selected" : ""}`}>
+      <label className="sg-job-check" onClick={(event) => event.stopPropagation()}>
         <input
           type="checkbox"
-          className="h-4 w-4 accent-ember-500"
           checked={selected}
           onChange={() => onToggleSelect(job.id)}
           aria-label={`Select ${job.title || "study guide"}`}
         />
       </label>
 
-      <div className="flex min-w-0 flex-1 flex-col gap-3">
-        <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-          <div className="min-w-0 flex-1">
-            <p className="truncate text-sm font-bold text-white">{job.title || "Untitled study guide"}</p>
-            <p className="mt-0.5 truncate text-xs text-slate-400">
+      <div className="sg-exp-body">
+        <div className="sg-exp-row">
+          <div className="sg-job-main">
+            <p className="sg-job-title">{job.title || "Untitled study guide"}</p>
+            <p className="sg-job-sub">
               {[[job.provider, job.model].filter(Boolean).join(" / ") || "Study guide", created].filter(Boolean).join(" · ")}
             </p>
-            <div className="mt-2 flex flex-wrap items-center gap-1.5">
-              <span className={`inline-flex rounded-full border px-2 py-0.5 text-[11px] font-bold ${statusTone(job.status)}`}>
-                {job.status || "unknown"}
-              </span>
+            <div className="sg-job-meta">
+              <span className={`pill ${statusClass(job.status)}`}>{job.status || "unknown"}</span>
               {style && <StylePill style={style} />}
               {folder && <FolderPill folder={folder} />}
               {(attachments.count || 0) > 0 && (
-                <span className="inline-flex items-center gap-1 rounded-full border border-emerald-400/25 bg-emerald-400/10 px-2 py-0.5 text-[11px] font-bold text-emerald-200">
-                  <Paperclip size={11} /> {attachments.count}
+                <span className="pill pill-green">
+                  <Paperclip size={12} /> {attachments.count}
                 </span>
               )}
               {attachments.has_warnings && (
-                <span className="inline-flex items-center gap-1 rounded-full border border-amber-300/30 bg-amber-300/10 px-2 py-0.5 text-[11px] font-bold text-amber-100">
-                  <AlertCircle size={11} /> {attachments.warning_count || 1}
+                <span className="pill pill-amber">
+                  <AlertCircle size={12} /> {attachments.warning_count || 1}
                 </span>
               )}
             </div>
           </div>
 
-          <div className="flex shrink-0 flex-wrap items-center gap-1.5">
+          <div className="sg-job-actions">
             {availability.final_pdf && (
               <a
                 href={`${artifactUrl(job.id, "final.pdf")}?disposition=inline`}
                 target="_blank"
                 rel="noreferrer"
-                className="inline-flex h-8 items-center gap-1 rounded-lg border border-white/10 bg-white/[0.04] px-2.5 text-xs font-bold text-slate-200 transition hover:border-ember-500/60 hover:text-white"
+                className="sg-btn-sm"
               >
                 <ExternalLink size={13} /> PDF
               </a>
             )}
             {availability.final_pdf && (
-              <a
-                href={artifactUrl(job.id, "final.pdf")}
-                className="inline-flex h-8 items-center gap-1 rounded-lg border border-white/10 bg-white/[0.04] px-2.5 text-xs font-bold text-slate-200 transition hover:border-ember-500/60 hover:text-white"
-              >
+              <a href={artifactUrl(job.id, "final.pdf")} className="sg-btn-sm">
                 <Download size={13} /> PDF
               </a>
             )}
             {availability.final_docx && (
-              <a
-                href={artifactUrl(job.id, "final.docx")}
-                className="inline-flex h-8 items-center gap-1 rounded-lg border border-white/10 bg-white/[0.04] px-2.5 text-xs font-bold text-slate-200 transition hover:border-ember-500/60 hover:text-white"
-              >
+              <a href={artifactUrl(job.id, "final.docx")} className="sg-btn-sm">
                 <Download size={13} /> DOCX
               </a>
             )}
             {availability.clean_md && (
-              <a
-                href={artifactUrl(job.id, "clean.md")}
-                className="inline-flex h-8 items-center gap-1 rounded-lg border border-white/10 bg-white/[0.04] px-2.5 text-xs font-bold text-slate-200 transition hover:border-ember-500/60 hover:text-white"
-              >
+              <a href={artifactUrl(job.id, "clean.md")} className="sg-btn-sm">
                 <Download size={13} /> MD
               </a>
             )}
@@ -634,7 +585,7 @@ function ExportCard({ job, style, folder, selected, onToggleSelect, onDetails, o
                 href={`${artifactUrl(job.id, "final.html")}?disposition=inline`}
                 target="_blank"
                 rel="noreferrer"
-                className="inline-flex h-8 items-center gap-1 rounded-lg border border-white/10 bg-white/[0.04] px-2.5 text-xs font-bold text-slate-200 transition hover:border-ember-500/60 hover:text-white"
+                className="sg-btn-sm"
               >
                 <ExternalLink size={13} /> HTML
               </a>
@@ -645,34 +596,27 @@ function ExportCard({ job, style, folder, selected, onToggleSelect, onDetails, o
                 onClick={() => onRerender(job.id)}
                 disabled={rerendering}
                 title="Re-render PDF/HTML from existing clean.md"
-                className="inline-flex h-8 items-center gap-1 rounded-lg border border-white/10 bg-white/[0.04] px-2.5 text-xs font-bold text-slate-200 transition hover:border-ember-500/60 hover:text-white disabled:opacity-50"
+                className="sg-btn-sm"
               >
-                {rerendering ? <Loader2 size={13} className="animate-spin" /> : <RefreshCw size={13} />}
+                {rerendering ? <Loader2 size={13} className="sg-spin" /> : <RefreshCw size={13} />}
                 {rerendering ? "Rendering" : "Re-render"}
               </button>
             )}
-            <button
-              type="button"
-              onClick={onDetails}
-              className="inline-flex h-8 items-center rounded-lg border border-white/10 bg-white/[0.04] px-2.5 text-xs font-bold text-ember-300 transition hover:border-ember-500/60 hover:text-white"
-            >
+            <button type="button" onClick={onDetails} className="sg-btn-sm accent">
               Details
             </button>
           </div>
         </div>
 
-        <div className="flex flex-wrap items-center gap-1.5">
+        <div className="sg-exp-formats">
           {available.length === 0 ? (
-            <span className="text-[11px] text-slate-500">No artifacts available</span>
+            <span className="sg-exp-formats-empty">No artifacts available</span>
           ) : (
             available.map((type) => {
               const Icon = type.icon;
               return (
-                <span
-                  key={type.sel}
-                  className="inline-flex items-center gap-1 rounded-md border border-white/10 bg-white/[0.05] px-1.5 py-0.5 text-[10.5px] font-semibold text-slate-300"
-                >
-                  <Icon size={11} className="text-ember-300" /> {type.label}
+                <span key={type.sel} className="sg-exp-fmt-chip">
+                  <Icon size={11} /> {type.label}
                 </span>
               );
             })

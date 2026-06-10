@@ -2543,3 +2543,61 @@ details.sg-mdl-helper > summary::-webkit-details-marker { display: none; }
 .sg-mdl-planned { display: inline-flex; align-items: center; gap: 7px; height: 38px; padding: 0 13px; border-radius: 10px; border: 1px solid var(--card-border); background: var(--card); color: var(--label); font-size: 12.5px; cursor: not-allowed; }
 .sg-mdl-planned svg { width: 14px; height: 14px; }
 .sg-mdl-planned-tag { border-radius: var(--r-pill); border: 1px solid var(--card-border); padding: 1px 8px; font-size: 10px; text-transform: uppercase; letter-spacing: 0.05em; }
+
+/* =========================================================================
+   Exports workspace — Slice 10 reskin.
+   Real semantic CSS only (Tailwind utilities are inert in this app). Built on
+   the Slice 5b density baseline; indigo is the accent/selection hue (matching
+   Library / Builder / Ask / Styles / Models). Reuses the shared .sg-page-head /
+   .sg-cta / .sg-search / .sg-filter-btn / .sg-filter-badge / .sg-filterbar /
+   .sg-filter-field / .sg-toggle-chip / .sg-filter-clear / .sg-sort /
+   .sg-selectall / .sg-btn-sm / .sg-job-* / .pill / .sg-spin systems. No Exports
+   logic, handlers, state, endpoints, download URLs, or bundle payloads changed
+   — visual only. Everything below is additive and Exports-scoped.
+   ========================================================================= */
+
+/* shell */
+.sg-exp { display: flex; min-height: 0; flex: 1; flex-direction: column; }
+
+/* toolbar (mirrors .sg-lib-toolbar) */
+.sg-exp-toolbar { margin-top: 14px; display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+
+/* load error (mirrors .sg-lib-error) */
+.sg-exp-error { margin-top: 12px; display: flex; align-items: center; gap: 8px; padding: 10px 14px; border-radius: 10px; border: 1px solid var(--red-soft); background: var(--red-soft); color: #FCA5A5; font-size: 13.5px; }
+.sg-exp-error svg { width: 16px; height: 16px; flex: none; }
+
+/* scroll list + empty / loading states */
+.sg-exp-list { margin-top: 14px; min-height: 0; flex: 1; overflow-y: auto; padding-right: 4px; }
+.sg-exp-cards { display: grid; gap: 10px; }
+.sg-exp-empty, .sg-exp-loading { display: flex; min-height: 200px; flex-direction: column; align-items: center; justify-content: center; gap: 10px; color: var(--muted); font-size: 14px; }
+.sg-exp-loading { flex-direction: row; }
+.sg-exp-loading .sg-spin { color: var(--indigo); width: 20px; height: 20px; }
+.sg-exp-empty svg { width: 26px; height: 26px; opacity: .7; }
+
+/* bundle / ZIP bar (indigo selection bar, like .sg-bulkbar with format toggles) */
+.sg-exp-bundle { margin-top: 12px; border-radius: 12px; border: 1px solid var(--indigo); background: var(--indigo-soft); padding: 11px 13px; }
+.sg-exp-bundle-row { display: flex; flex-wrap: wrap; align-items: center; gap: 9px; }
+.sg-exp-bundle-count { font-size: 14px; font-weight: 700; color: var(--text); }
+.sg-exp-bundle-label { font-size: 12.5px; color: var(--muted); }
+.sg-exp-bundle-actions { margin-left: auto; display: flex; align-items: center; gap: 7px; }
+.sg-exp-bundle-note { margin-top: 8px; font-size: 12px; line-height: 1.45; }
+.sg-exp-bundle-note.warn { color: #F4C76B; }
+.sg-exp-bundle-note.error { color: #FCA5A5; }
+
+/* artifact toggle pills inside the bundle bar */
+.sg-exp-fmts { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+.sg-exp-fmt { display: inline-flex; align-items: center; gap: 5px; height: 28px; padding: 0 11px; border-radius: var(--r-pill); border: 1px solid var(--card-border); background: var(--card-2); color: var(--text-dim); font: inherit; font-size: 11.5px; font-weight: 600; cursor: pointer; transition: border-color .15s, color .15s, background .15s; }
+.sg-exp-fmt:hover { color: var(--text); border-color: var(--card-border-2); }
+.sg-exp-fmt svg { width: 12px; height: 12px; flex: none; }
+.sg-exp-fmt.active { border-color: var(--indigo); background: rgba(99,102,241,0.24); color: var(--text); }
+
+/* card body (mirrors .sg-job-body, with a stacked available-formats row) */
+.sg-exp-body { display: flex; min-width: 0; flex: 1; flex-direction: column; gap: 12px; }
+.sg-exp-row { display: flex; flex-direction: column; gap: 12px; }
+@media (min-width: 720px) { .sg-exp-row { flex-direction: row; align-items: flex-start; justify-content: space-between; } }
+
+/* available-artifact chip row */
+.sg-exp-formats { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+.sg-exp-formats-empty { font-size: 12px; color: var(--label); }
+.sg-exp-fmt-chip { display: inline-flex; align-items: center; gap: 5px; padding: 3px 9px; border-radius: 7px; border: 1px solid var(--card-border); background: var(--card-2); font-size: 11.5px; font-weight: 600; color: var(--text-dim); }
+.sg-exp-fmt-chip svg { flex: none; color: #A5A8F8; }

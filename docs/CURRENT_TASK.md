@@ -5,6 +5,21 @@
 
 ---
 
+## Slice 10 — Exports workspace reskin DONE.
+
+- **Slice 10 (GuideForge UI reskin — Exports workspace) is DONE.**
+  Visual/layout-only.
+- **Files changed:** `frontend/src/components/ExportsWorkspace.jsx` and
+  `frontend/src/design-system.css`.
+- **Preserved:** export list behavior, artifact download URLs, inline/download
+  variants, ZIP bundle payload/manifest behavior, selection/filter/sort state,
+  rerender action, `JobDetails` wiring, handlers, and API calls.
+- **Verification:** build green, `compileall` green, `git diff --check` clean,
+  live browser pass, artifact endpoints checked, ZIP bundle checked,
+  `smoke_release.py` 28/28.
+
+---
+
 ## Slice 9 — Models workspace reskin DONE.
 
 - **Slice 9 (GuideForge UI reskin — Models workspace) is DONE.**
