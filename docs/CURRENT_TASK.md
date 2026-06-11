@@ -5,6 +5,51 @@
 
 ---
 
+## Slice 35 — Mistral OCR prerequisite verification (DOCS-ONLY — uncommitted on `slice35-mistral-ocr-prereq-verification`).
+
+- **Purpose:** prerequisite **gate** before *any* cloud-OCR code. Verify whether
+  **Mistral OCR / Document AI** is safe and suitable as a future cloud OCR provider,
+  from official Mistral sources. **Implements nothing** — no code, dependency,
+  provider setting, key, prompt, routing, extraction, or schema change. No Mistral
+  API was called with any document.
+- **Deliverable:** new `docs/MISTRAL_OCR_VERIFICATION.md` covering product status,
+  request/response format, pricing, rate limits, privacy/data-handling, fit with the
+  Slice 32 boundary + Slice 33/34 routing, implementation risks, unknowns, sources,
+  and a recommendation.
+- **Key facts verified (June 2026, re-confirm at impl time):** GA & versioned —
+  original Mistral OCR plus **Mistral OCR 3** (`mistral-ocr-2512`, GA 2025-12-17);
+  `mistral-ocr-latest` alias. Endpoint `POST https://api.mistral.ai/v1/ocr`
+  (SDK `client.ocr.process`). Inputs: PDF/PPTX/DOCX or image via public URL, base64,
+  or uploaded file id; **≤ 50 MB, ≤ 1,000 pages**; Batch API (async, −50%). Output:
+  **per-page Markdown** + tables (md/HTML) + images + dimensions + optional
+  confidence scores. Pricing **per page** (~$1/1,000 original, ~$2/1,000 OCR 3;
+  half via batch). Rate limits per API key (RPS/TPM/monthly, tiered). Privacy: API
+  data **not used for training**; default **30-day** abuse-retention unless **ZDR**
+  (Scale plan, stateless calls only); self-host option for sensitive orgs.
+- **Architecture fit:** **no blockers** — Slice 32 `OcrProvider`/`OcrResult` boundary,
+  Slice 33 `cloud_ocr_candidate`/`allow_cloud_ocr`/shared budget, and Slice 34
+  advisory `ocr_route_*` recorder already provide the exact seams. A future
+  `MistralCloudOcrProvider` plugs into the Slice 32 contract; routing flips the
+  Slice 33 candidate into a real dispatch only under explicit opt-in, page-budgeted,
+  with mandatory local-Tesseract fallback. Key/`Authorization`/raw provider
+  errors/URLs/doc paths stay **server-side only** (provider-settings DTO posture).
+- **Recommendation:** **Proceed only after the operator confirms pricing and
+  privacy**, then implement strictly behind an explicit, off-by-default opt-in. The
+  gating concerns are **policy** (confirm live per-page price; accept third-party
+  processing of student notes with default 30-day retention, mitigable via opt-in +
+  ZDR + no public URLs), **not** technical. **Not** a green light to route real
+  documents through Mistral yet.
+- **Proposed next:** **Slice 36 — Mistral OCR provider skeleton / OCR provider-settings
+  + key-storage design, disabled by default** (no network to generation).
+- **Files changed (docs only):** `docs/MISTRAL_OCR_VERIFICATION.md` (new),
+  `docs/CURRENT_TASK.md`, `docs/NEXT_CHAT_HANDOFF.md`, `docs/DECISIONS.md`.
+- **Validation:** `git diff --name-only` shows docs only · `git diff --check` clean ·
+  no build/smoke needed (no code touched).
+- **Note on prior position:** trunk HEAD is now **Slice 34 committed**
+  (`25e3fd3`), not the uncommitted state the older handoff text below describes.
+
+---
+
 ## Slice 34 — wire local OCR routing into extraction (IMPLEMENTED — uncommitted on `slice34-wire-local-ocr-routing`).
 
 - **Purpose:** first **live** integration of the Slice 33 routing policy into the

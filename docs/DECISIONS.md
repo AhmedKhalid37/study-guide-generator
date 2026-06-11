@@ -1715,3 +1715,24 @@ request-field, frontend/UI, Ask/retrieval, LanceDB/embeddings, generic
 / `math_verification.json` / `guide_lint.json` schema change. `extraction_metadata.
 json` gains additive page fields only (no version bump). Extraction text output is
 byte-for-byte unchanged.
+
+## Cloud OCR (Mistral) is a conditional-go gated on operator pricing + privacy confirmation (2026-06-11, Slice 35)
+A docs-only verification (`docs/MISTRAL_OCR_VERIFICATION.md`) evaluated **Mistral
+OCR / Document AI** as a future cloud OCR provider. Decision: **it is approved
+*architecturally* but not yet *operationally*** — proceed to implementation **only
+after the operator confirms (a) the live per-page price** (original ~$1/1,000 pages
+vs Mistral OCR 3 `mistral-ocr-2512` ~$2/1,000) **and (b) acceptance of the privacy
+posture** (third-party processing of student notes, default 30-day abuse-retention
+unless ZDR on the Scale plan / stateless calls), and then **only behind an explicit,
+off-by-default opt-in.** **Why:** the product is a clean structural fit (per-page
+Markdown output; ≤50 MB / ≤1,000 pages; plugs straight into the Slice 32
+`OcrProvider` boundary and the Slice 33/34 `allow_cloud_ocr` + page-budget routing
+seams) with **no technical blockers** — so the real gate is *policy*, not code.
+Local-first stays the default; cloud OCR must be opt-in, page-budgeted, fall back to
+local Tesseract on any error, use base64/file-upload (never a public `document_url`
+for operator documents), pin a dated model id (not the `-latest` alias), and keep the
+API key / `Authorization` / raw provider errors / URLs / document paths
+**server-side only** (provider-settings DTO posture). This entry records the gate so
+a later slice does not silently start routing student documents to a third party.
+Next slice (36) should be a *disabled-by-default* provider skeleton + OCR
+provider-settings/key-storage design, not a live integration.

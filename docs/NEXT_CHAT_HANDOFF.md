@@ -6,12 +6,25 @@
 > stable overview see `PROJECT_CONTEXT.md`; canonical brief is `../CLAUDE.md`.
 
 ## Current position
-- **Working tree:** **Slice 34 (wire local OCR routing into extraction) implemented
-  but uncommitted** on branch `slice34-wire-local-ocr-routing` (branched from trunk
-  after Slice 33 merged). **Slices 30–33 are committed and merged to trunk** (trunk
-  HEAD = `5296976`, "Slice 33: Add pure OCR routing policy core"; Slice 32 =
-  `c42837c`; Slice 31 = `ce0332e`; Slice 30 = `752bf03`). Do not commit Slice 34
-  unless explicitly asked; do not force-push.
+- **Working tree:** **Slice 35 (Mistral OCR prerequisite verification) — DOCS-ONLY,
+  uncommitted** on branch `slice35-mistral-ocr-prereq-verification` (branched from
+  trunk). It adds `docs/MISTRAL_OCR_VERIFICATION.md` and updates the live docs; it
+  touches **no** application code, dependency, key, prompt, routing, or schema, and
+  calls **no** Mistral API. **Trunk HEAD is now Slice 34 (`25e3fd3`), committed** —
+  Slices 30–34 are on trunk. **Recommendation of the verification:** *Mistral OCR is
+  a clean architectural fit (Slice 32 boundary + Slice 33/34 routing already provide
+  the seams) with no technical blockers; **proceed only after the operator confirms
+  live per-page pricing and accepts the privacy posture** (3rd-party processing of
+  student notes, default 30-day retention unless ZDR), then implement strictly behind
+  an explicit off-by-default opt-in.* Proposed **Slice 36 = Mistral OCR provider
+  skeleton + server-side OCR provider-settings/key-storage design, disabled by
+  default** (no network to generation; do not route real docs through Mistral yet).
+  See `docs/MISTRAL_OCR_VERIFICATION.md`.
+- **(Historical, retained below)** **Slice 34 (wire local OCR routing into extraction)**
+  was at one point uncommitted on `slice34-wire-local-ocr-routing`; it is **now
+  committed to trunk** (`25e3fd3`). **Trunk commit chain:** Slice 34 = `25e3fd3`;
+  Slice 33 = `5296976`; Slice 32 = `c42837c`; Slice 31 = `ce0332e`; Slice 30 =
+  `752bf03`. Do not force-push.
 - **Slice 34 (wire local OCR routing into extraction):** first **live, local-only,
   behaviour-compatible** integration of the Slice 33 policy into the PDF extraction
   path. `pipeline/extract.py` now imports `ocr_routing.decide_ocr_route` +
