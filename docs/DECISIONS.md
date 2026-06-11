@@ -1839,3 +1839,73 @@ deliberately NOT added to the generic `ARTIFACTS` list, `_artifact_urls` /
 new pure module + focused test + one exact-name route entry + one Job property + one
 wrapped writer call — no new API endpoint, no extraction/text/OCR/routing/prompt/
 request-field/Ask/render/schema/export/UI change, no external API call.
+
+## Chandra is a verified-but-gated future LOCAL provider: spike, don't implement (2026-06-11, Slice 39)
+`docs/CHANDRA_OCR_VERIFICATION.md` is the docs-only prerequisite gate for
+`chandra_local` — the Chandra (Datalab) equivalent of Slice 35's Mistral gate —
+gathered from official Datalab sources (GitHub repo, HF model cards, `MODEL_LICENSE`)
+in June 2026. **Nothing was installed, run, downloaded, or wired; no code, dependency,
+provider, route, setting, key, prompt, routing, extraction, render, or manifest-schema
+change.** Four decisions are load-bearing. **(1) The target is Chandra 2
+(`datalab-to/chandra-ocr-2`, ~4B, released 3/2026), NOT Chandra 1 (9B,
+`datalab-to/chandra`).** The 9B→4B shrink is the single most feasibility-relevant fact:
+Chandra 1's own HF discussion has the maintainer state **18 GB+ unquantized and 16 GB
+insufficient**, so v1 is off the table for the RTX 5070 Ti 16 GB; only v2 is viable.
+**Why:** conflating the two cards produces wrong VRAM/license conclusions.
+**(2) Hardware feasibility at 16 GB — REVISED from `uncertain-but-promising` to
+"GGUF-quantized Chandra OCR 2 likely feasible on the RTX 5070 Ti 16 GB; VRAM is likely
+NOT the main blocker."** The original verdict predated GGUF evidence. A community
+**`prithivMLmods/chandra-ocr-2-GGUF`** conversion (third-party, **not** the official
+`datalab-to` distribution) reports **5B params / `qwen35`** and a quant ladder —
+**Q4_K_M ≈ 3.07 GB · Q5_K_M ≈ 3.51 GB · Q6_K ≈ 3.99 GB · Q8_0 ≈ 5.16 GB · BF16/F16 ≈
+9.7 GB** — plus separate **`mmproj` ≈ 367–676 MB**; every quant + `mmproj` fits 16 GB
+with headroom (Q4/Q5/Q8 comfortably). So **VRAM moves off the critical path** and the
+real blockers become **multimodal `llama.cpp`/`llama-server` support, `mmproj` loading,
+OCR quality of the quant, throughput, long-document behavior, and integration
+stability.** The **throughput caveat stands** (official 1.44 pages/s is H100-at-96-
+concurrency; a consumer GPU does materially less; a 500–2,000-page deck may still be
+slow). **Integration is now framed as two paths:** the **official vLLM/HF/Transformers**
+path (the **likely accuracy/reference baseline**) and the **practical first-spike GGUF
+path** through the **existing `llama.cpp`/`llama-server`/LMM** machinery — which **may
+avoid building a new heavy vLLM service** if multimodal support works (must not be
+assumed until tested; a community quant may degrade quality or lag the official model).
+This is **only resolvable by a hands-on spike**, so the recommendation is **REVISED to
+`Proceed to hands-on GGUF spike after manifest schema`** (Slice 38 manifest is the
+spike's output target) — **still a conditional go to *spike*, NOT approval to
+*implement*.** The spike's **first checkpoint** is: *can current `llama-server` load
+Chandra GGUF + `mmproj` and OCR a page image?*, and it must **validate GGUF quality
+against a known-good/reference baseline, not only quant-vs-quant.** **Why:** docs cannot
+settle multimodal-`llama.cpp` support, quant quality, or throughput on a specific
+consumer card; committing to build Local mode around Chandra before measuring would be
+speculative. **Sequencing:** run the spike **shortly *after* Slice 40, NOT in parallel
+with Slice 40's validation**, so a GPU/`llama-server` workload doesn't add noise to the
+fresh extraction smoke test. **(3) The rich-capability claims
+in roadmap §6 are softened to "reported/implied, confirm against the real JSON."** The
+official card confirms MD/HTML/**JSON-with-layout** output, image+diagram extraction
+**with captions + structured data**, tables/math/forms/handwriting/multi-column, 90+
+languages, and **olmOCR 85.9** — but per-block **bboxes**, the **typed-block
+vocabulary**, **Mermaid**, **chart data**, and **merged-cell** specifics are **not
+itemized** on the README and must be verified from the actual JSON output in the spike.
+**Why:** the `visual_assets_manifest.json` (Slice 38) mapping depends on the exact
+schema, so it must not be assumed from secondary write-ups. **(4) License is fine for
+personal use, gated for commercial.** Code is **Apache 2.0**; weights are the **"AI PUBS
+OPEN RAIL-M LICENSE (MODIFIED)"** — free for research/personal use and entities under
+**$2M revenue OR funding**, and explicitly **may not be used to compete with Datalab's
+own OCR/document-AI API**. → Acceptable for the **personal/single-operator** tool; a
+**multi-user/commercial "help all students" product needs Datalab license review**
+(both the $2M thresholds and, more sharply, the competitive-use clause). Marked
+**non-legal guidance.** **Integration shape recorded (design only, not built):**
+Chandra is simultaneously an OCR + document-extraction + visual-asset provider; it
+should start behind the **Slice 32 `OcrProvider` contract** as a richer-than-Tesseract
+**local** OCR engine, then grow a **manifest-feeding extraction path** populating the
+**Slice 38** boundary with `source_provider:"chandra_local"` (already a reserved token)
++ real `bbox`/`caption`/typed `asset_type`; it powers the **Slice 37 `local_private`**
+mode with **no `allow_cloud_ocr`/consent/cost** (nothing leaves the box); it coexists
+with `tesseract_local` (always-available fallback) / `fitz_local` (cheap CPU baseline) /
+`mistral_ocr` (the cloud counterpart); and operationally it is a **heavy CUDA/vLLM GPU
+service** best run via a **dedicated host-companion service capability** (LMM pattern is
+precedent but heavier than the GGUF `llama-server` case — downstream of the paused LMM +
+deferred approve-root/packaging work), always degrading to Tesseract/fitz on
+unavailable/timeout/OOM and reusing the Slice 33 page budget for large docs. **Scope:**
+one new doc + the three live-doc updates — docs only, no code/test/fixture/dependency/
+model-download/API-call change.

@@ -6,56 +6,54 @@
 > stable overview see `PROJECT_CONTEXT.md`; canonical brief is `../CLAUDE.md`.
 
 ## Current position
-- **Working tree:** **Slice 38 (Visual assets manifest schema from existing
-  signals) — IMPLEMENTED, uncommitted** on branch
-  `slice38-visual-assets-manifest-schema` (branched from trunk after Slice 37 merged).
-  It adds the first **provider-agnostic `visual_assets_manifest.json`** advisory
-  artifact — the **normalization boundary** Slice 36 called for — populated **only**
-  from page-level visual/page signals already collected for `extraction_metadata.json`
-  (Slice 30/31/34). It is a **schema/advisory-artifact slice, NOT image extraction**:
-  no PDF is opened beyond existing metadata, **no image is cropped/rasterized, no
-  image file or raw byte is written, nothing is embedded into guides, no candidate is
-  scored, no dedup runs, no provider/network is touched.** New
-  **`pipeline/visual_assets_manifest.py`** (stdlib `json`+`typing`, **no**
-  `fitz`/Tesseract/Mistral/Gemini/Chandra/`ocr_provider` imports) exposes a **pure
-  builder** `build_visual_assets_manifest(sources)->dict` (takes the same sanitized
-  extraction-metadata source records; never raises, degrades to an empty manifest)
-  plus wrapped writers `write_visual_assets_manifest(job, sources)` /
-  `write_skipped_visual_assets_manifest(...)`. **Top-level:** `{version:1,
-  kind:"visual_assets_manifest", status:"completed",
-  source:"extraction_metadata.json", assets:[...], summary:{asset_count,
-  pages_with_visual_signals, source_providers}, warnings:[]}`. **Each asset is a
-  page-level visual *candidate*** (`asset_type:"page_visual_signal"`, `bbox:null`,
-  `source_provider:"fitz_local"`, `recommended_action:"unknown"`, `scores:{}`,
-  `signals:{image/drawing counts, has_images/has_drawings, page dims, classification,
-  ocr_route_action}`), **one per page** with a positive image-OR-drawing signal (both
-  → exactly one candidate). Closed-vocab & leak-free: every field is a fixed token /
-  number / `None` / empty dict / deterministic `asset_id` (`page_NNNN_visual_01`);
-  inputs are coerced field-by-field and never echoed (`source_provider` only
-  `fitz_local`; `chandra_local`/`mistral_ocr`/`vlm_*` reserved but not emitted).
-  **Persistence (smallest approach):** derived from `extraction_metadata.json` and
-  written exactly when those PDF sources exist (in `run_llm_job.py` right after
-  `write_extraction_metadata`); non-PDF / unavailable-metadata jobs **omit** it; a
-  zero-signal page set still writes a valid empty `completed` manifest. **Access:**
-  exact-name download `/api/jobs/{id}/artifacts/visual_assets_manifest.json` (one
-  `_artifact_path` entry + `Job.visual_assets_manifest_json` property) — **not** in
-  the generic `ARTIFACTS` list, `_artifact_urls`/`_artifact_details`, export bundles,
-  or any frontend tab (same posture as `math_verification.json`/`guide_lint.json`).
-  **No new API endpoint; no extraction/text/OCR/routing/prompt/render/schema/export/UI
-  change** — guide text & `clean.md` are byte-identical when unused (only one sibling
-  JSON is written). Files: `pipeline/visual_assets_manifest.py` (new),
-  `test_scripts/test_visual_assets_manifest.py` (new, 65 checks),
-  `pipeline/job_manager.py`, `api/server.py`, `pipeline/run_llm_job.py`, docs.
-  **Later slices** handle local cropping, dedup, candidate scoring, Chandra
-  verification, and the Mistral skeleton. Validation (all green): `npm run build`,
-  `npm run test`, `compileall api pipeline test_scripts`, math/guide-lint/eval-harness,
-  page-anchor + source-page-citation, extraction-metadata, pdf-visual-signals,
-  pdf-page-classification, ocr-provider/routing-policy/routing-integration,
-  ask-retrieval/lexical-hygiene, guide-lint-artifact, ocr-modes,
-  `test_visual_assets_manifest` 65/65, eval `--offline --all` no regression,
-  `git diff --check` clean, `smoke_release.py` on live :8000. **Do not commit Slice
-  38 yet** unless directed.
-- **Trunk HEAD is now Slice 37 (`9fbbb1d`), committed + merged + pushed** —
+- **Working tree:** **Slice 39 (Chandra local feasibility verification) — DOCS-ONLY,
+  uncommitted** on branch `slice39-chandra-local-feasibility-verification` (branched
+  from trunk after Slice 38 merged). It is the **Chandra equivalent of Slice 35's
+  Mistral gate**: a docs-only feasibility verification of **Chandra (Datalab)** as a
+  future **high-quality local** OCR / document-extraction / visual-asset provider
+  (`chandra_local`) for the Local/Private mode. **Chandra was NOT installed, cloned,
+  built, run, or downloaded; no dependency / provider code / API route / setting / key /
+  prompt / routing / extraction / render / `visual_assets_manifest.json` schema change.**
+  New **`docs/CHANDRA_OCR_VERIFICATION.md`** (§0–§12) records facts from **official
+  Datalab sources** (GitHub repo, HF model cards, `MODEL_LICENSE`) checked **June 2026**:
+  the target is **Chandra 2 (`datalab-to/chandra-ocr-2`, released 3/2026, ~4B reported)**
+  — distinct from **Chandra 1 (`datalab-to/chandra`, 9B)** which needs **18 GB+** (16 GB
+  insufficient). Verified: **olmOCR 85.9**; outputs **MD/HTML/JSON with detailed layout
+  info** + image/diagram extraction **with captions + structured data**, tables/math/
+  forms/handwriting/multi-column, 90+ languages; **throughput 1.44 pages/s on H100 80 GB
+  @96 concurrency** (≈2 pages/s real-world est.) — **far less expected on a 16 GB
+  consumer GPU**; **license = Apache-2.0 code + "AI PUBS OPEN RAIL-M (MODIFIED)" weights
+  (free for research/personal/<$2M startups, no competing with Datalab's OCR API).**
+  **PATCHED with GGUF evidence (feasibility-changing):** a community
+  **`prithivMLmods/chandra-ocr-2-GGUF`** conversion reports **5B params / `qwen35`** and a
+  quant ladder (Q4_K_M ≈ 3.07 GB · Q5_K_M ≈ 3.51 GB · Q6_K ≈ 3.99 GB · Q8_0 ≈ 5.16 GB ·
+  BF16/F16 ≈ 9.7 GB) + separate **`mmproj` ≈ 367–676 MB** — **community evidence, not the
+  official `datalab-to` distribution.** So the **param count is no longer stated as "4B
+  official"** (re-verify), and the **hardware verdict is revised from
+  `uncertain-but-promising` to: GGUF-quantized Chandra OCR 2 likely feasible on the
+  RTX 5070 Ti 16 GB; VRAM is likely NOT the main blocker.** The real blockers are now
+  **multimodal `llama.cpp` support, `mmproj` loading, OCR quality, throughput,
+  long-document behavior, and integration stability** (throughput caveat kept: a
+  500–2,000-page deck may still be slow). **Integration is now two paths:** official
+  vLLM/HF/Transformers (the **accuracy/reference baseline**) vs the **practical first
+  spike = GGUF through existing `llama.cpp`/`llama-server`/LMM** — which **may avoid a new
+  heavy vLLM service** if multimodal support works (don't assume until tested).
+  **License verdict unchanged: fine for personal/single-operator; multi-user/commercial
+  needs Datalab review.** The doc **honestly corrects roadmap §6** (rich Mermaid/chart-
+  data/bbox/typed-block claims reported but NOT itemized; confirm via real output). **First
+  spike checkpoint:** *can current `llama-server` load Chandra GGUF + `mmproj` and OCR a
+  page image?* **Recommendation (revised): `Proceed to hands-on GGUF spike after manifest
+  schema` (Slice 38 shipped) with a license caveat — still NOT approval to implement.**
+  Files (docs only): `docs/CHANDRA_OCR_VERIFICATION.md` (new), `CURRENT_TASK.md`,
+  `NEXT_CHAT_HANDOFF.md`, `DECISIONS.md`. Validation: `git diff --check` clean,
+  `git diff --name-only` docs-only (no build/smoke needed — no code touched).
+- **Trunk HEAD is now Slice 38 (`8a788c7`), committed + merged + pushed** — Slices 30–38
+  are on trunk. Slice 38 (Visual assets manifest schema from existing signals) was
+  validated green (`test_visual_assets_manifest` 65/65, fresh Docker rebuild +
+  `--force-recreate`, `/api/health` 200, `smoke_release.py` **29/0/0** on live :8000,
+  exact-name route confirmed wired, `git diff --check` clean) before the fast-forward
+  merge.
+- **(deeper history) Slice 37 (`9fbbb1d`) + Slice 36 detail below** —
   Slices 30–37 are on trunk. Slice 37 (OCR/extraction mode + cost/budget skeleton)
   added `pipeline/ocr_modes.py` (pure stdlib framework — modes, provider roles/ids,
   budget/cost DTOs, `resolve_ocr_mode_config` returning the Slice 33 routing shape

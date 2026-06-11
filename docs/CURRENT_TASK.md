@@ -5,7 +5,87 @@
 
 ---
 
-## Slice 38 — Visual assets manifest schema from existing signals (IMPLEMENTED — uncommitted on `slice38-visual-assets-manifest-schema`).
+## Slice 39 — Chandra local feasibility verification (DOCS-ONLY — uncommitted on `slice39-chandra-local-feasibility-verification`).
+
+- **Purpose:** the **Chandra equivalent of Slice 35's Mistral gate** — a docs-only
+  feasibility verification of **Chandra (Datalab)** as a future **high-quality local**
+  OCR / document-extraction / visual-asset provider (`chandra_local`) for the
+  Local/Private mode. **No** install, run, clone, build, weight download, dependency,
+  provider code, API route, setting, key, prompt, routing, extraction, render, or
+  `visual_assets_manifest.json` schema change. Chandra was **not** installed or run;
+  facts come from official Datalab sources (GitHub repo, HF model cards, `MODEL_LICENSE`)
+  checked **June 2026**.
+- **Deliverable:** new **`docs/CHANDRA_OCR_VERIFICATION.md`** (§0–§12): which artifact
+  is which (Chandra 1 `datalab-to/chandra` 9B vs **Chandra 2 `datalab-to/chandra-ocr-2`
+  ~4B, the target**), product status/maintainer, capabilities (official vs
+  reported-but-unverified), GuideForge integration shape (maps into the **Slice 38**
+  manifest; modeled as OCR + document + visual-asset provider; sits behind the Slice 32
+  contract for text + a future manifest-feeding extraction path; powers the Slice 37
+  `local_private` mode; coexists with `tesseract_local`/`fitz_local`/`mistral_ocr`),
+  **hardware feasibility on RTX 5070 Ti 16 GB**, operational complexity (heavy CUDA/vLLM
+  GPU service; best fit = LMM host-companion pattern but heavier than the GGUF case),
+  **license** (Apache-2.0 code + **modified OpenRAIL-M weights**), cost/privacy,
+  hands-on spike plan, risks/unknowns, sources, recommendation, next slice.
+- **Key verified facts:** Chandra **2** (released **3/2026**), `datalab-to/chandra-ocr-2`,
+  pip `chandra-ocr`, vLLM (recommended) or HF transformers; **olmOCR 85.9**; outputs
+  **MD/HTML/JSON with detailed layout info**, image+diagram extraction **with captions
+  + structured data**, tables/math/forms/handwriting/multi-column, 90+ languages.
+  **Throughput: 1.44 pages/s on H100 80 GB @96 concurrency (~2 pages/s real-world est.)**
+  — expect **much less** on a 16 GB consumer GPU.
+- **PATCHED with GGUF evidence (the feasibility-changing update):** a community
+  **`prithivMLmods/chandra-ocr-2-GGUF`** conversion exists, reporting **5B params /
+  `qwen35`** and a quant ladder (**Q4_K_M ≈ 3.07 GB · Q5_K_M ≈ 3.51 GB · Q6_K ≈ 3.99 GB ·
+  Q8_0 ≈ 5.16 GB · BF16/F16 ≈ 9.7 GB**) + separate **`mmproj` ≈ 367–676 MB** — **community
+  GGUF evidence, not the official `datalab-to` distribution** (a community quant may
+  lag/diverge; re-verify before the spike). Consequences recorded in the doc:
+  - **Param count is no longer stated as "4B official":** secondary ~4B vs GGUF-card 5B/
+    `qwen35`, none pinned on the official card → **re-verify at spike time.**
+  - **Hardware verdict revised** from `uncertain-but-promising` to **GGUF-quantized
+    Chandra OCR 2 likely feasible on the RTX 5070 Ti 16 GB (esp. Q4/Q5/Q8); VRAM is
+    likely not the main blocker.** Real blockers are now **multimodal `llama.cpp`
+    support, `mmproj` loading, OCR quality, throughput, long-document behavior, and
+    integration stability.** Throughput caveat kept: a 500–2,000-page deck may still be
+    slow on one consumer GPU.
+  - **Integration reframed into two paths:** **official** = vLLM / HF Transformers via
+    Chandra CLI/server; **practical first spike** = GGUF through the **existing
+    `llama.cpp`/`llama-server`/Local Model Manager** pattern — which **could avoid a
+    brand-new companion/service** if multimodal `llama-server` works. **First hands-on
+    checkpoint:** *can current `llama-server` load Chandra GGUF + `mmproj` and do
+    image/PDF-page → markdown OCR?*
+- **License conclusion unchanged:** code Apache-2.0; weights "AI PUBS OPEN RAIL-M
+  (MODIFIED)" — free for research/personal/startups < $2M revenue OR funding, no competing
+  with Datalab's OCR API ⇒ **fine for personal/single-operator; multi-user/commercial
+  needs Datalab license review** (non-legal guidance).
+- **Honest correction to roadmap §6:** the rich Mermaid / chart-data / LaTeX / per-block
+  bbox / typed-block claims are **reported / implied by "JSON with layout info" but NOT
+  itemized on the official card/README** — flagged for confirmation against the real
+  output in the hands-on spike (the GGUF path may emit a different format).
+- **Recommendation (revised):** **`Proceed to hands-on GGUF spike after manifest schema`**
+  (manifest schema already shipped in Slice 38) — **with an explicit license caveat for
+  multi-user / commercial use. Still NOT approval to implement Chandra as a provider.**
+  The spike tests: model load · `mmproj` availability/loading · image input through
+  `llama-server` · output-format quality · **Q4_K_M / Q5_K_M / Q8_0 comparison** ·
+  pages/minute · VRAM/RAM · fallback behavior · mapping output into
+  `visual_assets_manifest.json`.
+- **Proposed next:** continue the **local** visual stack first (Slice 40 fitz figure
+  extraction/cropping into the manifest → V2 dedup → V3 candidate scoring — no GPU / no
+  license question), then run the **Chandra 2 GGUF spike shortly *after* Slice 40 (NOT in
+  parallel with Slice 40 validation** — GPU/`llama-server` noise would disturb the fresh
+  extraction smoke), GGUF/`llama-server` first against a known-good reference, to gate
+  whether `chandra_local` becomes a real provider and whether it can reuse the existing
+  LMM `llama-server` path; only then a disabled/unwired `chandra_local` provider-design
+  slice. **Visual measurement is staged:** Slice 40 only writes manifest/assets (test
+  asset existence/bbox/ids/refs/caps/dup-explosion); `{{figure}}` orphan/coverage tests
+  come **after** the asset-aware prompt/render slices.
+- **Files (docs only):** `docs/CHANDRA_OCR_VERIFICATION.md` (new), `docs/CURRENT_TASK.md`,
+  `docs/NEXT_CHAT_HANDOFF.md`, `docs/DECISIONS.md`.
+- **Validation:** `git status --short`, `git diff --check` clean, `git diff --name-only`
+  docs-only (no build/smoke required — no code touched). **Do not commit Slice 39 yet**
+  unless directed.
+
+---
+
+## Slice 38 — Visual assets manifest schema from existing signals (COMMITTED `8a788c7`, merged to `chrome-renderer-v1`).
 
 - **Purpose:** add the first **provider-agnostic** `visual_assets_manifest.json`
   advisory artifact — the **normalization boundary** Slice 36 called for — populated
@@ -72,8 +152,12 @@
   integration), `pipeline/job_manager.py` (+`visual_assets_manifest_json` property),
   `api/server.py` (+exact-name `_artifact_path` entry), `pipeline/run_llm_job.py`
   (+wrapped writer call), docs.
-- **Validation:** see NEXT_CHAT_HANDOFF. **Do not commit Slice 38 yet** unless
-  directed.
+- **Validation (all green):** `test_visual_assets_manifest` 65/65, `compileall`,
+  fresh Docker rebuild + `--force-recreate`, `/api/health` 200, `smoke_release.py`
+  **29 passed / 0 failed / 0 skipped** on live :8000, exact-name route confirmed wired
+  (`visual_assets_manifest.json` → graceful 404 on a non-PDF job, `clean.md` → 200),
+  `git diff --check` clean. **Committed `8a788c7`, fast-forward merged to
+  `chrome-renderer-v1`, pushed.**
 
 ---
 
