@@ -1605,3 +1605,50 @@ change, no frontend/UI, no Ask/retrieval, no LanceDB/embeddings, no generic
 `ARTIFACTS`/export-bundle change, no `validation.json` / `math_verification.json` /
 `guide_lint.json` schema change, no PDF/Chromium render-pipeline change, no
 generation gating. Extraction text output is byte-for-byte unchanged.
+
+
+## Slice 33 — OCR routing policy is a pure core, not wired into extraction
+The hybrid OCR router (`pipeline/ocr_routing.py`) is implemented and tested as a
+**pure, deterministic, dependency-free** function and is **deliberately not called
+from `pipeline/extract.py`** in this slice (mirrors the Slice 18/19 "pure core,
+then integrate" pattern; see `HYBRID_OCR_DESIGN.md` §9 Slice 33 → 34). **Why:**
+keeping the policy decisions provable in isolation — with no `fitz`/Tesseract/cloud
+imports, no I/O, no clock, no randomness — lets us lock down the action/reason
+vocabulary and the leak-safety guarantees before any behaviour change. Wiring it
+into the live local path (and recording `ocr_recommended`/`ocr_attempted`/
+`skipped_reason`) is the separate, integration-only Slice 34.
+
+Three non-obvious policy choices, recorded so they are not relitigated:
+
+**(1) `ocr_fallback` classification → `use_embedded_text`, not `use_local_ocr`.**
+`ocr_fallback` means OCR *already ran* for that page during extraction and its text
+is what was captured (method `ocr`). Routing it back to `use_local_ocr` would
+re-OCR an already-OCR'd page — duplicate work that changes nothing. So the policy
+treats already-OCR'd pages as "use the text we have" (reason `ocr_already_applied`).
+Only `likely_scanned` (weak/empty text + visual content, OCR not yet run) routes to
+local OCR.
+
+**(2) Cloud is opt-in, last-resort, and only volunteered when local can't serve the
+page.** `cloud_ocr_candidate` is returned **only** when `allow_cloud_ocr` is an
+explicit `True` **and** local OCR is unavailable; with local OCR available, cloud
+is never volunteered even when allowed (local-first cost/privacy rule, §5.1/§5.2).
+The candidate's `provider` stays `null` — it is an advisory future option, and no
+cloud provider is implemented or configured here, so naming one would be misleading
+(and a leak risk). Default config is `allow_cloud_ocr: False` / `local_ocr_available:
+True` so default routing is exactly today's local-first posture.
+
+**(3) Config flags require a real boolean; counts coerce to non-negative int or
+None; failure is impossible.** `_safe_bool` ignores truthy non-booleans so a
+smuggled non-empty string can't silently flip cloud OCR on — a flag must be an
+explicit `True`/`False`. The router reads only `page_metadata["classification"]`
+and never echoes any other input field, and any malformed/hostile input degrades to
+a fixed safe decision (`action:"unknown"`, `reason:"routing_unavailable"`,
+`warnings:["routing_input_unrecognized"]`). Every output field is a fixed
+closed-vocab token, an int, `None`, or the literal `"tesseract_local"` id — so no
+path, key, image blob, URL, or free text from the input can ever reach a decision.
+
+**Scope:** no `pipeline/extract.py` change, no Mistral/cloud OCR implementation, no
+provider settings, no prompt/`/api/jobs/llm`-field/frontend/Ask/retrieval/embeddings
+change, no generic `ARTIFACTS`/export-bundle change, no `extraction_metadata.json` /
+`validation.json` / `math_verification.json` / `guide_lint.json` schema change, no
+render-pipeline change, no generation gating. Extraction output is unchanged.

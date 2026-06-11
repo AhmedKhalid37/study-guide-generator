@@ -5,7 +5,89 @@
 
 ---
 
-## Slice 32 — OCR provider boundary refactor (IMPLEMENTED — uncommitted on `slice32-ocr-provider-boundary`).
+## Slice 33 — hybrid OCR routing policy core (IMPLEMENTED — uncommitted on `slice33-hybrid-ocr-routing-policy-core`).
+
+- **Purpose:** add a **pure, deterministic OCR routing-policy core** that decides
+  what *should* happen for a page (use embedded text / local OCR / skip / cloud
+  candidate) from the existing advisory page classification, **without wiring it
+  into extraction**. This is the "pure core, then integrate" step in
+  `docs/HYBRID_OCR_DESIGN.md` §9 (Slice 33); §5/§6 describe the policy. Extraction
+  behaviour, OCR calls, prompts, metadata artifacts, and generation are unchanged.
+- **New module `pipeline/ocr_routing.py`:**
+  - `decide_ocr_route(page_metadata, config=None) -> decision` — single page.
+  - `decide_ocr_routes(pages, config=None) -> [decision, ...]` — list with a
+    shared OCR-page budget applied in input order.
+  - `default_config()` — local-first, cloud-off defaults.
+  - Reads **only** `page_metadata["classification"]`; never trusts or echoes any
+    other input field, so smuggled paths/secrets/image blobs cannot leak.
+  - **Pure / deterministic / dependency-free:** no I/O, clock, or randomness; no
+    import of `fitz`, Tesseract, `pipeline.ocr_provider`, cloud providers, or
+    provider settings. The classification vocabulary is mirrored locally.
+- **Decision shape (JSON-safe, closed vocab only):**
+  `{action, provider, reason, confidence, warnings}`.
+  - `action` ∈ `{use_embedded_text, use_local_ocr, skip_ocr, cloud_ocr_candidate,
+    unknown}`.
+  - `provider` is `null` or the literal `"tesseract_local"` (no key/URL/path,
+    `null` for cloud candidates — no cloud provider exists).
+  - `reason` / `warnings` are fixed tokens (`REASONS` / `WARNINGS`); `confidence`
+    ∈ `{high, medium, low}`.
+- **Policy mapping (from classification):**
+  - `embedded_text` → `use_embedded_text` (`embedded_text_sufficient`, high).
+  - `mixed` → `use_embedded_text` (`mixed_has_meaningful_text`, medium) — trust
+    the text layer, don't OCR a page that already has meaningful text.
+  - `ocr_fallback` → `use_embedded_text` (`ocr_already_applied`, high) — OCR
+    already ran and produced this page's captured text; re-OCRing would duplicate
+    work and change nothing (documented choice).
+  - `likely_scanned` → `use_local_ocr` (`scanned_needs_ocr`, provider
+    `tesseract_local`), subject to availability + budget.
+  - `blank_or_low_text` → `skip_ocr` (`blank_low_text_no_visual`, high).
+  - `unknown`/unrecognised → `unknown` (`unknown_classification`, low) —
+    conservative, never cloud, never spends budget.
+  - `error` → `skip_ocr` (`classification_error`, low).
+- **Local / cloud / budget behaviour:**
+  - **Local-first, cloud-off by default.** `cloud_ocr_candidate` is returned
+    **only** when `allow_cloud_ocr` is an explicit `True` AND local OCR is
+    unavailable; provider stays `null` (advisory future option, nothing wired).
+    With local available, cloud is never volunteered even when allowed.
+  - Local unavailable + cloud off → `skip_ocr` with `local_ocr_unavailable` +
+    `cloud_ocr_disabled` warnings (job still runs on whatever text exists).
+  - **Budget:** `page_budget_remaining` (or `max_ocr_pages`) caps OCR-bound
+    pages; only OCR actions consume budget; once exhausted, OCR-bound pages
+    downgrade to `skip_ocr` (`ocr_budget_exhausted`). Deterministic by input order.
+  - Config sanitiser rejects truthy non-booleans (a smuggled string can't flip
+    cloud on) and coerces bad counts to `None`.
+- **Failure is impossible:** any malformed/hostile input → fixed safe decision
+  (`action:"unknown"`, `reason:"routing_unavailable"`,
+  `warnings:["routing_input_unrecognized"]`); `decide_ocr_routes` on a non-list →
+  `[]`, and a bad page mid-batch degrades without aborting the batch.
+- **NOT wired into extraction.** Nothing in `pipeline/extract.py`, `api/`, or the
+  frontend imports `ocr_routing`; `grep` confirms only the module + its test
+  reference it. No extraction text change, no OCR call, no metadata-artifact change.
+- **Scope guard — NO change to:** `pipeline/extract.py`, Mistral/cloud OCR,
+  provider settings, prompts, `/api/jobs/llm` request fields, frontend/UI,
+  Ask/retrieval, LanceDB/embeddings, the generic `ARTIFACTS`/export-bundle lists,
+  the PDF/Chromium render pipeline, generation gating, or the `validation.json` /
+  `math_verification.json` / `guide_lint.json` / `extraction_metadata.json` schemas.
+- **Files changed:** `pipeline/ocr_routing.py` (new),
+  `test_scripts/test_ocr_routing_policy.py` (new), `docs/CURRENT_TASK.md`,
+  `docs/NEXT_CHAT_HANDOFF.md`, `docs/DECISIONS.md`.
+- **Validation:** `npm --prefix frontend run build` ✓ · `npm --prefix frontend run
+  test` ✓ · `python -m compileall api pipeline test_scripts` ✓ ·
+  `test_ocr_routing_policy` 120/120 · `test_math_verifier` 74/74 · `test_guide_lint`
+  74/74 · `test_eval_harness` 64/64 · `test_page_anchor_reachability` 21/21 ·
+  `test_source_page_citations` 19/19 · `test_extraction_metadata` 9/9 ·
+  `test_pdf_visual_signals` 44/44 · `test_pdf_page_classification` 56/56 ·
+  `test_ocr_provider` 18/18 (tesseract-gated e2e skipped on host) ·
+  `test_ask_retrieval_relevance` 12/12 · `test_ask_lexical_hygiene` 34/34 ·
+  `test_guide_lint_artifact` 26/26 · `run_eval.py --offline --all` scored 3 (no
+  regression) · `git diff --check` clean · `smoke_release.py` ✓.
+- **Next:** Slice 34 — wire the router into the local Tesseract extraction path
+  and record `ocr_recommended` / `ocr_attempted` / `skipped_reason` in metadata
+  (the first slice that *changes* what extraction records; still local-only).
+
+---
+
+## Slice 32 — OCR provider boundary refactor (COMMITTED + MERGED to `chrome-renderer-v1`, commit `c42837c`).
 
 - **Purpose:** isolate OCR behind a clean **backend-only provider boundary**
   before any routing change or cloud OCR provider, with **local behaviour kept

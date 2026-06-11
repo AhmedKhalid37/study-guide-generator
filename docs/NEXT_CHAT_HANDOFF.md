@@ -6,12 +6,53 @@
 > stable overview see `PROJECT_CONTEXT.md`; canonical brief is `../CLAUDE.md`.
 
 ## Current position
-- **Working tree:** **Slice 32 (OCR provider boundary refactor) implemented but
-  uncommitted** on branch `slice32-ocr-provider-boundary` (branched from trunk
-  after Slice 31 merged). **Slices 30 and 31 are committed and merged to trunk**
-  (trunk HEAD = `ce0332e`, "Slice 31: Add advisory PDF page classification
-  metadata"; Slice 30 = `752bf03`). Do not commit Slice 32 unless explicitly asked;
-  do not force-push.
+- **Working tree:** **Slice 33 (hybrid OCR routing policy core) implemented but
+  uncommitted** on branch `slice33-hybrid-ocr-routing-policy-core` (branched from
+  trunk after Slice 32 merged). **Slices 30, 31 and 32 are committed and merged to
+  trunk** (trunk HEAD = `c42837c`, "Slice 32: Add OCR provider boundary"; Slice 31
+  = `ce0332e`; Slice 30 = `752bf03`). Do not commit Slice 33 unless explicitly
+  asked; do not force-push.
+- **Slice 33 (hybrid OCR routing policy core):** new **pure, deterministic,
+  dependency-free** module `pipeline/ocr_routing.py` — the "pure core, then
+  integrate" step in `HYBRID_OCR_DESIGN.md` §9 (policy = §5/§6). Public:
+  `decide_ocr_route(page_metadata, config=None)` (single page),
+  `decide_ocr_routes(pages, config=None)` (list + shared OCR-page budget),
+  `default_config()`. Reads **only** `page_metadata["classification"]`; output is
+  a JSON-safe `{action, provider, reason, confidence, warnings}` of **closed-vocab
+  tokens only** — `action` ∈ `{use_embedded_text, use_local_ocr, skip_ocr,
+  cloud_ocr_candidate, unknown}`, `provider` is `null` or `"tesseract_local"`.
+  **Local-first, cloud-off by default**: `cloud_ocr_candidate` is returned only
+  when `allow_cloud_ocr` is explicitly `True` AND local OCR is unavailable
+  (provider stays `null` — nothing is wired). Budget caps OCR-bound pages
+  deterministically; malformed/hostile input → fixed safe `unknown` decision (no
+  path/secret/blob leak). **NOT wired into extraction** — nothing in `extract.py`,
+  `api/`, or the frontend imports it (grep-verified). No extraction-text, OCR-call,
+  Mistral/cloud, provider-settings, prompt, `/api/jobs/llm`-field, frontend/UI,
+  Ask/retrieval, LanceDB/embeddings, generic-`ARTIFACTS`/export-bundle, render-
+  pipeline, generation-gating, or artifact-schema change. New
+  `test_scripts/test_ocr_routing_policy.py` (120 checks). **Next: Slice 34** wires
+  the router into the local Tesseract path and records
+  `ocr_recommended`/`ocr_attempted`/`skipped_reason` (first extraction-recording
+  change; still local-only).
+- **Slice 32 (OCR provider boundary refactor):** backend/pipeline refactor +
+  tests/docs only — the "pure refactor" step in `HYBRID_OCR_DESIGN.md` §9. New
+  `pipeline/ocr_provider.py` (`OcrRequest` / `OcrResult` / `OcrProvider` /
+  `TesseractLocalOcrProvider` (`provider_id = "tesseract_local"`) +
+  `get_default_ocr_provider()`) isolates OCR behind a backend-only boundary;
+  `pipeline/extract.py::_extract_pdf` now OCRs through the default provider instead
+  of the in-line `_ocr_page`. **Local behaviour is byte-identical**: same pages
+  OCR'd, same text, same `mode`/`method`, same degrade warnings and once-per-doc
+  availability messages; the old in-line path didn't catch OCR exceptions so the
+  provider doesn't either (`error_category` is reserved for future cloud providers).
+  `_ocr_available()` kept as a thin shim delegating to the provider (for
+  `preflight_pdf` + existing tests). **`extraction_metadata.json` UNCHANGED** — no
+  `ocr_provider` field, **no version bump** (stays `version: 2`); provider-id
+  surfacing deferred to the routing slice (34). New
+  `test_scripts/test_ocr_provider.py` (37 checks; fitz integration paths via a stub
+  provider + a real-tesseract gated e2e). **No** Mistral/cloud OCR, OCR routing,
+  page-classification, prompt, provider-settings, `/api/jobs/llm` field, frontend/UI,
+  Ask/retrieval, LanceDB/embeddings, generic `ARTIFACTS`/export-bundle, render-
+  pipeline, generation-gating, or other artifact-schema change.
 - **Slice 32 (OCR provider boundary refactor):** backend/pipeline refactor +
   tests/docs only — the "pure refactor" step in `HYBRID_OCR_DESIGN.md` §9. New
   `pipeline/ocr_provider.py` (`OcrRequest` / `OcrResult` / `OcrProvider` /
