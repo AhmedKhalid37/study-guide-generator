@@ -1560,3 +1560,48 @@ scanned-page detector — it is an advisory hint, never a router or a gate.
 **Scope:** no OCR call/routing, prompt, provider, request-field, frontend, Ask,
 export, render, or generation-gating change; extraction text output is byte-for-byte
 unchanged.
+
+---
+
+## OCR provider boundary added; local behaviour kept byte-identical (Slice 32)
+Slice 32 introduced a backend-only OCR provider boundary
+(`pipeline/ocr_provider.py`: `OcrRequest` / `OcrResult` / `OcrProvider` /
+`TesseractLocalOcrProvider` + `get_default_ocr_provider()`) and rewired
+`pipeline/extract.py::_extract_pdf` to OCR through the default provider instead of
+the in-line `_ocr_page`. Several non-obvious choices:
+
+**(1) Pure refactor — no exception that previously propagated is newly swallowed.**
+The design doc (§4.3) ultimately wants OCR failures to return a safe
+`error_category` and never raise into the extraction loop (degrade-not-fail). The
+old in-line `_ocr_page` did **not** catch raster/recognise exceptions — they
+propagated. To keep this slice behaviour-identical, `TesseractLocalOcrProvider.
+ocr_page` deliberately does **not** add new exception handling: the same code runs
+in the same order with the same propagation. The `error_category` field exists on
+`OcrResult` as part of the boundary *shape* for future (cloud) providers, but is
+unused by the local provider. The existing degrade paths are fully preserved: OCR
+unavailable (`is_available()` false) → empty text → embedded-text fallback or page
+drop with the same per-page warnings; OCR returns empty → same fallback. The
+provider id-strings for the two unavailable reasons are unchanged.
+
+**(2) `extraction_metadata.json` is NOT changed in this slice (no `ocr_provider`
+field, no version bump — stays `version: 2`).** The design doc lists a future
+per-page `ocr_provider` field, but adding it now would change the artifact bytes
+for OCR'd pages. This slice is scoped to "local behaviour unchanged", so the
+artifact stays byte-identical; surfacing the provider id in metadata is deferred to
+the routing slice (Slice 34) where it carries real routing meaning. The existing
+`test_extraction_metadata.py` asserts exact per-page values and passes unchanged,
+which is the byte-identical proof.
+
+**(3) `_ocr_available()` kept as a thin backward-compatible shim in `extract.py`.**
+It now delegates to `get_default_ocr_provider().is_available()` (same `(ready,
+reason)` shape, same strings) so `preflight_pdf` and the existing tests
+(`test_mixed_pdf_ocr.py`, `test_pdf_page_selection_extract.py`) that import it keep
+working without change. `_ocr_page` / `_preprocess_ocr_image` moved into the
+provider module (`_preprocess_ocr_image` is OCR-only and had no external callers).
+
+**Scope:** no Mistral/cloud OCR, no OCR routing change, no page-classification
+change, no prompt/provider-settings change, no `/api/jobs/llm` request-field
+change, no frontend/UI, no Ask/retrieval, no LanceDB/embeddings, no generic
+`ARTIFACTS`/export-bundle change, no `validation.json` / `math_verification.json` /
+`guide_lint.json` schema change, no PDF/Chromium render-pipeline change, no
+generation gating. Extraction text output is byte-for-byte unchanged.

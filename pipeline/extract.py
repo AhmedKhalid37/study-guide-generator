@@ -2,11 +2,12 @@ from __future__ import annotations
 
 import csv
 import re
-import shutil
 from collections.abc import Iterable
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
+
+from pipeline.ocr_provider import OcrRequest, get_default_ocr_provider
 
 
 SUPPORTED_EXTENSIONS = {
@@ -206,7 +207,8 @@ def _extract_pdf(path: Path, pages: Iterable[int] | None = None) -> ExtractionRe
         # pages with meaningful embedded text use it; sparse/scanned pages get OCR'd
         # on their own — so a 118-page scanned deck yields all its pages, not just
         # page 1.
-        ocr_ready, ocr_unavailable_reason = _ocr_available()
+        ocr_provider = get_default_ocr_provider()
+        ocr_ready, ocr_unavailable_reason = ocr_provider.is_available()
 
         blocks: list[str] = []
         page_metadata: list[dict[str, Any]] = []
@@ -236,7 +238,11 @@ def _extract_pdf(path: Path, pages: Iterable[int] | None = None) -> ExtractionRe
             # Sparse/empty page → OCR it individually. A page uses embedded text
             # XOR OCR (never both), so the same content is not duplicated.
             wanted_ocr = True
-            page_ocr = _ocr_page(page) if ocr_ready else ""
+            page_ocr = (
+                ocr_provider.ocr_page(OcrRequest(page=page, page_number=index)).text
+                if ocr_ready
+                else ""
+            )
             if page_ocr:
                 blocks.append(f"## Page {index}\n{page_ocr}")
                 page_metadata.append(
@@ -400,27 +406,6 @@ def _pdf_visual_signals(page) -> dict[str, Any]:
     return signals
 
 
-def _preprocess_ocr_image(image: "Image.Image") -> "Image.Image":
-    """Grayscale + optional upscale + binary threshold for better Tesseract accuracy.
-
-    Only called from the OCR path — text-based PDFs never reach this function.
-    The 2x fitz matrix already rasterises at double resolution; this adds an
-    additional scale step only when the result is still narrow (<2000 px), then
-    applies autocontrast + a binary threshold to sharpen slide text.
-    """
-    from PIL import Image, ImageOps
-
-    image = image.convert("L")
-    if image.width < 2000:
-        scale = 2000 / image.width
-        image = image.resize(
-            (round(image.width * scale), round(image.height * scale)),
-            resample=Image.Resampling.LANCZOS,
-        )
-    image = ImageOps.autocontrast(image, cutoff=1)
-    return image.point(lambda x: 0 if x < 128 else 255)
-
-
 def _is_meaningful_page_text(text: str) -> bool:
     """Whether a page's embedded text is rich enough to skip OCR for that page.
 
@@ -437,36 +422,14 @@ def _is_meaningful_page_text(text: str) -> bool:
 
 
 def _ocr_available() -> tuple[bool, str | None]:
-    """Check OCR prerequisites once (tesseract binary + python libs).
+    """Backward-compatible OCR availability probe.
 
-    Returns (ready, reason). When not ready, ``reason`` is a user-facing warning
-    explaining why OCR was skipped — surfaced once per document rather than once
-    per page.
+    Slice 32 moved the OCR engine behind the :mod:`pipeline.ocr_provider` boundary;
+    this thin shim delegates to the default provider so the ``(ready, reason)``
+    shape and the exact user-facing reason strings are unchanged. Retained for
+    ``preflight_pdf`` and existing tests that import it directly.
     """
-    if shutil.which("tesseract") is None:
-        return False, "OCR skipped because the tesseract binary is not available."
-    try:
-        import pytesseract  # noqa: F401
-        from PIL import Image  # noqa: F401
-    except ImportError:
-        return False, "OCR skipped because pytesseract or pillow is not installed."
-    return True, None
-
-
-def _ocr_page(page) -> str:
-    """OCR a single fitz page, reusing the shared image preprocessing.
-
-    Callers must confirm OCR is available via ``_ocr_available`` first; this keeps
-    the per-page hot loop free of repeated binary/import probing.
-    """
-    import fitz
-    import pytesseract
-    from PIL import Image
-
-    pixmap = page.get_pixmap(matrix=fitz.Matrix(2, 2), alpha=False)
-    image = Image.frombytes("RGB", [pixmap.width, pixmap.height], pixmap.samples)
-    image = _preprocess_ocr_image(image)
-    return pytesseract.image_to_string(image).strip()
+    return get_default_ocr_provider().is_available()
 
 
 def _preflight_sample_indices(page_count: int, sample_pages: int) -> list[int]:

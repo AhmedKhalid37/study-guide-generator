@@ -5,6 +5,69 @@
 
 ---
 
+## Slice 32 — OCR provider boundary refactor (IMPLEMENTED — uncommitted on `slice32-ocr-provider-boundary`).
+
+- **Purpose:** isolate OCR behind a clean **backend-only provider boundary**
+  before any routing change or cloud OCR provider, with **local behaviour kept
+  byte-identical**. Slice 30 added visual signals, Slice 31 added advisory page
+  classification; this is Slice 32 in the `docs/HYBRID_OCR_DESIGN.md` §9 sequence
+  (it is the "pure refactor" slice — no behaviour change).
+- **New module `pipeline/ocr_provider.py`:**
+  - `OcrRequest(page, page_number)` — a single `fitz` page handle + 1-based page
+    number; the provider rasterises the page itself (no whole-document, no paths,
+    no job/user ids cross the boundary).
+  - `OcrResult(text, provider_id, confidence=None, warnings=[], error_category=None)`
+    — normalised, JSON-safe; whitelisted fields only (no image bytes, raw page
+    data, paths, URLs, keys, or raw error strings). `confidence` stays `None`
+    (the local `image_to_string` path doesn't return it cheaply).
+  - `OcrProvider` — base contract: `provider_id`, `is_available() -> (ready,
+    reason)`, `ocr_page(request) -> OcrResult`.
+  - `TesseractLocalOcrProvider` (`provider_id = "tesseract_local"`) — the default
+    and only provider; a **behaviour-identical** wrapper around the old in-line
+    `_ocr_available` / `_ocr_page` / `_preprocess_ocr_image`. `_preprocess_ocr_image`
+    moved here.
+  - `get_default_ocr_provider()` — returns a stable module-level singleton.
+- **`pipeline/extract.py` rewiring (minimal):** `_extract_pdf` now does
+  `ocr_provider = get_default_ocr_provider()`, `ocr_ready, reason =
+  ocr_provider.is_available()`, and `ocr_provider.ocr_page(OcrRequest(page=page,
+  page_number=index)).text` (still guarded by `if ocr_ready`). `_ocr_available()`
+  remains as a thin backward-compatible shim delegating to the provider (kept for
+  `preflight_pdf` + existing tests that import it). `_ocr_page` /
+  `_preprocess_ocr_image` removed from `extract.py` (no external callers); unused
+  `import shutil` dropped.
+- **Behaviour preserved (degrade-not-fail unchanged):** same pages OCR'd, same
+  extracted text, same `mode`/`method` derivation, same per-page warnings
+  (`ocr_unavailable` / `ocr_empty_fallback_embedded_text` / `no_text_extracted`),
+  same once-per-document availability message strings. The old in-line OCR path did
+  **not** catch raster/recognise exceptions, so — to stay byte-identical — the local
+  provider does **not** either; `error_category` is reserved for future providers.
+- **`extraction_metadata.json`: UNCHANGED.** No `ocr_provider` field added, **no
+  version bump** (stays `version: 2`). Adding the provider id now would alter the
+  artifact bytes for OCR'd pages; it is deferred to the routing slice (34). The
+  existing `test_extraction_metadata.py` exact-value asserts pass unchanged = the
+  byte-identical proof.
+- **Scope guard — NO change to:** Mistral/cloud OCR, OCR routing, page
+  classification, prompts, provider settings, `/api/jobs/llm` request fields,
+  frontend/UI, Ask/retrieval, LanceDB/embeddings, the generic `ARTIFACTS`/
+  export-bundle lists, the PDF/Chromium render pipeline, generation gating, or the
+  `validation.json` / `math_verification.json` / `guide_lint.json` schemas.
+- **Files changed:** `pipeline/ocr_provider.py` (new), `pipeline/extract.py`
+  (rewire), `test_scripts/test_ocr_provider.py` (new), `docs/CURRENT_TASK.md`,
+  `docs/NEXT_CHAT_HANDOFF.md`, `docs/DECISIONS.md`.
+- **Validation:** `npm --prefix frontend run build` ✓ · `npm --prefix frontend run
+  test` ✓ · `python -m compileall api pipeline test_scripts` ✓ · `test_ocr_provider`
+  37/37 (incl. fitz integration paths: provider success, text-page-skips-OCR,
+  unavailable-degrade, empty-OCR-drop, no-leak) · `test_math_verifier` 74/74 ·
+  `test_guide_lint` 74/74 · `test_eval_harness` 64/64 ·
+  `test_page_anchor_reachability` 21/21 · `test_source_page_citations` 19/19 ·
+  `test_extraction_metadata` 9/9 host (46/46 with fitz) · `test_pdf_visual_signals`
+  44/44 · `test_pdf_page_classification` 56/56 · `test_ask_retrieval_relevance`
+  12/12 · `test_ask_lexical_hygiene` 34/34 · `test_guide_lint_artifact` 26/26 ·
+  `eval/run_eval.py --offline --all` ✓ · `git diff --check` clean ·
+  `smoke_release.py` (live :8000) ✓. **Not committed** (per slice rule).
+
+---
+
 ## Slice 31 — advisory PDF page classification metadata (IMPLEMENTED — uncommitted on `slice31-pdf-page-classification-metadata`).
 
 - **Purpose:** the next step after Slice 30. Use the existing text/word/method

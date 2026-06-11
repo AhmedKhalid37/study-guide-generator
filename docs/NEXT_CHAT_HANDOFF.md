@@ -6,13 +6,31 @@
 > stable overview see `PROJECT_CONTEXT.md`; canonical brief is `../CLAUDE.md`.
 
 ## Current position
-- **Working tree:** **Slice 31 (advisory PDF page classification metadata)
-  implemented but uncommitted** on branch
-  `slice31-pdf-page-classification-metadata` (branched from trunk after Slice 30
-  merged). **Slice 30 (PDF page visual-signal metadata) is committed `752bf03` and
-  fast-forward merged to trunk** (trunk HEAD = `752bf03`, "Slice 30: Add PDF page
-  visual metadata signals"). Do not commit Slice 31 unless explicitly asked; do not
-  force-push.
+- **Working tree:** **Slice 32 (OCR provider boundary refactor) implemented but
+  uncommitted** on branch `slice32-ocr-provider-boundary` (branched from trunk
+  after Slice 31 merged). **Slices 30 and 31 are committed and merged to trunk**
+  (trunk HEAD = `ce0332e`, "Slice 31: Add advisory PDF page classification
+  metadata"; Slice 30 = `752bf03`). Do not commit Slice 32 unless explicitly asked;
+  do not force-push.
+- **Slice 32 (OCR provider boundary refactor):** backend/pipeline refactor +
+  tests/docs only — the "pure refactor" step in `HYBRID_OCR_DESIGN.md` §9. New
+  `pipeline/ocr_provider.py` (`OcrRequest` / `OcrResult` / `OcrProvider` /
+  `TesseractLocalOcrProvider` (`provider_id = "tesseract_local"`) +
+  `get_default_ocr_provider()`) isolates OCR behind a backend-only boundary;
+  `pipeline/extract.py::_extract_pdf` now OCRs through the default provider instead
+  of the in-line `_ocr_page`. **Local behaviour is byte-identical**: same pages
+  OCR'd, same text, same `mode`/`method`, same degrade warnings and once-per-doc
+  availability messages; the old in-line path didn't catch OCR exceptions so the
+  provider doesn't either (`error_category` is reserved for future cloud providers).
+  `_ocr_available()` kept as a thin shim delegating to the provider (for
+  `preflight_pdf` + existing tests). **`extraction_metadata.json` UNCHANGED** — no
+  `ocr_provider` field, **no version bump** (stays `version: 2`); provider-id
+  surfacing deferred to the routing slice (34). New
+  `test_scripts/test_ocr_provider.py` (37 checks; fitz integration paths via a stub
+  provider + a real-tesseract gated e2e). **No** Mistral/cloud OCR, OCR routing,
+  page-classification, prompt, provider-settings, `/api/jobs/llm` field, frontend/UI,
+  Ask/retrieval, LanceDB/embeddings, generic `ARTIFACTS`/export-bundle, render-
+  pipeline, generation-gating, or other artifact-schema change.
 - **Slice 31 (advisory PDF page classification metadata):** backend/pipeline
   metadata + tests/docs only — the next step after Slice 30. Uses the existing
   text/word/method signals (24A) plus the Slice 30 visual/object signals to emit an
