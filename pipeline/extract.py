@@ -7,7 +7,9 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+from pipeline.extraction_metadata import classify_pdf_page_record
 from pipeline.ocr_provider import OcrRequest, get_default_ocr_provider
+from pipeline.ocr_routing import decide_ocr_route
 
 
 SUPPORTED_EXTENSIONS = {
@@ -230,7 +232,10 @@ def _extract_pdf(path: Path, pages: Iterable[int] | None = None) -> ExtractionRe
             if _is_meaningful_page_text(body):
                 blocks.append(f"## Page {index}\n{body}")
                 page_metadata.append(
-                    _pdf_page_metadata(index, "embedded_text", body, has_page_anchor=True, visual=visual)
+                    _pdf_page_metadata(
+                        index, "embedded_text", body,
+                        has_page_anchor=True, visual=visual, ocr_ready=ocr_ready,
+                    )
                 )
                 used_text = True
                 continue
@@ -246,7 +251,10 @@ def _extract_pdf(path: Path, pages: Iterable[int] | None = None) -> ExtractionRe
             if page_ocr:
                 blocks.append(f"## Page {index}\n{page_ocr}")
                 page_metadata.append(
-                    _pdf_page_metadata(index, "ocr", page_ocr, has_page_anchor=True, visual=visual)
+                    _pdf_page_metadata(
+                        index, "ocr", page_ocr,
+                        has_page_anchor=True, visual=visual, ocr_ready=ocr_ready,
+                    )
                 )
                 used_ocr = True
             elif body:
@@ -262,6 +270,7 @@ def _extract_pdf(path: Path, pages: Iterable[int] | None = None) -> ExtractionRe
                         has_page_anchor=True,
                         warnings=page_warnings,
                         visual=visual,
+                        ocr_ready=ocr_ready,
                     )
                 )
                 used_text = True
@@ -278,6 +287,7 @@ def _extract_pdf(path: Path, pages: Iterable[int] | None = None) -> ExtractionRe
                         has_page_anchor=False,
                         warnings=page_warnings,
                         visual=visual,
+                        ocr_ready=ocr_ready,
                     )
                 )
 
@@ -327,6 +337,7 @@ def _pdf_page_metadata(
     has_page_anchor: bool,
     warnings: list[str] | None = None,
     visual: dict[str, Any] | None = None,
+    ocr_ready: bool = False,
 ) -> dict[str, Any]:
     record: dict[str, Any] = {
         "page": int(page),
@@ -341,7 +352,54 @@ def _pdf_page_metadata(
     # signal could not be collected. Never affects the legacy fields above.
     if visual:
         record.update(visual)
+    # Advisory OCR routing decision (Slice 34). Recorded once the page's method,
+    # text and visual signals are known; `ocr_ready` is the document-level local
+    # OCR availability the extractor already probed. This is a *recorder, not a
+    # router*: it never decides whether OCR actually runs (that decision is the
+    # unchanged per-page logic in `_extract_pdf`), so extracted text is identical.
+    record.update(_pdf_route_decision(record, ocr_ready=ocr_ready))
     return record
+
+
+def _pdf_route_decision(record: dict[str, Any], *, ocr_ready: bool) -> dict[str, Any]:
+    """Advisory, local-only OCR routing decision for one page (Slice 34).
+
+    Maps the page's already-collected signals to the pure routing policy
+    (:func:`pipeline.ocr_routing.decide_ocr_route`) via its advisory
+    ``classification`` (shared with the persisted artifact through
+    :func:`classify_pdf_page_record`, so both agree). Local-only: cloud OCR stays
+    off, so the provider is only ever ``tesseract_local`` or ``None``.
+
+    Degrade-not-fail: the policy itself never raises, but the whole adapter is
+    wrapped so that any unexpected error records a fixed safe route instead of
+    breaking extraction. Returns only closed-vocabulary route tokens — never a
+    path, secret, image blob, or free-text error.
+    """
+    try:
+        classification = classify_pdf_page_record(record).get("classification")
+        decision = decide_ocr_route(
+            {"classification": classification},
+            # Local-first, cloud-off (the policy default); only the live local-OCR
+            # availability is overridden so a `likely_scanned` page routes to local
+            # OCR exactly when the extractor itself could OCR it.
+            {"local_ocr_available": bool(ocr_ready), "allow_cloud_ocr": False},
+        )
+        return {
+            "ocr_route_action": decision.get("action"),
+            "ocr_route_provider": decision.get("provider"),
+            "ocr_route_reason": decision.get("reason"),
+            "ocr_route_confidence": decision.get("confidence"),
+            "ocr_route_warnings": list(decision.get("warnings") or []),
+        }
+    except Exception:
+        # Routing must never fail a generation; fall back to a fixed safe route.
+        return {
+            "ocr_route_action": "unknown",
+            "ocr_route_provider": None,
+            "ocr_route_reason": "routing_unavailable",
+            "ocr_route_confidence": "low",
+            "ocr_route_warnings": ["routing_input_unrecognized"],
+        }
 
 
 def _pdf_visual_signals(page) -> dict[str, Any]:

@@ -6,12 +6,40 @@
 > stable overview see `PROJECT_CONTEXT.md`; canonical brief is `../CLAUDE.md`.
 
 ## Current position
-- **Working tree:** **Slice 33 (hybrid OCR routing policy core) implemented but
-  uncommitted** on branch `slice33-hybrid-ocr-routing-policy-core` (branched from
-  trunk after Slice 32 merged). **Slices 30, 31 and 32 are committed and merged to
-  trunk** (trunk HEAD = `c42837c`, "Slice 32: Add OCR provider boundary"; Slice 31
-  = `ce0332e`; Slice 30 = `752bf03`). Do not commit Slice 33 unless explicitly
-  asked; do not force-push.
+- **Working tree:** **Slice 34 (wire local OCR routing into extraction) implemented
+  but uncommitted** on branch `slice34-wire-local-ocr-routing` (branched from trunk
+  after Slice 33 merged). **Slices 30–33 are committed and merged to trunk** (trunk
+  HEAD = `5296976`, "Slice 33: Add pure OCR routing policy core"; Slice 32 =
+  `c42837c`; Slice 31 = `ce0332e`; Slice 30 = `752bf03`). Do not commit Slice 34
+  unless explicitly asked; do not force-push.
+- **Slice 34 (wire local OCR routing into extraction):** first **live, local-only,
+  behaviour-compatible** integration of the Slice 33 policy into the PDF extraction
+  path. `pipeline/extract.py` now imports `ocr_routing.decide_ocr_route` +
+  `extraction_metadata.classify_pdf_page_record`; new
+  `_pdf_route_decision(record, *, ocr_ready)` maps a page's already-collected signals
+  → advisory `classification` (shared classifier) → policy decision
+  (`local_ocr_available = ocr_ready`, `allow_cloud_ocr=False`), attached by
+  `_pdf_page_metadata(..., ocr_ready=...)` to every PDF page. **Recorder, not a
+  router:** it never decides whether OCR runs — the unchanged `_extract_pdf` per-page
+  logic still does — so **extracted text + `## Page N` anchors are byte-identical**
+  and OCR-availability behaviour is preserved (a blank page extraction historically
+  *attempts* is still attempted even though the advisory route says `skip_ocr`).
+  Adds additive per-page fields `ocr_route_action` / `ocr_route_provider` /
+  `ocr_route_reason` / `ocr_route_confidence` / `ocr_route_warnings` — closed-vocab,
+  JSON-safe, **local-only** (`ocr_route_provider` is only `"tesseract_local"` or
+  `null`, never a cloud id). `extraction_metadata._safe_page` carries them through
+  with new `_safe_route_*` whitelists (vocab imported from `ocr_routing`) — same
+  carry-and-coerce posture as `method`/`warnings`; a smuggled value coerces to a safe
+  token, no path/secret/blob/URL/free-text survives; emitted only when present so
+  legacy/non-PDF records stay byte-identical. **`extraction_metadata.json` stays
+  `version: 2`** (additive-field rule). Degrade-not-fail: any adapter error records a
+  fixed safe route and never fails a generation. New
+  `test_scripts/test_ocr_routing_integration.py` (56 checks; fitz e2e skipped on
+  host). **No** Mistral/cloud OCR, provider settings, prompt, `/api/jobs/llm`-field,
+  frontend/UI, Ask/retrieval, LanceDB/embeddings, generic-`ARTIFACTS`/export-bundle,
+  render-pipeline, generation-gating, or other artifact-schema change; OCR still goes
+  through the Slice 32 local provider boundary unchanged. **Next: Slice 35** — Mistral
+  OCR prerequisite verification (docs-only; gate for the gated cloud provider 36).
 - **Slice 33 (hybrid OCR routing policy core):** new **pure, deterministic,
   dependency-free** module `pipeline/ocr_routing.py` — the "pure core, then
   integrate" step in `HYBRID_OCR_DESIGN.md` §9 (policy = §5/§6). Public:

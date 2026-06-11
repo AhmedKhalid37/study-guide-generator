@@ -5,7 +5,73 @@
 
 ---
 
-## Slice 33 — hybrid OCR routing policy core (IMPLEMENTED — uncommitted on `slice33-hybrid-ocr-routing-policy-core`).
+## Slice 34 — wire local OCR routing into extraction (IMPLEMENTED — uncommitted on `slice34-wire-local-ocr-routing`).
+
+- **Purpose:** first **live** integration of the Slice 33 routing policy into the
+  PDF extraction path — **local-only and behaviour-compatible**. Extraction now
+  records a safe, advisory per-page **routing decision**; it does **not** add
+  Mistral/cloud OCR, provider settings, UI, prompt changes, or any
+  generation-gating. This is Slice 34 in `docs/HYBRID_OCR_DESIGN.md` §9.
+- **Recorder, not a router (key design):** the policy is consulted *after* a page's
+  method/text/visual signals are known and is recorded as metadata; it **never
+  decides whether OCR actually runs.** The unchanged per-page text-vs-OCR logic in
+  `_extract_pdf` still does that, so **extracted text and `## Page N` anchors are
+  byte-identical** to before and OCR-availability behaviour is preserved. (A blank
+  page that extraction historically *attempts* to OCR still does so even though the
+  advisory route says `skip_ocr` — advisory route metadata, not yet a
+  behaviour-changing router.)
+- **Where it's wired:** `pipeline/extract.py` imports
+  `ocr_routing.decide_ocr_route` and `extraction_metadata.classify_pdf_page_record`.
+  New `_pdf_route_decision(record, *, ocr_ready)` maps a page's already-collected
+  signals → advisory `classification` (shared classifier = single source of truth)
+  → policy decision, with `local_ocr_available = ocr_ready` (the document-level
+  Tesseract availability the extractor already probed) and `allow_cloud_ocr=False`.
+  `_pdf_page_metadata(..., ocr_ready=...)` attaches the route to every PDF page.
+- **New per-page fields (additive):** `ocr_route_action`, `ocr_route_provider`,
+  `ocr_route_reason`, `ocr_route_confidence`, `ocr_route_warnings` — all
+  closed-vocabulary / JSON-safe. **Local-only:** `ocr_route_provider` is only ever
+  `"tesseract_local"` or `null` (never a cloud id).
+- **Sanitiser carries, not recomputes:** `extraction_metadata._safe_page` whitelists
+  each route token against the vocabularies imported from `ocr_routing` (new
+  `_safe_route_*` helpers) — the same carry-and-coerce posture it already applies to
+  `method`/`warnings`. A smuggled `ocr_route_*` value coerces to a fixed safe token;
+  no path, secret, image blob, URL, or free-text error can survive. Route fields are
+  emitted **only when the extractor supplied them**, so legacy / hand-built / non-PDF
+  records stay byte-identical.
+- **`extraction_metadata.json` stays `version: 2`** — additive page fields under the
+  established "bump once on the first new field (Slice 30), not on every additive
+  field" rule (see `DECISIONS.md`). No other artifact schema touched.
+- **Degrade-not-fail:** `_pdf_route_decision` wraps the whole adapter; any unexpected
+  error records a fixed safe route (`action:"unknown"`,
+  `reason:"routing_unavailable"`, `warnings:["routing_input_unrecognized"]`) and
+  never propagates. Routing can never fail a generation.
+- **Scope guard — NO change to:** Mistral/cloud OCR, provider settings, prompts,
+  `/api/jobs/llm` request fields, frontend/UI, Ask/retrieval, LanceDB/embeddings,
+  the generic `ARTIFACTS`/export-bundle lists, the PDF/Chromium render pipeline,
+  generation gating, or the `validation.json` / `math_verification.json` /
+  `guide_lint.json` schemas. The OCR engine still goes through the Slice 32 local
+  provider boundary unchanged.
+- **Files changed:** `pipeline/extract.py`, `pipeline/extraction_metadata.py`,
+  `test_scripts/test_ocr_routing_integration.py` (new), `docs/CURRENT_TASK.md`,
+  `docs/NEXT_CHAT_HANDOFF.md`, `docs/DECISIONS.md`.
+- **Validation:** `npm --prefix frontend run build` ✓ · `npm --prefix frontend run
+  test` ✓ · `python -m compileall api pipeline test_scripts` ✓ ·
+  `test_ocr_routing_integration` 56/56 (fitz e2e skipped on host) ·
+  `test_ocr_routing_policy` 120/120 · `test_extraction_metadata` 9/9 ·
+  `test_pdf_page_classification` 56/56 · `test_pdf_visual_signals` 44/44 ·
+  `test_ocr_provider` 18/18 · `test_math_verifier` 74/74 · `test_guide_lint` 74/74 ·
+  `test_eval_harness` 64/64 · `test_page_anchor_reachability` 21/21 ·
+  `test_source_page_citations` 19/19 · `test_ask_retrieval_relevance` 12/12 ·
+  `test_ask_lexical_hygiene` 34/34 · `test_guide_lint_artifact` 26/26 ·
+  `run_eval.py --offline --all` scored 3 (no regression) · `git diff --check` clean.
+  `smoke_release.py` requires the live Dockerized app on :8000 (not running in this
+  host shell) — run it in Docker for full e2e coverage, along with the fitz path.
+- **Next:** Slice 35 — Mistral OCR prerequisite verification (docs-only; gate for the
+  gated cloud provider in Slice 36). Routing stays local-only/advisory until then.
+
+---
+
+## Slice 33 — hybrid OCR routing policy core (COMMITTED + MERGED to `chrome-renderer-v1`, commit `5296976`).
 
 - **Purpose:** add a **pure, deterministic OCR routing-policy core** that decides
   what *should* happen for a page (use embedded text / local OCR / skip / cloud

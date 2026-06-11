@@ -6,6 +6,13 @@ from pathlib import Path
 from typing import Any
 
 from pipeline.job_manager import Job
+from pipeline.ocr_routing import (
+    ACTIONS as _ROUTE_ACTIONS,
+    CONFIDENCES as _ROUTE_CONFIDENCES,
+    LOCAL_OCR_PROVIDER_ID as _ROUTE_LOCAL_PROVIDER,
+    REASONS as _ROUTE_REASONS,
+    WARNINGS as _ROUTE_WARNINGS,
+)
 
 ARTIFACT_NAME = "extraction_metadata.json"
 
@@ -119,7 +126,61 @@ def _safe_page(page: dict[str, Any]) -> dict[str, Any]:
     record["classification"] = _safe_classification(classification.get("classification"))
     record["classification_reasons"] = _safe_reasons(classification.get("classification_reasons"))
     record["ocr_recommended"] = bool(classification.get("ocr_recommended"))
+    # Advisory OCR routing decision (Slice 34). Computed live in
+    # `pipeline.extract` where local-OCR availability is authoritatively known,
+    # then carried through here with closed-vocabulary sanitisation — the same
+    # carry-and-coerce posture `_safe_method` / `_safe_warnings` apply to the
+    # other upstream-computed fields. A smuggled value coerces to a fixed safe
+    # token, so no path, secret, image data, or free text can survive. Emitted
+    # only when the extractor supplied it, so a route-less (legacy or non-PDF)
+    # page record stays byte-identical.
+    if "ocr_route_action" in page:
+        record["ocr_route_action"] = _safe_route_action(page.get("ocr_route_action"))
+        record["ocr_route_provider"] = _safe_route_provider(page.get("ocr_route_provider"))
+        record["ocr_route_reason"] = _safe_route_reason(page.get("ocr_route_reason"))
+        record["ocr_route_confidence"] = _safe_route_confidence(page.get("ocr_route_confidence"))
+        record["ocr_route_warnings"] = _safe_route_warnings(page.get("ocr_route_warnings"))
     return record
+
+
+# --- Advisory OCR routing decision (Slice 34) ------------------------------
+#
+# These sanitisers mirror `pipeline.ocr_routing._decision`: every persisted route
+# token is either a member of the imported closed vocabulary or a fixed safe
+# default. They never echo an input value, so a hostile upstream record cannot
+# smuggle a path / secret / image blob / free text into the artifact.
+
+
+def classify_pdf_page_record(record: dict[str, Any]) -> dict[str, Any]:
+    """Public wrapper around the advisory page classifier.
+
+    Used by :mod:`pipeline.extract` to obtain a page's advisory ``classification``
+    as the input to the OCR routing policy, so live extraction and the persisted
+    artifact share one classifier (single source of truth). Pure and never raises.
+    """
+    return _classify_pdf_page(record)
+
+
+def _safe_route_action(value: Any) -> str:
+    return value if value in _ROUTE_ACTIONS else "unknown"
+
+
+def _safe_route_provider(value: Any) -> str | None:
+    return value if value == _ROUTE_LOCAL_PROVIDER else None
+
+
+def _safe_route_reason(value: Any) -> str:
+    return value if value in _ROUTE_REASONS else "routing_unavailable"
+
+
+def _safe_route_confidence(value: Any) -> str:
+    return value if value in _ROUTE_CONFIDENCES else "low"
+
+
+def _safe_route_warnings(value: Any) -> list[str]:
+    if not isinstance(value, list):
+        return []
+    return [w for w in value if w in _ROUTE_WARNINGS]
 
 
 # --- Advisory page classification (Slice 31) -------------------------------

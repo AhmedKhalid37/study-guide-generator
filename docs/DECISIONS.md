@@ -1652,3 +1652,66 @@ provider settings, no prompt/`/api/jobs/llm`-field/frontend/Ask/retrieval/embedd
 change, no generic `ARTIFACTS`/export-bundle change, no `extraction_metadata.json` /
 `validation.json` / `math_verification.json` / `guide_lint.json` schema change, no
 render-pipeline change, no generation gating. Extraction output is unchanged.
+
+
+## Slice 34 — routing wired into extraction as an advisory *recorder*, not a behaviour-changing router
+Slice 34 makes the first **live** call to the Slice 33 policy from
+`pipeline/extract.py` and records a per-page routing decision
+(`ocr_route_action` / `_provider` / `_reason` / `_confidence` / `_warnings`) in
+`extraction_metadata.json`. It stays **local-only and behaviour-compatible**. Four
+non-obvious choices, recorded so they are not relitigated:
+
+**(1) Recorder, not a router — behaviour compatibility wins over the policy's
+`blank_or_low_text → skip_ocr` mapping.** The route is computed *after* a page's
+method/text/visual signals are known and is written as advisory metadata only; it
+**does not decide whether OCR runs.** The unchanged per-page text-vs-OCR logic in
+`_extract_pdf` still makes that call, so extracted text and `## Page N` anchors are
+byte-for-byte identical and the existing OCR-availability/empty behaviour is
+preserved. **Why:** the pure policy would `skip_ocr` a positively-blank page, but
+current extraction *attempts* OCR on such a page (then drops it if empty). Per the
+slice's "prefer behaviour compatibility in live extraction" rule, we keep the
+historical attempt and let the route be an advisory hint of what a future router
+*would* do — "advisory route metadata, not yet a behaviour-changing router." No
+fixture's extracted text changes.
+
+**(2) Routing is computed in `extract.py` (carry-and-sanitise), unlike
+classification which is recomputed in `_safe_page` (Slice 31).** Classification is
+derived purely from sanitized numeric/method/visual fields, so Slice 31 recomputes
+it at the sanitiser and ignores any upstream value. Routing additionally needs
+`local_ocr_available`, which is **only authoritatively known in `extract.py`** (the
+`ocr_ready` probe the extractor already ran) — `_safe_page` cannot know it without
+guessing. So the truthful locus is the extractor: `_pdf_route_decision(record, *,
+ocr_ready)` consults the policy with `local_ocr_available = ocr_ready` and
+`allow_cloud_ocr = False`. To keep Slice 31's leak-safety, `_safe_page` then treats
+the route fields exactly like the other upstream-computed fields (`method`,
+`warnings`): it **carries them through a closed-vocabulary whitelist**
+(`_safe_route_*`, vocab imported from `ocr_routing`), coercing any out-of-vocab /
+smuggled value to a fixed safe token. A hostile `ocr_route_*` (URL, host path,
+secret, image blob) therefore still cannot survive — the guarantee is identical to
+recomputation, just enforced by whitelist instead of re-derivation. The advisory
+`classification` fed to the policy reuses the same classifier via the new public
+`classify_pdf_page_record`, so live routing and the persisted `classification` field
+agree (single source of truth).
+
+**(3) `extraction_metadata.json` stays `version: 2`.** The route fields are purely
+additive/optional page fields under the established rule "bump once on the first new
+field (Slice 30 did 1 → 2), not on every additive field" (see the Slice 31 entry).
+Readers that treat missing/unknown keys as "not measured" are unaffected. Route
+fields are emitted **only when the extractor supplied them**, so legacy / hand-built
+/ non-PDF page records stay byte-identical.
+
+**(4) Local-only and degrade-not-fail.** `allow_cloud_ocr` is hard-`False` at the
+call site, so `ocr_route_provider` is only ever `"tesseract_local"` or `null` —
+never a cloud id, and no cloud/Mistral path exists. The whole adapter is wrapped:
+the policy itself never raises, but any unexpected error (e.g. in the classifier)
+records a fixed safe route (`action:"unknown"`, `reason:"routing_unavailable"`,
+`warnings:["routing_input_unrecognized"]`) and never propagates — routing can never
+fail a generation. OCR still runs through the Slice 32 local provider boundary
+unchanged.
+
+**Scope:** no Mistral/cloud OCR, provider settings, prompt, `/api/jobs/llm`
+request-field, frontend/UI, Ask/retrieval, LanceDB/embeddings, generic
+`ARTIFACTS`/export-bundle, render-pipeline, generation-gating, or `validation.json`
+/ `math_verification.json` / `guide_lint.json` schema change. `extraction_metadata.
+json` gains additive page fields only (no version bump). Extraction text output is
+byte-for-byte unchanged.
