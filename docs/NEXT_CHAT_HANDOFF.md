@@ -6,13 +6,44 @@
 > stable overview see `PROJECT_CONTEXT.md`; canonical brief is `../CLAUDE.md`.
 
 ## Current position
-- **Working tree:** **Slice 36 (Revised visual / cost / provider-strategy roadmap)
-  — DOCS-ONLY, uncommitted** on branch `slice36-cloud-ocr-vision-provider-strategy`
-  (branched from trunk). It adds `docs/VISION_ROADMAP.md` and updates the live docs;
-  it touches **no** application code, dependency, key, prompt, routing, extraction,
-  schema, or render path, and calls **no** external OCR/vision API. **Trunk HEAD is
-  now Slice 35 (`45a54d2`), committed + merged + pushed** — Slices 30–35 are on
-  trunk. The roadmap reframes the visual/cost direction around the
+- **Working tree:** **Slice 37 (OCR/extraction mode + cost/budget skeleton) —
+  IMPLEMENTED, uncommitted** on branch `slice37-ocr-mode-cost-budget-skeleton`
+  (branched from trunk). It adds **`pipeline/ocr_modes.py`** (pure stdlib —
+  `dataclasses`+`typing`, **no** `fitz`/Tesseract/`ocr_provider`/cloud-SDK imports)
+  + a 121-check `test_scripts/test_ocr_modes.py`, and updates the live docs. It is a
+  **framework only**: the Slice 36 mode vocabulary (`local_private` default ·
+  `smart_cloud_assist` · `maximum_fidelity`), provider roles
+  (`local_ocr_provider`/`cloud_document_provider`/`cloud_vision_provider`) and ids
+  (`tesseract_local`/`chandra_local`/`mistral_ocr`), budget/cost DTOs
+  (`OcrModeSettings`/`OcrBudget`/`OcrProviderPricing`/`OcrCostEstimate`), and pure
+  functions (`default_ocr_mode_settings`, `resolve_ocr_mode_config`, `ocr_budget`,
+  `provider_pricing`, `estimate_ocr_cost`, `safe_ocr_mode_settings_dict`,
+  `safe_ocr_cost_estimate_dict`, `ocr_provider_pricing_snapshot`).
+  **`resolve_ocr_mode_config(default)` returns the Slice 33
+  `ocr_routing.default_config()` shape with `allow_cloud_ocr=False`**; cloud is
+  enabled **only** by a cloud-capable mode **plus** an explicit real-bool
+  `cloud_opt_in=True` (truthy strings rejected), and even then nothing is wired into
+  extraction — the Slice 33 policy still only yields an advisory `cloud_ocr_candidate`.
+  Cost is a static, documented snapshot (Mistral ~$2/1,000 pages standard /
+  ~$1/1,000 batch, `is_estimate:true`,
+  `price_source:"docs/MISTRAL_OCR_VERIFICATION.md"`, June 2026 estimate) with **no
+  network call**; local providers are free, unknown providers return a safe
+  `unavailable`/`unknown` result. Every output is closed-vocab / number / `None` /
+  `"USD"` / the doc `price_source`; hostile keys are dropped. **No API route, no
+  frontend, and no extraction / routing / prompt / `/api/jobs/llm` field / Ask /
+  retrieval / render / artifact / schema / export change.** Validation: frontend
+  build + `npm run test` green; `compileall` clean; full backend OCR/eval/lint/ask
+  suite green; `test_ocr_modes` 121/121; eval `--offline --all` no regression;
+  `git diff --check` clean; `smoke_release.py` 29/29 on live :8000. **Proposed next:
+  `visual_assets_manifest.json` normalization-boundary skeleton** (still provider-
+  free, no extraction change), per `docs/VISION_ROADMAP.md`. **Do not commit Slice
+  37 yet** unless directed.
+- **Trunk HEAD is now Slice 36 (`976aebc`), committed + merged + pushed** —
+  Slices 30–36 are on trunk. Slice 36 (Revised visual / cost / provider-strategy
+  roadmap) added `docs/VISION_ROADMAP.md` and updated the live docs; it touched
+  **no** application code, dependency, key, prompt, routing, extraction, schema, or
+  render path, and called **no** external OCR/vision API. The roadmap reframes the
+  visual/cost direction around the
   **Capture → Explain → Show → Trust → Retain** north star, a **provider-agnostic
   `visual_assets_manifest.json`** normalization boundary, a **three-mode** cost/
   privacy framework (Local/Private default · Smart Cloud Assist · Maximum Fidelity),
@@ -21,9 +52,8 @@
   document-extraction provider (now **proposed Slice 43**, disabled/unwired), and a
   dependency-ordered **V1–V7** visual stack. It **resequences (does not cancel)** the
   old `HYBRID_OCR_DESIGN.md` §9 "Slice 36 = Mistral provider" item. Slices 37–43 in
-  `docs/VISION_ROADMAP.md` are **proposed, not done.** **Proposed next: Slice 37 —
-  provider-agnostic OCR/extraction mode + cost/budget skeleton.** See
-  `docs/VISION_ROADMAP.md`.
+  `docs/VISION_ROADMAP.md` are **proposed, not done** (Slice 37 is now the
+  *implemented* item above). See `docs/VISION_ROADMAP.md`.
 - **Slice 35 (Mistral OCR prerequisite verification) — DOCS-ONLY, committed +
   merged to trunk (`45a54d2`).** It added `docs/MISTRAL_OCR_VERIFICATION.md` and
   updated the live docs; it touched **no** application code, dependency, key,

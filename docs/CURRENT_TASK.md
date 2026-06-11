@@ -5,7 +5,64 @@
 
 ---
 
-## Slice 36 — Revised visual / cost / provider-strategy roadmap (DOCS-ONLY — uncommitted on `slice36-cloud-ocr-vision-provider-strategy`).
+## Slice 37 — OCR/extraction mode + cost/budget skeleton (IMPLEMENTED — uncommitted on `slice37-ocr-mode-cost-budget-skeleton`).
+
+- **Purpose:** add a **pure, provider-agnostic** mode + cost/budget *framework*
+  that later visual-manifest and cloud/Chandra provider slices can plug into —
+  **without** changing any behavior. Framework/skeleton only; **no provider is
+  implemented, no cloud call is made, cloud OCR stays disabled by default.**
+- **Deliverable:** new `pipeline/ocr_modes.py` — a stdlib-only module
+  (`dataclasses` + `typing`, **no** `fitz`/Tesseract/`ocr_provider`/cloud SDK
+  imports) defining:
+  - **Modes** (Slice 36 vocab): `local_private` (default) · `smart_cloud_assist`
+    · `maximum_fidelity`.
+  - **Provider roles:** `local_ocr_provider` · `cloud_document_provider` ·
+    `cloud_vision_provider`. **Provider ids:** `tesseract_local` (impl today) ·
+    `chandra_local` · `mistral_ocr` (future; naming them wires nothing).
+  - **DTOs:** `OcrModeSettings` (mode, `cloud_opt_in`, `local_ocr_available`,
+    `page_cap`, `dollar_cap`, `selected_page_count`) · `OcrBudget` ·
+    `OcrProviderPricing` · `OcrCostEstimate` (mode, provider id/role, billing
+    unit, billed pages, `estimated_cost_usd`, `currency:"USD"`, `is_estimate`,
+    `status`, `price_source`, closed-vocab `warnings`).
+  - **Functions:** `default_ocr_mode_settings()` · `resolve_ocr_mode_config()` ·
+    `ocr_budget()` · `provider_pricing()` · `estimate_ocr_cost()` ·
+    `safe_ocr_mode_settings_dict()` · `safe_ocr_cost_estimate_dict()` ·
+    `ocr_provider_pricing_snapshot()`.
+- **Mapping to Slice 33 routing:** `resolve_ocr_mode_config(settings)` returns the
+  exact `pipeline.ocr_routing.default_config()` shape (`allow_cloud_ocr`,
+  `local_ocr_available`, `max_ocr_pages`, `page_budget_remaining`) plus an
+  advisory `mode` echo the routing core ignores. **Default mode `local_private`
+  ⇒ `allow_cloud_ocr=False`.** `allow_cloud_ocr` is `True` **only** when the mode
+  is cloud-capable **AND** `cloud_opt_in is True` (a real bool — truthy strings
+  are rejected). A mode name alone never enables cloud; even when allowed, the
+  Slice 33 policy only returns an *advisory* `cloud_ocr_candidate` — no cloud OCR
+  is wired into extraction.
+- **Cost skeleton:** static, documented price snapshot only (no network).
+  `mistral_ocr` = **per page, ~$2/1,000 (standard) / ~$1/1,000 (batch),
+  `is_estimate:true`, `price_source:"docs/MISTRAL_OCR_VERIFICATION.md"` (June 2026
+  estimate, re-verify before any billing UI)**. Local providers are free/exact.
+  Unknown providers ⇒ safe `status:"unavailable"/"unknown"`. 500 pages on
+  `smart_cloud_assist` ⇒ advisory `$1.00`, `is_estimate:true`, page/dollar caps
+  applied as advisory warnings.
+- **Leak-safety:** every output field is a closed-vocab token / int / float /
+  `None` / `"USD"` / the repo-relative `price_source`; hostile keys (api_key,
+  base_url, authorization, host/socket path, argv) are dropped, never echoed.
+- **No API route added or changed; no frontend.** Not wired into extraction,
+  routing, prompts, `/api/jobs/llm` fields, Ask/retrieval, render, artifacts,
+  exports, or `extraction_metadata.json`/manifest schemas.
+- **Files changed:** `pipeline/ocr_modes.py` (new),
+  `test_scripts/test_ocr_modes.py` (new, 121 checks), `docs/CURRENT_TASK.md`,
+  `docs/NEXT_CHAT_HANDOFF.md`, `docs/DECISIONS.md`.
+- **Validation:** frontend build + `npm run test` green · `compileall api
+  pipeline test_scripts` clean · full backend OCR/eval/lint/ask suite green ·
+  `test_ocr_modes.py` 121/121 · eval `--offline --all` no regression ·
+  `git diff --check` clean · `smoke_release.py` green (live :8000).
+- **Proposed next:** `visual_assets_manifest.json` normalization-boundary skeleton
+  (still no provider/extraction change), per `docs/VISION_ROADMAP.md`.
+
+---
+
+## Slice 36 — Revised visual / cost / provider-strategy roadmap (COMMITTED + MERGED to `chrome-renderer-v1`, commit `976aebc`).
 
 - **Purpose:** capture the operator's revised long-range vision as a **planning
   doc**, before any visual-asset or cloud-OCR code. **Implements nothing** — no

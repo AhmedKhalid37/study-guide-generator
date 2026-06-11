@@ -1764,3 +1764,35 @@ layer (once-per-session cloud disclaimer, dollar + page caps), not a hard blocke
 Local/Private needs no disclaimer. **Scope:** docs only — no code, dependency,
 provider setting, key, prompt, routing, extraction, schema, or render change; no
 external OCR/vision API called. Slices 37–43 are **proposed**, not existing.
+
+## OCR mode/cost is a pure skeleton that gates cloud behind explicit opt-in, not mode name (2026-06-11, Slice 37)
+`pipeline/ocr_modes.py` adds the provider-agnostic mode + cost/budget framework
+(modes `local_private`/`smart_cloud_assist`/`maximum_fidelity`; provider
+roles/ids; `OcrModeSettings`/`OcrBudget`/`OcrProviderPricing`/`OcrCostEstimate`).
+Two decisions are load-bearing. **(1) Cloud is gated by an explicit
+`cloud_opt_in=True` real-bool, never by the mode name.**
+`resolve_ocr_mode_config()` sets `allow_cloud_ocr=True` **only** when the mode is
+cloud-capable AND `cloud_opt_in is True`; the default `local_private` and any
+cloud-capable mode without opt-in both resolve to `allow_cloud_ocr=False`, and a
+truthy non-bool (e.g. `"yes"`) is rejected. **Why:** a selecting a "Smart Cloud
+Assist" mode in a future UI must not, by itself, start sending student documents
+to a third party — consent is a separate, explicit, auditable flag. The resolved
+config is intentionally the exact Slice 33 `ocr_routing.default_config()` shape so
+the existing local-first, page-budgeted, advisory-`cloud_ocr_candidate` policy is
+the *only* thing that ever acts on it, and **nothing is wired into extraction in
+this slice**. **(2) Cloud pricing is a static, documented snapshot — never a live
+lookup or billing truth.** `estimate_ocr_cost()` is pure and makes no network
+call; the Mistral figure (~$2/1,000 pages standard, ~$1/1,000 batch) is marked
+`is_estimate:true` with `price_source:"docs/MISTRAL_OCR_VERIFICATION.md"` (June
+2026), local providers are free/exact, and an unknown/unconfigured provider
+returns a safe `unavailable`/`unknown` status rather than guessing. **Why:**
+estimates are for *planning* (page/dollar caps surface as advisory warnings, never
+hard failures); treating them as authoritative or fetching them live would couple
+a pure module to a provider account and let a vendor price change silently alter
+behavior — pricing must be re-verified in this one table before any billing UI.
+Every output field is closed-vocab / number / `None` / `"USD"` / the repo doc
+`price_source`, and hostile input keys (api_key, base_url, authorization, host/
+socket path, argv) are dropped, so no secret/URL/path can leak through a settings
+or estimate DTO. **Scope:** new pure module + focused test only — no API route, no
+frontend, no extraction/routing/prompt/request-field/Ask/render/artifact/schema/
+export change.
