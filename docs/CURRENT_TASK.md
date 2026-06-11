@@ -5,7 +5,70 @@
 
 ---
 
-## Slice 30 — PDF page visual-signal metadata (IMPLEMENTED — uncommitted on `slice30-pdf-page-visual-signals`).
+## Slice 31 — advisory PDF page classification metadata (IMPLEMENTED — uncommitted on `slice31-pdf-page-classification-metadata`).
+
+- **Purpose:** the next step after Slice 30. Use the existing text/word/method
+  signals (Slice 24A) plus the visual/object signals (Slice 30) to emit an
+  **advisory page classification** in `extraction_metadata.json`. This slice
+  **only adds derived metadata** — it does **not** call OCR, reroute pages,
+  change extracted text, or touch prompts/generation.
+- **Fields added (per PDF page, advisory-only):**
+  - `classification` — one of `embedded_text | ocr_fallback | likely_scanned |
+    blank_or_low_text | mixed | unknown | error` (closed vocabulary; `unknown`
+    fallback, like `_safe_method`).
+  - `classification_reasons` — list of fixed, whitelisted reason tokens
+    (e.g. `method_ocr`, `meaningful_embedded_text`, `images_present`,
+    `no_visual_objects`, `visual_signals_unavailable`,
+    `classification_unavailable`). No free text, paths, or values.
+  - `ocr_recommended` — bool routing **hint** only; `True` only for
+    `likely_scanned`. Nothing reads it yet.
+- **Where computed:** `pipeline/extraction_metadata.py::_classify_pdf_page(record)`
+  (pure helper) called from `_safe_page` **after** the record is fully sanitized.
+  It reads only the already-sanitized numeric/method/visual fields — never any
+  upstream-supplied `classification` key — so a smuggled value is overwritten by
+  construction. `_safe_classification` / `_safe_reasons` whitelist the persisted
+  output.
+- **Heuristics (conservative, deterministic):** `method == "ocr"` →
+  `ocr_fallback`. `embedded_text` with meaningful text (≥40 chars OR ≥5 word
+  tokens, mirroring `_is_meaningful_page_text`) → `embedded_text`, or `mixed` when
+  image objects are present. Low/zero-text pages (`none`, or sparse `embedded_text`
+  fallback) → `likely_scanned` when image/drawing objects are present,
+  `blank_or_low_text` when visuals were positively measured-absent, else `unknown`
+  (visual signal missing → cannot distinguish scan from blank). Explicit per-page
+  error warning (`page_extraction_error` / `ocr_error` / `extraction_error`, none
+  emitted today) → `error`.
+- **Versioning:** `extraction_metadata.json` stays **`version: 2`**. The new fields
+  are purely additive/optional, consistent with the Slice 29 rule (bump once when
+  the first new field ships — done in Slice 30; later additive fields keep v2). No
+  version churn.
+- **Degrade-not-fail:** `_classify_pdf_page` never raises; any unexpected input
+  degrades to `classification: "unknown"` + `["classification_unavailable"]`.
+  Persisted classification is **always** in the closed vocabulary.
+- **Scope guard — NO change to:** extraction text output, OCR behaviour/routing,
+  Mistral/cloud OCR, provider settings, prompts, `/api/jobs/llm` request fields,
+  frontend/UI, Ask/retrieval, LanceDB/embeddings, the generic `ARTIFACTS`/
+  export-bundle lists, the PDF/Chromium render pipeline, generation gating, or the
+  `validation.json` / `math_verification.json` / `guide_lint.json` schemas.
+- **Files changed:** `pipeline/extraction_metadata.py`,
+  `test_scripts/test_pdf_page_classification.py` (new),
+  `docs/CURRENT_TASK.md`, `docs/NEXT_CHAT_HANDOFF.md`, `docs/DECISIONS.md`.
+- **Validation:** `npm --prefix frontend run build` ✓ · `npm --prefix frontend run
+  test` ✓ · `python -m compileall api pipeline test_scripts` ✓ · backend suites
+  (`test_math_verifier` 74/74, `test_guide_lint` 74/74, `test_eval_harness` 64/64,
+  `test_page_anchor_reachability` 21/21, `test_source_page_citations` 19/19,
+  `test_extraction_metadata` 9/9, `test_pdf_visual_signals` 44/44,
+  `test_ask_retrieval_relevance` 12/0, `test_ask_lexical_hygiene` 34/0,
+  `test_guide_lint_artifact` 26/26, `test_pdf_page_classification` 56/56) ✓ ·
+  `eval/run_eval.py --offline --all` ✓ (delta 0.0) · `git diff --check` ✓ ·
+  `smoke_release.py` ✓. Host Python lacks PyMuPDF so the PDF-attachment section of
+  `test_extraction_metadata.py` SKIPs (documented); classification is fully covered
+  by the plain-dict tests in `test_pdf_page_classification.py` and runs end-to-end
+  in Docker.
+- **Not committed** (per task instruction).
+
+---
+
+## Slice 30 — PDF page visual-signal metadata (COMMITTED + MERGED to `chrome-renderer-v1`, commit `752bf03`).
 
 - **Purpose:** the first implementation step after the Slice 29 design. Enrich the
   per-page PDF `extraction_metadata.json` records with cheap, additive

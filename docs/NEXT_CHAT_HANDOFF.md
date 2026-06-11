@@ -6,12 +6,34 @@
 > stable overview see `PROJECT_CONTEXT.md`; canonical brief is `../CLAUDE.md`.
 
 ## Current position
-- **Working tree:** **Slice 30 (PDF page visual-signal metadata) implemented but
-  uncommitted** on branch `slice30-pdf-page-visual-signals` (branched from trunk
-  after Slice 29 merged). **Slice 29 (hybrid-OCR design, docs-only) is committed
-  `d0b91f1` and merged to trunk** (trunk HEAD = `d0b91f1`, "Slice 29: Document
-  hybrid OCR architecture"). Do not commit Slice 30 unless explicitly asked; do
-  not force-push.
+- **Working tree:** **Slice 31 (advisory PDF page classification metadata)
+  implemented but uncommitted** on branch
+  `slice31-pdf-page-classification-metadata` (branched from trunk after Slice 30
+  merged). **Slice 30 (PDF page visual-signal metadata) is committed `752bf03` and
+  fast-forward merged to trunk** (trunk HEAD = `752bf03`, "Slice 30: Add PDF page
+  visual metadata signals"). Do not commit Slice 31 unless explicitly asked; do not
+  force-push.
+- **Slice 31 (advisory PDF page classification metadata):** backend/pipeline
+  metadata + tests/docs only — the next step after Slice 30. Uses the existing
+  text/word/method signals (24A) plus the Slice 30 visual/object signals to emit an
+  **advisory page classification** in `extraction_metadata.json`. New pure helper
+  `pipeline/extraction_metadata.py::_classify_pdf_page(record)` is called from
+  `_safe_page` **after** sanitisation and reads only the sanitized
+  numeric/method/visual fields (never any upstream `classification` key — smuggled
+  values are overwritten by construction). Adds per page: `classification`
+  (`embedded_text | ocr_fallback | likely_scanned | blank_or_low_text | mixed |
+  unknown | error`; `unknown` fallback), `classification_reasons` (whitelisted
+  fixed tokens only), and `ocr_recommended` (bool hint, `True` only for
+  `likely_scanned`; nothing reads it yet). Heuristics are conservative and
+  deterministic (meaningful = ≥40 chars OR ≥5 words, mirroring
+  `_is_meaningful_page_text`); `_classify_pdf_page` never raises (degrades to
+  `unknown` + `classification_unavailable`); `_safe_classification`/`_safe_reasons`
+  whitelist the persisted output. Artifact stays **`version: 2`** (purely additive).
+  New `test_scripts/test_pdf_page_classification.py` (56 checks, plain-dict — no
+  fitz needed). **No** OCR call/routing change, Mistral/cloud OCR, provider, prompt,
+  `/api/jobs/llm` field, frontend/UI, Ask/retrieval, LanceDB/embeddings, generic
+  `ARTIFACTS`/export-bundle, render-pipeline, generation-gating, or other
+  artifact-schema change; extraction text output unchanged.
 - **Slice 30 (PDF page visual-signal metadata):** backend/pipeline metadata +
   tests/docs only — the first implementation step after the Slice 29 design. Adds
   cheap, additive, advisory-only per-PDF-page visual/object signals to

@@ -1514,3 +1514,49 @@ guarded and falls back to `None` plus a safe `visual_warnings` category, never a
 exception, never extraction-text/mode/method/job-status change. This slice
 **only collects data** — page classification (Slice 31) and any OCR routing remain
 deferred; no classification field is emitted yet.
+
+---
+
+## Slice 31 — advisory page classification stays on `version: 2` and is computed at the sanitiser, not the extractor
+Slice 31 adds three advisory per-PDF-page fields — `classification` (closed enum),
+`classification_reasons` (whitelisted tokens), and `ocr_recommended` (bool hint) —
+derived from the Slice 24A text/word/method signals plus the Slice 30 visual
+signals. Two non-obvious choices:
+
+**(1) No version bump — stays `version: 2`.** The Slice 29 rule is "bump once when
+the *first* new field ships, then keep all prior keys present and meaning the
+same." Slice 30 already performed that single bump (1 → 2). Slice 31's fields are
+again purely additive/optional, so re-bumping to `version: 3` would churn the
+version for no compatibility benefit and wrongly imply a breaking change. A reader
+that treats missing/unknown keys as "not measured / unknown" is unaffected, which
+is exactly the contract `_safe_classification` (unknown fallback, mirroring
+`_safe_method`) preserves. So the rule is read as "bump on the first additive
+field, not on every additive field."
+
+**(2) Classification is computed in `extraction_metadata._safe_page` (the
+sanitiser), not in `extract.py` at extraction time.** It reads only the
+*already-sanitized* numeric/method/visual fields and **never** any upstream
+`classification`/`classification_reasons`/`ocr_recommended` key on the incoming
+page record. **Why:** this makes a smuggled or hostile classification value
+impossible to persist by construction — the value is always recomputed from
+clean, bounded inputs and re-whitelisted (`_safe_classification` +
+`_safe_reasons`). Computing it in the extractor would mean the value flows through
+the artifact path and would have to be re-validated anyway; doing it once at the
+normalisation boundary keeps a single deterministic source of truth and keeps the
+extractor's hot loop unchanged. `_classify_pdf_page` is **degrade-not-fail**: any
+unexpected input returns `classification: "unknown"` +
+`["classification_unavailable"]`, and the persisted value is *always* in the
+closed vocabulary.
+
+**Thresholds (conservative, documented):** "meaningful text" mirrors
+`extract._is_meaningful_page_text` (≥40 chars **OR** ≥5 word tokens) so the
+advisory label agrees with the extractor's own per-page text/OCR decision;
+"near-zero" is stricter (<10 chars **AND** <3 words) to separate a genuinely blank
+page from a sparse one. A low/zero-text page is only `likely_scanned` when an
+image/drawing object is positively present, only `blank_or_low_text` when visuals
+were positively measured-absent, and otherwise `unknown` (missing visual signal →
+cannot distinguish a scan from a blank). This is deliberately **not** a precise
+scanned-page detector — it is an advisory hint, never a router or a gate.
+**Scope:** no OCR call/routing, prompt, provider, request-field, frontend, Ask,
+export, render, or generation-gating change; extraction text output is byte-for-byte
+unchanged.
