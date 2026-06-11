@@ -17,6 +17,7 @@ from pipeline.extraction_metadata import (
     write_extraction_metadata,
     write_skipped_extraction_metadata,
 )
+from pipeline.visual_assets_manifest import write_visual_assets_manifest
 from pipeline.llm_client import LLMConfig, LLMProviderError, MissingLLMConfigError
 from pipeline.orchestrator import generate_study_guide
 from pipeline.run_markdown_job import MarkdownJobError, run_raw_markdown_pipeline
@@ -276,6 +277,11 @@ def _attach_sources(
         write_skipped_extraction_metadata(job)
     elif extraction_metadata_sources:
         write_extraction_metadata(job, extraction_metadata_sources)
+        # Slice 38: derive the provider-agnostic visual-assets manifest from the
+        # same sanitized sources. Advisory-only and wrapped; it is written exactly
+        # when extraction metadata exists, and never gates or fails the job. Non-PDF
+        # jobs / unavailable metadata simply omit the artifact (no call here).
+        write_visual_assets_manifest(job, extraction_metadata_sources)
 
     if not sections:
         return source_text, {

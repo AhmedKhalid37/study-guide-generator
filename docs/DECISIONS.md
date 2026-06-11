@@ -1796,3 +1796,46 @@ socket path, argv) are dropped, so no secret/URL/path can leak through a setting
 or estimate DTO. **Scope:** new pure module + focused test only — no API route, no
 frontend, no extraction/routing/prompt/request-field/Ask/render/artifact/schema/
 export change.
+
+## visual_assets_manifest.json is a provider-agnostic normalization boundary built from existing signals only (2026-06-11, Slice 38)
+`pipeline/visual_assets_manifest.py` adds the first `visual_assets_manifest.json`
+advisory artifact — the provider-agnostic normalization boundary Slice 36's roadmap
+specified, so that every present/future visual provider (`fitz_local` today;
+`chandra_local`/`mistral_ocr`/`vlm_*` later) maps into one safe shape rather than a
+raw `fitz` dump. Three decisions are load-bearing. **(1) The manifest is populated
+ONLY from page-level signals already collected for `extraction_metadata.json`
+(Slice 30/31/34)** — image/drawing object counts, `has_images`/`has_drawings`, page
+dimensions, advisory `classification`, and the local `ocr_route_action`. It opens no
+PDF, inspects no image, crops/rasterizes nothing, writes no image file or raw byte,
+embeds nothing into guides, and calls no provider/network. **Why:** this slice
+establishes the *schema and boundary* cheaply and risk-free; actual local figure
+extraction / cropping / dedup / candidate scoring / Chandra verification / Mistral
+skeleton are explicitly later slices, and keeping them out means guide text and
+`clean.md` stay byte-identical when the feature is unused (only one sibling JSON is
+written). **(2) Because nothing is cropped, each asset is a page-level visual
+*candidate*, not a real extracted figure** (`asset_type:"page_visual_signal"`,
+`bbox:null`, one candidate per page that carries a positive image-OR-drawing signal;
+a page with both yields exactly one). The record is deliberately shaped for the rich
+future case (`recommended_action`, `dedupe_group`, `scores`, `caption`, `bbox`) with
+those fields null/empty/`"unknown"` today, so later slices add data without a schema
+break. **Why:** designing the durable shape now avoids a churn later; making the
+"candidate, not figure" distinction explicit in the artifact, docs, and tests
+prevents a future reader from mistaking a page signal for a cropped image.
+**(3) Persistence mirrors the other advisory siblings and uses the smallest
+convention.** The builder is a pure function of the already-sanitized
+extraction-metadata source records (closed-vocab coercion field-by-field, never
+echoing input — `source_provider` only `fitz_local`, `classification`/`ocr_route_action`
+coerced to the closed Slice 31/34 vocab, dims/counts coerced numerically), so no raw
+path, host path, image byte, raw PDF object, provider payload, OCR error,
+key/token/header, URL, socket, or argv can survive even a smuggled record. The
+wrapped writer never raises and degrades to a `skipped` artifact on failure; it is
+written exactly when extraction-metadata PDF sources exist (right after
+`write_extraction_metadata`), and non-PDF / unavailable-metadata jobs OMIT it
+entirely — matching how non-applicable artifacts are handled. It is reached only by
+its exact filename via `_artifact_path` (`Job.visual_assets_manifest_json`), and is
+deliberately NOT added to the generic `ARTIFACTS` list, `_artifact_urls` /
+`_artifact_details`, export bundles, or any frontend tab — identical posture to
+`math_verification.json` / `guide_lint.json` / `extraction_metadata.json`. **Scope:**
+new pure module + focused test + one exact-name route entry + one Job property + one
+wrapped writer call — no new API endpoint, no extraction/text/OCR/routing/prompt/
+request-field/Ask/render/schema/export/UI change, no external API call.

@@ -6,40 +6,62 @@
 > stable overview see `PROJECT_CONTEXT.md`; canonical brief is `../CLAUDE.md`.
 
 ## Current position
-- **Working tree:** **Slice 37 (OCR/extraction mode + cost/budget skeleton) —
-  IMPLEMENTED, uncommitted** on branch `slice37-ocr-mode-cost-budget-skeleton`
-  (branched from trunk). It adds **`pipeline/ocr_modes.py`** (pure stdlib —
-  `dataclasses`+`typing`, **no** `fitz`/Tesseract/`ocr_provider`/cloud-SDK imports)
-  + a 121-check `test_scripts/test_ocr_modes.py`, and updates the live docs. It is a
-  **framework only**: the Slice 36 mode vocabulary (`local_private` default ·
-  `smart_cloud_assist` · `maximum_fidelity`), provider roles
-  (`local_ocr_provider`/`cloud_document_provider`/`cloud_vision_provider`) and ids
-  (`tesseract_local`/`chandra_local`/`mistral_ocr`), budget/cost DTOs
-  (`OcrModeSettings`/`OcrBudget`/`OcrProviderPricing`/`OcrCostEstimate`), and pure
-  functions (`default_ocr_mode_settings`, `resolve_ocr_mode_config`, `ocr_budget`,
-  `provider_pricing`, `estimate_ocr_cost`, `safe_ocr_mode_settings_dict`,
-  `safe_ocr_cost_estimate_dict`, `ocr_provider_pricing_snapshot`).
-  **`resolve_ocr_mode_config(default)` returns the Slice 33
-  `ocr_routing.default_config()` shape with `allow_cloud_ocr=False`**; cloud is
-  enabled **only** by a cloud-capable mode **plus** an explicit real-bool
-  `cloud_opt_in=True` (truthy strings rejected), and even then nothing is wired into
-  extraction — the Slice 33 policy still only yields an advisory `cloud_ocr_candidate`.
-  Cost is a static, documented snapshot (Mistral ~$2/1,000 pages standard /
-  ~$1/1,000 batch, `is_estimate:true`,
-  `price_source:"docs/MISTRAL_OCR_VERIFICATION.md"`, June 2026 estimate) with **no
-  network call**; local providers are free, unknown providers return a safe
-  `unavailable`/`unknown` result. Every output is closed-vocab / number / `None` /
-  `"USD"` / the doc `price_source`; hostile keys are dropped. **No API route, no
-  frontend, and no extraction / routing / prompt / `/api/jobs/llm` field / Ask /
-  retrieval / render / artifact / schema / export change.** Validation: frontend
-  build + `npm run test` green; `compileall` clean; full backend OCR/eval/lint/ask
-  suite green; `test_ocr_modes` 121/121; eval `--offline --all` no regression;
-  `git diff --check` clean; `smoke_release.py` 29/29 on live :8000. **Proposed next:
-  `visual_assets_manifest.json` normalization-boundary skeleton** (still provider-
-  free, no extraction change), per `docs/VISION_ROADMAP.md`. **Do not commit Slice
-  37 yet** unless directed.
-- **Trunk HEAD is now Slice 36 (`976aebc`), committed + merged + pushed** —
-  Slices 30–36 are on trunk. Slice 36 (Revised visual / cost / provider-strategy
+- **Working tree:** **Slice 38 (Visual assets manifest schema from existing
+  signals) — IMPLEMENTED, uncommitted** on branch
+  `slice38-visual-assets-manifest-schema` (branched from trunk after Slice 37 merged).
+  It adds the first **provider-agnostic `visual_assets_manifest.json`** advisory
+  artifact — the **normalization boundary** Slice 36 called for — populated **only**
+  from page-level visual/page signals already collected for `extraction_metadata.json`
+  (Slice 30/31/34). It is a **schema/advisory-artifact slice, NOT image extraction**:
+  no PDF is opened beyond existing metadata, **no image is cropped/rasterized, no
+  image file or raw byte is written, nothing is embedded into guides, no candidate is
+  scored, no dedup runs, no provider/network is touched.** New
+  **`pipeline/visual_assets_manifest.py`** (stdlib `json`+`typing`, **no**
+  `fitz`/Tesseract/Mistral/Gemini/Chandra/`ocr_provider` imports) exposes a **pure
+  builder** `build_visual_assets_manifest(sources)->dict` (takes the same sanitized
+  extraction-metadata source records; never raises, degrades to an empty manifest)
+  plus wrapped writers `write_visual_assets_manifest(job, sources)` /
+  `write_skipped_visual_assets_manifest(...)`. **Top-level:** `{version:1,
+  kind:"visual_assets_manifest", status:"completed",
+  source:"extraction_metadata.json", assets:[...], summary:{asset_count,
+  pages_with_visual_signals, source_providers}, warnings:[]}`. **Each asset is a
+  page-level visual *candidate*** (`asset_type:"page_visual_signal"`, `bbox:null`,
+  `source_provider:"fitz_local"`, `recommended_action:"unknown"`, `scores:{}`,
+  `signals:{image/drawing counts, has_images/has_drawings, page dims, classification,
+  ocr_route_action}`), **one per page** with a positive image-OR-drawing signal (both
+  → exactly one candidate). Closed-vocab & leak-free: every field is a fixed token /
+  number / `None` / empty dict / deterministic `asset_id` (`page_NNNN_visual_01`);
+  inputs are coerced field-by-field and never echoed (`source_provider` only
+  `fitz_local`; `chandra_local`/`mistral_ocr`/`vlm_*` reserved but not emitted).
+  **Persistence (smallest approach):** derived from `extraction_metadata.json` and
+  written exactly when those PDF sources exist (in `run_llm_job.py` right after
+  `write_extraction_metadata`); non-PDF / unavailable-metadata jobs **omit** it; a
+  zero-signal page set still writes a valid empty `completed` manifest. **Access:**
+  exact-name download `/api/jobs/{id}/artifacts/visual_assets_manifest.json` (one
+  `_artifact_path` entry + `Job.visual_assets_manifest_json` property) — **not** in
+  the generic `ARTIFACTS` list, `_artifact_urls`/`_artifact_details`, export bundles,
+  or any frontend tab (same posture as `math_verification.json`/`guide_lint.json`).
+  **No new API endpoint; no extraction/text/OCR/routing/prompt/render/schema/export/UI
+  change** — guide text & `clean.md` are byte-identical when unused (only one sibling
+  JSON is written). Files: `pipeline/visual_assets_manifest.py` (new),
+  `test_scripts/test_visual_assets_manifest.py` (new, 65 checks),
+  `pipeline/job_manager.py`, `api/server.py`, `pipeline/run_llm_job.py`, docs.
+  **Later slices** handle local cropping, dedup, candidate scoring, Chandra
+  verification, and the Mistral skeleton. Validation (all green): `npm run build`,
+  `npm run test`, `compileall api pipeline test_scripts`, math/guide-lint/eval-harness,
+  page-anchor + source-page-citation, extraction-metadata, pdf-visual-signals,
+  pdf-page-classification, ocr-provider/routing-policy/routing-integration,
+  ask-retrieval/lexical-hygiene, guide-lint-artifact, ocr-modes,
+  `test_visual_assets_manifest` 65/65, eval `--offline --all` no regression,
+  `git diff --check` clean, `smoke_release.py` on live :8000. **Do not commit Slice
+  38 yet** unless directed.
+- **Trunk HEAD is now Slice 37 (`9fbbb1d`), committed + merged + pushed** —
+  Slices 30–37 are on trunk. Slice 37 (OCR/extraction mode + cost/budget skeleton)
+  added `pipeline/ocr_modes.py` (pure stdlib framework — modes, provider roles/ids,
+  budget/cost DTOs, `resolve_ocr_mode_config` returning the Slice 33 routing shape
+  with `allow_cloud_ocr=False` unless a cloud-capable mode + real-bool
+  `cloud_opt_in=True`) + `test_ocr_modes.py`; **no** extraction/routing/prompt/API/UI
+  change and **no** network call. Slice 36 (Revised visual / cost / provider-strategy
   roadmap) added `docs/VISION_ROADMAP.md` and updated the live docs; it touched
   **no** application code, dependency, key, prompt, routing, extraction, schema, or
   render path, and called **no** external OCR/vision API. The roadmap reframes the

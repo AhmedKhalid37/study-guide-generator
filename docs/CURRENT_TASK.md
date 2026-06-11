@@ -5,7 +5,79 @@
 
 ---
 
-## Slice 37 — OCR/extraction mode + cost/budget skeleton (IMPLEMENTED — uncommitted on `slice37-ocr-mode-cost-budget-skeleton`).
+## Slice 38 — Visual assets manifest schema from existing signals (IMPLEMENTED — uncommitted on `slice38-visual-assets-manifest-schema`).
+
+- **Purpose:** add the first **provider-agnostic** `visual_assets_manifest.json`
+  advisory artifact — the **normalization boundary** Slice 36 called for — populated
+  **only** from existing page-level visual/page signals already collected for
+  `extraction_metadata.json` (Slice 30/31/34). This is a **schema/advisory-artifact**
+  slice, **not** an image-extraction slice.
+- **Deliverable:** new `pipeline/visual_assets_manifest.py` — a stdlib-only module
+  (`json` + `typing`, **no** `fitz`/Tesseract/Mistral/Gemini/Chandra/`ocr_provider`
+  imports) with:
+  - **Pure builder** `build_visual_assets_manifest(sources) -> dict` — takes the
+    same already-sanitized extraction-metadata source records persisted in
+    `extraction_metadata.json` and returns the manifest dict. Pure & total: never
+    raises, never opens a PDF, never crops, never calls a provider; degrades to an
+    empty-but-valid manifest on any bad input.
+  - **Wrapped writers** `write_visual_assets_manifest(job, sources)` (advisory,
+    never raises, degrades to a `skipped` artifact on write failure) and
+    `write_skipped_visual_assets_manifest(job, ...)`.
+- **Manifest top-level shape:** `{version:1, kind:"visual_assets_manifest",
+  status:"completed", source:"extraction_metadata.json", assets:[...],
+  summary:{asset_count, pages_with_visual_signals, source_providers:[...]},
+  warnings:[]}`.
+- **Asset record (page-level visual *candidate*):** `{asset_id:"page_NNNN_visual_01",
+  source_page, asset_type:"page_visual_signal", bbox:null, caption:null,
+  source_provider:"fitz_local", recommended_action:"unknown", dedupe_group:null,
+  scores:{}, signals:{image_object_count, drawing_object_count, has_images,
+  has_drawings, page_width, page_height, classification, ocr_route_action},
+  warnings:[]}`. One candidate is emitted **per page** that carries a positive image
+  OR drawing signal; a page with **both** yields exactly **one** candidate (its
+  `signals` records both).
+- **Because nothing is cropped, each asset is a page-level visual *candidate***
+  ("this page has a visual signal worth a closer look later"), **not** a real
+  extracted figure. `bbox` is always `null` this slice.
+- **Closed vocabulary, leak-free:** `source_provider` only ever `fitz_local`
+  (future-reserved `chandra_local`/`mistral_ocr`/`vlm_*` documented but **not**
+  emitted); `asset_type` only `page_visual_signal`; `recommended_action` only
+  `unknown` (no scoring yet); `classification`/`ocr_route_action` coerced to closed
+  Slice 31/34 vocab; dimensions/counts coerced numerically. Every field is a fixed
+  token / int / float / `None` / empty dict / deterministic `asset_id` — inputs are
+  coerced field-by-field and **never echoed**, so no raw path, host path, image byte,
+  raw PDF object, provider payload, OCR error, key/token/header, URL, socket, or argv
+  can survive even from a smuggled record.
+- **Persistence convention (smallest approach):** the manifest is **derived from
+  `extraction_metadata.json`** and is written **exactly when those PDF sources
+  exist** — wired in `run_llm_job.py` immediately after
+  `write_extraction_metadata(...)`. Non-PDF jobs / unavailable metadata **omit** the
+  artifact entirely (matching how non-applicable artifacts are handled). A page set
+  with zero visual signals still writes a valid `completed` manifest with an empty
+  `assets` list.
+- **Access:** exact-name download via the existing
+  `/api/jobs/{id}/artifacts/visual_assets_manifest.json` route (one `_artifact_path`
+  entry + a `Job.visual_assets_manifest_json` property). **Not** added to the generic
+  `ARTIFACTS` list, `_artifact_urls`/`_artifact_details`, export bundles, or any
+  frontend tab — same posture as `math_verification.json` / `guide_lint.json` /
+  `extraction_metadata.json`.
+- **No API route added/changed** beyond the exact-name `_artifact_path` mapping (no
+  new endpoint). **No** extraction/text/OCR/routing/prompt/render change; guide text
+  and `clean.md` are byte-identical when this feature is unused (it only writes one
+  sibling JSON).
+- **Out of scope (later slices):** local figure extraction/cropping, dedup,
+  decorative filtering, candidate scoring/text replacement, Chandra verification,
+  Mistral skeleton, Gemini/VLM, any external API, UI, export-bundle wiring.
+- **Files:** `pipeline/visual_assets_manifest.py` (new),
+  `test_scripts/test_visual_assets_manifest.py` (new, 65 checks — pure builder +
+  integration), `pipeline/job_manager.py` (+`visual_assets_manifest_json` property),
+  `api/server.py` (+exact-name `_artifact_path` entry), `pipeline/run_llm_job.py`
+  (+wrapped writer call), docs.
+- **Validation:** see NEXT_CHAT_HANDOFF. **Do not commit Slice 38 yet** unless
+  directed.
+
+---
+
+## Slice 37 — OCR/extraction mode + cost/budget skeleton (COMMITTED `9fbbb1d`, merged to `chrome-renderer-v1`).
 
 - **Purpose:** add a **pure, provider-agnostic** mode + cost/budget *framework*
   that later visual-manifest and cloud/Chandra provider slices can plug into —

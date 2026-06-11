@@ -130,6 +130,16 @@ class Job:
         return self.dir / "guide_lint.json"
 
     @property
+    def visual_assets_manifest_json(self) -> Path:
+        # Slice 38: sibling provider-agnostic advisory artifact holding the
+        # visual-assets manifest (pipeline/visual_assets_manifest.py), populated
+        # only from existing page-level visual signals already in
+        # extraction_metadata.json. Like the other advisory siblings it never
+        # changes job status, is kept SEPARATE from validation.json, and is reached
+        # only by its exact filename (not added to the generic ARTIFACTS list).
+        return self.dir / "visual_assets_manifest.json"
+
+    @property
     def render_log(self) -> Path:
         return self.logs_dir / "render.log"
 
