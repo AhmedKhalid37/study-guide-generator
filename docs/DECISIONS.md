@@ -1736,3 +1736,31 @@ API key / `Authorization` / raw provider errors / URLs / document paths
 a later slice does not silently start routing student documents to a third party.
 Next slice (36) should be a *disabled-by-default* provider skeleton + OCR
 provider-settings/key-storage design, not a live integration.
+
+## Visual/cost roadmap: provider-agnostic manifest first; Mistral provider resequenced behind it (2026-06-11, Slice 36)
+A docs-only planning slice added `docs/VISION_ROADMAP.md` (the operator's revised
+*Capture → Explain → Show → Trust → Retain* vision). Two load-bearing decisions are
+recorded here so a later implementer does not invert the order. **(1) The planned
+`visual_assets_manifest.json` is a provider-agnostic *normalization boundary*, not a
+raw `fitz` dump** — it is designed from day one to absorb richer providers
+(`fitz_local`, `chandra_local`, `mistral_ocr`, future `vlm_*`) into one closed-vocab
+asset record (`asset_id`, `source_page`, `asset_type`, `bbox`, `caption`,
+`source_provider`, `recommended_action`, `dedupe_group`, `scores`) with no raw
+paths/keys/URLs/payloads, so adding a provider never reshapes the schema or its
+consumers. **(2) The old `HYBRID_OCR_DESIGN.md` §9 "Slice 36 = Mistral provider" item
+is resequenced, not cancelled** — the Mistral cloud provider skeleton is now
+**proposed Slice 43 (disabled/unwired)** so the provider-agnostic mode/budget
+skeleton (proposed Slice 37) and the advisory visual manifest (proposed Slice 38)
+land first. **Why:** wiring a single cloud provider before the mode/consent/budget
+framework and the normalization boundary exist would bake provider-specific shape
+into extraction and force a later rewrite; advisory-first + provider-agnostic-first
+keeps every step inside the existing guarantees (byte-identical when unused,
+degrade-not-fail, local/private default, server-side keys). **Chandra** is captured
+as a near-roadmap high-quality *local* provider that could make Local/Private mode
+genuinely strong for GPU users, but is **gated** (docs-verification slice + a later
+RTX 5070 Ti hands-on spike + a Datalab license review for any multi-user use) and is
+**not** production-approved. **Privacy** is framed as a disclosure/consent + budget
+layer (once-per-session cloud disclaimer, dollar + page caps), not a hard blocker;
+Local/Private needs no disclaimer. **Scope:** docs only — no code, dependency,
+provider setting, key, prompt, routing, extraction, schema, or render change; no
+external OCR/vision API called. Slices 37–43 are **proposed**, not existing.

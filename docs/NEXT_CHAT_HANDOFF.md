@@ -6,20 +6,37 @@
 > stable overview see `PROJECT_CONTEXT.md`; canonical brief is `../CLAUDE.md`.
 
 ## Current position
-- **Working tree:** **Slice 35 (Mistral OCR prerequisite verification) — DOCS-ONLY,
-  uncommitted** on branch `slice35-mistral-ocr-prereq-verification` (branched from
-  trunk). It adds `docs/MISTRAL_OCR_VERIFICATION.md` and updates the live docs; it
-  touches **no** application code, dependency, key, prompt, routing, or schema, and
-  calls **no** Mistral API. **Trunk HEAD is now Slice 34 (`25e3fd3`), committed** —
-  Slices 30–34 are on trunk. **Recommendation of the verification:** *Mistral OCR is
+- **Working tree:** **Slice 36 (Revised visual / cost / provider-strategy roadmap)
+  — DOCS-ONLY, uncommitted** on branch `slice36-cloud-ocr-vision-provider-strategy`
+  (branched from trunk). It adds `docs/VISION_ROADMAP.md` and updates the live docs;
+  it touches **no** application code, dependency, key, prompt, routing, extraction,
+  schema, or render path, and calls **no** external OCR/vision API. **Trunk HEAD is
+  now Slice 35 (`45a54d2`), committed + merged + pushed** — Slices 30–35 are on
+  trunk. The roadmap reframes the visual/cost direction around the
+  **Capture → Explain → Show → Trust → Retain** north star, a **provider-agnostic
+  `visual_assets_manifest.json`** normalization boundary, a **three-mode** cost/
+  privacy framework (Local/Private default · Smart Cloud Assist · Maximum Fidelity),
+  **Chandra** as a near-roadmap high-quality *local* provider (gated, not
+  production-approved), **Mistral** kept on the near map as the likely first cloud
+  document-extraction provider (now **proposed Slice 43**, disabled/unwired), and a
+  dependency-ordered **V1–V7** visual stack. It **resequences (does not cancel)** the
+  old `HYBRID_OCR_DESIGN.md` §9 "Slice 36 = Mistral provider" item. Slices 37–43 in
+  `docs/VISION_ROADMAP.md` are **proposed, not done.** **Proposed next: Slice 37 —
+  provider-agnostic OCR/extraction mode + cost/budget skeleton.** See
+  `docs/VISION_ROADMAP.md`.
+- **Slice 35 (Mistral OCR prerequisite verification) — DOCS-ONLY, committed +
+  merged to trunk (`45a54d2`).** It added `docs/MISTRAL_OCR_VERIFICATION.md` and
+  updated the live docs; it touched **no** application code, dependency, key,
+  prompt, routing, or schema, and called **no** Mistral API. **Recommendation of the
+  verification:** *Mistral OCR is
   a clean architectural fit (Slice 32 boundary + Slice 33/34 routing already provide
   the seams) with no technical blockers; **proceed only after the operator confirms
   live per-page pricing and accepts the privacy posture** (3rd-party processing of
   student notes, default 30-day retention unless ZDR), then implement strictly behind
-  an explicit off-by-default opt-in.* Proposed **Slice 36 = Mistral OCR provider
-  skeleton + server-side OCR provider-settings/key-storage design, disabled by
-  default** (no network to generation; do not route real docs through Mistral yet).
-  See `docs/MISTRAL_OCR_VERIFICATION.md`.
+  an explicit off-by-default opt-in.* The original "Slice 36 = Mistral provider
+  skeleton" plan is **resequenced to proposed Slice 43** by `docs/VISION_ROADMAP.md`
+  (provider-agnostic mode/budget + visual manifest land first). See
+  `docs/MISTRAL_OCR_VERIFICATION.md` and `docs/VISION_ROADMAP.md`.
 - **(Historical, retained below)** **Slice 34 (wire local OCR routing into extraction)**
   was at one point uncommitted on `slice34-wire-local-ocr-routing`; it is **now
   committed to trunk** (`25e3fd3`). **Trunk commit chain:** Slice 34 = `25e3fd3`;

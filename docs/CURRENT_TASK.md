@@ -5,7 +5,50 @@
 
 ---
 
-## Slice 35 — Mistral OCR prerequisite verification (DOCS-ONLY — uncommitted on `slice35-mistral-ocr-prereq-verification`).
+## Slice 36 — Revised visual / cost / provider-strategy roadmap (DOCS-ONLY — uncommitted on `slice36-cloud-ocr-vision-provider-strategy`).
+
+- **Purpose:** capture the operator's revised long-range vision as a **planning
+  doc**, before any visual-asset or cloud-OCR code. **Implements nothing** — no
+  code, dependency, provider setting, key, prompt, routing, extraction, schema,
+  or render change; no external OCR/vision API (Mistral / Gemini / Chandra) was
+  called.
+- **Deliverable:** new `docs/VISION_ROADMAP.md` covering: planning-status caveats
+  (repo is source of truth; re-verify every provider fact at impl time); the
+  **Capture → Explain → Show → Trust → Retain** north star; current gap analysis
+  (Explain strong, Capture text-only, Show unbuilt, Trust partial, cost/privacy
+  primitive); the **three-mode** strategy (Local/Private default · Smart Cloud
+  Assist · Maximum Fidelity); the **provider-agnostic `visual_assets_manifest.json`
+  normalization boundary** (sources `fitz_local` / `chandra_local` / `mistral_ocr`
+  / future `vlm_*`; closed-vocab asset records: `asset_id`, `source_page`,
+  `asset_type`, `bbox`, `caption`, `source_provider`, `recommended_action`,
+  `dedupe_group`, `scores`; no raw paths/keys/URLs/payloads); provider roles;
+  **Chandra framing** (near-roadmap high-quality *local* mode, license caveat,
+  **not** production-approved until docs slice + RTX 5070 Ti hands-on spike);
+  privacy-as-disclosure/consent (not a hard blocker); the **dependency-ordered
+  visual stack V1–V7** (render-embed late/high-risk); the **OCR-classification vs
+  visual-candidate-scoring** separation; a **proposed** Slice 37–43 order; and the
+  carried slice principles.
+- **Key reframing:** this **resequences (does not cancel)** the old
+  `HYBRID_OCR_DESIGN.md` §9 "Slice 36 = Mistral provider" item — the Mistral
+  provider skeleton is now **proposed Slice 43** (disabled/unwired), so the
+  provider-agnostic mode/budget + visual-manifest layer can land first.
+- **Mistral kept on the near map** as a visual/table enabler (likely first cloud
+  document-extraction provider), **not shelved**; **Chandra captured** as the
+  near-roadmap high-quality *local* option that could make Local/Private mode
+  high quality for GPU users (still gated).
+- **Proposed next:** **Slice 37 — provider-agnostic OCR/extraction mode +
+  cost/budget skeleton** (framework only; no provider wired, no cloud call).
+- **Files changed (docs only):** `docs/VISION_ROADMAP.md` (new),
+  `docs/CURRENT_TASK.md`, `docs/NEXT_CHAT_HANDOFF.md`,
+  `docs/ROADMAP_INPUT_SUMMARY.md`, `docs/DECISIONS.md`.
+- **Validation:** `git diff --name-only` shows docs only · `git diff --check`
+  clean · no build/smoke needed (no code touched).
+- **Note on numbering:** Slices 37–43 in `docs/VISION_ROADMAP.md` are **proposed
+  future work, not completed** — do not treat them as existing.
+
+---
+
+## Slice 35 — Mistral OCR prerequisite verification (COMMITTED + MERGED to `chrome-renderer-v1`, commit `45a54d2`).
 
 - **Purpose:** prerequisite **gate** before *any* cloud-OCR code. Verify whether
   **Mistral OCR / Document AI** is safe and suitable as a future cloud OCR provider,

@@ -4,6 +4,16 @@
 > independent session to choose the next ~10 slices. The **running code is
 > authoritative**; this is a 2–4 page orientation, not a substitute for the code.
 
+> **Update (2026-06-11, Slice 36):** the operator's revised long-range
+> visual/cost vision now lives in **`docs/VISION_ROADMAP.md`** — the
+> *Capture → Explain → Show → Trust → Retain* north star, the provider-agnostic
+> `visual_assets_manifest.json` boundary, the three-mode cost/privacy framework,
+> Chandra (near-roadmap high-quality *local*, gated) and Mistral (near-roadmap
+> cloud, disabled until the mode/budget framework exists), and a dependency-ordered
+> V1–V7 visual stack with a **proposed** Slice 37–43 order. That roadmap is
+> planning input (re-verify provider facts at impl time); the opportunity list
+> below remains the broader candidate orientation.
+
 ## Exact current position
 
 - **Branch / PR target:** `chrome-renderer-v1`.
