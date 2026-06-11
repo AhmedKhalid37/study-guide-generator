@@ -1909,3 +1909,42 @@ deferred approve-root/packaging work), always degrading to Tesseract/fitz on
 unavailable/timeout/OOM and reusing the Slice 33 page budget for large docs. **Scope:**
 one new doc + the three live-doc updates — docs only, no code/test/fixture/dependency/
 model-download/API-call change.
+
+## Local figure extraction is gated, advisory, and the manifest re-sanitises it (2026-06-12, Slice 40)
+Slice 40 is the **first real extractor-output change** in the visual stack: a new
+`pipeline/visual_asset_extractor.py` uses PyMuPDF (`fitz`) to **crop embedded image
+regions out of the PDF** into real `extracted_figure` assets (real `bbox`, a saved PNG
+under the new `Job.assets_dir`, and a safe relative `image_ref` `assets/<slug>.png`),
+which `run_llm_job` merges into `visual_assets_manifest.json`. Five decisions are
+load-bearing. **(1) It is gated off by default** via
+`GUIDEFORGE_LOCAL_FIGURE_EXTRACTION`; when unset/false the extractor is never invoked and
+the manifest is **byte-identical to Slice 38** (verified: `smoke_release.py` 29/0/0
+unchanged). **Why:** this touches the extraction/job-artifact path, so the default must
+stay provably inert until the visual pillar is ready to consume it. **(2) The manifest —
+not the fitz extractor — remains the security boundary.** `build_visual_assets_manifest`
+gained an optional `extracted_assets` param and **re-sanitises every record field-by-field**
+(asset-id slug `[A-Za-z0-9_]`, fixed `extracted_figure` type, finite/ordered/positive-area
+`bbox` else `None`, strict `^assets/[A-Za-z0-9_]+\.png$` `image_ref` else the record is
+dropped, whitelisted numeric `signals` only). The manifest module stays **fitz-free and
+pure**. **Why:** a changed or hostile extractor must not be able to smuggle an absolute/
+host/traversal path, raw image byte, URL, or free text into the persisted artifact —
+defence in depth on top of the extractor's own safe emission. **(3) Explosion prevention
+is mandatory, not optional.** The extractor skips tiny/decorative regions
+(`MIN_SIDE_POINTS=24pt`, `MIN_AREA_FRACTION=0.004`), collapses duplicate placements of the
+same region, and caps `MAX_FIGURES_PER_PAGE=12` / `MAX_FIGURES_PER_JOB=200`. **Why:** a
+2,000-page scanned/video-frame deck (each page often one image) would otherwise produce an
+unbounded pile of full-page crops — the roadmap's explicit local-fitz limitation. **(4)
+Degrade-not-fail.** Missing PyMuPDF, a corrupt PDF, or a single bad image yields fewer/zero
+assets and a logged exception *type* only — never a job failure, never raw error text.
+Mirrors every advisory slice (extraction-metadata / manifest writers). **(5) Assets do NOT
+reach the guide this slice.** Slice 40 writes only the manifest + PNGs; `Job.assets_dir`
+is not in exports / `ARTIFACTS` / DTOs, and there is no prompt/render/UI change.
+Asset-aware prompt assembly (V4) and the render-embed path (V5) are separate later slices,
+where orphan-`{{figure}}`/coverage tests belong. **Determinism:** ids/filenames are
+`s{src:02d}_page_{NNNN}_figure_{MM}`, stable for a given PDF+inputs (crop DPI 150).
+**Scope:** new `visual_asset_extractor.py` + `test_local_figure_extraction.py`; edits to
+`visual_assets_manifest.py` (`extracted_assets` merge + `extracted_figure_count` summary +
+`extracted_figure`/`image_ref` schema), `job_manager.py` (`assets_dir`), `run_llm_job.py`
+(track PDF path/pages + gated `_extract_local_figures`). No Chandra/Mistral/Gemini, no
+network, no OCR, no dependency change. Validated green: 59/0/0 focused test in Docker,
+65/0 manifest backward-compat, fresh build + smoke 29/0/0, flag-on glue verified live.

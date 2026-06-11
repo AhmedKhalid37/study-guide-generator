@@ -5,7 +5,57 @@
 
 ---
 
-## Slice 39 — Chandra local feasibility verification (DOCS-ONLY — uncommitted on `slice39-chandra-local-feasibility-verification`).
+## Slice 40 — Local figure extraction / cropping into the visual manifest (uncommitted on `slice40-local-figure-extraction-into-manifest`).
+
+- **Purpose:** the **first real extractor-output change** in the visual stack (roadmap
+  V1→V2 bridge). Where Slice 38 only emitted page-level `page_visual_signal` candidates
+  (`bbox: null`), Slice 40 actually **crops embedded image regions out of the PDF** with
+  PyMuPDF (`fitz`) and adds real **`extracted_figure`** assets — real `bbox`, a **safe
+  relative `image_ref`** (`assets/<slug>.png`), and a saved PNG under the job's new
+  `assets/` dir. **`fitz_local` only** — no Chandra/Mistral/Gemini/VLM, no network, no OCR.
+- **Gated / off by default:** `GUIDEFORGE_LOCAL_FIGURE_EXTRACTION` (truthy = on). When
+  unset/false the extractor is never invoked and the manifest is **byte-identical to
+  Slice 38**. Verified flag-on (1 figure cropped, PNG written, in-page bbox) and flag-off
+  (no work) live in the container.
+- **No guide/prompt/render/export/UI change:** assets do **not** reach the generated
+  guide this slice — Slice 40 only writes the **manifest + asset PNGs**. (Asset-aware
+  prompt/render is a later V4/V5 slice; orphan-`{{figure}}`/coverage tests belong there.)
+- **Files:**
+  - `pipeline/visual_asset_extractor.py` (new) — `fitz` crop module:
+    `local_figure_extraction_enabled()` + `extract_local_figures(pdf, assets_dir,
+    source_index, pages, remaining_budget)`. Degrade-not-fail (missing fitz / corrupt PDF
+    / bad image ⇒ fewer/zero assets, never a job failure). **Explosion prevention:** skips
+    tiny/decorative regions (`MIN_SIDE_POINTS=24pt`, `MIN_AREA_FRACTION=0.004`), collapses
+    duplicate placements of the same region, caps `MAX_FIGURES_PER_PAGE=12` /
+    `MAX_FIGURES_PER_JOB=200`; crops at `CROP_DPI=150`. Deterministic ids/filenames
+    (`s{src:02d}_page_{NNNN}_figure_{MM}`).
+  - `pipeline/visual_assets_manifest.py` — `build_/write_visual_assets_manifest(... ,
+    extracted_assets=None)`; the manifest **re-sanitises every extracted record
+    field-by-field** (asset-id slug, `extracted_figure` type, finite/ordered `bbox`,
+    strict `^assets/[A-Za-z0-9_]+\.png$` `image_ref`, whitelisted numeric `signals`) so the
+    **manifest — not the fitz extractor — stays the security boundary** and cannot be
+    poisoned. Summary gains `extracted_figure_count`. **Stays fitz-free / pure.**
+  - `pipeline/job_manager.py` — new `Job.assets_dir` (`<job>/assets`), advisory, not in
+    exports / `ARTIFACTS` / DTOs.
+  - `pipeline/run_llm_job.py` — tracks saved PDF path + page set in lockstep with
+    extraction-metadata sources; `_extract_local_figures(job, pdf_inputs)` runs the gated
+    extractor and passes results to the manifest writer (off-by-default → no-op).
+  - `test_scripts/test_local_figure_extraction.py` (new) — 59 checks: pure
+    re-sanitisation (bbox validity, id slugging, safe relative refs, leak prevention,
+    backward-compat) + real-fitz crops (file existence, in-page bbox, tiny/duplicate
+    collapse, per-page cap, determinism).
+- **Validation (green):** `python -m compileall api pipeline` OK; `git diff --check` clean;
+  `test_local_figure_extraction.py` **50/0 host (2 fitz cases skip) → 59/0/0 in Docker**;
+  `test_visual_assets_manifest.py` **65/0** (backward-compatible); fresh
+  `docker compose build` + `up --force-recreate`; `/api/health` `{"ok":true}`;
+  `smoke_release.py` **29/0/0** on live :8000 (default flag-off ⇒ guide output unchanged).
+- **Next:** Slice 41 — dedup + decorative filtering (V2, perceptual-hash `dedupe_group`),
+  then Slice 42 candidate scoring (V3). Chandra GGUF spike runs shortly after (not in
+  parallel with this slice's validation).
+
+---
+
+## Slice 39 — Chandra local feasibility verification (COMMITTED `7b97146`, merged to `chrome-renderer-v1`).
 
 - **Purpose:** the **Chandra equivalent of Slice 35's Mistral gate** — a docs-only
   feasibility verification of **Chandra (Datalab)** as a future **high-quality local**

@@ -38,6 +38,7 @@ argv can survive into the manifest even if a hostile record smuggles one in.
 from __future__ import annotations
 
 import json
+import re
 import sys
 from typing import Any
 
@@ -56,10 +57,22 @@ MANIFEST_VERSION = 1
 SOURCE_PROVIDER_FITZ_LOCAL = "fitz_local"
 SOURCE_PROVIDERS = {SOURCE_PROVIDER_FITZ_LOCAL}
 
-# Conservative asset types. Reserved-for-later (NOT emitted this slice):
-# "extracted_figure", "cropped_region", "table_region", "decorative".
+# Conservative asset types. ``page_visual_signal`` is the page-level signal from
+# Slice 38; ``extracted_figure`` is a real cropped region from Slice 40's local
+# fitz extractor. Still reserved-for-later (NOT emitted yet): "cropped_region",
+# "table_region", "decorative".
 ASSET_TYPE_PAGE_VISUAL_SIGNAL = "page_visual_signal"
-ASSET_TYPES = {ASSET_TYPE_PAGE_VISUAL_SIGNAL}
+ASSET_TYPE_EXTRACTED_FIGURE = "extracted_figure"
+ASSET_TYPES = {ASSET_TYPE_PAGE_VISUAL_SIGNAL, ASSET_TYPE_EXTRACTED_FIGURE}
+
+# An ``extracted_figure`` image reference is ALWAYS a fixed-shape relative path
+# ("assets/<slug>.png"). Anything that does not match exactly is dropped to None,
+# so no absolute / host / traversal path can survive into the manifest.
+_IMAGE_REF_RE = re.compile(r"^assets/[A-Za-z0-9_]+\.png$")
+# Slug characters allowed in a re-derived ``asset_id`` (defence in depth: even if
+# the extractor is changed, the manifest only ever persists this character set).
+_ASSET_ID_SANITIZE_RE = re.compile(r"[^A-Za-z0-9_]")
+_MAX_ASSET_ID_LEN = 64
 
 # Default advisory action only. Reserved-for-later candidate-scoring values (NOT
 # emitted this slice): "include_as_figure", "convert_to_table",
@@ -94,25 +107,38 @@ _OCR_ROUTE_ACTIONS = {
 WARNINGS = {"source_unavailable", "no_visual_signals"}
 
 
-def build_visual_assets_manifest(sources: Any) -> dict[str, Any]:
+def build_visual_assets_manifest(
+    sources: Any,
+    extracted_assets: Any = None,
+) -> dict[str, Any]:
     """Pure builder: sanitized extraction-metadata ``sources`` → manifest dict.
 
     ``sources`` is the same list of per-source records persisted in
     ``extraction_metadata.json`` (each a dict with a ``pages`` list of already
-    sanitized page records). One *page-level visual candidate* is emitted per page
-    that carries a positive image or drawing signal — a page with BOTH images and
-    drawings yields exactly one candidate (the signals dict records both).
+    sanitized page records). One *page-level visual candidate*
+    (``page_visual_signal``) is emitted per page that carries a positive image or
+    drawing signal — a page with BOTH images and drawings yields exactly one
+    candidate (the signals dict records both).
+
+    ``extracted_assets`` (Slice 40, optional) is the list of *real cropped figures*
+    produced by :mod:`pipeline.visual_asset_extractor`. Each is **re-sanitised
+    field-by-field here** (asset id slug, ``extracted_figure`` type, finite/ordered
+    ``bbox``, fixed-shape relative ``image_ref``, numeric signals) before it joins
+    the manifest, so the manifest — not the fitz extractor — remains the security
+    boundary and cannot be poisoned. When ``None``/empty the output is
+    byte-identical to Slice 38.
 
     Pure and total: never raises, never inspects a PDF, never crops, never calls a
-    provider. On any unexpected input it degrades to an empty-but-valid manifest.
+    provider, never opens an image file. On any unexpected input it degrades to an
+    empty-but-valid manifest.
     """
     try:
-        return _build_inner(sources)
+        return _build_inner(sources, extracted_assets)
     except Exception:
         return _empty_manifest()
 
 
-def _build_inner(sources: Any) -> dict[str, Any]:
+def _build_inner(sources: Any, extracted_assets: Any) -> dict[str, Any]:
     assets: list[dict[str, Any]] = []
     pages_with_signals = 0
 
@@ -131,6 +157,14 @@ def _build_inner(sources: Any) -> dict[str, Any]:
                     pages_with_signals += 1
                     assets.append(asset)
 
+    extracted_count = 0
+    if isinstance(extracted_assets, list):
+        for raw in extracted_assets:
+            asset = _safe_extracted_asset(raw)
+            if asset is not None:
+                extracted_count += 1
+                assets.append(asset)
+
     providers = sorted({asset["source_provider"] for asset in assets}) if assets else []
     return {
         "version": MANIFEST_VERSION,
@@ -141,6 +175,7 @@ def _build_inner(sources: Any) -> dict[str, Any]:
         "summary": {
             "asset_count": len(assets),
             "pages_with_visual_signals": pages_with_signals,
+            "extracted_figure_count": extracted_count,
             "source_providers": providers,
         },
         "warnings": [],
@@ -191,8 +226,17 @@ def _page_candidate(page: dict[str, Any]) -> dict[str, Any] | None:
     }
 
 
-def write_visual_assets_manifest(job: Any, sources: Any) -> None:
+def write_visual_assets_manifest(
+    job: Any,
+    sources: Any,
+    extracted_assets: Any = None,
+) -> None:
     """Persist the manifest from sanitized extraction-metadata ``sources``.
+
+    ``extracted_assets`` (Slice 40, optional) are real cropped-figure records from
+    :mod:`pipeline.visual_asset_extractor`; they are re-sanitised by
+    :func:`build_visual_assets_manifest`. When ``None``/empty the persisted file is
+    byte-identical to Slice 38.
 
     Advisory-only and fully wrapped: never raises to the caller, never mutates job
     status / validation, never blocks or fails generation. Mirrors
@@ -206,7 +250,7 @@ def write_visual_assets_manifest(job: Any, sources: Any) -> None:
     with an empty ``assets`` list (we looked and found no candidates).
     """
     try:
-        manifest = build_visual_assets_manifest(sources)
+        manifest = build_visual_assets_manifest(sources, extracted_assets)
         job.save_text(
             job.visual_assets_manifest_json,
             json.dumps(manifest, indent=2) + "\n",
@@ -257,6 +301,7 @@ def _empty_manifest() -> dict[str, Any]:
         "summary": {
             "asset_count": 0,
             "pages_with_visual_signals": 0,
+            "extracted_figure_count": 0,
             "source_providers": [],
         },
         "warnings": [],
@@ -311,3 +356,77 @@ def _safe_ocr_route_action(value: Any) -> str:
 def _safe_skip_reason(value: Any) -> str:
     safe = {"manifest_unavailable", "source_unavailable"}
     return value if value in safe else "manifest_unavailable"
+
+
+# --- Extracted-figure coercion (Slice 40 — re-sanitise the fitz extractor) ----
+#
+# The local figure extractor produces asset dicts, but this manifest is the real
+# security boundary: every field below is rebuilt from a closed vocab / coerced
+# numeric / strict-shape relative ref, so even a changed or hostile extractor
+# cannot smuggle an absolute path, raw image byte, URL, or free text into the
+# persisted artifact. A record that cannot be made safe is dropped (returns None).
+
+
+def _safe_extracted_asset(asset: Any) -> dict[str, Any] | None:
+    if not isinstance(asset, dict):
+        return None
+    asset_id = _safe_asset_id(asset.get("asset_id"))
+    image_ref = _safe_image_ref(asset.get("image_ref"))
+    if asset_id is None or image_ref is None:
+        # An extracted figure without a stable id or a valid relative image is
+        # meaningless and is dropped rather than persisted in a broken state.
+        return None
+    source_page = _safe_page_number(asset.get("source_page"))
+    bbox = _safe_bbox(asset.get("bbox"))
+    signals = asset.get("signals") if isinstance(asset.get("signals"), dict) else {}
+    return {
+        "asset_id": asset_id,
+        "source_page": source_page,
+        "asset_type": ASSET_TYPE_EXTRACTED_FIGURE,
+        "bbox": bbox,
+        "caption": None,
+        "source_provider": SOURCE_PROVIDER_FITZ_LOCAL,
+        "recommended_action": RECOMMENDED_ACTION_UNKNOWN,
+        "dedupe_group": None,
+        "image_ref": image_ref,
+        "scores": {},
+        "signals": {
+            "page_width": _safe_dimension(signals.get("page_width")),
+            "page_height": _safe_dimension(signals.get("page_height")),
+            "image_index": _safe_count(signals.get("image_index")),
+            "crop_width_px": _safe_count(signals.get("crop_width_px")),
+            "crop_height_px": _safe_count(signals.get("crop_height_px")),
+        },
+        "warnings": [],
+    }
+
+
+def _safe_asset_id(value: Any) -> str | None:
+    if not isinstance(value, str):
+        return None
+    slug = _ASSET_ID_SANITIZE_RE.sub("", value)[:_MAX_ASSET_ID_LEN]
+    return slug or None
+
+
+def _safe_image_ref(value: Any) -> str | None:
+    if isinstance(value, str) and _IMAGE_REF_RE.match(value):
+        return value
+    return None
+
+
+def _safe_bbox(value: Any) -> list[float] | None:
+    if not isinstance(value, (list, tuple)) or len(value) != 4:
+        return None
+    coords: list[float] = []
+    for item in value:
+        try:
+            number = float(item)
+        except (TypeError, ValueError):
+            return None
+        if number != number or number in (float("inf"), float("-inf")):  # NaN / inf
+            return None
+        coords.append(round(max(0.0, number), 2))
+    x0, y0, x1, y1 = coords
+    if x1 <= x0 or y1 <= y0:  # must be a well-ordered, positive-area box
+        return None
+    return [x0, y0, x1, y1]

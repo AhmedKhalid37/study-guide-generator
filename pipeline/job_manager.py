@@ -140,6 +140,15 @@ class Job:
         return self.dir / "visual_assets_manifest.json"
 
     @property
+    def assets_dir(self) -> Path:
+        # Slice 40: holds locally-cropped figure images (PNG) referenced by the
+        # visual-assets manifest's `extracted_figure` records via safe RELATIVE
+        # refs ("assets/<file>"). Advisory-only, off by default (gated), and not
+        # added to exports / the generic ARTIFACTS list. Image bytes never enter
+        # job.json, validation, the guide, or any DTO this slice.
+        return self.dir / "assets"
+
+    @property
     def render_log(self) -> Path:
         return self.logs_dir / "render.log"
 

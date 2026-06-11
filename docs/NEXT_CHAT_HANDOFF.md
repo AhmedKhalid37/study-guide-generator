@@ -6,9 +6,31 @@
 > stable overview see `PROJECT_CONTEXT.md`; canonical brief is `../CLAUDE.md`.
 
 ## Current position
-- **Working tree:** **Slice 39 (Chandra local feasibility verification) — DOCS-ONLY,
-  uncommitted** on branch `slice39-chandra-local-feasibility-verification` (branched
-  from trunk after Slice 38 merged). It is the **Chandra equivalent of Slice 35's
+- **Working tree:** **Slice 40 (Local figure extraction / cropping into the visual
+  manifest) — implemented + validated, uncommitted** on branch
+  `slice40-local-figure-extraction-into-manifest` (branched from trunk after Slice 39
+  merged). The **first real extractor-output change** in the visual stack: with PyMuPDF
+  (`fitz`) it **crops embedded image regions out of the PDF** and adds real
+  **`extracted_figure`** assets (real `bbox`, safe relative `image_ref`
+  `assets/<slug>.png`, PNG under the new `Job.assets_dir`) to `visual_assets_manifest.json`.
+  **`fitz_local` only** — no Chandra/Mistral/Gemini/VLM/network/OCR. **Gated off by
+  default** (`GUIDEFORGE_LOCAL_FIGURE_EXTRACTION`) ⇒ manifest **byte-identical to Slice 38**
+  when off; assets do **not** reach the guide (manifest/PNGs only — asset-aware
+  prompt/render is a later slice). **Explosion prevention** (skip tiny/decorative,
+  collapse duplicate placements, caps 12/page · 200/job) + manifest **re-sanitises every
+  extracted field** (id slug, ordered finite bbox, strict `^assets/[A-Za-z0-9_]+\.png$`
+  ref, whitelisted numeric signals) so the manifest stays the un-poisonable security
+  boundary. New files: `pipeline/visual_asset_extractor.py`,
+  `test_scripts/test_local_figure_extraction.py`; edited `visual_assets_manifest.py`,
+  `job_manager.py`, `run_llm_job.py`. **Validated green:** compileall OK; `git diff --check`
+  clean; focused test **59/0/0 in Docker** (50/0 host, 2 fitz cases skip);
+  `test_visual_assets_manifest.py` **65/0** (backward-compat); fresh `docker compose build`
+  + `up --force-recreate`; `/api/health` `{"ok":true}`; `smoke_release.py` **29/0/0** on live
+  :8000 (flag-off ⇒ guide output unchanged); flag-on glue verified live (1 figure cropped,
+  PNG written, in-page bbox). **Next:** Slice 41 dedup + decorative filtering (V2). See
+  `docs/CURRENT_TASK.md`.
+- **Slice 39 (Chandra local feasibility verification) — DOCS-ONLY, committed `7b97146`,
+  merged + pushed to trunk.** It is the **Chandra equivalent of Slice 35's
   Mistral gate**: a docs-only feasibility verification of **Chandra (Datalab)** as a
   future **high-quality local** OCR / document-extraction / visual-asset provider
   (`chandra_local`) for the Local/Private mode. **Chandra was NOT installed, cloned,
@@ -47,8 +69,9 @@
   Files (docs only): `docs/CHANDRA_OCR_VERIFICATION.md` (new), `CURRENT_TASK.md`,
   `NEXT_CHAT_HANDOFF.md`, `DECISIONS.md`. Validation: `git diff --check` clean,
   `git diff --name-only` docs-only (no build/smoke needed — no code touched).
-- **Trunk HEAD is now Slice 38 (`8a788c7`), committed + merged + pushed** — Slices 30–38
-  are on trunk. Slice 38 (Visual assets manifest schema from existing signals) was
+- **Trunk HEAD is now Slice 39 (`7b97146`), committed + merged + pushed** — Slices 30–39
+  are on trunk (Slice 40 above is the uncommitted working tree). Slice 38 (`8a788c7`,
+  Visual assets manifest schema from existing signals) was
   validated green (`test_visual_assets_manifest` 65/65, fresh Docker rebuild +
   `--force-recreate`, `/api/health` 200, `smoke_release.py` **29/0/0** on live :8000,
   exact-name route confirmed wired, `git diff --check` clean) before the fast-forward

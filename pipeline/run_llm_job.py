@@ -18,6 +18,11 @@ from pipeline.extraction_metadata import (
     write_skipped_extraction_metadata,
 )
 from pipeline.visual_assets_manifest import write_visual_assets_manifest
+from pipeline.visual_asset_extractor import (
+    MAX_FIGURES_PER_JOB,
+    extract_local_figures,
+    local_figure_extraction_enabled,
+)
 from pipeline.llm_client import LLMConfig, LLMProviderError, MissingLLMConfigError
 from pipeline.orchestrator import generate_study_guide
 from pipeline.run_markdown_job import MarkdownJobError, run_raw_markdown_pipeline
@@ -184,6 +189,10 @@ def _attach_sources(
     files: list[dict[str, Any]] = []
     warnings: list[str] = []
     extraction_metadata_sources: list[dict[str, Any]] = []
+    # Slice 40: saved PDF path + page set per metadata source, kept in lockstep with
+    # extraction_metadata_sources so the gated local figure extractor can re-open the
+    # exact same PDFs/pages. Only used when extraction is enabled (off by default).
+    pdf_extraction_inputs: list[dict[str, Any]] = []
     pdf_metadata_unavailable = False
     total_chars = 0
 
@@ -230,6 +239,12 @@ def _attach_sources(
                         pdf_metadata_unavailable = True
                     else:
                         extraction_metadata_sources.append(source_metadata)
+                        pdf_extraction_inputs.append(
+                            {
+                                "path": saved_path,
+                                "pages": set(selected_pages) if selected_pages else None,
+                            }
+                        )
                 except Exception as exc:
                     pdf_metadata_unavailable = True
                     print(
@@ -281,7 +296,13 @@ def _attach_sources(
         # same sanitized sources. Advisory-only and wrapped; it is written exactly
         # when extraction metadata exists, and never gates or fails the job. Non-PDF
         # jobs / unavailable metadata simply omit the artifact (no call here).
-        write_visual_assets_manifest(job, extraction_metadata_sources)
+        #
+        # Slice 40: when the gated local figure extractor is enabled, additionally
+        # crop real figure regions from the same PDFs and merge them (re-sanitised)
+        # into the manifest as `extracted_figure` assets. Off by default → this
+        # branch is skipped and the manifest is byte-identical to Slice 38.
+        extracted_assets = _extract_local_figures(job, pdf_extraction_inputs)
+        write_visual_assets_manifest(job, extraction_metadata_sources, extracted_assets)
 
     if not sections:
         return source_text, {
@@ -309,6 +330,43 @@ def _expand_page_ranges(ranges: list[list[int]]) -> set[int]:
         start, end = int(pair[0]), int(pair[1])
         pages.update(range(start, end + 1))
     return pages
+
+
+def _extract_local_figures(
+    job: Job,
+    pdf_inputs: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    """Run the gated local figure extractor over the job's saved PDFs (Slice 40).
+
+    Returns an empty list (no work, no ``assets/`` dir) unless the
+    ``GUIDEFORGE_LOCAL_FIGURE_EXTRACTION`` flag is on, so the default job is
+    byte-identical to Slice 38. Advisory-only and fully wrapped: a failure here
+    never propagates — it just yields fewer/zero figures.
+    """
+    if not local_figure_extraction_enabled() or not pdf_inputs:
+        return []
+
+    extracted: list[dict[str, Any]] = []
+    for source_index, item in enumerate(pdf_inputs):
+        remaining = MAX_FIGURES_PER_JOB - len(extracted)
+        if remaining <= 0:
+            break
+        try:
+            extracted.extend(
+                extract_local_figures(
+                    item["path"],
+                    assets_dir=job.assets_dir,
+                    source_index=source_index,
+                    pages=item.get("pages"),
+                    remaining_budget=remaining,
+                )
+            )
+        except Exception as exc:  # belt-and-braces; extractor already wraps
+            print(
+                f"Local figure extraction skipped ({type(exc).__name__}); job continues.",
+                file=sys.stderr,
+            )
+    return extracted
 
 
 def _safe_filename(filename: str, *, fallback: str) -> str:
