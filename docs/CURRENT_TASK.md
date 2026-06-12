@@ -58,6 +58,63 @@
   extraction-metadata **9/9**; offline eval scored 3 guides (no regression); frontend build green;
   `npm run test` green (incl. new visual-advisory harness); `git diff --check` clean. Full Docker
   rebuild/recreate + `/api/health` + `smoke_release.py` run (UI/artifact-inspection slice).
+  **Status:** committed (`1ed94c9`) and fast-forward merged to `chrome-renderer-v1` (pushed).
+
+---
+
+## Slice 51 — Include **visual advisory JSON artifacts** in **export bundles** when present on `slice51-visual-advisory-export-bundle`.
+
+- **Purpose:** make multi-job export bundles more complete and portable by bundling the three advisory
+  visual **JSON diagnostics** — `visual_assets_manifest.json` (Slice 40), `visual_asset_scoring.json`
+  (Slice 47), `visual_replacement_plan.json` (Slice 49) — **alongside** the requested exports **only
+  when they exist** for a job. This is an export-bundle **inclusion** slice only.
+- **What it includes:** **JSON diagnostics only.** It does **not** include cropped image files or image
+  bytes; the per-job `assets/*.png` crops are never bundled. It makes **no** production include/omit
+  decision and embeds **no** visuals.
+- **Backend code path:** `api/server.py` → `export_bundle` (`POST /api/exports/bundle`). A new narrow
+  constant `VISUAL_ADVISORY_EXPORT_ARTIFACTS = ("visual_assets_manifest.json",
+  "visual_asset_scoring.json", "visual_replacement_plan.json")` drives a small ride-along loop after
+  the existing selector loop: for each name present (`_artifact_path(...).exists()`), the file is added
+  to the job's bundle folder. The advisory files are **not** user selectors and are **deliberately kept
+  out of** `EXPORT_ARTIFACTS` / `EXPORT_ARTIFACT_ALIASES` / `ARTIFACTS`, so no export-UI artifact type
+  and no generic artifact UI row is added, and `artifact_types` is unchanged.
+- **Gate / partial / absent behavior:** ride-along advisory files do **not** count toward
+  `total_included`, so they never by themselves satisfy the "at least one requested artifact" gate — a
+  bundle whose requested artifacts are all absent still returns the same `404`. If only some advisory
+  files exist, only those are bundled; if none exist, bundle behavior is exactly as before. An absent
+  advisory file is skipped calmly, never an error, and never fails the whole export.
+- **Bundle index (`manifest.json`):** each job entry gains a `visual_advisory_included` list of the
+  **filenames** bundled (presence/safe-metadata only). No raw artifact JSON content is inlined into the
+  index, logs, or terminal output.
+- **Comment hygiene:** the now-inaccurate "never in export bundles" notes in
+  `api/server.py:_artifact_path` and `pipeline/job_manager.py` (scoring/plan properties) were corrected
+  to "bundled as a ride-along JSON diagnostic when present, without adding a generic UI row." The
+  `assets_dir` (PNG) comment is unchanged — image bytes are still never exported.
+- **No-leak:** advisory files are read **read-only** and never mutated; no image bytes / data URIs /
+  base64 / paths / URLs / headers / tokens / socket paths / executable paths / model/mmproj paths / raw
+  argv / private document text / raw OCR / raw provider payloads enter logs, docs, tests, or the safe
+  bundle metadata.
+- **New test:** `test_scripts/test_visual_advisory_export_bundle.py` — drives `export_bundle` against
+  temp-dir Jobs (monkeypatched `_get_job`): all-three-present inclusion; partial set; none-present =
+  unchanged; **no `.png` / `assets/` entries**; index `visual_advisory_included` carries filenames only
+  with no raw body / leak; advisory-only job still `404`s for an absent requested artifact; export
+  leaves all three artifacts **byte-identical**; the three names stay out of `ARTIFACTS` /
+  `EXPORT_ARTIFACTS` / aliases / `_artifact_urls` / `_artifact_details` while exact-name routes still
+  resolve. Skips automatically when FastAPI is unavailable in host Python (full coverage in Docker).
+- **Confirmations:** generated guide output, prompts, rendering, extraction behavior, OCR routing, and
+  artifact schemas are **unchanged**; visual artifacts are **not mutated** by export; candidate actions
+  remain **advisory only**; **no** generic artifact UI rows / export-UI exposure added; no frontend
+  change; no API route change (existing `/api/exports/bundle` only); no `clean.md` write; no model /
+  llama-server / cloud / network call. Chandra *extraction* integration remains **blocked** by Slice 45
+  `status:not_run` (`operator_input_not_supplied`).
+- **Validation:** `compileall api pipeline test_scripts` OK; new export-bundle test (host: SKIP — no
+  FastAPI; Docker: full); planner **186/0**; plan-artifact **68/0**; scoring-core **146/0**;
+  scoring-artifact **58/0**; manifest **65/0**; figure-extraction **50/0** (+2 skipped);
+  chandra-normalizer **68/0**; chandra-local-provider **68/0**; chandra-live-harness **96/0**;
+  ocr-modes **121/121**; ocr-routing-policy **120/120**; ocr-routing-integration **56/56**;
+  extraction-metadata **9/9**; offline eval scored 3 guides (no regression); frontend build green;
+  `npm run test` green; advisory mjs green; `git diff --check` clean. Full Docker rebuild/recreate +
+  `/api/health` + `smoke_release.py` (export-behavior slice).
   **Status:** NOT committed (awaiting operator review).
 
 ---

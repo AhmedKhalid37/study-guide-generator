@@ -158,6 +158,21 @@ EXPORT_ARTIFACT_ALIASES = {
     "render_log": "render_log",
     "render.log": "render_log",
 }
+
+# Advisory visual diagnostic JSON artifacts (Slices 40 / 47 / 49). When present for
+# a job, these are bundled automatically ALONGSIDE the requested exports to make the
+# bundle more portable, but they are deliberately NOT part of EXPORT_ARTIFACTS /
+# ARTIFACTS / EXPORT_ARTIFACT_ALIASES: they are never export-UI selectors, never
+# generic artifact rows, never drive availability, and never gate the bundle (an
+# absent advisory file is skipped calmly, never an error). JSON diagnostics only —
+# cropped images / image bytes are never bundled, and these files are read read-only
+# and never mutated. They make no production include/omit decision. Reached by exact
+# fixed filename via _artifact_path, so no path traversal is introduced.
+VISUAL_ADVISORY_EXPORT_ARTIFACTS: tuple[str, ...] = (
+    "visual_assets_manifest.json",
+    "visual_asset_scoring.json",
+    "visual_replacement_plan.json",
+)
 MAX_BUNDLE_JOBS = 100
 
 # The visible "mode" control was removed from the Builder (Styles now define guide
@@ -1459,8 +1474,25 @@ def export_bundle(request: BundleRequest) -> Response:
                     total_included += 1
                 else:
                     skipped.append(selector)
+            # Advisory visual diagnostics ride along WHEN PRESENT — they are not
+            # user-selected and do not count toward total_included (so they never by
+            # themselves satisfy the "at least one requested artifact" gate). Absent
+            # advisory files are simply skipped; only safe filenames are recorded.
+            visual_advisory_included: list[str] = []
+            for artifact_name in VISUAL_ADVISORY_EXPORT_ARTIFACTS:
+                path, _media = _artifact_path(job, artifact_name)
+                if path.exists() and path.is_file():
+                    archive.write(path, f"{base_dir}/{artifact_name}")
+                    visual_advisory_included.append(artifact_name)
             manifest_jobs.append(
-                {"job_id": job.id, "title": title, "found": True, "included": included, "skipped": skipped}
+                {
+                    "job_id": job.id,
+                    "title": title,
+                    "found": True,
+                    "included": included,
+                    "skipped": skipped,
+                    "visual_advisory_included": visual_advisory_included,
+                }
             )
 
         if total_included == 0:
@@ -3760,12 +3792,16 @@ def _artifact_path(job: Job, artifact_name: str) -> tuple[Path, str]:
     if artifact_name == "visual_asset_scoring.json":
         # Slice 47: advisory scoring report DERIVED from the visual manifest.
         # Exact-name download only; deliberately NOT in ARTIFACTS, so it never
-        # appears in _artifact_urls / _artifact_details / export bundles / UI rows.
+        # appears in _artifact_urls / _artifact_details / generic UI rows. (Slice 51
+        # bundles it as a ride-along JSON diagnostic when present — see
+        # VISUAL_ADVISORY_EXPORT_ARTIFACTS — without adding any generic artifact row.)
         return job.visual_asset_scoring_json, "application/json"
     if artifact_name == "visual_replacement_plan.json":
         # Slice 49: advisory replacement plan DERIVED from the scoring report.
         # Exact-name download only; deliberately NOT in ARTIFACTS, so it never
-        # appears in _artifact_urls / _artifact_details / export bundles / UI rows.
+        # appears in _artifact_urls / _artifact_details / generic UI rows. (Slice 51
+        # bundles it as a ride-along JSON diagnostic when present — see
+        # VISUAL_ADVISORY_EXPORT_ARTIFACTS — without adding any generic artifact row.)
         return job.visual_replacement_plan_json, "application/json"
 
     artifact = ARTIFACTS.get(artifact_name)

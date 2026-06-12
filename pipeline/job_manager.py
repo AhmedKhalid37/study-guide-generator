@@ -146,7 +146,8 @@ class Job:
         # visual_assets_manifest.json. Like the other advisory siblings it never
         # changes job status, never mutates the source manifest, is kept SEPARATE
         # from validation.json, and is reached only by its exact filename (not
-        # added to the generic ARTIFACTS list / exports / UI rows).
+        # added to the generic ARTIFACTS list / generic UI rows). Slice 51 bundles
+        # it as a ride-along JSON diagnostic when present, without adding a UI row.
         return self.dir / "visual_asset_scoring.json"
 
     @property
@@ -158,7 +159,8 @@ class Job:
         # never changes job status, never mutates the source scoring report or
         # manifest, makes no production include/omit decision, is kept SEPARATE from
         # validation.json, and is reached only by its exact filename (not added to
-        # the generic ARTIFACTS list / exports / UI rows).
+        # the generic ARTIFACTS list / generic UI rows). Slice 51 bundles it as a
+        # ride-along JSON diagnostic when present, without adding a UI row.
         return self.dir / "visual_replacement_plan.json"
 
     @property

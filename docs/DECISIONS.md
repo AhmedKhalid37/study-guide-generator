@@ -2347,3 +2347,37 @@ schema, extraction, `ocr_routing`, prompt, render, guide-output, or export chang
 Because it changes frontend UI / artifact-inspection behavior, full validation (Docker
 rebuild/recreate + `/api/health` + `smoke_release.py`) was run in addition to the
 frontend build/test and backend pure-test battery.
+
+## Visual advisory JSON artifacts ride along in export bundles, but never become a generic artifact type (Slice 51)
+The three advisory visual **JSON diagnostics** — `visual_assets_manifest.json` (Slice
+40), `visual_asset_scoring.json` (Slice 47), `visual_replacement_plan.json` (Slice 49)
+— are now included in multi-job export bundles (`POST /api/exports/bundle`) **alongside**
+the user-requested exports, **only when they exist** for a job. **Why:** exported bundles
+are the portable copy of a job; omitting these sibling diagnostics made the bundle a
+less complete record of what the pipeline observed. **How, and the boundary that must
+hold:** a dedicated narrow constant `VISUAL_ADVISORY_EXPORT_ARTIFACTS` drives a small
+ride-along loop after the existing selector loop in `export_bundle`. The three names are
+**deliberately NOT** added to `EXPORT_ARTIFACTS`, `EXPORT_ARTIFACT_ALIASES`, or
+`ARTIFACTS` — so they are **never** export-UI artifact *types/selectors*, **never**
+generic artifact UI rows, **never** part of `_artifact_urls` / `_artifact_details`, and
+`artifact_types` is unchanged. They remain reachable for direct download only by their
+exact filename (the existing exact-name route). Ride-along files do **not** count toward
+`total_included`, so they can **never** by themselves satisfy the bundle's "at least one
+requested artifact" gate — an all-absent requested bundle still returns the same 404, and
+an absent advisory file is skipped calmly (never an error, never fails the export). The
+bundle index (`manifest.json`) records only a `visual_advisory_included` list of bundled
+**filenames** (presence/safe-metadata only) — **no** raw artifact JSON content is inlined
+into the index, logs, or terminal output. **JSON diagnostics only:** cropped image files
+(`jobs/<id>/assets/*.png`) and image bytes are **never** bundled by this slice; the
+artifacts are read **read-only** and **never mutated**. This slice makes **no** production
+include/omit decision, embeds **no** visuals, and changes nothing about guide output,
+prompts, rendering, extraction, OCR routing, or artifact schemas. Chandra *extraction*
+integration remains **blocked** by the Slice 45 gate (`status:not_run`,
+`operator_input_not_supplied`). **Scope:** edited `api/server.py` (constant + ride-along
+loop + index `visual_advisory_included` field + corrected `_artifact_path` comments) and
+`pipeline/job_manager.py` (corrected the now-inaccurate "never in export bundles" comments
+on the scoring/plan properties; the `assets_dir` PNG comment is unchanged — image bytes
+are still never exported); new `test_scripts/test_visual_advisory_export_bundle.py` + this
+entry + `CURRENT_TASK.md` / `NEXT_CHAT_HANDOFF.md`. Because it changes export behavior,
+full validation (Docker rebuild/recreate + `/api/health` + `smoke_release.py`) was run in
+addition to the backend pure-test battery and frontend build/test.

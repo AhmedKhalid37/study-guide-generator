@@ -6,45 +6,57 @@
 > stable overview see `PROJECT_CONTEXT.md`; canonical brief is `../CLAUDE.md`.
 
 ## Current position
-- **Working tree:** **Slice 50 (Job Details "Visual advisory" diagnostics panel) — uncommitted,
-  FRONTEND read-only UI (+ pure helper + node harness), NO backend change** on branch
-  `slice50-jobdetails-visual-advisory-panel` (branched from trunk after Slice 49 merged at `9338eb9`).
-  Adds a read-only Job Details drawer tab that surfaces the advisory visual artifact chain —
-  `visual_assets_manifest.json` → `visual_asset_scoring.json` → `visual_replacement_plan.json` — using
-  **exact-name artifact fetches only**, showing **safe COUNTS + closed-vocab status only**.
-  - **What it does:** new drawer tab `Visual Advisory` in `RecentJobsPanel.jsx` renders
-    `VisualAdvisoryPanel.jsx`, which independently fetches the three exact-name artifacts via the
-    existing `getJobArtifact` client helper. **404 ⇒ calm "Not available"** (not an error); one
-    missing/malformed artifact never blocks the others. Compact tiles only: manifest
-    candidates/pages-with-signals/extracted-figures; scoring scored + high/medium/low/unknown priority
-    counts; plan item count + candidate-action counts. `chandra_blocked` presence ⇒ an
-    **advisory/blocked** notice with no raw detail. Exact-name "Open … JSON" links via
-    `artifactUrl(jobId, name)` (the only permitted URL); no raw JSON shown inline.
-  - **Pure helper:** `frontend/src/visualAdvisoryArtifacts.js` — `isArtifactMissing`, `safeToken`
-    (strict `^[a-z0-9_]+$`, ≤48 chars else `unavailable`), and three `summarize*` functions returning
-    **count-only** view models. Never mutates input, never throws, never passes through
-    captions/OCR/source text/provider payloads/image refs/bytes/data URIs/base64/paths/URLs/tokens —
-    even closed-vocab reasons go through `safeToken`.
-  - **No backend change / no generic exposure:** reuses existing exact-name artifact routes; the three
-    artifacts stay **out of** `ARTIFACTS` / `EXPORT_ARTIFACTS` / `_artifact_urls` / `_artifact_details`
-    / export bundles / existing artifact UI rows — reached only by exact filename through this panel.
-  - **Confirmations:** guide output, prompts, rendering, extraction, OCR routing, and artifact schemas
-    unchanged; visual artifacts **not mutated** (read-only fetch); candidate actions remain **advisory
-    only**; no model/`llama-server`/cloud/network call beyond normal app API artifact fetches; no
-    image-file read, no image bytes, no `clean.md` write. Chandra *extraction* integration remains
-    **blocked** by Slice 45 `status:not_run`.
-  - **Files:** new `frontend/src/visualAdvisoryArtifacts.js`,
-    `frontend/src/components/VisualAdvisoryPanel.jsx`,
-    `frontend/scripts/verify-job-details-visual-advisory.mjs`; edited
-    `frontend/src/components/RecentJobsPanel.jsx` (tab + wiring + `Images` icon import),
-    `frontend/src/design-system.css` (`.sg-artifact-link`), `frontend/package.json` (test scripts);
-    + `CURRENT_TASK.md` / `NEXT_CHAT_HANDOFF.md` / `DECISIONS.md`.
-  - **Validation:** `compileall api pipeline test_scripts` OK; backend visual/ocr/extraction/chandra
-    suites all green (planner 186/0, plan-artifact 68/0, scoring 146/0 + 58/0, manifest 65/0, figure
-    50/0+2skip, ocr 121/120/56, extraction-metadata 9/9); offline eval 3 guides (no regression);
-    frontend build green; `npm run test` green incl. new visual-advisory harness; `git diff --check`
-    clean. Full Docker rebuild/recreate + `/api/health` + `smoke_release.py` run (UI/artifact-inspection
-    slice). **Status:** NOT committed (awaiting operator review).
+- **Working tree:** **Slice 51 (include visual advisory JSON artifacts in export bundles) — uncommitted,
+  BACKEND export-bundle inclusion (+ focused test), NO frontend change** on branch
+  `slice51-visual-advisory-export-bundle` (branched from trunk after Slice 50 merged at `1ed94c9`).
+  Bundles the three advisory visual **JSON diagnostics** — `visual_assets_manifest.json`,
+  `visual_asset_scoring.json`, `visual_replacement_plan.json` — **alongside** the requested exports
+  **only when they exist** for a job. Inclusion-only slice: **JSON diagnostics only**, no cropped
+  images / image bytes, no production include/omit decision, no visual embedding.
+  - **What it does:** `api/server.py` → `export_bundle` (`POST /api/exports/bundle`) gains a narrow
+    constant `VISUAL_ADVISORY_EXPORT_ARTIFACTS = (manifest, scoring, plan)` and a ride-along loop after
+    the existing selector loop: each present advisory file (`_artifact_path(...).exists()`) is written
+    into the job's bundle folder. The three names are **deliberately NOT** in `EXPORT_ARTIFACTS` /
+    `EXPORT_ARTIFACT_ALIASES` / `ARTIFACTS`, so **no** export-UI artifact type and **no** generic
+    artifact UI row is added and `artifact_types` is unchanged.
+  - **Gate / partial / absent:** advisory ride-alongs do **not** count toward `total_included`, so they
+    never satisfy the "≥1 requested artifact" gate — an all-absent requested bundle still `404`s.
+    Partial set ⇒ only existing files bundled; none ⇒ behavior exactly as before; absent file skipped
+    calmly (never an error, never fails the export).
+  - **Bundle index:** each `manifest.json` job entry gains `visual_advisory_included` — a list of the
+    bundled **filenames** (presence/safe-metadata only). No raw artifact JSON is inlined into the index,
+    logs, or terminal output.
+  - **Comment fix:** stale "never in export bundles" notes in `api/server.py:_artifact_path` and
+    `pipeline/job_manager.py` (scoring/plan props) corrected to "ride-along JSON diagnostic when present,
+    no generic UI row"; the `assets_dir` PNG comment is unchanged (image bytes still never exported).
+  - **Confirmations:** generated guide output, prompts, rendering, extraction, OCR routing, and artifact
+    schemas **unchanged**; visual artifacts **not mutated** by export (byte-identical); candidate actions
+    remain **advisory only**; no generic artifact UI rows / export-UI exposure; no frontend change; no
+    API route change; no `clean.md` write; no model/`llama-server`/cloud/network call; no cropped image /
+    image bytes bundled. Chandra *extraction* integration remains **blocked** by Slice 45
+    `status:not_run`.
+  - **Files:** edited `api/server.py` (constant + ride-along loop + index field + comments),
+    `pipeline/job_manager.py` (comment fix only); new
+    `test_scripts/test_visual_advisory_export_bundle.py`; + `CURRENT_TASK.md` / `NEXT_CHAT_HANDOFF.md`
+    / `DECISIONS.md`.
+  - **Validation:** `compileall api pipeline test_scripts` OK; new export-bundle test (host SKIP — no
+    FastAPI; Docker full coverage); backend visual/ocr/extraction/chandra suites all green (planner
+    186/0, plan-artifact 68/0, scoring 146/0 + 58/0, manifest 65/0, figure 50/0+2skip, chandra
+    68/68/96, ocr 121/120/56, extraction-metadata 9/9); offline eval 3 guides (no regression); frontend
+    build green; `npm run test` green; advisory mjs green; `git diff --check` clean. Full Docker
+    rebuild/recreate + `/api/health` + `smoke_release.py` (export-behavior slice). **Status:** NOT
+    committed (awaiting operator review).
+
+- **Prior slice — Slice 50 (Job Details "Visual advisory" diagnostics panel) — committed `1ed94c9`,
+  fast-forward merged + pushed to trunk `chrome-renderer-v1`, FRONTEND read-only UI (+ pure helper +
+  node harness), NO backend change** (was on branch `slice50-jobdetails-visual-advisory-panel`,
+  branched from trunk after Slice 49 merged at `9338eb9`). Read-only Job Details `Visual Advisory`
+  drawer tab surfacing the advisory visual artifact chain via **exact-name artifact fetches only**,
+  showing **safe COUNTS + closed-vocab status only**; **404 ⇒ calm "Not available"**; no raw JSON
+  inline. The three artifacts stayed **out of** `ARTIFACTS` / `EXPORT_ARTIFACTS` / `_artifact_urls` /
+  `_artifact_details` / existing artifact UI rows. Guide output, prompts, rendering, extraction, OCR
+  routing, and artifact schemas unchanged; visual artifacts not mutated; candidate actions advisory
+  only; Chandra *extraction* still **blocked** by Slice 45 `status:not_run`.
 
 - **Prior slice — Slice 49 (persist `visual_replacement_plan.json` as an advisory exact-name artifact)
   — committed `9338eb9`, fast-forward merged + pushed to trunk `chrome-renderer-v1`, CODE
