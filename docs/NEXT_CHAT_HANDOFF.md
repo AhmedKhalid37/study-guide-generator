@@ -6,10 +6,43 @@
 > stable overview see `PROJECT_CONTEXT.md`; canonical brief is `../CLAUDE.md`.
 
 ## Current position
-- **Working tree:** **Slice 43 (Chandra local provider/client skeleton) — uncommitted,
-  DISABLED / UNWIRED** on branch `slice43-chandra-local-provider-skeleton` (branched from trunk
-  after Slice 42 merged). A small skeleton that names the third Chandra boundary and makes it
-  testable **without running any model**: page image bytes → **OpenAI-compatible `llama-server`
+- **Working tree:** **Slice 44 (Chandra local provider live validation harness) — uncommitted,
+  MANUAL / OPT-IN ONLY** on branch `slice44-chandra-local-provider-live-harness` (branched from
+  trunk after Slice 43 merged at `2bc14ef`). A manual harness so an operator can prove — *outside
+  production app flow* — that a local Chandra-capable `llama-server` **they started themselves**
+  can return output that flows through the Slice 43 boundary
+  (`parse_chandra_chat_response` → `normalize_chandra_chat_response` → Slice 42 normalizer →
+  **safe closed-vocabulary summary only**). A real HTTP request happens **only** when the operator
+  runs the CLI with their own `--endpoint` and `--image`; importing the module triggers no
+  network/file/model/subprocess/Docker/server access; automated tests inject a fake transport.
+  - **Script:** new `test_scripts/validate_chandra_local_provider_live.py` — stdlib `urllib`
+    transport (operator-only), `run_validation(endpoint, image_path, *, transport=None,
+    timeout_seconds=60.0, prompt=None)`, `redact_endpoint_for_display(...)` →
+    `http://<host>:<port>/...` or `local_endpoint_supplied`, `safe_summary_from_normalized(...)`,
+    `http_transport(...)` (no auth header), `print_safe_summary(...)` (whitelisted keys).
+  - **Safe summary only:** `reachable` / `request_ok` / `image_supplied` / `endpoint_display` /
+    `parse_status` / `normalized_kind` / `normalized_status` / `source_text_char_count` /
+    `asset_count` / `parse_warnings` / `normalize_warnings` / `failure_category` / `elapsed_ms`
+    (verbose). Never echoes raw OCR text, raw provider payload, image path/bytes, base64/data URI,
+    full URL/query/headers, `Authorization`/`Bearer`, argv, or model/mmproj/exec/socket paths.
+  - **No production change:** no `pipeline/extract.py`/OCR-routing/`ocr_routing`/
+    `extraction_metadata.json`/`visual_assets_manifest.json` change; no `clean.md`; no API route;
+    no frontend/Provider Settings/LMM change; no render/export/artifact change; no `llama-server`
+    management; no subprocess/Docker; no model/mmproj/quant file or raw OCR dump committed.
+  - **Tests:** new `test_scripts/test_chandra_live_harness.py` — **96/0**, fake transport only, no
+    live server (success parse+normalize; counts/tokens-only summary; no raw OCR; malformed /
+    `response_malformed` / `connection_failed` / `request_failed` categories without traceback;
+    endpoint/query/token/userinfo/path redaction; image path & base64 never leaked; raw malicious
+    payload never leaked; request built via the Slice 43 builder; `provider_empty_content` /
+    `image_read_failed`; real transport never invoked; no forbidden imports). Full battery green
+    (compileall; chandra/normalizer/manifest/figure/ocr/pdf/math/lint/eval/ask suites; frontend
+    build+test; `git diff --check` clean). `smoke_release.py` not required (manual-harness-only).
+  - **Status:** NOT committed (awaiting operator review). **Next:** only after this harness proves
+    stable on real hardware, decide whether to add a still-**disabled** extraction-side adapter.
+
+- **Prior slice — Slice 43 (Chandra local provider/client skeleton) — committed `2bc14ef`, merged
+  to trunk, DISABLED / UNWIRED.** A small skeleton that names the third Chandra boundary and makes
+  it testable **without running any model**: page image bytes → **OpenAI-compatible `llama-server`
   request shape** → (a future integration runs the model) → raw output string → **Slice 42
   normalizer** → safe output. **Foundation only**, NOT a provider integration — nothing in a
   production path constructs or calls it.

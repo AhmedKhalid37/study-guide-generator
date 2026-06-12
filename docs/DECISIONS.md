@@ -2051,3 +2051,39 @@ export change, no manifest or `extraction_metadata.json` schema change.** Valida
 (`test_chandra_local_provider` 68/0, `test_chandra_normalizer` 68/0, OCR + manifest battery, eval
 offline no-regression, frontend build/test, `git diff --check` clean); `smoke_release.py` not
 required since no production-wired behavior is touched.
+
+## Chandra live validation is a manual, opt-in harness — not a release-smoke step
+The Chandra local provider's first contact with a *real* model (Slice 44) is a
+standalone `test_scripts/validate_chandra_local_provider_live.py`, run by hand
+with an operator-supplied `--endpoint` and `--image`; it is deliberately **not**
+added to `smoke_release.py`. **Why:** (1) **Real-server proof must be opt-in, not
+ambient.** A live `llama-server` page-image round-trip depends on hardware, VRAM,
+model files, and a process the operator started — none of which exist in CI or a
+fresh checkout. Wiring it into smoke would make release validation flaky and
+machine-dependent for no production benefit, since nothing in the app calls the
+provider yet. Importing the harness therefore triggers no network/file/model/
+subprocess/Docker/server access, and every automated test injects a fake
+transport — the real `urllib` transport runs **only** when the operator invokes
+the CLI. (2) **The harness reports safe summaries, never raw output.** It returns
+and prints a closed-vocabulary summary (booleans, counts, fixed status/category
+tokens, a redacted `scheme://host:<port>/...` endpoint label); the OCR source
+text is surfaced **only as a character count**, never echoed. It never emits the
+raw provider payload, image path/bytes, a base64/data URI, a full URL/query/
+headers, `Authorization`/`Bearer` fragments, raw argv, or model/mmproj/exec/
+socket paths. Endpoint redaction uses `urlsplit().hostname` so a token in
+userinfo/path/query cannot survive, and the printer whitelists keys so no stray
+field can leak. All model-*content* scrubbing stays delegated to the Slice 42
+normalizer — the harness adds only failure-category mapping and the count-only
+projection. (3) **No production surface is touched.** It supports **no** auth
+header, starts/stops **no** `llama-server`, uses **no** subprocess/shell/Docker,
+and changes nothing in `pipeline/extract.py`, OCR routing, `extraction_metadata.json`,
+the `visual_assets_manifest.json` schema, `clean.md`, prompts, renderers, exports,
+the API, the frontend, Provider Settings, or the Local Model Manager. **Scope:**
+new `test_scripts/validate_chandra_local_provider_live.py` +
+`test_scripts/test_chandra_live_harness.py` (96/0, fake transport only) + docs.
+Validated green across the chandra/normalizer/manifest/figure/OCR/pdf/math/lint/
+eval/ask battery, frontend build+test, and `git diff --check`; `smoke_release.py`
+not required since no production-wired behavior is touched. **Deferred:** only
+after this harness proves stable on real hardware does a later slice decide
+whether to add a still-**disabled**, off-by-default extraction-side adapter (with
+Tesseract/`fitz` fallback and degrade-not-fail) — no extraction wiring before then.

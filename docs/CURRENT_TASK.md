@@ -5,7 +5,78 @@
 
 ---
 
-## Slice 43 — Chandra local provider/client skeleton (uncommitted on `slice43-chandra-local-provider-skeleton`; DISABLED / UNWIRED).
+## Slice 44 — Chandra local provider **live validation harness** (manual / opt-in only) on `slice44-chandra-local-provider-live-harness`.
+
+- **Purpose:** add a **manual, opt-in** live validation harness so an operator can prove —
+  *outside production app flow* — that a local Chandra-capable `llama-server` **they started
+  themselves** can accept one page image and return output that flows cleanly through the
+  Slice 43 boundary: operator's local server response →
+  `parse_chandra_chat_response(...)` → `normalize_chandra_chat_response(...)` →
+  Slice 42 normalizer output → **safe closed-vocabulary summary only**. Harness slice only.
+- **Manual / opt-in:** a real HTTP request happens **only** when the operator runs the CLI with
+  their own `--endpoint` and `--image`. **Not** part of release smoke. Importing the module
+  triggers **no** network / file read / model call / subprocess / Docker / server check.
+- **What it does NOT do (unchanged production behavior):** does **not** wire Chandra into
+  `pipeline/extract.py`, OCR routing, `ocr_routing`, `extraction_metadata.json`, or the
+  `visual_assets_manifest.json` schema; writes no `clean.md`; adds **no** API route, frontend/UI,
+  Provider Settings, or Local Model Manager change; touches no renderers/exports/artifacts or
+  study-guide prompt assembly; starts/stops/manages **no** `llama-server`; uses **no** subprocess,
+  shell, or Docker call; downloads **no** model; commits **no** model/mmproj/quant file, raw OCR
+  dump, screenshot, or image fixture (tests use tiny synthetic bytes in a temp file).
+- **Script:** new **`test_scripts/validate_chandra_local_provider_live.py`** — stdlib transport
+  (`urllib`) used **only** when the operator runs it; tests inject a fake transport. Shape:
+  - `run_validation(endpoint, image_path, *, transport=None, timeout_seconds=60.0, prompt=None) -> dict`
+    — **total/leak-safe**: builds the request via the Slice 43
+    `build_chandra_image_message_payload(...)`, sends it (injected/real transport), parses +
+    normalizes, and returns a closed-vocabulary summary. Every failure path resolves to a closed
+    `failure_category`; nothing raises to the caller.
+  - `redact_endpoint_for_display(endpoint) -> str` — keeps only scheme+host, masks the port
+    (`<port>`), drops path/query and any `user:token@` userinfo; non-http(s)/unparseable →
+    `"local_endpoint_supplied"`.
+  - `safe_summary_from_normalized(normalized, parse_warnings=None) -> dict` — projects the Slice 42
+    output to counts + filtered closed-vocab warnings (source text reported only as a **char
+    count**, never echoed).
+  - `http_transport(url, payload, timeout) -> response` — stdlib `urllib` POST, **no auth header**;
+    maps connection/HTTP/decoding errors to `connection_failed` / `request_failed` /
+    `response_malformed` carrying **only** the category.
+  - `print_safe_summary(summary, *, verbose=False)` — prints a **whitelisted** key set as JSON.
+- **Safe summary fields (closed vocabulary):** `reachable`, `request_ok`, `image_supplied`,
+  `endpoint_display` (redacted), `parse_status` (`none`/`ok`/`empty`/`malformed`), `normalized_kind`,
+  `normalized_status`, `source_text_char_count`, `asset_count`, `parse_warnings`,
+  `normalize_warnings`, `failure_category` (`connection_failed` / `request_failed` /
+  `response_malformed` / `provider_empty_content` / `normalization_failed` / `image_read_failed` /
+  `invalid_endpoint`), and `elapsed_ms` (verbose only). **Never** prints/returns raw OCR text, the
+  raw provider payload, the image path, image bytes, a base64/data URI, a full URL, query strings,
+  headers, `Authorization`/`Bearer` fragments, raw argv, or model/mmproj/executable/socket paths.
+- **Tests:** new **`test_scripts/test_chandra_live_harness.py`** — **96/0**, fake transport only,
+  no live server: success parse+normalize; safe-summary counts/tokens only + no raw OCR text;
+  malformed-shape and `response_malformed`/`connection_failed`/`request_failed` categories
+  (no traceback/secret echo); endpoint redaction of query/token/userinfo/Bearer/path-token →
+  `http://<host>:<port>/...`; image path/basename not echoed; base64 data URI in the *request* but
+  never in the summary/print; raw malicious payload (URL/path/auth/key/socket/argv/gguf/`<script>`)
+  never leaked; request built via the Slice 43 payload builder; `provider_empty_content` and
+  `image_read_failed` categories; real `http_transport` never invoked; no forbidden imports.
+- **Validation (all green):** `npm --prefix frontend run build` + `run test`;
+  `python -m compileall api pipeline test_scripts`; `test_chandra_local_provider` 68/0;
+  `test_chandra_live_harness` 96/0; `test_chandra_normalizer` 68/0; `test_visual_assets_manifest`
+  65/0; `test_local_figure_extraction` 50/0/2; `test_ocr_provider` 18/18; `test_ocr_routing_policy`
+  120/120; `test_ocr_routing_integration` 56/56; `test_ocr_modes` 121/121; `test_extraction_metadata`
+  9/9; `test_pdf_visual_signals` 44/44; `test_pdf_page_classification` 56/56; `test_math_verifier`
+  74/74; `test_guide_lint` 74/74; `test_eval_harness` 64/64; `test_page_anchor_reachability` 21/21;
+  `test_source_page_citations` 19/19; `test_ask_retrieval_relevance` 12/0; `test_ask_lexical_hygiene`
+  34/0; `test_guide_lint_artifact` 26/26; `eval/run_eval.py --offline --all` (3 guides, no
+  regression); `git diff --check` clean. `smoke_release.py` **not** required — no
+  server/extraction/render/artifact/UI behavior is touched (manual-harness-only).
+- **Files:** new `test_scripts/validate_chandra_local_provider_live.py`, new
+  `test_scripts/test_chandra_live_harness.py`, docs (`CURRENT_TASK.md`, `NEXT_CHAT_HANDOFF.md`,
+  `DECISIONS.md`). **Status: NOT committed** (awaiting operator review).
+- **Next (deferred, separate slice):** only after this harness proves stable on real hardware,
+  decide whether to add a **disabled** extraction-side adapter (still off-by-default, with
+  Tesseract/`fitz` fallback and degrade-not-fail) — no extraction wiring before then.
+
+---
+
+## Slice 43 — Chandra local provider/client skeleton (committed `2bc14ef`, merged to trunk; DISABLED / UNWIRED).
 
 - **Purpose:** add a small, **disabled/unwired** Chandra local provider/client skeleton
   that names the third boundary in the Chandra chain and makes it testable —
