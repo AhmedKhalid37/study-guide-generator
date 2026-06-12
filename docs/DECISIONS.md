@@ -2572,3 +2572,44 @@ image, prompt/OCR-routing/extraction/broad-render rewrite, model/network call, o
 this touches backend request/UI/render-output behavior behind gates, full validation (Docker
 rebuild/recreate + `/api/health` + `smoke_release.py` + a flag-on focused check) was run.
 **Chandra extraction integration remains blocked by Slice 45 `status:not_run`.**
+
+## Export bundles include only the single *referenced* visual-pilot PNG (Slice 56)
+When a guide's `clean.md` contains the Slice 54 pilot's safe markdown image
+reference `![caption](assets/<slug>.png)`, the export bundle includes **that one
+referenced job-local PNG** (ZIP entry `<base_dir>/assets/<slug>.png`) so exported
+Markdown/HTML stays portable. **Why include it at all:** a relative `assets/…`
+image ref is dangling once the markdown leaves the app; shipping the one file it
+points at is the minimal fix that makes the bundle self-contained. **Why only the
+referenced one, by detection rather than by globbing `assets/`:** the `assets/`
+directory can hold many cropped figures the guide never used; bundling the whole
+directory would export unrelated image bytes and break the pilot's deliberate
+one-figure boundary. Detection reuses the exact Slice 54 safety gate
+(`validate_visual_asset_ref` → fixed `assets/<slug>.png` shape, then
+`_asset_file_ok` realpath containment) so absolute paths, `..`, backslashes, URLs,
+`data:`/base64, non-PNG, nested subdirs, and symlink escapes are all rejected, and
+**at most one** PNG is ever added (the pilot inserts at most one).
+
+**Boundary choices:** (1) the ride-along does **not** count toward
+`files_included`/`total_included` — exactly like the Slice 51 advisory JSON
+ride-alongs — so a job whose only "content" is the pilot PNG and which has **none**
+of the requested artifacts still 404s (the PNG can never by itself satisfy the
+"at least one requested artifact" gate). (2) The bundle index records only the
+**safe relative ref** (`visual_pilot_asset: "assets/<slug>.png"` or `null`) — never
+an absolute/local filesystem path and never image bytes. (3) Detection keys on the
+**clean Markdown reference**, not on the presence of a file on disk, so unreferenced
+or extra cropped images are never bundled. (4) Any problem (missing/unsafe file,
+read error) is caught and the bundle still succeeds — degrade-never-fail, matching
+the rest of the pilot.
+
+**Scope:** `api/server.py` `export_bundle` only (plus two read-only helpers
+`extract_visual_pilot_asset_refs` / `find_exportable_visual_pilot_asset` and a
+`_read_text` reader in `pipeline/visual_markdown_insertion.py`) and a focused test
+`test_scripts/test_visual_pilot_export_asset.py`. **No** frontend/UI, new API route,
+generic artifact row, backend artifact-schema change, renderer/prompt/extraction/
+OCR-routing change, Chandra/Mistral/Gemini/cloud, model/llama-server/network call,
+image processing, image fixtures, or `clean.md` write. Existing Slice 51 advisory
+JSON ride-alongs, Slice 53 Anki `.apkg`, and CSV/TSV quiz exports are unchanged, and
+the default-off Slice 54/55 pilot gate is untouched. Because this changes
+export-bundle/image-packaging behavior, full validation (Docker rebuild/recreate +
+`/api/health` + `smoke_release.py` + the bundle-section focused test) was run.
+**Chandra extraction integration remains blocked by Slice 45 `status:not_run`.**

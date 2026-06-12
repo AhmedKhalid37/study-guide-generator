@@ -5,6 +5,60 @@
 
 ---
 
+## Slice 56 — **Export the referenced visual-pilot PNG** with bundles, on `slice56-visual-pilot-export-asset`.
+
+- **Purpose:** make exported Markdown/HTML **portable**. When a guide's `clean.md` contains the Slice 54
+  pilot's safe image reference `![caption](assets/<slug>.png)`, the export bundle now includes **that single
+  referenced job-local PNG** so the markdown image resolves outside the app too. Nothing else about export
+  changes.
+- **Scope:** **backend export-bundle logic only** (`api/server.py` `export_bundle`) plus two small read-only
+  detection helpers in `pipeline/visual_markdown_insertion.py` and a focused test. **No frontend/UI, no new
+  API route, no new generic artifact row, no schema change, no renderer/prompt/extraction/OCR-routing
+  change, no Chandra, no model/llama-server/network call, no image processing, no `clean.md` write.**
+- **Detection (read-only):**
+  - `extract_visual_pilot_asset_refs(markdown_text)` — pure/string-only. Scans for `![...](assets/<slug>.png)`
+    and keeps only refs that pass the existing Slice 54 `validate_visual_asset_ref` (fixed
+    `assets/<slug>.png` shape; rejects absolute, `..`, backslash, URL, `data:`/base64, non-PNG, nested
+    subdir, `-`/non-`[A-Za-z0-9_]` slugs). Order-preserving + de-duped; never raises.
+  - `find_exportable_visual_pilot_asset(job)` — reads the job's `clean.md` read-only (new `_read_text`
+    helper; never opens image bytes), returns the **first** referenced ref **only if** the file really
+    exists **inside** the job dir (existing `_asset_file_ok` realpath containment ⇒ symlink escapes
+    rejected). Returns **at most one** ref (pilot's one-figure rule); `None` on no clean.md / no safe ref /
+    missing / unsafe file. Never raises.
+- **Bundle wiring:** in `export_bundle`, after the Slice 51 advisory ride-alongs, the detected PNG is added
+  as ZIP entry `<base_dir>/assets/<slug>.png` (preserves the existing per-job relative layout, so the
+  bundled `clean.md`/`final.html` resolve it). Defence-in-depth re-check (`is_relative_to` + `is_file`)
+  before writing. Any problem is caught and **skipped calmly** — export still succeeds.
+- **Boundary decisions:**
+  - **Not** counted toward `files_included` / `total_included` — like the advisory ride-alongs it can
+    **never by itself** satisfy the "at least one requested artifact" gate (a pilot-PNG-only job with no
+    requested artifact still 404s).
+  - Includes **only** the one *referenced* PNG — **never** the whole `assets/` dir, **never** unreferenced
+    or extra cropped images.
+  - The bundle index records only the **safe relative ref** (`visual_pilot_asset: "assets/<slug>.png"` or
+    `null`) — no absolute/local filesystem path, no image bytes.
+- **Safety/no-leak:** no image bytes, absolute paths, `..`, backslashes, URLs, data URIs, base64, tokens,
+  headers, socket/executable/model/mmproj paths, raw argv, OCR text, or provider payloads in logs, the ZIP
+  metadata, the manifest, docs, or tests. Source PNG and `clean.md` are left **byte-identical** (no mutation).
+- **Unchanged:** guide output; prompts; PDF/HTML/DOCX rendering; extraction/OCR routing; visual advisory
+  JSON ride-alongs (Slice 51); Anki `.apkg` export (Slice 53); CSV/TSV quiz exports; the default-off visual
+  pilot gate (Slices 54/55). **Chandra extraction integration remains blocked by Slice 45 `status:not_run`.**
+- **Tests:** `test_scripts/test_visual_pilot_export_asset.py`.
+  - **Part A (pure, host-runnable):** ref extraction order/de-dup; rejects every unsafe/non-pilot ref;
+    `find_…` returns the first referenced+present ref, and `None` for missing-file / no-clean.md /
+    unreferenced / **symlink-escape**. **9/0** on host.
+  - **Part B (bundle, runs in Docker / when FastAPI importable):** referenced PNG rides along exactly once
+    under `<base_dir>/assets/`; unreferenced extra PNG **not** bundled; entry is relative+safe; carries real
+    bytes but the manifest does **not** echo image bytes/paths; records safe relative ref; `files_included`
+    counts requested artifacts only; missing referenced file skipped calmly (export still succeeds, ref
+    `null`); no-safe-ref job bundles no PNG; unsafe refs all rejected; pilot-PNG-only job still 404s; source
+    PNG + `clean.md` byte-identical after export.
+- **Status:** **NOT committed** (per instruction). Host validation green (Part A + full backend battery +
+  eval + frontend build/test/verify); Docker rebuild + `/api/health` + `smoke_release.py` + Part B bundle
+  section run before any commit.
+
+---
+
 ## Slice 55 — **Per-job opt-in** for the visual markdown image pilot, on `slice55-visual-pilot-job-opt-in`.
 
 - **Purpose:** make the proven Slice 54 pilot **user-controllable per job** while keeping it **default-off

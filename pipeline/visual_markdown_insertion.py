@@ -79,6 +79,12 @@ ACTION_INCLUDE_AS_FIGURE = "candidate_include_as_figure"
 # data-URI path can ever reach a renderer through this pilot.
 _IMAGE_REF_RE = re.compile(r"^assets/[A-Za-z0-9_]+\.png$")
 
+# Slice 56: coarse pre-filter for the pilot's own rendered Markdown image —
+# ``![any caption](assets/<slug>.png)``. Only the captured ref is kept, and it is
+# then re-validated by :func:`validate_visual_asset_ref` (the real gate), so this
+# regex never decides safety on its own; it just locates candidate refs in text.
+_MARKDOWN_IMAGE_PILOT_REF_RE = re.compile(r"!\[[^\]]*\]\((assets/[A-Za-z0-9_]+\.png)\)")
+
 # Caption is plain text only: a tiny safe charset, collapsed whitespace, bounded
 # length. Everything else is stripped, so a caption can never carry markup, a path,
 # a URL, or private text into the guide.
@@ -373,6 +379,52 @@ def _asset_file_ok(job: Any, asset_ref: str) -> bool:
     return os.path.isfile(target)
 
 
+# --- Slice 56: export ride-along detection -----------------------------------
+
+
+def extract_visual_pilot_asset_refs(markdown_text: Any) -> list[str]:
+    """All distinct safe pilot asset refs referenced as Markdown images in *text*.
+
+    Pure / string-only. Scans for ``![...](assets/<slug>.png)`` and keeps only refs
+    that pass :func:`validate_visual_asset_ref` — i.e. exactly the fixed-shape
+    job-local ``assets/<slug>.png`` (no absolute path, ``..``, backslash, URL,
+    ``data:`` / base64, or non-PNG). Order-preserving and de-duplicated. Never
+    raises; a non-string or unparsable input yields ``[]``. This only *locates*
+    refs in text — it never opens, reads, or logs the referenced files.
+    """
+    if not isinstance(markdown_text, str) or not markdown_text:
+        return []
+    seen: set[str] = set()
+    refs: list[str] = []
+    for match in _MARKDOWN_IMAGE_PILOT_REF_RE.finditer(markdown_text):
+        ref = validate_visual_asset_ref(match.group(1))
+        if ref and ref not in seen:
+            seen.add(ref)
+            refs.append(ref)
+    return refs
+
+
+def find_exportable_visual_pilot_asset(job: Any) -> str | None:
+    """The single safe job-local pilot PNG ref to ride along in an export bundle.
+
+    Reads this job's ``clean.md`` (read-only), finds the FIRST Markdown image whose
+    target is a safe ``assets/<slug>.png`` ref, and returns that relative ref only
+    if the file really exists *inside* the job directory (realpath containment, a
+    regular file — symlink escapes are rejected). Returns ``None`` when there is no
+    clean.md, no safe reference, or the referenced file is missing / unsafe.
+    Mirrors the pilot's one-figure rule: at most one ref is ever returned. Never
+    raises and never opens / reads / logs image bytes — it only confirms the file's
+    existence and containment.
+    """
+    text = _read_text(getattr(job, "clean_md", None))
+    if text is None:
+        return None
+    for ref in extract_visual_pilot_asset_refs(text):
+        if _asset_file_ok(job, ref):
+            return ref
+    return None
+
+
 # --- Markdown building / insertion -------------------------------------------
 
 
@@ -552,6 +604,28 @@ def _read_json(path: Any) -> Any:
             return None
         with open(p, "r", encoding="utf-8") as fh:
             return json.load(fh)
+    except Exception:
+        return None
+
+
+def _read_text(path: Any) -> str | None:
+    """Read a UTF-8 text file (e.g. clean.md) read-only; never raises (Slice 56).
+
+    Returns the file contents, or ``None`` if the path is empty, not a real file,
+    or unreadable. Used only to scan Markdown for safe asset refs — it never reads
+    or returns image bytes.
+    """
+    if path is None:
+        return None
+    try:
+        p = os.fspath(path)
+    except TypeError:
+        return None
+    try:
+        if not os.path.isfile(p):
+            return None
+        with open(p, "r", encoding="utf-8") as fh:
+            return fh.read()
     except Exception:
         return None
 

@@ -1455,6 +1455,9 @@ def export_bundle(request: BundleRequest) -> Response:
     if len(request.job_ids) > MAX_BUNDLE_JOBS:
         raise HTTPException(status_code=400, detail=f"At most {MAX_BUNDLE_JOBS} guides per bundle.")
     selectors = _normalize_export_selectors(request.artifacts)
+    # Slice 56: detect the single safe visual-pilot PNG referenced by a job's clean
+    # Markdown so it can ride along in the bundle (see the per-job loop below).
+    from pipeline.visual_markdown_insertion import find_exportable_visual_pilot_asset
 
     buffer = io.BytesIO()
     manifest_jobs: list[dict[str, Any]] = []
@@ -1502,6 +1505,28 @@ def export_bundle(request: BundleRequest) -> Response:
                 if path.exists() and path.is_file():
                     archive.write(path, f"{base_dir}/{artifact_name}")
                     visual_advisory_included.append(artifact_name)
+            # Slice 56: the single visual-pilot PNG referenced by this job's clean
+            # Markdown rides along so exported Markdown/HTML stays portable. At most
+            # one (the pilot inserts at most one figure), and only when clean.md
+            # actually references a safe job-local assets/<slug>.png whose file
+            # resolves INSIDE the job dir (realpath containment, regular file).
+            # Read-only; never the whole assets/ dir, never an unreferenced or
+            # cropped extra, never image bytes/paths in logs. Like the advisory
+            # ride-alongs it does NOT count toward total_included, so it can never by
+            # itself satisfy the "at least one requested artifact" gate. Any problem
+            # is skipped calmly and export continues. The recorded value is the safe
+            # relative ref only — no absolute/local filesystem path.
+            visual_pilot_asset_included: str | None = None
+            try:
+                asset_ref = find_exportable_visual_pilot_asset(job)
+                if asset_ref:
+                    job_dir = job.dir.resolve()
+                    asset_path = (job.dir / asset_ref).resolve()
+                    if asset_path.is_relative_to(job_dir) and asset_path.is_file():
+                        archive.write(asset_path, f"{base_dir}/{asset_ref}")
+                        visual_pilot_asset_included = asset_ref
+            except Exception:
+                visual_pilot_asset_included = None
             manifest_jobs.append(
                 {
                     "job_id": job.id,
@@ -1510,6 +1535,7 @@ def export_bundle(request: BundleRequest) -> Response:
                     "included": included,
                     "skipped": skipped,
                     "visual_advisory_included": visual_advisory_included,
+                    "visual_pilot_asset": visual_pilot_asset_included,
                 }
             )
 

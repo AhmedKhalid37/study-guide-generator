@@ -6,9 +6,37 @@
 > stable overview see `PROJECT_CONTEXT.md`; canonical brief is `../CLAUDE.md`.
 
 ## Current position
-- **Working tree:** **Slice 55 (per-job opt-in for the visual markdown image pilot) — UNCOMMITTED
-  (per instruction)** on branch `slice55-visual-pilot-job-opt-in` (branched from trunk after **Slice 54**
-  committed `cdebbaa` + merged). Makes the proven Slice 54 pilot **user-controllable per job** behind a
+- **Working tree:** **Slice 56 (export the referenced visual-pilot PNG with bundles) — UNCOMMITTED
+  (per instruction)** on branch `slice56-visual-pilot-export-asset` (branched from trunk after **Slice 55**
+  committed `c2c4dd1` + fast-forward merged + pushed). Makes exported Markdown/HTML **portable**: when a
+  guide's `clean.md` contains the Slice 54 pilot's safe image ref `![caption](assets/<slug>.png)`, the
+  export bundle now includes **that single referenced job-local PNG**. Nothing else about export changes.
+  - **Scope:** backend `export_bundle` (`api/server.py`) + two read-only detection helpers in
+    `pipeline/visual_markdown_insertion.py` + a focused test. **No frontend/UI, no new route, no generic
+    artifact row, no schema/renderer/prompt/extraction/OCR-routing change, no Chandra, no model/network,
+    no image processing, no `clean.md` write.**
+  - **Detection:** `extract_visual_pilot_asset_refs(text)` (pure; keeps only refs passing the Slice 54
+    `validate_visual_asset_ref`) + `find_exportable_visual_pilot_asset(job)` (reads `clean.md` read-only,
+    returns the **first** referenced ref **only if** the file exists **inside** the job dir via the existing
+    `_asset_file_ok` realpath containment ⇒ symlink escapes rejected; **≤1** ref; `None` on
+    missing/unsafe/none). Never raises; never opens image bytes.
+  - **Wiring:** ZIP entry `<base_dir>/assets/<slug>.png` after the Slice 51 advisory ride-alongs; defence-in-
+    depth `is_relative_to`+`is_file` re-check; any problem skipped calmly (export still succeeds). **Not**
+    counted toward `files_included` (a pilot-PNG-only job with no requested artifact still **404s**). Only
+    the *referenced* PNG — never the whole `assets/` dir, never unreferenced/extra crops. Bundle index records
+    only the safe relative ref (`visual_pilot_asset`) — no absolute path, no image bytes.
+  - **Unchanged:** guide output / prompts / PDF·HTML·DOCX render / extraction / OCR routing; Slice 51
+    advisory JSON ride-alongs; Slice 53 Anki `.apkg`; CSV/TSV quiz exports; the default-off Slice 54/55 gate.
+  - **Tests:** `test_scripts/test_visual_pilot_export_asset.py` — **Part A (pure, host) 9/0** (extraction
+    order/de-dup, unsafe-ref rejection, present/missing/none/unreferenced/**symlink-escape**); **Part B
+    (bundle, Docker/FastAPI)** referenced-PNG rides along once, unreferenced not bundled, relative+safe entry,
+    real bytes but no manifest leak, `files_included` requested-only, missing skipped calmly, unsafe rejected,
+    pilot-PNG-only 404s, source PNG + `clean.md` byte-identical. Host battery + offline eval + frontend
+    build/test/verify green; **Docker rebuild + `/api/health` + `smoke_release.py` + Part B run before
+    commit.** **Chandra extraction still blocked by Slice 45 `not_run`.**
+
+### (previous) Slice 55 — per-job opt-in for the visual markdown image pilot — committed `c2c4dd1`, merged to trunk
+- Makes the proven Slice 54 pilot **user-controllable per job** behind a
   **two-key AND gate**: the global env master switch `GUIDEFORGE_ENABLE_VISUAL_MARKDOWN_IMAGE_PILOT`
   (unchanged, default off) **and** an explicit per-job opt-in. **A job opt-in can never bypass the env
   master switch.** Default stays **off ⇒ byte-identical output**; all Slice 54 visual behaviour (≤1
