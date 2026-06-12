@@ -6,29 +6,54 @@
 > stable overview see `PROJECT_CONTEXT.md`; canonical brief is `../CLAUDE.md`.
 
 ## Current position
-- **Working tree:** **Slice 40 (Local figure extraction / cropping into the visual
-  manifest) — implemented + validated, uncommitted** on branch
-  `slice40-local-figure-extraction-into-manifest` (branched from trunk after Slice 39
-  merged). The **first real extractor-output change** in the visual stack: with PyMuPDF
-  (`fitz`) it **crops embedded image regions out of the PDF** and adds real
-  **`extracted_figure`** assets (real `bbox`, safe relative `image_ref`
-  `assets/<slug>.png`, PNG under the new `Job.assets_dir`) to `visual_assets_manifest.json`.
-  **`fitz_local` only** — no Chandra/Mistral/Gemini/VLM/network/OCR. **Gated off by
-  default** (`GUIDEFORGE_LOCAL_FIGURE_EXTRACTION`) ⇒ manifest **byte-identical to Slice 38**
-  when off; assets do **not** reach the guide (manifest/PNGs only — asset-aware
-  prompt/render is a later slice). **Explosion prevention** (skip tiny/decorative,
-  collapse duplicate placements, caps 12/page · 200/job) + manifest **re-sanitises every
-  extracted field** (id slug, ordered finite bbox, strict `^assets/[A-Za-z0-9_]+\.png$`
-  ref, whitelisted numeric signals) so the manifest stays the un-poisonable security
-  boundary. New files: `pipeline/visual_asset_extractor.py`,
-  `test_scripts/test_local_figure_extraction.py`; edited `visual_assets_manifest.py`,
-  `job_manager.py`, `run_llm_job.py`. **Validated green:** compileall OK; `git diff --check`
-  clean; focused test **59/0/0 in Docker** (50/0 host, 2 fitz cases skip);
-  `test_visual_assets_manifest.py` **65/0** (backward-compat); fresh `docker compose build`
-  + `up --force-recreate`; `/api/health` `{"ok":true}`; `smoke_release.py` **29/0/0** on live
-  :8000 (flag-off ⇒ guide output unchanged); flag-on glue verified live (1 figure cropped,
-  PNG written, in-page bbox). **Next:** Slice 41 dedup + decorative filtering (V2). See
-  `docs/CURRENT_TASK.md`.
+- **Working tree:** **Slice 41 (Chandra GGUF hands-on spike) — DOCS-ONLY, uncommitted**
+  on branch `slice41-chandra-gguf-hands-on-spike` (branched from trunk after Slice 40
+  merged). The **hands-on** follow-up to Slice 39's docs-only gate: it actually
+  downloaded, converted, and **ran Chandra OCR 2 as GGUF through the existing
+  `llama.cpp`/`llama-server` path** on the local **RTX 5070 Ti 16 GB** (`llama.cpp`
+  build 9307 / `549b9d8`). **No app integration / provider / routing / extraction /
+  prompt / render / UI / `visual_assets_manifest.json` schema change. No model files,
+  weights, mmproj, or quants committed** (they live in a throwaway workspace outside the
+  repo). Full write-up: **`docs/CHANDRA_GGUF_SPIKE_REPORT.md`**.
+  - **Verdict: PROCEED TO PROVIDER DESIGN** (strong pass), gated behind the LMM /
+    `llama-server` path + an mmproj build step + an output-normalisation slice.
+  - **Resolved Slice 39's open blockers, hands-on:** build 9307 supports the arch
+    (`libllama` `qwen35`+`qwen3vl`; convert `MMPROJ_MODEL_MAP` routes
+    `Qwen3_5ForConditionalGeneration → qwen3vl`). The only public GGUF
+    (`hyojk2001/...`) is **text-only / NO mmproj**, so the **mmproj (~676 MB)** + text
+    quants (Q4_K_M/Q5_K_M/Q8_0) were **generated from the official
+    `datalab-to/chandra-ocr-2` (~10.6 GB)**. **Load + image input succeed** on
+    `llama-mtmd-cli` **and** `llama-server`'s **OpenAI-compatible** `image_url` path.
+  - **Quality (3 synthetic, non-private, hand-checked pages): near-perfect** — native
+    **layout-HTML with `data-bbox` + `data-label`** (Section-Header/Text/**Table**/
+    **Equation-Block**/**Diagram**), HTML tables, **LaTeX math**, captioned diagrams —
+    held **even at Q4_K_M**. **VRAM not the blocker** (Q4 ~5.4 / Q5 ~5.8 / Q8 ~7.2 GB,
+    8K ctx; 256K train ctx). **Throughput** ~121 gen tok/s warm → ~8–20 pages/min
+    (batch-OK, not interactive; long decks not run).
+  - **Fit:** same `llama-server` the LMM already supervises (**no new service**); output
+    maps to **`clean.md`** source text and strongly to **`visual_assets_manifest.json`**
+    asset candidates (complements Slice 40's `fitz` crops).
+  - **Validation (docs/spike slice):** `git status --short` / `git diff --check` /
+    `git diff --name-only` — docs-only, repo clean of model artifacts. **Do not commit
+    this slice** until the operator says so.
+- **Slice 40 (Local figure extraction / cropping into the visual manifest) — committed
+  `bed7cf8`, merged + pushed to trunk `chrome-renderer-v1` (0 ahead / 0 behind).** The
+  **first real extractor-output change** in the visual stack: with PyMuPDF (`fitz`) it
+  **crops embedded image regions out of the PDF** and adds real **`extracted_figure`**
+  assets (real `bbox`, safe relative `image_ref` `assets/<slug>.png`, PNG under the new
+  `Job.assets_dir`) to `visual_assets_manifest.json`. **`fitz_local` only** — no
+  Chandra/Mistral/Gemini/VLM/network/OCR. **Gated off by default**
+  (`GUIDEFORGE_LOCAL_FIGURE_EXTRACTION`) ⇒ manifest **byte-identical to Slice 38** when
+  off; assets do **not** reach the guide (manifest/PNGs only — asset-aware prompt/render
+  is a later slice). **Explosion prevention** (skip tiny/decorative, collapse duplicate
+  placements, caps 12/page · 200/job) + manifest **re-sanitises every extracted field**
+  so it stays the un-poisonable security boundary. Files:
+  `pipeline/visual_asset_extractor.py`, `test_scripts/test_local_figure_extraction.py`
+  (new); `visual_assets_manifest.py`, `job_manager.py`, `run_llm_job.py` (edited).
+  **Validated green:** compileall OK; `git diff --check` clean; focused test
+  **59/0/0 in Docker**; `test_visual_assets_manifest.py` **65/0**; fresh
+  `docker compose build` + `up --force-recreate`; `/api/health` `{"ok":true}`;
+  `smoke_release.py` **29/0/0** on live :8000.
 - **Slice 39 (Chandra local feasibility verification) — DOCS-ONLY, committed `7b97146`,
   merged + pushed to trunk.** It is the **Chandra equivalent of Slice 35's
   Mistral gate**: a docs-only feasibility verification of **Chandra (Datalab)** as a

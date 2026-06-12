@@ -5,6 +5,56 @@
 
 ---
 
+## Slice 41 — Chandra GGUF hands-on spike (uncommitted on `slice41-chandra-gguf-hands-on-spike`, docs-only).
+
+- **Purpose:** the **hands-on** follow-up to Slice 39's docs-only Chandra gate —
+  actually download, convert, and **run Chandra OCR 2 as GGUF through the existing
+  `llama.cpp`/`llama-server` path** to decide whether it can produce useful
+  OCR/document-extraction for GuideForge. **Spike/report only — no app integration.**
+  Full write-up: **`docs/CHANDRA_GGUF_SPIKE_REPORT.md`**.
+- **Verdict: PROCEED TO PROVIDER DESIGN** (strong pass), gated behind the LMM /
+  `llama-server` path + a small mmproj build step + an output-normalisation slice.
+- **What ran (on RTX 5070 Ti 16 GB, `llama.cpp` build 9307 / `549b9d8`, CUDA):**
+  - Confirmed arch support: `libllama` has `qwen35`(text)+`qwen3vl`(vision) loaders;
+    convert tooling's `MMPROJ_MODEL_MAP` routes `Qwen3_5ForConditionalGeneration →
+    qwen3vl`, so this build **can export a Chandra mmproj**.
+  - **Key blocker found + solved:** the only public GGUF
+    (`hyojk2001/chandra-ocr-2-Q4_K_M-GGUF`) is **text-only, NO mmproj** (gguf-my-repo)
+    → can't OCR as-is. Generated **mmproj-chandra-f16.gguf (~676 MB)** + text quants
+    **Q4_K_M/Q5_K_M/Q8_0** from the **official** `datalab-to/chandra-ocr-2` (~10.6 GB)
+    with build-9307 convert tooling.
+  - **Load:** success on both `llama-mtmd-cli` and `llama-server` (`-ngl 99`,
+    `--mmproj`, `-c 8192`).
+  - **Image input:** works via CLI **and** the **OpenAI-compatible**
+    `llama-server /v1/chat/completions` `image_url` data-URI path (the LMM-style path).
+  - **Quality (3 synthetic, non-private, hand-checked pages):** near-perfect.
+    Native output is **layout-HTML with `data-bbox` + `data-label`**
+    (Section-Header/Text/**Table**/**Equation-Block**/**Diagram**), **HTML tables**,
+    **LaTeX math**, diagram regions w/ captions. Held **even at Q4_K_M**.
+  - **VRAM (not the blocker):** Q4 ~5.4 GB · Q5 ~5.8 GB · Q8 ~7.2 GB (8K ctx);
+    resident server ~7.3 GB, frees cleanly on stop. Model trains at **256K ctx**.
+  - **Throughput:** ~121 gen tok/s warm server → ~**8–20 pages/min** (batch-OK, not
+    interactive). Long decks **not** run.
+- **Fit:** runs on the **same `llama-server` the LMM already supervises** — **no new
+  service**; only adds an mmproj + image message. Output maps to **`clean.md`** source
+  text and (strongly) to **`visual_assets_manifest.json`** asset candidates (bbox /
+  type / caption / table / equation), complementing Slice 40's `fitz` crops. **No
+  manifest schema change made** (forbidden this slice).
+- **Files (docs-only):** new `docs/CHANDRA_GGUF_SPIKE_REPORT.md`; this log;
+  `docs/NEXT_CHAT_HANDOFF.md`. **No app/build/smoke** (no app code touched). Model
+  files / weights / mmproj / quants live in a **throwaway workspace outside the repo**
+  — none committed.
+- **Recommended next slices (design, not yet built):** (1) host-companion **mmproj/
+  quant build** step w/ a **pinned llama.cpp build**; (2) pure **output→clean.md +
+  manifest normaliser** (reusing the Slice 38/40 schema); (3) **prompt/template**
+  lock for reliable bbox+label output (`--image-min-tokens 1024` for grounding).
+  **Fallback contract preserved:** Chandra unavailable → Tesseract/`fitz`; Chandra
+  bad/timeout → degrade, never fail generation. Keep off-by-default + local-only.
+- **Validation (docs/spike slice):** `git status --short`, `git diff --check`,
+  `git diff --name-only` — changes are **docs-only**; repo clean of model artifacts.
+
+---
+
 ## Slice 40 — Local figure extraction / cropping into the visual manifest (uncommitted on `slice40-local-figure-extraction-into-manifest`).
 
 - **Purpose:** the **first real extractor-output change** in the visual stack (roadmap

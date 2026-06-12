@@ -1948,3 +1948,38 @@ where orphan-`{{figure}}`/coverage tests belong. **Determinism:** ids/filenames 
 (track PDF path/pages + gated `_extract_local_figures`). No Chandra/Mistral/Gemini, no
 network, no OCR, no dependency change. Validated green: 59/0/0 focused test in Docker,
 65/0 manifest backward-compat, fresh build + smoke 29/0/0, flag-on glue verified live.
+
+## Chandra OCR 2 GGUF is hands-on feasible on the local llama-server path; gate it behind a self-built mmproj + pinned llama.cpp (2026-06-12, Slice 41)
+Slice 41 ran the **hands-on** spike Slice 39 deferred: it downloaded the official
+`datalab-to/chandra-ocr-2` (~10.6 GB, arch `Qwen3_5ForConditionalGeneration`), built a
+GGUF `mmproj` + text quants with `llama.cpp` build 9307's convert tooling, and ran real
+OCR on the local **RTX 5070 Ti 16 GB** via both `llama-mtmd-cli` and `llama-server`'s
+OpenAI-compatible `image_url` path. **Verdict: proceed to provider design (strong pass),
+gated.** Four durable findings. **(1) It runs on the path the LMM already drives — no new
+service.** Chandra OCR 2 loads as a standard text GGUF + `--mmproj` on `llama-server`;
+image input works over `/v1/chat/completions`. **Why it matters:** a future `chandra_local`
+provider is a *configuration + normalisation* problem, not a new host companion/service —
+the LMM boundary is unchanged. **(2) The mmproj must be self-built; public GGUFs are
+text-only.** The only public conversion (`hyojk2001/chandra-ocr-2-Q4_K_M-GGUF`,
+`gguf-my-repo`) ships **no `mmproj`**, so it cannot OCR. The working `mmproj` (~676 MB) was
+generated from the **official** weights because the convert tooling's `MMPROJ_MODEL_MAP`
+routes `Qwen3_5ForConditionalGeneration → qwen3vl`. **Why:** the app cannot just "point at
+an HF GGUF" — a one-time mmproj/quant build (host-companion side, pinned `llama.cpp` with
+`qwen35`+`qwen3vl` support) is a prerequisite, and that build-pin is **version-sensitive**
+(older `llama.cpp` cannot export/load it). **(3) VRAM is not the blocker; quality is high
+even small.** Q4_K_M/Q5_K_M/Q8_0 all gave near-perfect output on hand-checked synthetic
+pages (~5.4/5.8/7.2 GB VRAM at 8K ctx, 256K train ctx). Native output is **layout-HTML with
+`data-bbox` + `data-label`** (Section-Header/Text/Table/Equation-Block/Diagram) + HTML
+tables + LaTeX math — which maps to `clean.md` source text **and** to
+`visual_assets_manifest.json` asset candidates, complementing Slice 40's `fitz` crops. **Why:**
+this is the high-value fit — Chandra gives text *and* bbox/label structure in one pass. **(4)
+Throughput is batch-only and the fallback contract is non-negotiable.** ~8–20 pages/min warm
+(long decks not run) → keep it off-by-default, local-only, behind the deferred async/batch
+large-PDF handling, and **always degrade, never fail**: Chandra unavailable → Tesseract/`fitz`;
+Chandra bad/timeout → drop to embedded-text + `fitz` so the guide still builds. **Scope:**
+docs-only — `docs/CHANDRA_GGUF_SPIKE_REPORT.md` + handoff logs; **no app/provider/routing/
+extraction/prompt/render/UI/manifest-schema change, and no model files/weights/mmproj/quants
+committed** (kept in a throwaway workspace outside the repo). Recommended next slices (design):
+host-companion mmproj/quant build (pinned `llama.cpp`); pure output→`clean.md`+manifest
+normaliser (reusing the Slice 38/40 schema); prompt/template lock (`--image-min-tokens 1024`
+for bbox grounding).
