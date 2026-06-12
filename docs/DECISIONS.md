@@ -2613,3 +2613,53 @@ the default-off Slice 54/55 pilot gate is untouched. Because this changes
 export-bundle/image-packaging behavior, full validation (Docker rebuild/recreate +
 `/api/health` + `smoke_release.py` + the bundle-section focused test) was run.
 **Chandra extraction integration remains blocked by Slice 45 `status:not_run`.**
+
+## Visual-pilot readiness needs BOTH server switches; the Builder toggle is a UI affordance, not a gate (Slice 57)
+The Builder's per-job visual opt-in (Slice 55) was previously enabled whenever the
+**single** `visual_markdown_image_pilot` master flag was on. That is **misleading**:
+the pilot inserts a `fitz_local` `extracted_figure`, and **new** jobs only produce
+those figures when local figure extraction (`GUIDEFORGE_LOCAL_FIGURE_EXTRACTION`) is
+**also** on. With the master flag on but extraction off, the toggle was an actionable
+control that could never actually insert anything for a fresh job. **Decision:**
+introduce a derived **readiness** signal = master flag **AND** local figure
+extraction, surfaced as `/api/options.capabilities.visual_references_ready`, and let
+the Builder enable its opt-in **only** when readiness is true, with a calm note
+explaining which server switch is missing otherwise.
+
+**Capability shape (non-secret booleans only):** `visual_markdown_image_pilot` is
+**kept unchanged** (same meaning — master flag only — so existing consumers/tests
+stay backward-compatible); `local_figure_extraction` and the derived
+`visual_references_ready` are **added**. **Why only booleans / no env names:** the
+public `/api/options` must never leak env-var names, paths, tokens, or raw config —
+readiness is a UX hint, so it carries only fixed on/off state and (frontend-side)
+fixed safe copy.
+
+**Why readiness is a UI affordance, NOT a new backend gate:** the actual security
+boundary stays exactly the Slice 55 dual gate — `apply_visual_markdown_pilot`
+independently re-checks the master flag **and** the per-job opt-in just before
+`save_clean_md`, and remains degrade-never-fail (it inserts nothing if no safe
+`fitz_local` candidate exists, regardless of what `/api/options` reported). So a
+stale/absent capability can only ever make the **toggle** wrong, never bypass a gate
+or force insertion. The master env flag still **cannot be bypassed** from the
+frontend, the per-job opt-in still defaults false, and the readiness flag is **not**
+itself consulted by the insertion helper. Local figure extraction is **never**
+auto-enabled and extraction is **never** run because the toggle is shown/checked.
+
+**Frontend fallback:** `isVisualReferencesReady` trusts the backend's derived
+`visual_references_ready` when present, else falls back to AND-ing the two component
+booleans, so an older/partial `/api/options` payload degrades safely (a missing
+component ⇒ not ready).
+
+**Scope:** `/api/options` capability refinement (`api/server.py`) + two pure helpers
+(`isVisualReferencesReady` / `visualPilotReadinessNote` in
+`frontend/src/visualPilotOptIn.js`) + Builder wiring (`BuilderWorkspace.jsx`) +
+focused tests (`test_scripts/test_visual_pilot_options.py`, updated
+`frontend/scripts/verify-visual-pilot-opt-in.mjs`). **No** new page/route, broad
+visual settings, export-bundle change, generic artifact-row change, advisory schema
+change, renderer/prompt/extraction/OCR-routing change, Chandra/Mistral/Gemini/cloud,
+model/llama-server/network call, image processing, image fixtures, or `clean.md`
+write; the request still carries `enable_visual_references` **only** when the user
+opts in (default/not-ready ⇒ byte-identical request). Because this touches
+`/api/options` and Builder UI behavior, full validation (Docker rebuild/recreate +
+`/api/health` + `smoke_release.py` + an `/api/options` readiness spot-check) was run.
+**Chandra extraction integration remains blocked by Slice 45 `status:not_run`.**

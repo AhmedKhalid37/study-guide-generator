@@ -385,8 +385,18 @@ def health() -> dict[str, bool]:
 @app.get("/api/options")
 def options() -> dict[str, Any]:
     from pipeline.visual_markdown_insertion import is_visual_markdown_pilot_enabled
+    from pipeline.visual_asset_extractor import local_figure_extraction_enabled
 
     provider_details = get_provider_registry()
+    # Slice 57: visual-pilot readiness. The Builder's per-job opt-in can only do
+    # anything when BOTH server-side switches are on: the visual markdown pilot
+    # master flag AND local figure extraction (which is what produces the
+    # fitz_local extracted figures the pilot inserts for new jobs). Compute the two
+    # booleans once and expose a derived readiness flag so the Builder can enable
+    # vs disable-with-a-calm-note. These are non-secret on/off booleans only — no
+    # env names, paths, tokens, or config values are exposed.
+    visual_pilot_master_on = is_visual_markdown_pilot_enabled()
+    local_figure_extraction_on = local_figure_extraction_enabled()
     return {
         "themes": THEMES,
         "input_modes": INPUT_MODES,
@@ -399,12 +409,18 @@ def options() -> dict[str, Any]:
         },
         "provider_details": provider_details,
         "providers_v2": provider_details,
-        # Non-secret capability flags. Slice 55: whether the global visual markdown
-        # image pilot master switch is on, so the Builder can show its per-job opt-in
-        # enabled (vs disabled-with-note). This exposes only the experimental on/off
-        # state — never a key, token, path, or any other secret.
+        # Non-secret capability flags. Slice 55 exposed the visual markdown pilot
+        # master switch; Slice 57 adds the local-figure-extraction switch and a
+        # derived readiness flag so the Builder can enable its per-job opt-in only
+        # when a new job could actually produce + insert a figure. These expose only
+        # experimental on/off state — never a key, token, path, env name, or any
+        # other secret. `visual_markdown_image_pilot` is preserved for backward
+        # compatibility (existing meaning: master switch only).
         "capabilities": {
-            "visual_markdown_image_pilot": is_visual_markdown_pilot_enabled(),
+            "visual_markdown_image_pilot": visual_pilot_master_on,
+            "local_figure_extraction": local_figure_extraction_on,
+            "visual_references_ready": visual_pilot_master_on
+            and local_figure_extraction_on,
         },
     }
 

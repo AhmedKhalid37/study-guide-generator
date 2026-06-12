@@ -66,6 +66,8 @@ import { FOLDER_PRESET_COLORS } from "../folderMeta";
 import {
   isVisualPilotEffectivelyOn,
   isVisualPilotToggleEnabled,
+  isVisualReferencesReady,
+  visualPilotReadinessNote,
   visualPilotPayloadFields
 } from "../visualPilotOptIn";
 import { presetCompat, presetModelLabel, providerIconFor, providerLabelFor } from "../presetMeta";
@@ -255,13 +257,16 @@ export default function BuilderWorkspace({
   const [pendingModelNonce, setPendingModelNonce] = useState(0);
   const [qwenThinking, setQwenThinking] = useState(true);
   const [strictMath, setStrictMath] = useState(true);
-  // Slice 55: per-job opt-in for the off-by-default visual markdown image pilot.
+  // Slice 55/57: per-job opt-in for the off-by-default visual markdown image pilot.
   // Default false ⇒ no extra field on the request ⇒ unchanged output. The actual
-  // insertion ALSO requires the backend env master switch; visualPilotEnabled below
-  // mirrors that switch (from /api/options.capabilities) so the toggle renders
-  // enabled only when the server could honour it, and disabled-with-note otherwise.
+  // insertion ALSO requires server-side switches; visualPilotReady below mirrors the
+  // backend readiness (master pilot flag AND local figure extraction, from
+  // /api/options.capabilities) so the toggle renders enabled only when a new job
+  // could actually produce + insert a figure, and disabled-with-a-calm-note
+  // otherwise. visualPilotNote holds that calm explanation ("" when ready).
   const [enableVisualReferences, setEnableVisualReferences] = useState(false);
-  const [visualPilotEnabled, setVisualPilotEnabled] = useState(false);
+  const [visualPilotReady, setVisualPilotReady] = useState(false);
+  const [visualPilotNote, setVisualPilotNote] = useState("");
   const [attachments, setAttachments] = useState([]);
   // Per-PDF preflight inspection results, keyed by a stable file signature (see
   // attachmentKey). Lives alongside the selected files only — never persisted to
@@ -353,9 +358,12 @@ export default function BuilderWorkspace({
         const details = normalizeProviderDetails(options);
         setProviderDetails(details);
         setGeneratorPresets(options.generator_presets ?? []);
-        // Slice 55: mirror the global visual-pilot master switch so the Builder
-        // can enable/disable its per-job opt-in. Non-secret on/off flag only.
-        setVisualPilotEnabled(Boolean(options?.capabilities?.visual_markdown_image_pilot));
+        // Slice 57: mirror backend visual-pilot readiness (master flag AND local
+        // figure extraction) so the Builder enables its per-job opt-in only when a
+        // new job could honour it, and shows a calm note otherwise. Non-secret
+        // on/off booleans + fixed safe copy only.
+        setVisualPilotReady(isVisualReferencesReady(options?.capabilities));
+        setVisualPilotNote(visualPilotReadinessNote(options?.capabilities));
         setProvidersLoaded(true);
         // A shortcut prefill owns the provider+model; don't override it with the
         // default-provider pick. The resolver effect applies the saved model.
@@ -1172,7 +1180,8 @@ export default function BuilderWorkspace({
               setStrictMath={setStrictMath}
               enableVisualReferences={enableVisualReferences}
               setEnableVisualReferences={setEnableVisualReferences}
-              visualPilotEnabled={visualPilotEnabled}
+              visualPilotReady={visualPilotReady}
+              visualPilotNote={visualPilotNote}
               attachments={attachments}
               setAttachments={setAttachments}
               attachmentPreflights={attachmentPreflights}
@@ -1626,7 +1635,8 @@ function BuilderComposer({
   setStrictMath,
   enableVisualReferences,
   setEnableVisualReferences,
-  visualPilotEnabled = false,
+  visualPilotReady = false,
+  visualPilotNote = "",
   attachments,
   setAttachments,
   attachmentPreflights,
@@ -1731,18 +1741,20 @@ function BuilderComposer({
             setPageSelections={setPageSelections}
           />
           <Toggle label="Strict math" checked={strictMath} onChange={setStrictMath} tip={TOOLTIPS.strictMath} />
-          {/* Slice 55: per-job opt-in for the experimental visual markdown image
-              pilot. Disabled (and forced visually off) unless the server's master
-              switch is on; even when checked the backend re-gates on the env flag. */}
+          {/* Slice 55/57: per-job opt-in for the experimental visual markdown image
+              pilot. Disabled (and forced visually off) unless the server reports
+              readiness (master pilot flag AND local figure extraction); even when
+              checked the backend independently re-gates on both server switches. The
+              calm note explains which server switch is missing when not ready. */}
           <Toggle
             label="Add one visual reference (experimental)"
-            checked={isVisualPilotEffectivelyOn({ capabilityEnabled: visualPilotEnabled, requested: enableVisualReferences })}
+            checked={isVisualPilotEffectivelyOn({ capabilityEnabled: visualPilotReady, requested: enableVisualReferences })}
             onChange={setEnableVisualReferences}
             tip={TOOLTIPS.visualReferences}
-            disabled={!isVisualPilotToggleEnabled(visualPilotEnabled)}
+            disabled={!isVisualPilotToggleEnabled(visualPilotReady)}
           />
-          {!visualPilotEnabled && (
-            <p className="sg-note">Visual references are turned off on this server.</p>
+          {!visualPilotReady && visualPilotNote && (
+            <p className="sg-note">{visualPilotNote}</p>
           )}
         </div>
       )}

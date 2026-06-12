@@ -19,6 +19,8 @@ import {
   VISUAL_PILOT_PAYLOAD_KEY,
   isVisualPilotEffectivelyOn,
   isVisualPilotToggleEnabled,
+  isVisualReferencesReady,
+  visualPilotReadinessNote,
   visualPilotPayloadFields
 } from "../src/visualPilotOptIn.js";
 
@@ -59,6 +61,52 @@ check("capability on AND requested ⇒ on", isVisualPilotEffectivelyOn({ capabil
 check("toggle disabled when capability off", isVisualPilotToggleEnabled(false) === false);
 check("toggle disabled when capability undefined", isVisualPilotToggleEnabled(undefined) === false);
 check("toggle enabled when capability on", isVisualPilotToggleEnabled(true) === true);
+
+// ---- Slice 57: readiness truth table (master flag AND local figure extraction)
+// Derived from /api/options.capabilities. Trust the backend's derived
+// visual_references_ready when present; else AND the two component booleans.
+check("ready false: master off + figure off",
+  isVisualReferencesReady({ visual_markdown_image_pilot: false, local_figure_extraction: false, visual_references_ready: false }) === false);
+check("ready false: master on + figure off",
+  isVisualReferencesReady({ visual_markdown_image_pilot: true, local_figure_extraction: false, visual_references_ready: false }) === false);
+check("ready false: master off + figure on",
+  isVisualReferencesReady({ visual_markdown_image_pilot: false, local_figure_extraction: true, visual_references_ready: false }) === false);
+check("ready true: master on + figure on",
+  isVisualReferencesReady({ visual_markdown_image_pilot: true, local_figure_extraction: true, visual_references_ready: true }) === true);
+// Missing/empty capabilities ⇒ not ready (safe default).
+check("ready false: undefined capabilities", isVisualReferencesReady(undefined) === false);
+check("ready false: empty capabilities", isVisualReferencesReady({}) === false);
+// Fallback AND when the derived flag is absent (older/partial payload).
+check("ready true via fallback AND when derived flag absent",
+  isVisualReferencesReady({ visual_markdown_image_pilot: true, local_figure_extraction: true }) === true);
+check("ready false via fallback when one component absent",
+  isVisualReferencesReady({ visual_markdown_image_pilot: true }) === false);
+
+// ---- Slice 57: calm readiness note (which server switch is missing) ---------
+check("note empty when ready",
+  visualPilotReadinessNote({ visual_markdown_image_pilot: true, local_figure_extraction: true, visual_references_ready: true }) === "");
+check("note: master off message is calm + safe",
+  visualPilotReadinessNote({ visual_markdown_image_pilot: false, local_figure_extraction: false, visual_references_ready: false })
+    === "Visual references are not enabled on this server.");
+check("note: master on + figure off message is calm + safe",
+  visualPilotReadinessNote({ visual_markdown_image_pilot: true, local_figure_extraction: false, visual_references_ready: false })
+    === "Visual references need local figure extraction to be enabled on this server.");
+check("note: undefined capabilities ⇒ master-off message",
+  visualPilotReadinessNote(undefined) === "Visual references are not enabled on this server.");
+// The notes are fixed safe copy: no path / env name / token / url / data-uri.
+const NOTE_LEAKS = [
+  ["path", /(\/home\/|\/usr\/|\/etc\/|\/var\/|\/root\/|\/tmp\/|\/opt\/|C:\\)/],
+  ["env name", /GUIDEFORGE_[A-Z_]+/],
+  ["url", /https?:\/\/|file:\/\/|ftp:\/\//],
+  ["token", /(sk-|sk_|pk-|rk_)[A-Za-z0-9_-]{8,}/],
+  ["datauri", /data:[^;]+;base64,/]
+];
+for (const caps of [undefined, {}, { visual_markdown_image_pilot: true, local_figure_extraction: false }]) {
+  const note = visualPilotReadinessNote(caps);
+  for (const [label, re] of NOTE_LEAKS) {
+    check(`note has no ${label}`, !re.test(note), note);
+  }
+}
 
 // ---- the field never carries any sensitive content -------------------------
 // The opt-in only ever contributes the single boolean true; assert the serialised

@@ -6,9 +6,40 @@
 > stable overview see `PROJECT_CONTEXT.md`; canonical brief is `../CLAUDE.md`.
 
 ## Current position
-- **Working tree:** **Slice 56 (export the referenced visual-pilot PNG with bundles) — UNCOMMITTED
-  (per instruction)** on branch `slice56-visual-pilot-export-asset` (branched from trunk after **Slice 55**
-  committed `c2c4dd1` + fast-forward merged + pushed). Makes exported Markdown/HTML **portable**: when a
+- **Working tree:** **Slice 57 (visual-pilot readiness capability + Builder guard) — UNCOMMITTED
+  (per instruction)** on branch `slice57-visual-pilot-readiness-guard` (branched from trunk after **Slice 56**
+  committed `2a09261` + fast-forward merged + pushed). Makes the Builder's per-job visual opt-in **accurately
+  reflect whether the pilot can work for a new job**. The toggle stays **default-off** but is **enabled only
+  when the backend reports readiness** = global pilot master flag **AND** local figure extraction (which
+  produces the `fitz_local` figure the pilot inserts). **Readiness/UX guard only** — it does **not** enable
+  insertion, change the backend dual gate, or auto-enable extraction.
+  - **Scope:** `/api/options.capabilities` refinement (`api/server.py`) + Builder guard
+    (`frontend/src/visualPilotOptIn.js` + `BuilderWorkspace.jsx`) + tests/docs. **No** new page/route, broad
+    visual settings, export-bundle change, generic artifact-row change, advisory schema change,
+    renderer/prompt/extraction/OCR-routing change, Chandra, model/network call, image processing, image
+    fixtures, or `clean.md` write. **≤1 figure / `fitz_local` only / safe `assets/<slug>.png` only — all
+    unchanged.**
+  - **Capabilities (non-secret booleans):** `visual_markdown_image_pilot` (master flag — **preserved**,
+    backward-compatible) · `local_figure_extraction` · `visual_references_ready` (= **both** true). No env
+    names/paths/tokens/raw config in the response.
+  - **Builder guard:** new pure helpers `isVisualReferencesReady(caps)` (trusts derived flag; falls back to
+    AND of components) + `visualPilotReadinessNote(caps)` (fixed safe copy). Toggle enabled only when ready;
+    calm note when not — master-off ⇒ *"Visual references are not enabled on this server."*, extraction-off ⇒
+    *"Visual references need local figure extraction to be enabled on this server."* Request still adds
+    `enable_visual_references` **only** when opted in (Slice 55 behaviour; default/not-ready ⇒ byte-identical).
+  - **Backend gates unchanged:** master flag **cannot be bypassed**; per-job opt-in still default false;
+    `/api/options` readiness is a **UI affordance only**, **not** a new insertion gate —
+    `apply_visual_markdown_pilot` independently re-checks both switches and stays degrade-never-fail.
+    Extraction is **never** auto-enabled / run by the toggle.
+  - **Tests:** new `test_scripts/test_visual_pilot_options.py` (Part A pure truth table **16/0** host; Part B
+    `server.options()` capability shape under FastAPI/Docker — keys/booleans/backward-compat/no-leak/default-
+    not-ready) + updated `frontend/scripts/verify-visual-pilot-opt-in.mjs` (readiness table, calm notes,
+    ready⇒enabled, payload-only-when-checked, no leak). Existing visual/OCR/Chandra batteries + eval +
+    frontend build/all-verifies green. **Docker rebuild + `/api/health` + `smoke_release.py` + `/api/options`
+    readiness spot-check run before commit.** **Chandra extraction still blocked by Slice 45 `not_run`.**
+
+### (previous) Slice 56 — export the referenced visual-pilot PNG with bundles — committed `2a09261`, merged to trunk
+- Makes exported Markdown/HTML **portable**: when a
   guide's `clean.md` contains the Slice 54 pilot's safe image ref `![caption](assets/<slug>.png)`, the
   export bundle now includes **that single referenced job-local PNG**. Nothing else about export changes.
   - **Scope:** backend `export_bundle` (`api/server.py`) + two read-only detection helpers in

@@ -5,6 +5,66 @@
 
 ---
 
+## Slice 57 — **Visual-pilot readiness capability + Builder guard**, on `slice57-visual-pilot-readiness-guard`.
+
+- **Purpose:** make the Builder's per-job visual opt-in **accurately reflect whether the pilot can realistically
+  work for a new job**. The toggle stays **default-off**, but it is now **enabled only when the backend reports
+  readiness** — i.e. both server-side switches are on. This is a **readiness/UX guard only**; it does **not**
+  enable visual insertion, change the backend dual gate, or auto-enable extraction.
+- **Why readiness needs two switches:** insertion needs (1) the global pilot master flag
+  `GUIDEFORGE_ENABLE_VISUAL_MARKDOWN_IMAGE_PILOT` AND (2) local figure extraction
+  `GUIDEFORGE_LOCAL_FIGURE_EXTRACTION` (which is what produces the `fitz_local` `extracted_figure` the pilot
+  inserts for **new** jobs). With master on but extraction off, a fresh job has nothing to insert — so the
+  opt-in would be a dead control. Readiness = master **AND** extraction.
+- **Backend (`/api/options.capabilities`):** now reports three **non-secret booleans** (no env names, paths,
+  tokens, or raw config):
+  - `visual_markdown_image_pilot` — global pilot master flag (**preserved**; same meaning as Slice 54/55 —
+    backward-compatible).
+  - `local_figure_extraction` — local figure-extraction flag.
+  - `visual_references_ready` — `true` **only when both** of the above are `true`.
+- **Frontend (`visualPilotOptIn.js` + Builder):** two new pure helpers
+  `isVisualReferencesReady(capabilities)` (trusts the backend's derived flag, falls back to AND-ing the two
+  components for older/partial payloads) and `visualPilotReadinessNote(capabilities)` (fixed safe copy). The
+  Builder mirrors readiness into the toggle's enabled/checked state and shows a **calm** note when not ready:
+  - master flag off ⇒ *"Visual references are not enabled on this server."*
+  - master on but extraction off ⇒ *"Visual references need local figure extraction to be enabled on this server."*
+  - both on ⇒ toggle enabled, no note.
+- **Request payload unchanged from Slice 55:** `enable_visual_references` is added **only** when the user opts
+  in; a default / opted-out / not-ready request stays byte-identical.
+- **Scope:** small `/api/options` capability refinement + small Builder guard + focused tests/docs. **No** new
+  page, broad visual settings, export-bundle change, generic artifact-row change, advisory schema change,
+  renderer/prompt/extraction/OCR-routing change, Chandra/Mistral/Gemini/cloud, model/llama-server/network
+  call, image processing, image fixtures, or `clean.md` write. **No more than one figure; `fitz_local` only;
+  safe `assets/<slug>.png` only — all unchanged.**
+- **Backend gates unchanged (defence-in-depth):** the global master flag **cannot be bypassed**; the per-job
+  opt-in still defaults false; readiness in `/api/options` is a **UI affordance only** and is **not** a new
+  insertion gate — `apply_visual_markdown_pilot` still independently re-checks both switches and remains
+  degrade-never-fail even if capabilities are stale/absent. Local figure extraction is **never** auto-enabled
+  by the toggle and extraction is **never** run because of it.
+- **Safety/no-leak:** capabilities expose only safe booleans; the readiness notes are fixed copy. No env
+  names, paths, tokens, headers, socket/model/mmproj/executable paths, raw argv, image bytes, data URIs,
+  base64, OCR text, or provider payloads in the API response, the UI, logs, docs, or tests.
+- **Unchanged:** guide output; prompts; PDF/HTML/DOCX rendering; extraction/OCR routing; visual advisory JSON
+  ride-alongs (Slice 51); the Slice 56 PNG export ride-along; Anki `.apkg` (Slice 53); CSV/TSV quiz exports;
+  the default-off Slice 54/55 pilot gate. **Chandra extraction integration remains blocked by Slice 45
+  `status:not_run`.**
+- **Tests:**
+  - New `test_scripts/test_visual_pilot_options.py` — Part A (pure, host): readiness truth table over all four
+    env combinations (master off+figure off / on+off / off+on / on+on ⇒ ready only when both on), all plain
+    booleans. Part B (FastAPI/Docker): `server.options()` capability subtree has the three keys with correct
+    booleans, backward-compatible `visual_markdown_image_pilot`, a fixed safe key set, and no
+    secret/path/env-name/url in the payload; default env ⇒ not ready. **16/0 on host** (Part B auto-skips).
+  - Updated `frontend/scripts/verify-visual-pilot-opt-in.mjs` — readiness truth table, calm master-off and
+    extraction-off messages, ready⇒enabled, payload field only when checked, and no path/token/env-name/
+    url/data-uri leak in the notes.
+  - Existing batteries still green: `test_visual_markdown_insertion`, `test_visual_markdown_render`,
+    `test_visual_pilot_export_asset`, `test_anki_export`, visual planner/scoring/artifact/manifest/advisory,
+    `test_local_figure_extraction`, OCR/Chandra suites, eval, frontend build + all verifies.
+- **Status:** **NOT committed** (per instruction). Host validation green; Docker rebuild/recreate +
+  `/api/health` + `smoke_release.py` + `/api/options` readiness spot-check run before any commit.
+
+---
+
 ## Slice 56 — **Export the referenced visual-pilot PNG** with bundles, on `slice56-visual-pilot-export-asset`.
 
 - **Purpose:** make exported Markdown/HTML **portable**. When a guide's `clean.md` contains the Slice 54

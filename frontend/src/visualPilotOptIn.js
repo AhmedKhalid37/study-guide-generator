@@ -32,3 +32,31 @@ export function isVisualPilotToggleEnabled(capabilityEnabled) {
 export function visualPilotPayloadFields(enableVisualReferences) {
   return enableVisualReferences === true ? { [VISUAL_PILOT_PAYLOAD_KEY]: true } : {};
 }
+
+// Slice 57: readiness for new jobs, derived from /api/options.capabilities. The
+// per-job opt-in can only do anything when BOTH server switches are on: the visual
+// markdown pilot master flag AND local figure extraction (which produces the
+// figures the pilot inserts). The backend already exposes a derived
+// `visual_references_ready`; trust it when present, else fall back to AND-ing the
+// two component booleans (older/partial payloads). Pure boolean read; never throws.
+export function isVisualReferencesReady(capabilities) {
+  const caps = capabilities || {};
+  if (typeof caps.visual_references_ready === "boolean") {
+    return caps.visual_references_ready;
+  }
+  return Boolean(caps.visual_markdown_image_pilot) && Boolean(caps.local_figure_extraction);
+}
+
+// Slice 57: the calm, non-secret explanation shown under the toggle when it is NOT
+// ready. Empty string when ready (no note). Distinguishes the two not-ready causes
+// so the operator knows which server switch is missing. Returns only fixed, safe
+// copy — never a path, env name, token, or config value.
+export function visualPilotReadinessNote(capabilities) {
+  const caps = capabilities || {};
+  if (isVisualReferencesReady(caps)) return "";
+  if (!caps.visual_markdown_image_pilot) {
+    return "Visual references are not enabled on this server.";
+  }
+  // Master flag is on but local figure extraction is off — nothing to insert.
+  return "Visual references need local figure extraction to be enabled on this server.";
+}
