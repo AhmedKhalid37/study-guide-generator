@@ -11,6 +11,7 @@ from pipeline.job_manager import Job, JobCancelled
 from pipeline.markdown_sanitizer import sanitize
 from pipeline.math_validator import validate
 from pipeline.pdf_renderer import render_pdf
+from pipeline.visual_markdown_insertion import apply_visual_markdown_pilot
 
 
 class MarkdownJobError(RuntimeError):
@@ -108,7 +109,14 @@ def run_raw_markdown_pipeline(job: Job, *, theme: str, strict_math: bool) -> Job
     job.set_status("sanitizing")
     job.set_stage("cleaning")
     raw = job.raw_md.read_text(encoding="utf-8", errors="replace")
-    job.save_clean_md(sanitize(raw), "generated")
+    clean = sanitize(raw)
+    # Slice 54: off-by-default minimal V4/V5 visual pilot. When the flag is unset
+    # this returns `clean` unchanged (byte-identical, no artifact reads); when on it
+    # may insert at most one existing fitz_local extracted figure as a standard
+    # Markdown image. Degrade-never-fail — it never raises and never blocks the job,
+    # and clean.md still flows through the single save_clean_md chokepoint below.
+    clean, _visual_pilot = apply_visual_markdown_pilot(job, clean)
+    job.save_clean_md(clean, "generated")
     job.update(clean_md=str(job.clean_md))
     print(f"clean.md: {job.clean_md}")
 

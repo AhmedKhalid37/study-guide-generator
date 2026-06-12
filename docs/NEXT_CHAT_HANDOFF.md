@@ -6,8 +6,36 @@
 > stable overview see `PROJECT_CONTEXT.md`; canonical brief is `../CLAUDE.md`.
 
 ## Current position
-- **Working tree:** **Slice 53 (true Anki `.apkg` export) — UNCOMMITTED (per instruction)** on branch
-  `slice53-anki-apkg-export` (branched from trunk after **Slice 52** merged at `88c1aa8`). Adds a real,
+- **Working tree:** **Slice 54 (minimal V4/V5 visual markdown image pilot, off by default) —
+  UNCOMMITTED (per instruction)** on branch `slice54-visual-markdown-image-pilot` (branched from trunk
+  after **Slice 53** merged). When `GUIDEFORGE_ENABLE_VISUAL_MARKDOWN_IMAGE_PILOT` is set, it inserts
+  **at most one** existing `fitz_local` `extracted_figure` (already cropped to `assets/<slug>.png` by
+  Slice 40) into the guide as a standard Markdown image `![safe caption](assets/<slug>.png)`, through
+  the **existing** `save_clean_md` chokepoint and the **existing** PDF/HTML/DOCX renderers. Flag **off
+  ⇒ byte-identical** clean.md / output (no artifact reads). **Degrade-never-fail. No Chandra. No
+  renderer rewrite. No new artifact. No frontend toggle.**
+  - **Proven:** the existing renderers already resolve a job-local relative `assets/<slug>.png` ref
+    (PDF/HTML via the job `file://` root; DOCX via `_resolve_image_path`, degrading to `[image missing]`)
+    — so **no renderer change was needed**.
+  - **New module `pipeline/visual_markdown_insertion.py` (stdlib-only):** `is_visual_markdown_pilot_enabled()`,
+    `apply_visual_markdown_pilot(job, clean_md) -> (str, info)` (the degrade-never-fail entry point wired
+    at `run_markdown_job.run_raw_markdown_pipeline` just **before** `save_clean_md`),
+    `select_visual_markdown_candidate(...)`, `validate_visual_asset_ref(...)`,
+    `build_visual_markdown_image(...)`, `insert_visual_markdown_reference(...)`.
+  - **Candidate:** `fitz_local`+`extracted_figure` only, ≤1; prefer a replacement-plan
+    `candidate_include_as_figure` item resolved in the manifest, fallback to first safe manifest figure;
+    never Chandra/`mistral_ocr`/`page_visual_signal`.
+  - **Safety:** ref must be `^assets/[A-Za-z0-9_]+\.png$` **and** a real file inside the job dir
+    (realpath-containment; rejects absolute/`..`/backslash/url/data-uri/non-png/symlink-escape). Generic
+    page-only caption (≤80, escaped). Placement = `<!-- visual-anchor: source_page_NNNN -->` marker if
+    present, else a trailing `## Visual Reference` section. Closed-vocab skip reasons; stderr-only; no
+    job.json/artifact-list change; no `clean.md` write outside `save_clean_md`.
+  - **Tests:** `test_scripts/test_visual_markdown_insertion.py` (flag-off **26/0**, flag-on **50/0**) +
+    `test_scripts/test_visual_markdown_render.py` (HTML/PDF/DOCX render, host-skippable). **Chandra
+    extraction still blocked by Slice 45 `not_run`.**
+
+### (previous) Slice 53 — true Anki `.apkg` export, merged to trunk
+- Adds a real,
   importable Anki package export for the *already generated* quiz/flashcard items —
   **direct user-visible study value**, deliberately untouching the visual advisory pipeline, visual
   rendering, Chandra, OCR routing, extraction, and guide prompts.

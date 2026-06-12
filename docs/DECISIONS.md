@@ -2476,3 +2476,49 @@ visual render insertion remains a separate decision. **Scope:** new `pipeline/an
 `api/server.py` + one button in `frontend/src/components/RecentJobsPanel.jsx` + this entry +
 `CURRENT_TASK.md` / `NEXT_CHAT_HANDOFF.md`. Because this touches the export route + frontend, full
 validation (Docker rebuild/recreate + `/api/health` + `smoke_release.py`) is required.
+
+## Slice 54 — the visual pilot inserts a *standard Markdown image*, behind an off-by-default flag, through the existing render path
+After a long advisory-only build-up (manifest → scoring → replacement plan → insertion plan, none of
+which ever touched a guide), Slice 54 takes the **smallest possible** real step: when
+`GUIDEFORGE_ENABLE_VISUAL_MARKDOWN_IMAGE_PILOT` is set, it inserts **at most one** existing `fitz_local`
+`extracted_figure` (already cropped to `assets/<slug>.png` by Slice 40) into the guide as an ordinary
+Markdown image `![safe caption](assets/<slug>.png)` and lets the **existing** machinery render it.
+**Why a Markdown image and not a new visual subsystem:** the cheapest thing that could possibly prove
+the path is the thing the renderers already understand. The investigation confirmed the existing
+renderers already resolve a **job-local relative** `assets/<slug>.png` ref — PDF/HTML render from a
+`file://` URI rooted at the job dir (so `final.html` resolves `assets/…` beside it) and the DOCX
+renderer's `_resolve_image_path` already resolves the same relative ref against the job dir, degrading
+to its existing `[image missing: …]` marker. So **no renderer was rewritten**; the pilot is purely an
+insertion concern.
+
+**Why off by default + degrade-never-fail.** Render risk is accepted only for this narrow pilot. With
+the flag unset the helper is a no-op that returns the sanitized clean Markdown **byte-identical** without
+reading any artifact, so default output is unchanged. With the flag on, *any* problem (no candidate,
+unsafe ref, missing file, malformed artifact, insertion error) returns the original Markdown plus a
+closed-vocab reason — a job can never fail because of the pilot. Reasons are stderr-only; nothing is
+written to `job.json` and no generic artifact list changes.
+
+**Why this exact integration point.** The helper is wired in `run_markdown_job.run_raw_markdown_pipeline`
+immediately **before** `job.save_clean_md(...)` (`clean = sanitize(raw)` → `apply_visual_markdown_pilot`
+→ `save_clean_md`). That keeps the **single `save_clean_md` chokepoint** intact — the figure is
+snapshotted into version history like any other clean.md write — and means the same path is exercised by
+generate / paste / markdown-upload jobs (the latter two simply have no manifest, so the pilot no-ops).
+
+**Why the candidate/path rules are this strict.** `fitz_local` + `extracted_figure` only, ≤1; prefer a
+replacement-plan `candidate_include_as_figure` item resolved in the manifest, else the first safe
+manifest figure. The ref must be exactly `^assets/[A-Za-z0-9_]+\.png$` **and** a real file *inside* the
+job dir (realpath-containment rejects symlink escapes); absolute / `..` / backslash / URL / `data:` /
+base64 / subdir / non-PNG refs are rejected. The caption is a generic, length-limited, escaped,
+page-only string — manifest captions are `None` in practice, so no raw caption / OCR text / provider
+payload / path / URL / token / image byte / data URI can ever reach the guide. **Never Chandra**
+(`chandra_local` or a `chandra_blocked` marker), **never** `mistral_ocr`, **never** `page_visual_signal`.
+**Chandra extraction integration remains blocked by Slice 45 `status:not_run`.**
+
+**Scope:** new `pipeline/visual_markdown_insertion.py` + one surgical wire-in in
+`pipeline/run_markdown_job.py` + `test_scripts/test_visual_markdown_insertion.py` (flag-off **26/0**,
+flag-on **50/0**) + `test_scripts/test_visual_markdown_render.py` (host-skippable HTML/PDF/DOCX) + this
+entry + `CURRENT_TASK.md` / `NEXT_CHAT_HANDOFF.md`. **No** frontend toggle, export-bundle change, generic
+artifact-list change, prompt change, OCR-routing change, extraction-behavior change, model/network call,
+or renderer rewrite. Because this changes clean-markdown/render-output behavior behind a flag, full
+validation (Docker rebuild/recreate + `/api/health` + `smoke_release.py` + a flag-on focused check) is
+required.

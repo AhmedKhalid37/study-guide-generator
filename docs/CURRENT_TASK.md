@@ -5,6 +5,87 @@
 
 ---
 
+## Slice 54 — Minimal **V4/V5 visual markdown image pilot**, off by default, on `slice54-visual-markdown-image-pilot`.
+
+- **Purpose:** finally prove the *smallest possible* end-to-end visual path. When an explicit,
+  off-by-default flag is set, insert **at most one** existing `fitz_local` `extracted_figure` (already
+  cropped to the job's `assets/<slug>.png` by Slice 40) into the generated guide as a **standard
+  Markdown image** — `![safe caption](assets/<slug>.png)` — flowing through the **existing**
+  `JobManager.save_clean_md` chokepoint and the **existing** PDF/HTML/DOCX renderers. **No renderer was
+  rewritten. No Chandra. No new image generation. No new artifact. No frontend toggle.**
+- **Key finding (the thing this pilot set out to prove):** the existing render path *already* resolves a
+  job-local relative `assets/<slug>.png` reference. PDF/HTML render from a `file://` URI rooted at the
+  job dir (`final.html` sits beside `assets/`), so a relative `<img src="assets/…">` resolves locally;
+  the DOCX renderer's `_resolve_image_path` already resolves relative refs against the job dir and
+  degrades to an `[image missing: …]` marker rather than failing. **So no renderer change was needed.**
+- **Feature flag:** `GUIDEFORGE_ENABLE_VISUAL_MARKDOWN_IMAGE_PILOT` (env; truthy ∈ {1,true,yes,on}),
+  **default false** — mirrors the existing `GUIDEFORGE_LOCAL_FIGURE_EXTRACTION` pattern. With the flag
+  unset the pilot is a **no-op**: it returns the sanitized clean Markdown **unchanged (byte-identical)**
+  without reading any artifact, so default guide output is exactly as before this slice.
+- **New module:** `pipeline/visual_markdown_insertion.py` (stdlib-only: `json`, `os`, `re`, `sys`,
+  `typing`; imports nothing from `fitz`/Tesseract/llama.cpp/Chandra/Mistral/Gemini/LMM/renderers/server;
+  reads only the job's already-persisted, already-sanitized `visual_assets_manifest.json` /
+  `visual_replacement_plan.json` and the on-disk `assets/` PNG). Public API:
+  - `is_visual_markdown_pilot_enabled() -> bool`
+  - `apply_visual_markdown_pilot(job, clean_md) -> (str, info)` — the degrade-never-fail entry point.
+  - `select_visual_markdown_candidate(job, *, manifest=None, replacement_plan=None) -> dict | None`
+  - `validate_visual_asset_ref(asset_ref) -> str | None`
+  - `build_visual_markdown_image(candidate) -> str`
+  - `insert_visual_markdown_reference(clean_md, candidate) -> (str, info)`
+- **Integration point (single, surgical):** `pipeline/run_markdown_job.py::run_raw_markdown_pipeline`,
+  immediately **before** the existing `job.save_clean_md(...)` call — `clean = sanitize(raw)` →
+  `clean, _ = apply_visual_markdown_pilot(job, clean)` → `save_clean_md(clean, "generated")`. **No new
+  clean.md writer; the single chokepoint is preserved** (the figure is snapshotted into version history
+  like any other clean.md write).
+- **Candidate rules (narrow on purpose):** `fitz_local` only; `extracted_figure` only; **one maximum**.
+  Preferred = a `visual_replacement_plan.json` item with `candidate_action:"candidate_include_as_figure"`
+  whose `asset_id` resolves to a safe `extracted_figure` in `visual_assets_manifest.json`. Fallback
+  (flag-on, all safety gates still applied) = the first safe `fitz_local` `extracted_figure` in the
+  manifest. **Never** Chandra (`chandra_local` / a `chandra_blocked` marker), **never** `mistral_ocr`,
+  **never** `page_visual_signal`. If no safe candidate exists, the figure is omitted and the job
+  continues normally.
+- **Safe asset-path gate:** the ref must be exactly `^assets/[A-Za-z0-9_]+\.png$` **and** the file must
+  really exist *inside* the job directory (realpath-containment check rejects symlink escapes). Rejected:
+  absolute paths, `..`, backslashes, URL-like refs, `data:`/base64, subdirs, non-PNG. The rendered
+  Markdown never contains a host path; the renderer never receives an arbitrary host path from model
+  output.
+- **Caption:** a generic, plain-text, length-limited (≤80), safe-charset, Markdown-escaped string
+  derived from the **source page only** (`Extracted figure from source page N`). Manifest captions are
+  `None` in practice, so the generic path is always used. **No** raw caption / OCR text / provider
+  payload / path / URL / token / image byte / data URI is ever emitted.
+- **Placement (dumb v1):** if the guide carries a deterministic `<!-- visual-anchor: source_page_NNNN -->`
+  marker for the figure's page, the image is placed at that anchor; otherwise a single trailing
+  `## Visual Reference` section is appended. Never mid-prose, never semantic, never derived from raw
+  source text.
+- **Degrade-never-fail:** any failure (no candidate / unsafe ref / missing file / malformed artifact /
+  insertion error) yields the **original** Markdown and a **closed-vocab** reason (`visual_pilot_disabled`,
+  `visual_candidate_unavailable`, `visual_candidate_unsafe`, `visual_asset_missing`,
+  `visual_asset_path_invalid`, `visual_markdown_insert_failed`, `visual_format_unsupported`,
+  `visual_render_degraded`). The job never fails because of the pilot; reasons are stderr-only (no
+  job.json field, no artifact-list change). Raw paths / exceptions are never logged.
+- **PDF/HTML/DOCX validated separately:** PDF + HTML use the existing Markdown→render path (relative
+  `assets/…` resolves from the job `file://` root); DOCX embeds the relative image via the existing
+  `_resolve_image_path` or degrades to its existing `[image missing: …]` marker — never fails the export.
+  No DOCX/Chromium rewrite.
+- **New tests:** `test_scripts/test_visual_markdown_insertion.py` (**flag-off 26/0**, **flag-on 50/0**:
+  flag-off byte-identical even with artifacts present; one-image-max; ref shape; reject absolute/`..`/
+  backslash/url/data-uri/non-png/subdir; reject Chandra / chandra_blocked / page_visual_signal; missing
+  file degrades; plan→manifest fallback; caption sanitization + length limit; anchor vs Visual-Reference
+  placement; no mutation of manifest/plan on disk or in-memory; full no-leak scan) and
+  `test_scripts/test_visual_markdown_render.py` (HTML `<img src="assets/…">` with **no host path**; PDF
+  renders non-empty via Chromium; DOCX embeds/degrades without raising — each SKIPs cleanly when its host
+  dep is absent). All existing visual/anki/ocr/eval/export tests still pass; frontend build/test/verify
+  unchanged (no frontend change this slice).
+- **Scope guards:** flag **off by default**; ≤1 figure; no Chandra/Mistral/Gemini/cloud images; no
+  frontend toggle; no export-bundle change; no generic artifact-list change; no prompt change; no OCR
+  routing change; no extraction behavior change (only reads already-produced advisory artifacts when the
+  flag is on); no model/llama-server/network call; no `clean.md` write outside `save_clean_md`.
+  **Chandra extraction integration remains blocked by Slice 45 `status:not_run`.**
+- **Status:** **NOT committed** (per instruction). Host validation green; Docker rebuild + `/api/health`
+  + `smoke_release.py` + flag-on focused validation to be run before any commit.
+
+---
+
 ## Slice 53 — True Anki **`.apkg`** export (backend core + export route + tiny UI button) on `slice53-anki-apkg-export`.
 
 - **Purpose:** add a **real, importable Anki `.apkg` package** export for the *already generated*
