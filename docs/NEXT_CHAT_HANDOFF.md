@@ -6,9 +6,33 @@
 > stable overview see `PROJECT_CONTEXT.md`; canonical brief is `../CLAUDE.md`.
 
 ## Current position
-- **Working tree:** **Slice 44 (Chandra local provider live validation harness) — uncommitted,
-  MANUAL / OPT-IN ONLY** on branch `slice44-chandra-local-provider-live-harness` (branched from
-  trunk after Slice 43 merged at `2bc14ef`). A manual harness so an operator can prove — *outside
+- **Working tree:** **Slice 45 (Chandra live-harness validation report + operator runbook) —
+  uncommitted, DOCS-ONLY** on branch `slice45-chandra-live-harness-validation-report` (branched
+  from trunk after Slice 44 merged at `8468c16`). A **gate/report** slice — no code/test/app change.
+  - **New doc:** `docs/CHANDRA_LIVE_HARNESS_VALIDATION.md` — operator runbook for the Slice 44
+    harness: purpose (proves the request/response/normalizer boundary only — not production wiring,
+    not extraction integration, not release smoke), operator-owned preconditions (operator starts
+    their own `llama-server`, supplies a non-private image; no path/endpoint/port/token/socket/
+    model/mmproj/exec recorded), a **placeholder-only** run-command template, the safe-output
+    policy (closed-vocab summary fields only), a recordable-result spec, the gate decision, and
+    future-slice notes.
+  - **Recorded result:** `status: not_run`, reason `operator_input_not_supplied` — no live server
+    endpoint / non-private image supplied this slice, so **no live HTTP request was made** and no
+    result was fabricated. **Gate:** `not_run` ⇒ the disabled extraction-side adapter slice **stays
+    blocked** until a live run passes (pass ⇒ proceed to a still-**disabled**, off-by-default
+    extraction-side adapter with Tesseract/`fitz` fallback, degrade-not-fail).
+  - **No production change:** docs-only — no `pipeline/extract.py`/OCR-routing/`ocr_routing`/
+    `extraction_metadata.json`/`visual_assets_manifest.json`/`clean.md`/API/frontend/Provider
+    Settings/LMM/render/export/artifact change; no `llama-server` management; no subprocess/Docker;
+    no model/mmproj/quant file or raw OCR/provider output committed.
+  - **Validation:** `git diff --check` clean; `git diff --name-only` docs-only
+    (`docs/CHANDRA_LIVE_HARNESS_VALIDATION.md` + `CURRENT_TASK.md` + this handoff + `DECISIONS.md`).
+    No build/smoke required. **Status:** NOT committed (awaiting operator review).
+
+- **Prior slice — Slice 44 (Chandra local provider live validation harness) — committed `8468c16`,
+  fast-forward merged + pushed to trunk `chrome-renderer-v1`, MANUAL / OPT-IN ONLY** (was on branch
+  `slice44-chandra-local-provider-live-harness`, branched from trunk after Slice 43 merged at
+  `2bc14ef`). A manual harness so an operator can prove — *outside
   production app flow* — that a local Chandra-capable `llama-server` **they started themselves**
   can return output that flows through the Slice 43 boundary
   (`parse_chandra_chat_response` → `normalize_chandra_chat_response` → Slice 42 normalizer →
@@ -37,8 +61,9 @@
     `image_read_failed`; real transport never invoked; no forbidden imports). Full battery green
     (compileall; chandra/normalizer/manifest/figure/ocr/pdf/math/lint/eval/ask suites; frontend
     build+test; `git diff --check` clean). `smoke_release.py` not required (manual-harness-only).
-  - **Status:** NOT committed (awaiting operator review). **Next:** only after this harness proves
-    stable on real hardware, decide whether to add a still-**disabled** extraction-side adapter.
+  - **Status:** committed `8468c16`, fast-forward merged + pushed to trunk. **Next:** Slice 45
+    (above) records the operator runbook + gate; only after a live harness pass does a later slice
+    add a still-**disabled** extraction-side adapter.
 
 - **Prior slice — Slice 43 (Chandra local provider/client skeleton) — committed `2bc14ef`, merged
   to trunk, DISABLED / UNWIRED.** A small skeleton that names the third Chandra boundary and makes

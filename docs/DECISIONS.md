@@ -2087,3 +2087,39 @@ not required since no production-wired behavior is touched. **Deferred:** only
 after this harness proves stable on real hardware does a later slice decide
 whether to add a still-**disabled**, off-by-default extraction-side adapter (with
 Tesseract/`fitz` fallback and degrade-not-fail) — no extraction wiring before then.
+
+## The Chandra extraction-adapter is gated behind a real, sanitized live-harness pass (2026-06-12, Slice 45)
+Before any Chandra **extraction-side** code is written, the Slice 44 live harness
+must first **pass on real hardware**, and that pass is recorded as a sanitized
+result in `docs/CHANDRA_LIVE_HARNESS_VALIDATION.md`. Slice 45 is the docs-only
+**gate/report** that establishes this rule and the operator runbook; it records
+the current result honestly as `status: not_run` /
+`reason: operator_input_not_supplied` (no live endpoint or non-private image was
+supplied, so no live HTTP request was made and no result was fabricated).
+**Why:** (1) **A gate must exist between "the boundary parses" and "wire it into
+extraction."** The skeleton (Slice 43) and harness (Slice 44) prove the
+request/response/normalizer *shape*, but nothing has yet proven a real local
+`llama-server` produces usable output through that shape on this hardware. Writing
+an extraction adapter before that proof would be building on an unverified
+assumption. So the decision rule is explicit: live pass ⇒ proceed to a still-
+**disabled**, off-by-default extraction-side adapter (with Tesseract/`fitz`
+fallback, degrade-not-fail); `not_run`/fail ⇒ the adapter stays **blocked**, fix
+or rerun first. Current gate state is `not_run`, so the adapter is blocked. (2)
+**The runbook keeps the proof leak-safe by construction.** The run-command
+template uses **placeholders only** (`<local-openai-compatible-endpoint>`,
+`<non-private-test-image>`) and the safe-output policy permits recording **only**
+the harness's closed-vocabulary summary fields (booleans, counts, fixed
+status/category tokens) — never raw OCR text, the raw provider response, the image
+path/basename/bytes, a base64/`data:` URI, a full URL/port/query, headers/tokens,
+or a socket/model/`mmproj`/executable path. Operator-specific facts (real paths,
+endpoints, launch commands) are explicitly forbidden from the doc. (3) **It stays
+honest about what was not done.** A `not_run` result is recorded as such rather
+than fabricating a green run; the harness remains proven only by its fake-transport
+suite (`test_chandra_live_harness` 96/0). **Scope:** docs-only — new
+`docs/CHANDRA_LIVE_HARNESS_VALIDATION.md` + `CURRENT_TASK.md` +
+`NEXT_CHAT_HANDOFF.md` + this entry; no code/test/extraction/`ocr_routing`/
+`extraction_metadata.json`/`visual_assets_manifest.json`/API/frontend/Provider
+Settings/LMM/render/export/`clean.md` change, no `llama-server` management, no
+subprocess/Docker, and no model/mmproj/quant or raw OCR/provider output committed.
+Validated by `git diff --check` (clean) + `git diff --name-only` (docs-only); no
+build/smoke needed.

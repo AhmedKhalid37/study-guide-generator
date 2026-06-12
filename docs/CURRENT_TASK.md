@@ -5,7 +5,45 @@
 
 ---
 
-## Slice 44 — Chandra local provider **live validation harness** (manual / opt-in only) on `slice44-chandra-local-provider-live-harness`.
+## Slice 45 — Chandra live-harness validation report + operator runbook (DOCS-ONLY) on `slice45-chandra-live-harness-validation-report`.
+
+- **Purpose:** a **docs-only gate/report** slice that records (a) **how to safely run** the
+  Slice 44 Chandra live validation harness and (b) a **sanitized** live validation result if an
+  operator has a local Chandra-capable `llama-server` available. **Not** an integration slice —
+  no code/test/app behavior changes.
+- **New doc:** `docs/CHANDRA_LIVE_HARNESS_VALIDATION.md` (§1 purpose · §2 operator-owned
+  preconditions · §3 placeholder-only run command template · §4 safe-output policy · §5
+  recordable summary fields + this slice's result · §6 gate decision · §7 future-slice notes).
+  - **Run template uses placeholders only** (`--endpoint "<local-openai-compatible-endpoint>"`,
+    `--image "<non-private-test-image>"`) — no real path/endpoint/port/token/socket/model/mmproj/
+    executable recorded.
+  - **Safe-output policy:** record only closed-vocabulary summary fields (`reachable`,
+    `request_ok`, `parse_status`, `normalized_kind`, `normalized_status`, `source_text_char_count`,
+    `asset_count`, closed-vocab `parse_warnings`/`normalize_warnings`, `failure_category`,
+    `elapsed_ms` if safe). Never raw OCR text, raw provider response, image path/basename/bytes,
+    base64/data URI, full URL/query, headers/tokens, or model/mmproj/exec/socket paths.
+- **Recorded validation result this slice:** `status: not_run`, reason `operator_input_not_supplied`.
+  No live Chandra `llama-server` endpoint and no non-private test image were supplied during this
+  docs-only slice, so **no live HTTP request was made** and **no result was fabricated**. The
+  Slice 44 harness remains proven only by its fake-transport suite (`test_chandra_live_harness`
+  **96/0**).
+- **Gate decision:** current state is `not_run` ⇒ the **disabled extraction-side adapter slice
+  stays blocked** until a live run passes. A pass ⇒ proceed to a still-**disabled**, off-by-default
+  extraction-side adapter (Tesseract/`fitz` fallback, degrade-not-fail); a fail/`not_run` ⇒ fix the
+  harness/provider boundary or rerun first.
+- **Scope (docs-only):** no code, no tests, no app integration, no extraction wiring, no
+  `ocr_routing`/`extraction_metadata.json`/`visual_assets_manifest.json` change, no API route, no
+  frontend/UI, no Provider Settings, no Local Model Manager, no render/export/artifact change, no
+  `clean.md` write, no `llama-server` management, no subprocess/Docker, no model/mmproj/quant file,
+  no raw OCR/provider output committed.
+- **Validation:** `git diff --check` clean; `git diff --name-only` docs-only (new
+  `docs/CHANDRA_LIVE_HARNESS_VALIDATION.md` + `CURRENT_TASK.md` + `NEXT_CHAT_HANDOFF.md` +
+  `DECISIONS.md`). No build/smoke required — no code touched.
+- **Status: NOT committed** (awaiting operator review).
+
+---
+
+## Slice 44 — Chandra local provider **live validation harness** (manual / opt-in only) — committed `8468c16`, merged + pushed to trunk `chrome-renderer-v1`.
 
 - **Purpose:** add a **manual, opt-in** live validation harness so an operator can prove —
   *outside production app flow* — that a local Chandra-capable `llama-server` **they started
@@ -69,7 +107,8 @@
   server/extraction/render/artifact/UI behavior is touched (manual-harness-only).
 - **Files:** new `test_scripts/validate_chandra_local_provider_live.py`, new
   `test_scripts/test_chandra_live_harness.py`, docs (`CURRENT_TASK.md`, `NEXT_CHAT_HANDOFF.md`,
-  `DECISIONS.md`). **Status: NOT committed** (awaiting operator review).
+  `DECISIONS.md`). **Status: committed `8468c16`, fast-forward merged + pushed to trunk
+  `chrome-renderer-v1`.**
 - **Next (deferred, separate slice):** only after this harness proves stable on real hardware,
   decide whether to add a **disabled** extraction-side adapter (still off-by-default, with
   Tesseract/`fitz` fallback and degrade-not-fail) — no extraction wiring before then.
