@@ -6,14 +6,43 @@
 > stable overview see `PROJECT_CONTEXT.md`; canonical brief is `../CLAUDE.md`.
 
 ## Current position
-- **Working tree:** **Slice 54 (minimal V4/V5 visual markdown image pilot, off by default) —
-  UNCOMMITTED (per instruction)** on branch `slice54-visual-markdown-image-pilot` (branched from trunk
-  after **Slice 53** merged). When `GUIDEFORGE_ENABLE_VISUAL_MARKDOWN_IMAGE_PILOT` is set, it inserts
+- **Working tree:** **Slice 55 (per-job opt-in for the visual markdown image pilot) — UNCOMMITTED
+  (per instruction)** on branch `slice55-visual-pilot-job-opt-in` (branched from trunk after **Slice 54**
+  committed `cdebbaa` + merged). Makes the proven Slice 54 pilot **user-controllable per job** behind a
+  **two-key AND gate**: the global env master switch `GUIDEFORGE_ENABLE_VISUAL_MARKDOWN_IMAGE_PILOT`
+  (unchanged, default off) **and** an explicit per-job opt-in. **A job opt-in can never bypass the env
+  master switch.** Default stays **off ⇒ byte-identical output**; all Slice 54 visual behaviour (≤1
+  `fitz_local` `extracted_figure`, safe `assets/<slug>.png`, existing render path, degrade-never-fail,
+  no Chandra, no renderer rewrite) is unchanged — the opt-in only adds a second gate in front of it.
+  - **Truth table:** (off,off)/(off,on) ⇒ `visual_pilot_disabled`; (on,off) ⇒ `visual_pilot_job_opt_out`;
+    (on,on) ⇒ may insert (still subject to all candidate/path gates).
+  - **Per-job option:** manifest key **`visual_markdown_image_pilot`** (bool, default false; absent on
+    pre-Slice-55 jobs ⇒ false; non-bool coerces to false). **Request field:** **`enable_visual_references`**
+    (bool, default false) on `LLMJobRequest`, wired into **both** JSON and multipart `_parse_llm_request`;
+    `create_llm_job` → `run_llm_job(enable_visual_references=…)` stores it as the manifest option. LLM path
+    only (only LLM+PDF jobs produce a `fitz_local` figure).
+  - **Pilot gate:** `pipeline/visual_markdown_insertion.py` gained `is_job_visual_pilot_opt_in(job)`;
+    `apply_visual_markdown_pilot` checks env **first**, then opt-in, before any candidate read (new
+    closed-vocab reason `visual_pilot_job_opt_out`). Single `save_clean_md` chokepoint unchanged.
+  - **Capability + Builder:** `/api/options` now returns non-secret `capabilities.visual_markdown_image_pilot`
+    (= master-switch state). Builder LLM block has one experimental toggle **"Add one visual reference
+    (experimental)"**, default unchecked, **disabled-with-note** when the capability is off; pure helper
+    `frontend/src/visualPilotOptIn.js` keeps payload/toggle logic node-testable. No new page / broad visual
+    settings / export-artifact rows / Job Details change.
+  - **Tests:** insertion **flag-off 53/0 · flag-on 77/0** (added a flag-independent truth-table + opt-in
+    coercion checks); render **6/0, 1 skip** both modes (added a negative-gate render case); new
+    `frontend/scripts/verify-visual-pilot-opt-in.mjs` in `npm test`. Full backend battery + offline eval +
+    frontend build/test green; **Docker rebuild + `/api/health` `{"ok":true}` + `smoke_release.py` 29/0**;
+    live: image ships the dual gate and an LLM job with `enable_visual_references:true` completes `done`
+    with no effect while the master switch is off. **Chandra extraction still blocked by Slice 45 `not_run`.**
+
+### (previous) Slice 54 — minimal V4/V5 visual markdown image pilot, off by default — committed `cdebbaa`, merged to trunk
+- When `GUIDEFORGE_ENABLE_VISUAL_MARKDOWN_IMAGE_PILOT` is set, it inserts
   **at most one** existing `fitz_local` `extracted_figure` (already cropped to `assets/<slug>.png` by
   Slice 40) into the guide as a standard Markdown image `![safe caption](assets/<slug>.png)`, through
   the **existing** `save_clean_md` chokepoint and the **existing** PDF/HTML/DOCX renderers. Flag **off
   ⇒ byte-identical** clean.md / output (no artifact reads). **Degrade-never-fail. No Chandra. No
-  renderer rewrite. No new artifact. No frontend toggle.**
+  renderer rewrite. No new artifact. No frontend toggle.** (Slice 55 adds the per-job opt-in on top.)
   - **Proven:** the existing renderers already resolve a job-local relative `assets/<slug>.png` ref
     (PDF/HTML via the job `file://` root; DOCX via `_resolve_image_path`, degrading to `[image missing]`)
     — so **no renderer change was needed**.

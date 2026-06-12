@@ -63,6 +63,11 @@ import {
   SECTION_GROUPS
 } from "../sectionMeta";
 import { FOLDER_PRESET_COLORS } from "../folderMeta";
+import {
+  isVisualPilotEffectivelyOn,
+  isVisualPilotToggleEnabled,
+  visualPilotPayloadFields
+} from "../visualPilotOptIn";
 import { presetCompat, presetModelLabel, providerIconFor, providerLabelFor } from "../presetMeta";
 import { Icon } from "./Icon";
 import { JobDetailsDrawer } from "./RecentJobsPanel";
@@ -166,7 +171,9 @@ const TOOLTIPS = {
   attachments: "Extra source files. PDFs/scans are read with OCR/VLM when there is no text layer.",
   outputDepth: "How deep the whole guide goes — quick & high-yield, balanced, or exhaustive. Auto leaves it to the style.",
   difficulty: "How the material is pitched — beginner, normal, exam-level, or advanced. Auto leaves it to the style.",
-  sections: "Optional extra sections to add where the source supports them. None are added unless you pick them."
+  sections: "Optional extra sections to add where the source supports them. None are added unless you pick them.",
+  visualReferences:
+    "Experimental: when the source is a PDF with a usable extracted figure, add at most one figure image to the guide. Off by default and also requires the server-side pilot to be enabled."
 };
 
 // Terminal generation statuses: once the progress endpoint reports one of these,
@@ -248,6 +255,13 @@ export default function BuilderWorkspace({
   const [pendingModelNonce, setPendingModelNonce] = useState(0);
   const [qwenThinking, setQwenThinking] = useState(true);
   const [strictMath, setStrictMath] = useState(true);
+  // Slice 55: per-job opt-in for the off-by-default visual markdown image pilot.
+  // Default false ⇒ no extra field on the request ⇒ unchanged output. The actual
+  // insertion ALSO requires the backend env master switch; visualPilotEnabled below
+  // mirrors that switch (from /api/options.capabilities) so the toggle renders
+  // enabled only when the server could honour it, and disabled-with-note otherwise.
+  const [enableVisualReferences, setEnableVisualReferences] = useState(false);
+  const [visualPilotEnabled, setVisualPilotEnabled] = useState(false);
   const [attachments, setAttachments] = useState([]);
   // Per-PDF preflight inspection results, keyed by a stable file signature (see
   // attachmentKey). Lives alongside the selected files only — never persisted to
@@ -339,6 +353,9 @@ export default function BuilderWorkspace({
         const details = normalizeProviderDetails(options);
         setProviderDetails(details);
         setGeneratorPresets(options.generator_presets ?? []);
+        // Slice 55: mirror the global visual-pilot master switch so the Builder
+        // can enable/disable its per-job opt-in. Non-secret on/off flag only.
+        setVisualPilotEnabled(Boolean(options?.capabilities?.visual_markdown_image_pilot));
         setProvidersLoaded(true);
         // A shortcut prefill owns the provider+model; don't override it with the
         // default-provider pick. The resolver effect applies the saved model.
@@ -609,6 +626,7 @@ export default function BuilderWorkspace({
         difficulty,
         strictMath,
         qwenThinking,
+        enableVisualReferences,
         outlineEnabled,
         outlineSections
       }),
@@ -623,6 +641,7 @@ export default function BuilderWorkspace({
       difficulty,
       strictMath,
       qwenThinking,
+      enableVisualReferences,
       outlineEnabled,
       outlineSections
     ]
@@ -749,6 +768,7 @@ export default function BuilderWorkspace({
         model,
         strictMath,
         qwenThinking,
+        enableVisualReferences,
         attachments,
         length,
         includeSections,
@@ -1150,6 +1170,9 @@ export default function BuilderWorkspace({
               setQwenThinking={setQwenThinking}
               strictMath={strictMath}
               setStrictMath={setStrictMath}
+              enableVisualReferences={enableVisualReferences}
+              setEnableVisualReferences={setEnableVisualReferences}
+              visualPilotEnabled={visualPilotEnabled}
               attachments={attachments}
               setAttachments={setAttachments}
               attachmentPreflights={attachmentPreflights}
@@ -1601,6 +1624,9 @@ function BuilderComposer({
   setQwenThinking,
   strictMath,
   setStrictMath,
+  enableVisualReferences,
+  setEnableVisualReferences,
+  visualPilotEnabled = false,
   attachments,
   setAttachments,
   attachmentPreflights,
@@ -1705,6 +1731,19 @@ function BuilderComposer({
             setPageSelections={setPageSelections}
           />
           <Toggle label="Strict math" checked={strictMath} onChange={setStrictMath} tip={TOOLTIPS.strictMath} />
+          {/* Slice 55: per-job opt-in for the experimental visual markdown image
+              pilot. Disabled (and forced visually off) unless the server's master
+              switch is on; even when checked the backend re-gates on the env flag. */}
+          <Toggle
+            label="Add one visual reference (experimental)"
+            checked={isVisualPilotEffectivelyOn({ capabilityEnabled: visualPilotEnabled, requested: enableVisualReferences })}
+            onChange={setEnableVisualReferences}
+            tip={TOOLTIPS.visualReferences}
+            disabled={!isVisualPilotToggleEnabled(visualPilotEnabled)}
+          />
+          {!visualPilotEnabled && (
+            <p className="sg-note">Visual references are turned off on this server.</p>
+          )}
         </div>
       )}
 
@@ -3153,12 +3192,13 @@ function FieldLabel({ children, tip, tipLabel }) {
   );
 }
 
-function Toggle({ label, checked, onChange, tip }) {
+function Toggle({ label, checked, onChange, tip, disabled = false }) {
   return (
-    <label className="sg-toggle">
+    <label className="sg-toggle" data-disabled={disabled ? "true" : undefined}>
       <input
         type="checkbox"
         checked={checked}
+        disabled={disabled}
         onChange={(event) => onChange(event.target.checked)}
       />
       <span>
@@ -3285,6 +3325,7 @@ export function buildBuilderPayload({
   model,
   strictMath,
   qwenThinking,
+  enableVisualReferences = false,
   attachments,
   length,
   includeSections = {},
@@ -3318,6 +3359,7 @@ export function buildBuilderPayload({
         model,
         strictMath,
         qwenThinking,
+        enableVisualReferences,
         attachments,
         length,
         includeSections,
@@ -3351,6 +3393,7 @@ export function buildLlmPayload({
   model,
   strictMath,
   qwenThinking,
+  enableVisualReferences = false,
   attachments = [],
   length,
   includeSections = {},
@@ -3388,6 +3431,10 @@ export function buildLlmPayload({
     ...(outputDepth ? { output_depth: outputDepth } : {}),
     ...(difficulty ? { difficulty } : {}),
     ...(hasPageSelections ? { page_selections: pageSelections } : {}),
+    // Slice 55: only send the per-job visual-pilot opt-in when actually on, so a
+    // default/opted-out request stays byte-equivalent to before this slice. The
+    // backend env master switch still gates whether it has any effect.
+    ...visualPilotPayloadFields(enableVisualReferences),
     attachments
   };
 }

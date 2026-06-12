@@ -5,6 +5,68 @@
 
 ---
 
+## Slice 55 — **Per-job opt-in** for the visual markdown image pilot, on `slice55-visual-pilot-job-opt-in`.
+
+- **Purpose:** make the proven Slice 54 pilot **user-controllable per job** while keeping it **default-off
+  and safe**. The pilot now requires **two gates AND-ed together**: the global env master switch **and** an
+  explicit per-job opt-in. A job opt-in can **never** bypass the master switch.
+- **Gating truth table** (both required; only the last row may insert — still subject to all Slice 54
+  candidate/path safety gates):
+  - global **false** + job **false** ⇒ no insertion (`visual_pilot_disabled`)
+  - global **false** + job **true**  ⇒ no insertion (`visual_pilot_disabled`) — opt-in cannot bypass env
+  - global **true**  + job **false** ⇒ no insertion (`visual_pilot_job_opt_out`)
+  - global **true**  + job **true**  ⇒ insertion *may* run (≤1 `fitz_local` `extracted_figure`, safe path)
+- **Global master flag:** `GUIDEFORGE_ENABLE_VISUAL_MARKDOWN_IMAGE_PILOT` (env; truthy ∈ {1,true,yes,on}),
+  **still required, default false**. Unchanged from Slice 54.
+- **Per-job option:** persisted job manifest key **`visual_markdown_image_pilot`** (bool, **default false**).
+  An old job created before this option ⇒ key absent ⇒ treated as **false**. Coerced to a strict bool;
+  any non-bool/malformed value ⇒ **false** (never accidentally on).
+- **Request field:** **`enable_visual_references`** (bool, default false) on `LLMJobRequest`, wired into
+  **both** the JSON and the multipart `_parse_llm_request` branches (multipart via `_form_bool(...,False)`).
+  `create_llm_job` passes it to `run_llm_job(enable_visual_references=…)`, which stores it as the
+  `visual_markdown_image_pilot` manifest option. **Only the LLM path** carries this (only LLM+PDF jobs ever
+  produce a `fitz_local` `extracted_figure`); paste/upload paths are untouched (no dead toggle).
+- **Pilot integration point:** `pipeline/visual_markdown_insertion.py` gained
+  `is_job_visual_pilot_opt_in(job)` (reads the manifest key, total/never-raises) and
+  `apply_visual_markdown_pilot` now checks the env switch **first**, then the per-job opt-in, before any
+  candidate read. Env-off short-circuits without ever reading the job option. New closed-vocab reason
+  `visual_pilot_job_opt_out`. **No change to the single `save_clean_md` chokepoint**; the helper is still
+  wired at the same spot in `run_raw_markdown_pipeline`.
+- **Capability flag (non-secret):** `/api/options` now returns
+  `capabilities.visual_markdown_image_pilot` = the global master-switch state, so the Builder can render
+  its opt-in **enabled** (master on) vs **disabled-with-note** (master off). Exposes only the experimental
+  on/off bit — never a key/token/path/URL.
+- **Frontend (Builder only, no redesign):** a single experimental toggle **"Add one visual reference
+  (experimental)"** in the LLM settings block, **default unchecked**, **disabled with a short note when the
+  server capability is off**. It adds the single `enable_visual_references: true` to the request **only when
+  on** (default/opted-out request stays byte-equivalent). New pure helper `frontend/src/visualPilotOptIn.js`
+  (`visualPilotPayloadFields`, `isVisualPilotEffectivelyOn`, `isVisualPilotToggleEnabled`) keeps the
+  payload/toggle logic React-free + node-testable. **No new page, no broad visual settings, no export/
+  artifact rows, no Job Details panel change.**
+- **Slice 54 visual behaviour is unchanged:** ≤1 `fitz_local` `extracted_figure`; safe `assets/<slug>.png`
+  only; existing markdown/render path; no renderer rewrite; no Chandra/Mistral/Gemini/cloud; degrade-never-
+  fail. The opt-in only adds a *second* gate in front of the same Slice 54 path.
+- **Tests:**
+  - `test_scripts/test_visual_markdown_insertion.py` — added a **flag-independent truth-table** (sets/clears
+    the env var itself) covering all four (global, job) combos incl. **(off,on) proving opt-in can't bypass
+    env**, plus opt-in coercion unit checks (missing/None/false/`"banana"`/int ⇒ false; `true`/`"true"`/
+    manifest-read ⇒ true; broken `read_manifest` degrades to false). **flag-off 53/0, flag-on 77/0.**
+  - `test_scripts/test_visual_markdown_render.py` — added a **negative-gate** case (master switch on + job
+    opted out ⇒ original markdown, renders with **no `<img>`**). **6/0, 1 skip** (docx host dep) both modes.
+  - `frontend/scripts/verify-visual-pilot-opt-in.mjs` (added to `npm test`) — payload field present **only**
+    when opted in; never serialises `false`; toggle forced off+disabled when capability off; exact safe
+    field name `enable_visual_references` + label; full no-leak scan.
+- **Scope guards:** default still **off**; master env flag still required (not optional); ≤1 figure; no
+  Chandra/Mistral/Gemini/cloud images; no image generation; no broad visual settings; no export-bundle/
+  artifact-list/advisory-schema change; no prompt/OCR-routing/extraction/broad-render rewrite; no model/
+  llama-server/network call; no `clean.md` write outside `save_clean_md`.
+  **Chandra extraction integration remains blocked by Slice 45 `status:not_run`.**
+- **Status:** **NOT committed** (per instruction). Host validation green (backend battery + eval + frontend
+  build/test/verify); Docker rebuild + `/api/health` + `smoke_release.py` + flag-on focused validation run
+  before any commit.
+
+---
+
 ## Slice 54 — Minimal **V4/V5 visual markdown image pilot**, off by default, on `slice54-visual-markdown-image-pilot`.
 
 - **Purpose:** finally prove the *smallest possible* end-to-end visual path. When an explicit,
@@ -81,8 +143,8 @@
   routing change; no extraction behavior change (only reads already-produced advisory artifacts when the
   flag is on); no model/llama-server/network call; no `clean.md` write outside `save_clean_md`.
   **Chandra extraction integration remains blocked by Slice 45 `status:not_run`.**
-- **Status:** **NOT committed** (per instruction). Host validation green; Docker rebuild + `/api/health`
-  + `smoke_release.py` + flag-on focused validation to be run before any commit.
+- **Status:** **committed `cdebbaa` and fast-forward merged to `chrome-renderer-v1` (pushed).** Slice 55
+  builds on it.
 
 ---
 

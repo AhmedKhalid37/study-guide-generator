@@ -17,6 +17,7 @@ Run:
 """
 from __future__ import annotations
 
+import json
 import os
 import re
 import sys
@@ -128,10 +129,79 @@ def test_pdf() -> None:
         check("pdf.produced_nonempty", out.is_file() and out.stat().st_size > 0)
 
 
+def test_negative_gate_renders() -> None:
+    """Slice 55: env master switch ON but job opted OUT ⇒ no image, still renders.
+
+    Exercises the real pilot entry point (not a hand-written clean.md): with a
+    valid candidate present but the per-job opt-in off, ``apply_visual_markdown_pilot``
+    must return the ORIGINAL markdown (no ``![`` image), and that markdown renders
+    cleanly with no ``<img>`` tag. Proves the gate, not just the renderer.
+    """
+    from pipeline import visual_markdown_insertion as vmi
+
+    class _Job:
+        def __init__(self, d: Path, opt_in: bool) -> None:
+            self.dir = d
+            self._opt_in = opt_in
+
+        @property
+        def visual_assets_manifest_json(self) -> Path:
+            return self.dir / "visual_assets_manifest.json"
+
+        @property
+        def visual_replacement_plan_json(self) -> Path:
+            return self.dir / "visual_replacement_plan.json"
+
+        @property
+        def visual_markdown_image_pilot(self) -> bool:
+            return self._opt_in
+
+    base_md = "# Guide\n\nSome content.\n"
+    manifest = {
+        "version": 1, "kind": "visual_assets_manifest", "status": "completed",
+        "assets": [{
+            "asset_id": "s00_page_0003_figure_01", "source_page": 3,
+            "asset_type": "extracted_figure", "source_provider": "fitz_local",
+            "image_ref": "assets/" + ASSET_NAME, "caption": None,
+        }],
+    }
+    old = os.environ.get(vmi.ENABLE_ENV)
+    os.environ[vmi.ENABLE_ENV] = "1"  # global master switch ON
+    try:
+        with tempfile.TemporaryDirectory() as d:
+            job_dir = _make_job_dir(Path(d))
+            (job_dir / "visual_assets_manifest.json").write_text(
+                json.dumps(manifest) + "\n", encoding="utf-8"
+            )
+            # Opted OUT despite the master switch being on and a valid candidate.
+            job = _Job(job_dir, opt_in=False)
+            out, info = vmi.apply_visual_markdown_pilot(job, base_md)
+            check("neggate.no_image_in_md", out == base_md and "![" not in out, str(info))
+            check("neggate.reason_opt_out", info.get("reason") == vmi.SKIP_JOB_OPT_OUT, str(info))
+            try:
+                from pipeline.html_renderer import render_markdown_file
+            except Exception as exc:
+                skip("neggate.html_render", f"renderer unavailable ({type(exc).__name__})")
+                return
+            (job_dir / "clean.md").write_text(out, encoding="utf-8")
+            try:
+                html = render_markdown_file(job_dir / "clean.md")
+            except Exception as exc:
+                skip("neggate.html_render", f"render unavailable ({type(exc).__name__})")
+                return
+            check("neggate.renders_without_img", "<img" not in html, html[:120])
+    finally:
+        if old is None:
+            os.environ.pop(vmi.ENABLE_ENV, None)
+        else:
+            os.environ[vmi.ENABLE_ENV] = old
+
+
 def main() -> None:
     test_html()
     test_docx()
     test_pdf()
+    test_negative_gate_renders()
     print(f"\n{PASS} passed, {FAIL} failed, {SKIP} skipped")
     if FAIL:
         sys.exit(1)

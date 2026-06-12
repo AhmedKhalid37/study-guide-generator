@@ -243,6 +243,14 @@ class LLMJobRequest(BaseModel):
     # error, mirroring how include_sections is handled on the multipart path).
     # PERSISTED ONLY this slice — _extract_pdf still ignores it (no page filtering).
     page_selections: dict[str, Any] = {}
+    # Slice 55: per-job opt-in for the off-by-default visual markdown image pilot.
+    # This is ONLY the per-job half of the gate — the global
+    # GUIDEFORGE_ENABLE_VISUAL_MARKDOWN_IMAGE_PILOT master switch must ALSO be on for
+    # anything to happen; with the switch off this field has no effect. Default
+    # False ⇒ unchanged output. Non-bool inputs are coerced/rejected by pydantic
+    # (and re-coerced to False downstream), so a payload can never force it true
+    # past the master switch. Persisted as the job option visual_markdown_image_pilot.
+    enable_visual_references: bool = False
 
 
 class OutlineGenerateRequest(BaseModel):
@@ -376,6 +384,8 @@ def health() -> dict[str, bool]:
 
 @app.get("/api/options")
 def options() -> dict[str, Any]:
+    from pipeline.visual_markdown_insertion import is_visual_markdown_pilot_enabled
+
     provider_details = get_provider_registry()
     return {
         "themes": THEMES,
@@ -389,6 +399,13 @@ def options() -> dict[str, Any]:
         },
         "provider_details": provider_details,
         "providers_v2": provider_details,
+        # Non-secret capability flags. Slice 55: whether the global visual markdown
+        # image pilot master switch is on, so the Builder can show its per-job opt-in
+        # enabled (vs disabled-with-note). This exposes only the experimental on/off
+        # state — never a key, token, path, or any other secret.
+        "capabilities": {
+            "visual_markdown_image_pilot": is_visual_markdown_pilot_enabled(),
+        },
     }
 
 
@@ -1931,6 +1948,7 @@ async def create_llm_job(request: Request) -> dict[str, Any]:
             config=config,
             attachments=attachments,
             page_selections=page_selections,
+            enable_visual_references=llm_request.enable_visual_references,
         )
     except MissingLLMConfigError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
@@ -3324,6 +3342,11 @@ async def _parse_llm_request(request: Request) -> tuple[LLMJobRequest, list[Atta
             # default request stays axis-free). Validated downstream like the JSON path.
             "output_depth": _form_text(form, "output_depth") or None,
             "difficulty": _form_text(form, "difficulty") or None,
+            # Slice 55: per-job visual-pilot opt-in on the multipart (attachments)
+            # path too — parity with the JSON LLMJobRequest default. Absent ⇒ False.
+            # This is still only the per-job half of the gate; the global env master
+            # switch is enforced server-side in apply_visual_markdown_pilot.
+            "enable_visual_references": _form_bool(form, "enable_visual_references", False),
         }
         outline_raw = _form_text(form, "outline")
         if outline_raw:

@@ -61,6 +61,7 @@ def run_llm_job(
     config: LLMConfig | None = None,
     attachments: list[AttachmentSource] | None = None,
     page_selections: dict[str, list[list[int]]] | None = None,
+    enable_visual_references: bool = False,
 ) -> Job:
     resolved_config = config or LLMConfig.from_env()
     job = Job.create(
@@ -82,6 +83,13 @@ def run_llm_job(
             # matching PDF attachments are restricted to the selected original
             # pages. Empty / absent => all pages => unchanged behaviour.
             "page_selections": page_selections or {},
+            # Slice 55: per-job opt-in for the off-by-default visual markdown image
+            # pilot. Persisted so the pilot (apply_visual_markdown_pilot, read in
+            # run_raw_markdown_pipeline) can AND it with the global env master
+            # switch. Coerced to a strict bool here; default False keeps every
+            # existing/non-opted-in job byte-identical. The env switch still wins —
+            # this flag alone never enables insertion.
+            "visual_markdown_image_pilot": bool(enable_visual_references),
             "theme": theme,
             "strict_math": strict_math,
             "provider": resolved_config.provider,

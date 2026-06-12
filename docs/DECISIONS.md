@@ -2522,3 +2522,53 @@ artifact-list change, prompt change, OCR-routing change, extraction-behavior cha
 or renderer rewrite. Because this changes clean-markdown/render-output behavior behind a flag, full
 validation (Docker rebuild/recreate + `/api/health` + `smoke_release.py` + a flag-on focused check) is
 required.
+
+## Slice 55 — the visual pilot is gated by TWO keys (env master switch AND per-job opt-in), default off
+Slice 54 shipped the visual markdown image pilot behind a single global env flag. Slice 55 makes it
+**user-controllable per job** without weakening the default-off safety, by requiring **both** gates,
+AND-ed: the global env master switch `GUIDEFORGE_ENABLE_VISUAL_MARKDOWN_IMAGE_PILOT` **and** an explicit
+per-job opt-in (persisted manifest key `visual_markdown_image_pilot`, set from the new
+`LLMJobRequest.enable_visual_references`). Truth table: only **(global on, job on)** may insert; (off,*)
+⇒ `visual_pilot_disabled`; (on, job off) ⇒ `visual_pilot_job_opt_out`. Insertion is otherwise the
+unchanged Slice 54 path (≤1 `fitz_local` `extracted_figure`, safe `assets/<slug>.png`, existing
+renderers, degrade-never-fail, no Chandra, no renderer rewrite).
+
+**Why the env switch is checked first and can never be bypassed.** `apply_visual_markdown_pilot` returns
+on `is_visual_markdown_pilot_enabled()` being false **before** it ever reads the per-job option or any
+artifact. So a hostile/eager request setting `enable_visual_references:true` is inert unless the operator
+has *also* turned on the server-side master switch — the per-job control can only ever be the *second*
+gate, never an escalation path. The request field is a strict `bool` (pydantic) and the stored option is
+re-coerced to a strict bool on read (`true`/truthy-token only; missing key on a pre-Slice-55 job, or any
+non-bool/malformed value, ⇒ false), so neither an old job nor a malformed payload can accidentally enable
+it.
+
+**Why only the LLM request carries the field.** Only LLM jobs with PDF attachments ever produce a
+`fitz_local` `extracted_figure` (the manifest/`assets/` come from Slice 40 extraction). Paste and
+markdown-upload jobs have no manifest, so adding the opt-in there would be a dead toggle — avoided per the
+"no dead toggle" rule. The field is wired into **both** `_parse_llm_request` branches (JSON and multipart
+via `_form_bool(..., False)`) per the standing `LLMJobRequest` dual-path rule.
+
+**Why a non-secret capability flag + a disabled-with-note toggle.** `/api/options` now returns
+`capabilities.visual_markdown_image_pilot` = the master-switch state (a single experimental on/off bit —
+no key/token/path/URL). The Builder shows one experimental toggle **"Add one visual reference
+(experimental)"**, default unchecked, **disabled with a short note when the capability is off**, so the
+control is honest about when the server could honour it instead of silently no-op'ing. The payload/toggle
+logic lives in a pure React-free helper `frontend/src/visualPilotOptIn.js` (`visualPilotPayloadFields`
+sends `enable_visual_references` **only when on**, never serialises `false`, so a default/opted-out
+request stays byte-equivalent) so it is node-testable without a DOM. Label avoids "AI images"/"visuals"
+wording that would imply image *generation* — it adds at most one *extracted* figure.
+
+**Scope:** `pipeline/visual_markdown_insertion.py` (+`is_job_visual_pilot_opt_in`, dual gate, new
+`visual_pilot_job_opt_out` reason), `pipeline/run_llm_job.py` (+param, persists the manifest option),
+`api/server.py` (request field + multipart parse + pass-through + capability flag),
+`frontend/src/components/BuilderWorkspace.jsx` (state, capability fetch, one toggle, payload wiring),
+`frontend/src/visualPilotOptIn.js` (new pure helper), tests
+(`test_visual_markdown_insertion.py` truth-table + opt-in coercion → flag-off **53/0**, flag-on **77/0**;
+`test_visual_markdown_render.py` negative-gate → **6/0,1skip**; new
+`frontend/scripts/verify-visual-pilot-opt-in.mjs`), and the live docs. **No** image generation, broad
+visual settings page, export-bundle/artifact-list/advisory-schema change, Chandra/Mistral/Gemini/cloud
+image, prompt/OCR-routing/extraction/broad-render rewrite, model/network call, or `clean.md` write outside
+`save_clean_md`. The env master flag stays required (not made optional) and the default stays off. Because
+this touches backend request/UI/render-output behavior behind gates, full validation (Docker
+rebuild/recreate + `/api/health` + `smoke_release.py` + a flag-on focused check) was run.
+**Chandra extraction integration remains blocked by Slice 45 `status:not_run`.**

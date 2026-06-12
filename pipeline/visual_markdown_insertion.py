@@ -10,7 +10,12 @@ off-by-default flag.
 
 What this slice does and does NOT do
 ------------------------------------
-- When :func:`is_visual_markdown_pilot_enabled` is true, it inserts **at most one**
+- Gating is a two-key AND (Slice 55): the global env master switch
+  (:func:`is_visual_markdown_pilot_enabled`) **and** an explicit per-job opt-in
+  (:func:`is_job_visual_pilot_opt_in`, persisted as ``visual_markdown_image_pilot``)
+  must *both* be true. The browser/request can only raise the per-job half; it can
+  never bypass the master switch. Either gate off ⇒ byte-identical default output.
+- When both gates are on, it inserts **at most one**
   existing ``fitz_local`` ``extracted_figure`` (already cropped to the job's
   ``assets/<slug>.png`` by Slice 40) into the clean Markdown as a *standard
   Markdown image reference* — ``![safe caption](assets/<slug>.png)`` — then hands
@@ -55,6 +60,13 @@ from typing import Any
 
 ENABLE_ENV = "GUIDEFORGE_ENABLE_VISUAL_MARKDOWN_IMAGE_PILOT"
 
+# Slice 55: per-job opt-in. The global ``ENABLE_ENV`` master switch is necessary
+# but no longer sufficient — a job ALSO has to opt in via this persisted manifest
+# flag for any figure to be inserted. Absent / non-true ⇒ False ⇒ byte-identical
+# default output even when the master switch is on. The browser/request can only
+# *raise* this per job; it can never bypass the env master switch (both AND-gated).
+JOB_OPT_IN_KEY = "visual_markdown_image_pilot"
+
 # Provider / asset-type whitelist for this pilot (mirrors the manifest's own closed
 # vocab; owned locally so an upstream change cannot widen what the pilot accepts).
 SOURCE_PROVIDER_FITZ_LOCAL = "fitz_local"
@@ -84,6 +96,7 @@ _ANCHOR_MARKER_TEMPLATE = "<!-- visual-anchor: source_page_{page:04d} -->"
 
 # Closed skip/outcome vocabulary (diagnostic only; never embedded in the guide).
 SKIP_DISABLED = "visual_pilot_disabled"
+SKIP_JOB_OPT_OUT = "visual_pilot_job_opt_out"
 SKIP_CANDIDATE_UNAVAILABLE = "visual_candidate_unavailable"
 SKIP_CANDIDATE_UNSAFE = "visual_candidate_unsafe"
 SKIP_ASSET_MISSING = "visual_asset_missing"
@@ -94,6 +107,7 @@ SKIP_RENDER_DEGRADED = "visual_render_degraded"
 STATUS_INSERTED = "visual_inserted"
 SKIP_REASONS = {
     SKIP_DISABLED,
+    SKIP_JOB_OPT_OUT,
     SKIP_CANDIDATE_UNAVAILABLE,
     SKIP_CANDIDATE_UNSAFE,
     SKIP_ASSET_MISSING,
@@ -120,6 +134,19 @@ def is_visual_markdown_pilot_enabled() -> bool:
     return os.getenv(ENABLE_ENV, "").strip().lower() in {"1", "true", "yes", "on"}
 
 
+def is_job_visual_pilot_opt_in(job: Any) -> bool:
+    """Whether *this job* opted into the visual markdown image pilot (Slice 55).
+
+    Reads the persisted ``visual_markdown_image_pilot`` job option. This is the
+    per-job half of the gate; it is only consulted when the global master switch
+    (:func:`is_visual_markdown_pilot_enabled`) is already on. Anything other than a
+    truthy boolean / token coerces to ``False`` (so a missing key on an
+    pre-Slice-55 job, a malformed value, or no manifest all mean "off"). Never
+    raises — a read problem degrades to ``False`` (no insertion).
+    """
+    return _coerce_opt_in(_job_option(job, JOB_OPT_IN_KEY))
+
+
 # --- Public entry point (degrade-never-fail) ---------------------------------
 
 
@@ -131,8 +158,13 @@ def apply_visual_markdown_pilot(job: Any, clean_md: Any) -> tuple[str, dict[str,
     unchanged together with a closed-vocabulary skip ``info``. Never raises.
     """
     text = clean_md if isinstance(clean_md, str) else ""
+    # Both gates are required (AND). The env master switch is checked first so a
+    # job opt-in can never enable the pilot on its own; with the switch off the
+    # job option is never even read.
     if not is_visual_markdown_pilot_enabled():
         return text, {"status": "skipped", "reason": SKIP_DISABLED}
+    if not is_job_visual_pilot_opt_in(job):
+        return text, {"status": "skipped", "reason": SKIP_JOB_OPT_OUT}
 
     try:
         candidate, reason = _pick_candidate(job)
@@ -464,6 +496,40 @@ def _safe_page(value: Any) -> int:
 
 
 # --- Job-shape access (duck-typed, total) ------------------------------------
+
+
+def _job_option(job: Any, key: str) -> Any:
+    """Read a persisted job option (Slice 55), total and side-effect-free.
+
+    Prefers the persisted manifest (a real ``JobManager.Job`` exposes
+    ``read_manifest()``); falls back to a direct attribute for synthetic/test job
+    objects. Never raises and never mutates the job — a missing key or any read
+    problem yields ``None`` (which :func:`_coerce_opt_in` treats as off).
+    """
+    reader = getattr(job, "read_manifest", None)
+    if callable(reader):
+        try:
+            manifest = reader()
+            if isinstance(manifest, dict) and key in manifest:
+                return manifest.get(key)
+        except Exception:
+            pass
+    return getattr(job, key, None)
+
+
+def _coerce_opt_in(value: Any) -> bool:
+    """Coerce a stored opt-in value to a strict bool (default False).
+
+    Accepts a real ``True`` or a truthy string token only; everything else —
+    ``None``, ``False``, numbers, other strings, arbitrary objects — is False. This
+    is deliberately conservative so a malformed/unexpected value can never turn the
+    pilot on.
+    """
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, str):
+        return value.strip().lower() in {"1", "true", "yes", "on"}
+    return False
 
 
 def _path(job: Any, attr: str):

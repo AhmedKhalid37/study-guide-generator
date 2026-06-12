@@ -9,6 +9,12 @@ Run a few flag-ON cases too:
 
     GUIDEFORGE_ENABLE_VISUAL_MARKDOWN_IMAGE_PILOT=1 python test_scripts/test_visual_markdown_insertion.py
 
+Slice 55 added a per-job opt-in (``visual_markdown_image_pilot``). Insertion now
+requires BOTH the global env master switch AND the per-job opt-in. The truth-table
+and opt-in unit checks below set/clear the env var themselves, so they run and pass
+regardless of how this script is invoked; the legacy flag-ON cases assume an
+opted-in job (the FakeJob default) so they still exercise selection/insertion.
+
 The pilot helper is a near-pure function of an already-sanitized clean.md plus the
 job's already-produced (sanitized) visual advisory artifacts. These tests feed it
 tiny *handcrafted synthetic* manifests / plans and a temp job dir holding a tiny
@@ -24,6 +30,7 @@ import os
 import re
 import sys
 import tempfile
+import types
 import zipfile
 from dataclasses import dataclass
 from pathlib import Path
@@ -65,9 +72,16 @@ def check(name: str, condition: bool, detail: str = "") -> None:
 
 @dataclass(frozen=True)
 class FakeJob:
-    """Duck-typed stand-in exposing only what the pilot reads."""
+    """Duck-typed stand-in exposing only what the pilot reads.
+
+    ``opt_in`` (Slice 55) is surfaced as the persisted ``visual_markdown_image_pilot``
+    job option the pilot AND-gates against the env master switch. It defaults to
+    True so the legacy flag-ON selection/insertion cases stay meaningful; the
+    truth-table cases pass it explicitly.
+    """
 
     dir: Path
+    opt_in: bool = True
 
     @property
     def visual_assets_manifest_json(self) -> Path:
@@ -80,6 +94,10 @@ class FakeJob:
     @property
     def assets_dir(self) -> Path:
         return self.dir / "assets"
+
+    @property
+    def visual_markdown_image_pilot(self) -> bool:
+        return self.opt_in
 
 
 def _figure_asset(asset_id: str, *, image_ref: str, page: int = 3, caption=None) -> dict:
@@ -137,8 +155,8 @@ def _plan_item(asset_id: str, *, action="candidate_include_as_figure",
 
 
 def _make_job(tmp: Path, *, assets: list[dict] | None = None, plan_items=None,
-              png_names: list[str] | None = None) -> FakeJob:
-    job = FakeJob(dir=tmp)
+              png_names: list[str] | None = None, opt_in: bool = True) -> FakeJob:
+    job = FakeJob(dir=tmp, opt_in=opt_in)
     job.assets_dir.mkdir(parents=True, exist_ok=True)
     for name in (png_names or []):
         (job.assets_dir / name).write_bytes(_PNG_1x1)
@@ -164,7 +182,94 @@ def _leak_scan(name: str, text: str) -> None:
 BASE_MD = "# Guide\n\nSome content.\n"
 
 
+def _with_env(value, fn):
+    """Run ``fn`` with the master-switch env var forced to ``value`` (None = unset).
+
+    Saves/restores the prior value so the truth-table cases are deterministic no
+    matter how the script was invoked.
+    """
+    old = os.environ.get(vmi.ENABLE_ENV)
+    if value is None:
+        os.environ.pop(vmi.ENABLE_ENV, None)
+    else:
+        os.environ[vmi.ENABLE_ENV] = value
+    try:
+        return fn()
+    finally:
+        if old is None:
+            os.environ.pop(vmi.ENABLE_ENV, None)
+        else:
+            os.environ[vmi.ENABLE_ENV] = old
+
+
+def run_truth_table() -> None:
+    """Slice 55 gate: insertion requires BOTH the env master switch AND job opt-in.
+
+    Runs all four (global, job) combinations explicitly. Only (on, on) may insert;
+    crucially (off, on) proves a job opt-in can NEVER bypass the env master switch.
+    """
+    cases = [
+        ("off_off", None, False),
+        ("off_on", None, True),   # global OFF + job ON must still NOT insert
+        ("on_off", "1", False),
+        ("on_on", "1", True),     # only this one may insert
+    ]
+    for name, env, opt_in in cases:
+        with tempfile.TemporaryDirectory() as d:
+            tmp = Path(d)
+            job = _make_job(
+                tmp,
+                assets=[_figure_asset("a1", image_ref="assets/a1.png")],
+                plan_items=[_plan_item("a1")],
+                png_names=["a1.png"],
+                opt_in=opt_in,
+            )
+            out, info = _with_env(env, lambda: vmi.apply_visual_markdown_pilot(job, BASE_MD))
+            if env == "1" and opt_in:
+                check(f"truth.{name}.inserted",
+                      info.get("status") == vmi.STATUS_INSERTED and "![" in out, str(info))
+                _leak_scan(f"truth.{name}", out)
+            else:
+                check(f"truth.{name}.byte_identical", out == BASE_MD, repr(out[:60]))
+                check(f"truth.{name}.no_image", "![" not in out)
+                expected = vmi.SKIP_DISABLED if env != "1" else vmi.SKIP_JOB_OPT_OUT
+                check(f"truth.{name}.reason", info.get("reason") == expected, str(info))
+
+    # ---- is_job_visual_pilot_opt_in coercion (Slice 55) ----------------------
+    optin = vmi.is_job_visual_pilot_opt_in
+    check("optin.missing_false", optin(types.SimpleNamespace()) is False)
+    check("optin.none_false", optin(types.SimpleNamespace(visual_markdown_image_pilot=None)) is False)
+    check("optin.bool_true", optin(types.SimpleNamespace(visual_markdown_image_pilot=True)) is True)
+    check("optin.bool_false", optin(types.SimpleNamespace(visual_markdown_image_pilot=False)) is False)
+    check("optin.token_true", optin(types.SimpleNamespace(visual_markdown_image_pilot="true")) is True)
+    check("optin.invalid_false", optin(types.SimpleNamespace(visual_markdown_image_pilot="banana")) is False)
+    check("optin.int_false", optin(types.SimpleNamespace(visual_markdown_image_pilot=1)) is False)
+
+    # Persisted-manifest read path (a real Job exposes read_manifest()).
+    class ManifestJob:
+        def read_manifest(self):
+            return {"visual_markdown_image_pilot": True}
+
+    class ManifestOffJob:
+        # Old job created before the option existed → key absent → opt-out.
+        def read_manifest(self):
+            return {"theme": "claude_clean"}
+
+    check("optin.manifest_true", optin(ManifestJob()) is True)
+    check("optin.manifest_old_job_false", optin(ManifestOffJob()) is False)
+
+    # A read_manifest that raises must degrade to False, never propagate.
+    class BrokenManifestJob:
+        def read_manifest(self):
+            raise RuntimeError("boom")
+
+    check("optin.manifest_error_false", optin(BrokenManifestJob()) is False)
+
+
 def run() -> None:
+    # ---- Slice 55 gate (flag-independent; always runs) -----------------------
+    run_truth_table()
+
     # ---- flag gate -----------------------------------------------------------
     flag_on = vmi.is_visual_markdown_pilot_enabled()
 
