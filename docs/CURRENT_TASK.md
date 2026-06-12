@@ -5,7 +5,69 @@
 
 ---
 
-## Slice 41 — Chandra GGUF hands-on spike (uncommitted on `slice41-chandra-gguf-hands-on-spike`, docs-only).
+## Slice 42 — Chandra output normalizer core (uncommitted on `slice42-chandra-output-normalizer-core`).
+
+- **Purpose:** add a **pure, deterministic Chandra output normalizer** that turns a
+  *raw Chandra layout string* (the `data-bbox` + `data-label` HTML-ish output Slice 41
+  confirmed) into two GuideForge-shaped products — a safe **`source_text`** fragment
+  and **`visual_assets_manifest.json`-shaped asset candidates** — **without running
+  Chandra, `llama-server`, or any model.** Normalization-core slice, **not** provider
+  integration. Off the wire entirely; nothing is wired into extraction.
+- **What it does NOT do:** does not call Chandra / `llama-server`; does not download or
+  open any model / mmproj / quant file; does not wire Chandra into extraction or OCR
+  routing; does not write `clean.md` or any image bytes; does not score candidates
+  (`recommended_action` stays `"unknown"`, `asset_ref` stays `null`); does not change
+  the `visual_assets_manifest.json` schema, prompts, render, exports, UI, or any
+  generated guide.
+- **Module:** new **`pipeline/chandra_normalizer.py`** — pure stdlib (`re`,
+  `html.parser.HTMLParser`, `typing`), **no new dependency**, **no import** of
+  `fitz`/Tesseract/llama.cpp/Mistral/Gemini/Chandra-runtime/LMM. Public API:
+  - `normalize_chandra_output(raw_output, *, source_page=1) -> dict` (total; never raises)
+  - `extract_chandra_blocks(raw_output) -> list[dict]`
+  - `chandra_blocks_to_source_text(blocks) -> str`
+  - `chandra_blocks_to_manifest_assets(blocks, *, source_page) -> list[dict]`
+- **Output shape:** `{version:1, kind:"chandra_normalized_output", status:"completed",
+  source_provider:"chandra_local", source_text, assets[], warnings[]}`. Each asset
+  mirrors the Slice 38/40 manifest asset (`asset_id` `page_<NNNN>_chandra_<II>`,
+  `source_page`, `asset_type`, `bbox`, `caption`, `source_provider:"chandra_local"`,
+  `recommended_action:"unknown"`, `dedupe_group:null`, `scores:{}`, **`asset_ref:null`**,
+  `signals.chandra_label`, `warnings[]`).
+- **Asset mapping (closed vocab):** `Table→table`, `Equation/Formula/Math→equation_block`,
+  `Diagram/Chart/Graph→diagram`, `Figure→figure`, `Image/Picture→image_region`,
+  unrecognized label → `unknown_region` (+ `label_unrecognized`). **Text/caption blocks
+  are NOT emitted as visual assets** (they feed `source_text` only).
+- **`source_text` behavior:** deterministic; headers → Markdown `#`/`##`, tables → simple
+  Markdown grid, equations → preserved LaTeX/text, visual-region captions → plain line;
+  no raw HTML/script/style, image bytes/base64, paths, URLs, or secrets.
+- **Bbox behavior:** parses 4 finite, well-ordered floats from `data-bbox` → `[x0,y0,x1,y1]`;
+  missing → `null` + `bbox_missing` (visual regions), unparseable/ill-ordered → `null` +
+  `bbox_invalid`. Raw bbox strings are never echoed.
+- **Safety / no-leak:** every captured/raw string is scrubbed field-by-field — strips
+  URLs, abs/UNC/Windows paths, `.sock`, `Authorization`/`Bearer`, `sk-`/`pk-`-style keys,
+  `--flag` argv, `data:…;base64`/long base64 runs, `<script>`/`<style>`, residual tags,
+  control chars. Output is JSON-safe and uses closed-vocab warnings only.
+- **Tests:** new **`test_scripts/test_chandra_normalizer.py`** — **68/0** (envelope +
+  determinism, table/equation/diagram+caption, invalid/missing bbox, unrecognized label,
+  plain-text/markdown fallback, never-raises on malformed + non-string, smuggled-secret
+  no-leak sweep, multi-region ids/ordering, helper functions, no-forbidden-imports).
+  Tiny **handcrafted synthetic** fixtures only — no real Chandra dump / private doc /
+  screenshot / local path.
+- **Validation (all green):** `python -m compileall api pipeline test_scripts`;
+  `git diff --check`; the full focused battery incl. `test_visual_assets_manifest`
+  (manifest unchanged) and `test_local_figure_extraction`; `test_chandra_normalizer`
+  68/0; `eval/run_eval.py --offline --all` (3 guides, no regression); frontend `build` +
+  `test` green; `smoke_release.py` **29/0/0**.
+- **Files:** new `pipeline/chandra_normalizer.py`, new `test_scripts/test_chandra_normalizer.py`,
+  this log, `NEXT_CHAT_HANDOFF.md`, `DECISIONS.md`. **No app integration, no manifest
+  schema change, no extraction/OCR/prompt/render/UI/export change.** **Do not commit until
+  the operator says so.**
+- **Next (design, not built):** a `chandra_local` provider/integration slice that actually
+  runs the model on the LMM `llama-server` path and feeds this normalizer; candidate
+  scoring/`recommended_action`; asset-aware prompt/render embed.
+
+---
+
+## Slice 41 — Chandra GGUF hands-on spike (committed `218de18`, merged + pushed to trunk `chrome-renderer-v1`; docs-only).
 
 - **Purpose:** the **hands-on** follow-up to Slice 39's docs-only Chandra gate —
   actually download, convert, and **run Chandra OCR 2 as GGUF through the existing

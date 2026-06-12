@@ -6,36 +6,50 @@
 > stable overview see `PROJECT_CONTEXT.md`; canonical brief is `../CLAUDE.md`.
 
 ## Current position
-- **Working tree:** **Slice 41 (Chandra GGUF hands-on spike) — DOCS-ONLY, uncommitted**
-  on branch `slice41-chandra-gguf-hands-on-spike` (branched from trunk after Slice 40
-  merged). The **hands-on** follow-up to Slice 39's docs-only gate: it actually
-  downloaded, converted, and **ran Chandra OCR 2 as GGUF through the existing
-  `llama.cpp`/`llama-server` path** on the local **RTX 5070 Ti 16 GB** (`llama.cpp`
-  build 9307 / `549b9d8`). **No app integration / provider / routing / extraction /
-  prompt / render / UI / `visual_assets_manifest.json` schema change. No model files,
-  weights, mmproj, or quants committed** (they live in a throwaway workspace outside the
-  repo). Full write-up: **`docs/CHANDRA_GGUF_SPIKE_REPORT.md`**.
-  - **Verdict: PROCEED TO PROVIDER DESIGN** (strong pass), gated behind the LMM /
-    `llama-server` path + an mmproj build step + an output-normalisation slice.
-  - **Resolved Slice 39's open blockers, hands-on:** build 9307 supports the arch
-    (`libllama` `qwen35`+`qwen3vl`; convert `MMPROJ_MODEL_MAP` routes
-    `Qwen3_5ForConditionalGeneration → qwen3vl`). The only public GGUF
-    (`hyojk2001/...`) is **text-only / NO mmproj**, so the **mmproj (~676 MB)** + text
-    quants (Q4_K_M/Q5_K_M/Q8_0) were **generated from the official
-    `datalab-to/chandra-ocr-2` (~10.6 GB)**. **Load + image input succeed** on
-    `llama-mtmd-cli` **and** `llama-server`'s **OpenAI-compatible** `image_url` path.
-  - **Quality (3 synthetic, non-private, hand-checked pages): near-perfect** — native
-    **layout-HTML with `data-bbox` + `data-label`** (Section-Header/Text/**Table**/
-    **Equation-Block**/**Diagram**), HTML tables, **LaTeX math**, captioned diagrams —
-    held **even at Q4_K_M**. **VRAM not the blocker** (Q4 ~5.4 / Q5 ~5.8 / Q8 ~7.2 GB,
-    8K ctx; 256K train ctx). **Throughput** ~121 gen tok/s warm → ~8–20 pages/min
-    (batch-OK, not interactive; long decks not run).
-  - **Fit:** same `llama-server` the LMM already supervises (**no new service**); output
-    maps to **`clean.md`** source text and strongly to **`visual_assets_manifest.json`**
-    asset candidates (complements Slice 40's `fitz` crops).
-  - **Validation (docs/spike slice):** `git status --short` / `git diff --check` /
-    `git diff --name-only` — docs-only, repo clean of model artifacts. **Do not commit
-    this slice** until the operator says so.
+- **Working tree:** **Slice 42 (Chandra output normalizer core) — uncommitted** on branch
+  `slice42-chandra-output-normalizer-core` (branched from trunk after Slice 41 merged). A
+  **pure, deterministic** normalizer that converts a *raw Chandra layout string* (the
+  `data-bbox` + `data-label` HTML-ish output Slice 41 confirmed) into a safe **`source_text`**
+  fragment **and** **`visual_assets_manifest.json`-shaped asset candidates** — **without
+  running Chandra, `llama-server`, or any model.** Normalization core only, **NOT** provider
+  integration / extraction wiring.
+  - **Module:** new `pipeline/chandra_normalizer.py` — pure stdlib (`re`,
+    `html.parser.HTMLParser`, `typing`); no new dependency; **no import** of
+    `fitz`/Tesseract/llama.cpp/Mistral/Gemini/Chandra-runtime/LMM. Public API:
+    `normalize_chandra_output(raw, *, source_page=1)` (total, never raises) +
+    `extract_chandra_blocks` / `chandra_blocks_to_source_text` /
+    `chandra_blocks_to_manifest_assets`.
+  - **Output:** `{version:1, kind:"chandra_normalized_output", status:"completed",
+    source_provider:"chandra_local", source_text, assets[], warnings[]}`. Assets mirror the
+    Slice 38/40 manifest asset shape (`asset_id` `page_<NNNN>_chandra_<II>`, closed
+    `asset_type`, coerced `bbox`, `caption`, `recommended_action:"unknown"`, **`asset_ref:null`**,
+    `signals.chandra_label`). Labels map to a closed vocab (`table`/`equation_block`/`diagram`/
+    `figure`/`image_region`/`unknown_region`); text/caption blocks feed `source_text` only,
+    not assets.
+  - **Safe by construction:** every captured/raw string is scrubbed field-by-field (strips
+    URLs, abs/UNC/Windows paths, `.sock`, `Authorization`/`Bearer`, key-like tokens, `--flag`
+    argv, `data:…;base64`/long base64, `<script>`/`<style>`, residual tags, control chars);
+    JSON-safe; closed-vocab warnings only; never raises on malformed/non-string input.
+  - **NOT done this slice:** no Chandra/`llama-server` call; no model/mmproj/quant file; no
+    extraction/OCR-routing wiring; no `clean.md` write; no candidate scoring; no manifest
+    schema change; no prompt/render/UI/export change; no generated-guide change.
+  - **Tests:** new `test_scripts/test_chandra_normalizer.py` — **68/0** (handcrafted synthetic
+    fixtures only — no real dump/private doc/screenshot/local path). Validation all green:
+    `compileall`; full focused battery incl. `test_visual_assets_manifest` (manifest
+    unchanged) + `test_local_figure_extraction`; eval `--offline --all` (no regression);
+    frontend build + test; `smoke_release.py` 29/0/0; `git diff --check` clean.
+  - **Files:** `pipeline/chandra_normalizer.py`, `test_scripts/test_chandra_normalizer.py`,
+    `CURRENT_TASK.md`, this handoff, `DECISIONS.md`. **Do not commit until the operator says so.**
+  - **Next (design, not built):** a `chandra_local` provider/integration slice that runs the
+    model on the LMM `llama-server` path and feeds *this* normalizer; candidate
+    scoring/`recommended_action`; asset-aware prompt/render embed.
+- **Slice 41 (Chandra GGUF hands-on spike) — committed `218de18`, merged + pushed to trunk
+  `chrome-renderer-v1`; docs-only.** Hands-on confirmation that Chandra OCR 2 runs as GGUF on
+  the existing `llama.cpp`/`llama-server` path (self-built ~676 MB mmproj + text quants from
+  the official `datalab-to/chandra-ocr-2`; near-perfect layout-HTML w/ `data-bbox`+`data-label`,
+  tables, LaTeX, captioned diagrams — even at Q4_K_M). **Verdict: proceed to provider design,
+  gated.** No model files committed (throwaway workspace outside the repo). Full write-up:
+  `docs/CHANDRA_GGUF_SPIKE_REPORT.md`. Slice 42 builds the normalizer it recommended.
 - **Slice 40 (Local figure extraction / cropping into the visual manifest) — committed
   `bed7cf8`, merged + pushed to trunk `chrome-renderer-v1` (0 ahead / 0 behind).** The
   **first real extractor-output change** in the visual stack: with PyMuPDF (`fitz`) it

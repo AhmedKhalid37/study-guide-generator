@@ -1983,3 +1983,35 @@ committed** (kept in a throwaway workspace outside the repo). Recommended next s
 host-companion mmproj/quant build (pinned `llama.cpp`); pure output→`clean.md`+manifest
 normaliser (reusing the Slice 38/40 schema); prompt/template lock (`--image-min-tokens 1024`
 for bbox grounding).
+
+## The Chandra normalizer is a pure, model-free core that is its own safety boundary (2026-06-12, Slice 42)
+Slice 41 recommended a "pure output→`clean.md`+manifest normaliser" as a prerequisite to any
+`chandra_local` provider. Slice 42 builds exactly that — `pipeline/chandra_normalizer.py` —
+and the durable choice is to make it a **stand-alone pure function of one raw string**, fully
+decoupled from any model/provider/extraction code. **Why this shape.** (1) **Decouple the hard,
+testable part from the flaky, expensive part.** Parsing Chandra's `data-bbox`/`data-label`
+layout output into `source_text` + asset candidates is deterministic and unit-testable; running
+the model on `llama-server` is not. Splitting them lets the normalizer land, get hardened, and
+be regression-tested (68/0) *before* any integration slice, and lets a later provider slice be a
+thin "run model → hand raw string to this function" wrapper. (2) **The normalizer is the security
+boundary, mirroring the Slice 40 manifest decision.** Model output is *untrusted input* (the OCR'd
+document, or a hostile PDF, can smuggle paths/URLs/keys/`<script>`/base64). So every captured/raw
+string is scrubbed field-by-field and every emitted field is a closed-vocab token / coerced
+number / `null` — the normalizer cannot be poisoned into leaking an abs/host path, URL,
+`Authorization`/`Bearer`, key-like token, `.sock`, `--flag` argv, base64/image bytes, or raw
+script/style, even if the upstream model changes. It is **total** (never raises) and degrades to
+an empty-but-valid `completed` output on malformed input, matching the "advisory artifact never
+breaks a job / always degrade, never fail" posture from Slices 38/40/41. (3) **Match the existing
+manifest asset shape; do not widen the schema.** Assets reuse the Slice 38/40 fields
+(`asset_id`/`source_page`/`asset_type`/`bbox`/`caption`/`source_provider`/`recommended_action`/
+`dedupe_group`/`scores`/`signals`/`warnings`) so a future integration can merge Chandra candidates
+beside `fitz_local` ones with no manifest change; the only addition is a per-asset `asset_ref`
+held at **`null`** (Chandra writes no files this slice) and `recommended_action` pinned to
+`"unknown"` (no scoring yet) — both reserved for later slices, deliberately not emitted now.
+(4) **Don't surface text as visual assets.** Text/caption blocks feed `source_text` only;
+only table/equation/diagram/figure/image/`unknown_region` become asset candidates — keeping the
+manifest about *visuals* and `clean.md` about *prose*. **Scope:** new
+`pipeline/chandra_normalizer.py` + `test_scripts/test_chandra_normalizer.py` only; **no app
+integration, no Chandra/`llama-server` call, no model files, no extraction/OCR/prompt/render/UI/
+export change, no manifest schema change.** Validated green (focused battery incl. manifest
+backward-compat, eval offline, frontend build/test, smoke 29/0/0).
