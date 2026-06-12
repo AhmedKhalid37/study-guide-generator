@@ -16,6 +16,7 @@ import {
   FileJson,
   FileText,
   FolderClosed,
+  Images,
   Layers,
   FileCheck2,
   ListChecks,
@@ -54,6 +55,7 @@ import ItemCard from "./ItemCard";
 import ProviderPill from "./ProviderPill";
 import MathVerificationPanel from "./MathVerificationPanel";
 import GuideLintPanel from "./GuideLintPanel";
+import VisualAdvisoryPanel from "./VisualAdvisoryPanel";
 
 const artifactLinks = [
   { name: "final.pdf", label: "PDF", key: "final_pdf", icon: Download },
@@ -567,6 +569,7 @@ export function JobDetailsDrawer({ open, onClose, loading, error, details, style
     { key: "details", label: "Details" },
     { key: "verification", label: "Verification", icon: CheckCircle2 },
     { key: "guide-lint", label: "Guide Lint", icon: FileCheck2 },
+    { key: "visual-advisory", label: "Visual Advisory", icon: Images },
     { key: "quiz", label: "Quiz", icon: BookOpen, disabled: !canEdit },
     { key: "outline", label: "Outline", icon: ListChecks, disabled: !canEdit },
     { key: "sections", label: "Sections", icon: Layers, disabled: !canEdit },
@@ -733,6 +736,10 @@ export function JobDetailsDrawer({ open, onClose, loading, error, details, style
 
           {!loading && !error && manifest && drawerTab === "guide-lint" && (
             <GuideLintPanel jobId={manifest.id} />
+          )}
+
+          {!loading && !error && manifest && drawerTab === "visual-advisory" && (
+            <VisualAdvisoryPanel jobId={manifest.id} />
           )}
 
           {!loading && !error && manifest && drawerTab === "outline" && canEdit && (

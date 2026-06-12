@@ -5,6 +5,63 @@
 
 ---
 
+## Slice 50 — **Job Details "Visual advisory" diagnostics panel** (read-only UI) on `slice50-jobdetails-visual-advisory-panel`.
+
+- **Purpose:** add a read-only Job Details drawer tab that surfaces the advisory **visual artifact
+  chain** — `visual_assets_manifest.json` (Slice 40) → `visual_asset_scoring.json` (Slice 47) →
+  `visual_replacement_plan.json` (Slice 49) — using **exact-name artifact fetches only**. It shows
+  **safe COUNTS and closed-vocab status only**. It is a pure inspection slice: it does **not** change
+  guide generation, prompts, extraction behavior, OCR routing, rendering, exports, or any artifact
+  schema, it makes **no** production include/omit decision, and it does **not** embed visuals. **Not**
+  a Chandra integration slice.
+- **No backend changes.** Reuses the existing exact-name artifact routes
+  (`/api/jobs/{id}/artifacts/<name>`) via the existing `getJobArtifact` / `artifactUrl` client helpers.
+  The three advisory artifacts remain **out of** `ARTIFACTS` / `EXPORT_ARTIFACTS` / `_artifact_urls` /
+  `_artifact_details` — they are **not** added to any generic artifact list, export bundle, or existing
+  artifact UI row; they are reached only by exact filename through this read-only panel.
+- **New frontend files:**
+  - `frontend/src/visualAdvisoryArtifacts.js` — pure, React-free, node-testable helpers. Exposes the
+    exact artifact-name constants, `isArtifactMissing(error)` (404 ⇒ "not generated for this job"),
+    `safeToken(value)` (strict `^[a-z0-9_]+$`, ≤48 chars, else `unavailable`), and
+    `summarizeVisualManifest` / `summarizeVisualScoring` / `summarizeVisualReplacementPlan`. Each
+    returns a **count-only** view model (`state`/`tone`/`label` + non-negative integer counts); it
+    never mutates input, never throws, and never passes through captions, OCR/source text, provider
+    payloads, image refs/bytes, data URIs, base64, paths, URLs, or tokens — even closed-vocab reasons
+    go through `safeToken` first.
+  - `frontend/src/components/VisualAdvisoryPanel.jsx` — read-only drawer panel. Independently fetches
+    the three exact-name artifacts (one missing/malformed artifact never blocks the others), treats
+    **404 as a calm "Not available"** (no scary error), shows compact tiles (manifest:
+    candidates / pages-with-signals / extracted-figures; scoring: scored + high/medium/low/unknown
+    priority counts; plan: item count + candidate-action counts), summarizes
+    `chandra_blocked` presence as an **advisory/blocked** notice with no raw detail, and renders
+    exact-name "Open … JSON" links (`artifactUrl(jobId, name)` — the only permitted URL). No raw JSON
+    is shown inline.
+- **Wiring:** `frontend/src/components/RecentJobsPanel.jsx` (the Job Details drawer) gains a
+  `Visual Advisory` tab (`Images` icon) rendering `<VisualAdvisoryPanel jobId={…} />`. Small additive
+  `.sg-artifact-link` style in `frontend/src/design-system.css`.
+- **New test:** `frontend/scripts/verify-job-details-visual-advisory.mjs` (added to `npm run test` and
+  as `npm run verify-job-details-visual-advisory`) — exact artifact names; 404⇒missing; `safeToken`
+  allowlist (rejects paths/free-text/over-long/non-string); manifest/scoring/plan completed counts;
+  priority + candidate-action counts; `chandra_blocked` present via item reason AND top-level warning,
+  absent otherwise; skipped/malformed degrade safely with closed-vocab reasons; and a serialized
+  no-leak sweep over every produced view model (no caption/OCR/path/URL/data-URI/base64/token).
+- **Confirmations:** guide output, prompts, rendering, extraction, OCR routing, and artifact schemas
+  are **unchanged**; the manifest / scoring / plan artifacts are **not mutated** (read-only fetch);
+  candidate actions remain **advisory only**; no generic artifact-list / export-bundle / existing-row
+  exposure was added; no model / llama-server / cloud / network call beyond normal app API artifact
+  fetches; no image file read, no image bytes, no `clean.md` write. Chandra *extraction* integration
+  remains **blocked** by Slice 45 `status:not_run` (`operator_input_not_supplied`).
+- **Validation:** `compileall api pipeline test_scripts` OK; planner **186/0**; plan-artifact **68/0**;
+  scoring-core **146/0**; scoring-artifact **58/0**; manifest **65/0**; figure-extraction **50/0**
+  (+2 skipped); chandra-normalizer **68/0**; chandra-local-provider **68/0**; chandra-live-harness
+  **96/0**; ocr-modes **121/121**; ocr-routing-policy **120/120**; ocr-routing-integration **56/56**;
+  extraction-metadata **9/9**; offline eval scored 3 guides (no regression); frontend build green;
+  `npm run test` green (incl. new visual-advisory harness); `git diff --check` clean. Full Docker
+  rebuild/recreate + `/api/health` + `smoke_release.py` run (UI/artifact-inspection slice).
+  **Status:** NOT committed (awaiting operator review).
+
+---
+
 ## Slice 49 — Persist `visual_replacement_plan.json` as an **advisory exact-name artifact** on `slice49-visual-replacement-plan-artifact`.
 
 - **Purpose:** wire the Slice 48 replacement-planner core into the job artifact flow as the sibling

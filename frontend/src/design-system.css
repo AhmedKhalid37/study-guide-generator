@@ -3159,6 +3159,11 @@ details.sg-mdl-helper > summary::-webkit-details-marker { display: none; }
 .sg-tile.good .sg-tile-value { color: #6EE7B7; }
 .sg-tile.warn .sg-tile-value { color: #F4C76B; }
 
+/* Slice 50: read-only exact-name artifact link in the Visual advisory panel */
+.sg-artifact-link { display: inline-flex; align-items: center; gap: 6px; color: var(--indigo); text-decoration: none; }
+.sg-artifact-link:hover { text-decoration: underline; }
+.sg-artifact-link svg { flex: none; }
+
 /* scrollable code / log / markdown block */
 .sg-pre {
   max-height: 280px; overflow: auto; margin: 0;

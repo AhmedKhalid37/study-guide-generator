@@ -2304,3 +2304,46 @@ manifest/scoring-schema/extraction/`ocr_routing`/prompt/render/guide-output/fron
 export-bundle/`clean.md` change. Because it touches `api/server.py` + `job_manager.py`
 + `run_llm_job.py`, full validation (Docker rebuild/recreate + `/api/health` +
 `smoke_release.py`) is required in addition to the pure-test battery.
+
+## Visual advisory artifacts are surfaced in Job Details by exact-name fetch only — read-only, count-only, no generic/export exposure (Slice 50)
+
+The advisory visual artifact chain — `visual_assets_manifest.json` (Slice 40) →
+`visual_asset_scoring.json` (Slice 47) → `visual_replacement_plan.json` (Slice 49) —
+is now visible to the operator through a read-only **Job Details "Visual Advisory"**
+drawer tab, but **only** as safe COUNTS and closed-vocab status, fetched **by exact
+artifact name**.
+
+**Why this shape:** (1) **Inspection without promotion.** The three artifacts were
+deliberately kept out of `ARTIFACTS` / `EXPORT_ARTIFACTS` / `_artifact_urls` /
+`_artifact_details` / export bundles / generic artifact rows (Slices 40/47/49) so the
+advisory boundary stays the manifest and its derived siblings. Surfacing them must not
+undo that: this slice adds a **dedicated read-only panel** that fetches each artifact
+by its exact name via the existing `getJobArtifact` / `artifactUrl` client helpers, and
+adds **no** backend route and **no** entry to any generic artifact list, export bundle,
+or existing artifact UI row. (2) **Count-only, closed-vocab, no-leak.** The pure helper
+`frontend/src/visualAdvisoryArtifacts.js` (`summarizeVisualManifest` /
+`summarizeVisualScoring` / `summarizeVisualReplacementPlan`, plus `isArtifactMissing`
+and `safeToken`) returns **only** non-negative integer counts and `state`/`tone`/`label`
+tokens; it never passes through captions, OCR/source text, provider payloads, image
+refs/bytes, data URIs, base64, paths, URLs, or tokens, and even closed-vocab reason
+strings go through `safeToken` (`^[a-z0-9_]+$`, ≤48 chars, else `unavailable`) before
+display. Helpers are pure/total — never mutate input, never throw — and node-tested by
+`frontend/scripts/verify-job-details-visual-advisory.mjs` (incl. a serialized no-leak
+sweep). (3) **Missing is normal.** A 404 is treated as "not generated for this job"
+(non-PDF / older jobs) and rendered as a calm "Not available", never a scary error; the
+three fetches are independent so one missing/malformed artifact never blocks the others.
+(4) **Advisory stays advisory.** The panel makes **no** production include/omit decision,
+embeds **no** visuals, and changes nothing about guide generation, prompts, extraction,
+OCR routing, rendering, exports, or artifact schemas; the artifacts are read-only fetched
+and **never mutated**. `chandra_blocked` presence is summarized as an advisory/blocked
+notice with no raw detail — Chandra *extraction* integration remains **blocked** by the
+Slice 45 gate (`status:not_run`, `operator_input_not_supplied`). **Scope:** new
+`frontend/src/visualAdvisoryArtifacts.js`, `frontend/src/components/VisualAdvisoryPanel.jsx`,
+`frontend/scripts/verify-job-details-visual-advisory.mjs`; edited
+`frontend/src/components/RecentJobsPanel.jsx` (tab + wiring + `Images` import),
+`frontend/src/design-system.css` (`.sg-artifact-link`), `frontend/package.json`
+(test scripts) + this entry + `CURRENT_TASK.md` / `NEXT_CHAT_HANDOFF.md`. No backend,
+schema, extraction, `ocr_routing`, prompt, render, guide-output, or export change.
+Because it changes frontend UI / artifact-inspection behavior, full validation (Docker
+rebuild/recreate + `/api/health` + `smoke_release.py`) was run in addition to the
+frontend build/test and backend pure-test battery.
