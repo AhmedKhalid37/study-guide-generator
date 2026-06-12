@@ -5,6 +5,63 @@
 
 ---
 
+## Slice 53 — True Anki **`.apkg`** export (backend core + export route + tiny UI button) on `slice53-anki-apkg-export`.
+
+- **Purpose:** add a **real, importable Anki `.apkg` package** export for the *already generated*
+  quiz / flashcard items in `jobs/<id>/quizzes/<n>.json`, so the operator can study generated material
+  in Anki. This is **direct user-visible study value**. It deliberately does **not** touch the visual
+  advisory pipeline, visual rendering, Chandra, OCR routing, extraction, or guide-generation prompts.
+- **New module:** `pipeline/anki_export.py` — **stdlib-only** (`sqlite3`, `zipfile`, `json`, `hashlib`,
+  `html`, `io`, `os`, `re`, `tempfile`). An `.apkg` is a ZIP holding a SQLite `collection.anki2`
+  (Anki **schema 11** — the long-stable, universally importable format) plus an empty `media` map.
+  **No `genanki`/third-party dependency was added** (requirements.txt unchanged); no network, no
+  model/provider call, no image/media, no LaTeX. Public API:
+  - `build_apkg(items, *, job_id, quiz_n, title=None) -> bytes`
+  - `normalize_cards(items) -> (list[(front_html, back_html)], skipped_counts)`
+  - `deck_id_for(job_id, quiz_n) -> int`, `deck_name_for(title) -> str`,
+    `apkg_filename(job_id, quiz_n) -> str`
+- **Card model:** single shared **"GuideForge Basic"** 2-field model (`Front` / `Back`). Question →
+  Front (MCQ also lists its options so the card is self-testable); answer → Back (MCQ resolves the
+  answer letter to its full option text — mirrors the existing `_render_quiz_export` front/back rules).
+  All field text is **HTML-escaped** (newlines → `<br>`) so user study text can't be mis-parsed as markup.
+- **Deterministic deck/model IDs (no churn, no leaks):** model id is a **fixed app-level constant**
+  (`MODEL_ID = 1010101010`) reused across every export; deck id is a stable SHA-256 of
+  `"deck"+job_id+quiz_n` folded into a safe Anki id range (per-job deck under the `GuideForge::<title>`
+  subdeck). Note **GUIDs are index-based** (derived from internal ids, **never** card text), so
+  re-exporting the same quiz **updates** rather than duplicates on re-import. Creation/mod timestamps
+  are **fixed constants** (never wall-clock) → re-export is byte-stable. The required Anki `csum` is the
+  format's internal one-way duplicate checksum of the first field (not an externally meaningful id).
+- **Route:** **no new route** — extended the existing `GET /api/jobs/{job_id}/quizzes/{quiz_n}/export`
+  by adding `apkg` to `VALID_EXPORT_FORMATS` (now `{csv, anki_tsv, quizlet, apkg}`). For `apkg` the
+  route returns `application/octet-stream`, `Content-Disposition: attachment; filename="quiz-<job>-<n>.apkg"`
+  (existing naming convention; filename is path-sanitized). **CSV / anki_tsv / quizlet exports are
+  unchanged.**
+- **Degrade-safe input:** malformed / empty cards are skipped (closed-vocab counts:
+  `skipped_empty`, `skipped_malformed`); **zero surviving cards → a valid empty-deck `.apkg`** (no
+  exception), matching the existing route's "empty export, not an error" behaviour.
+- **No-leak:** the package embeds only the user's own Front/Back study text + a sanitized deck name.
+  It never embeds provider keys, headers, tokens, socket paths, local/host paths, executable paths,
+  model/`mmproj` paths, raw argv, raw OCR dumps, raw provider/model payloads, image bytes, data URIs,
+  base64, artifact URLs, or internal job-directory metadata. `job_id` only seeds derived numeric
+  ids/guids/filename — it is never written into the package.
+- **Frontend:** one-line addition to the existing quiz export-button row in `RecentJobsPanel.jsx`
+  (`{ format: "apkg", label: "Anki .apkg" }`) using the existing `quizExportUrl(...)` helper. No new
+  page, no redesign, no visual-advisory UI touched.
+- **New test:** `test_scripts/test_anki_export.py` (**46/0** on host; route section runs in Docker) —
+  valid non-empty ZIP w/ `collection.anki2`+`media`, schema-11 tables, correct note/card counts,
+  field-separator + MCQ option/answer content, **byte-identical re-export**, stable GUIDs, per-job
+  distinct decks, malformed/empty skip counts, empty-deck package, full no-leak scan (keys/paths/urls/
+  data-uris/sockets/job-id), stdlib-only import assertion, and route-level checks (apkg status/
+  content-type/disposition + **CSV/anki_tsv still work** + bad-format 400).
+- **Scope guards (unchanged by this slice):** no FSRS / in-app spaced repetition; no images/audio/media
+  in decks; no guide-generation prompt changes; no PDF/HTML/DOCX render changes; no visual insertion
+  wired into guides; no OCR routing changes; **Chandra extraction integration remains blocked by
+  Slice 45 `status:not_run`**; visual render insertion remains a separate decision.
+- **Status:** **NOT committed** (per instruction). Validation pending Docker rebuild + `/api/health` +
+  `smoke_release.py`.
+
+---
+
 ## Slice 52 — Visual **insertion planner core** (pure, unwired; roadmap V3+) on `slice52-visual-insertion-planner-core`.
 
 - **Purpose:** add a pure, deterministic **insertion planner core** — the next V3+ step after the

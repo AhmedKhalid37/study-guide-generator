@@ -1913,6 +1913,7 @@ function QuizTab({ jobId, manifest }) {
             {[
               { format: "csv", label: "CSV" },
               { format: "anki_tsv", label: "Anki TSV" },
+              { format: "apkg", label: "Anki .apkg" },
               { format: "quizlet", label: "Quizlet" },
             ].map(({ format, label }) => (
               <a

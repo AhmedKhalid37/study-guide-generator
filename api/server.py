@@ -17,6 +17,7 @@ from pydantic import BaseModel, ValidationError
 from starlette.concurrency import run_in_threadpool
 
 from pipeline import (
+    anki_export,
     ask_context,
     ask_inventory,
     ask_sessions,
@@ -355,7 +356,7 @@ VALID_QUESTION_TYPES = {"mcq", "true_false", "fill_blank", "short_answer", "flas
 VALID_QUIZ_COUNTS = {10, 25, 50, 100}
 VALID_DIFFICULTIES = {"easy", "medium", "exam"}
 VALID_FOCUS = {"definitions", "formulas", "examples", "all"}
-VALID_EXPORT_FORMATS = {"csv", "anki_tsv", "quizlet"}
+VALID_EXPORT_FORMATS = {"csv", "anki_tsv", "quizlet", "apkg"}
 
 
 SECTION_REGEN_ACTIONS: dict[str, str] = {
@@ -2833,6 +2834,18 @@ def export_quiz(job_id: str, quiz_n: int, format: str = "csv") -> Response:
     if data is None:
         raise HTTPException(status_code=500, detail="Quiz file could not be read.")
     items = data.get("items") or []
+
+    if format == "apkg":
+        # True Anki package: deterministic deck/model, user's own Front/Back text
+        # only (no media, no paths, no payloads). Deck name = sanitized title.
+        title = job.read_manifest().get("title")
+        content = anki_export.build_apkg(items, job_id=job_id, quiz_n=quiz_n, title=title)
+        filename = anki_export.apkg_filename(job_id, quiz_n)
+        return Response(
+            content=content,
+            media_type="application/octet-stream",
+            headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+        )
 
     content, media_type, ext = _render_quiz_export(items, format)
     filename = f"quiz-{job_id}-{quiz_n}.{ext}"

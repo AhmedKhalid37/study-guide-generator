@@ -2429,3 +2429,50 @@ battery (insertion-planner 243/0; replacement-planner 186/0; plan-artifact 68/0;
 146/0 + 58/0; manifest 65/0; figure 50/0+2skip; chandra 68/68/96; ocr 121/120/56), the offline
 eval (3 guides, no regression), the frontend build + `npm run test` + advisory mjs, and
 `git diff --check` clean.
+
+## Slice 53 — True Anki `.apkg` export is built from stdlib (no `genanki`), reuses the existing export route, and embeds only user study text (Slice 53)
+
+**Decision.** Add a real, importable Anki `.apkg` export for the *already generated* quiz /
+flashcard items (`jobs/<id>/quizzes/<n>.json`) — `pipeline/anki_export.py` plus an `apkg` branch on
+the **existing** `GET /api/jobs/{job_id}/quizzes/{quiz_n}/export` route and a one-line frontend button.
+This delivers **direct user-visible study value** (import generated material straight into Anki)
+without touching the high-risk visual render path, Chandra, OCR routing, extraction, or guide prompts.
+
+**Why stdlib, not `genanki`.** An `.apkg` is just a ZIP containing a SQLite `collection.anki2` (Anki
+**schema 11** — the long-stable, universally importable format) plus an empty `media` map, so the whole
+package is built with `sqlite3` + `zipfile` + `json` + `hashlib` only. This (a) **adds zero
+dependencies** (requirements.txt unchanged) — matching the repo's stdlib-only visual-advisory ethos and
+avoiding `genanki`'s transitive deps and a Docker-image surface change; (b) keeps the focused test
+**runnable on host Python** (no third-party install needed for `test_anki_export.py`), which `genanki`
+would have prevented; and (c) keeps full control over **determinism**. The trade-off accepted: we own
+schema-11 correctness rather than leaning on `genanki`'s battle-tested writer — mitigated by modelling
+the `col`/`models`/`decks`/`dconf`/`conf` JSON on the known-good schema-11 layout and asserting
+structure (tables, schema ver, note/card rows, field separator) in the test. Re-evaluate if a future
+slice needs cloze/media/LaTeX, where `genanki` would carry more weight.
+
+**Determinism / no-churn.** The note **model id is a fixed app-level constant** reused across every
+export (Anki re-uses one model instead of accumulating one per import). The **deck id is a stable
+SHA-256** of `"deck"+job_id+quiz_n` folded into a safe Anki id range (per-job deck under a
+`GuideForge::<title>` subdeck). Note **GUIDs are index-based** (derived from internal ids — **never**
+from private card text), and creation/mod **timestamps are fixed constants** (never the wall clock), so
+re-exporting the same quiz is **byte-stable** and Anki **updates** rather than duplicates on re-import.
+The Anki `csum` column is the format's required internal one-way duplicate checksum of the first field —
+intrinsic to the format, not an externally meaningful id, so it is kept as the schema demands while the
+deck/model/note/card ids themselves are never hashes of private text.
+
+**No-leak / scope guards.** The package embeds only the user's own `Front`/`Back` study text
+(**HTML-escaped**, newlines → `<br>`) plus a sanitized deck name from the guide title; `job_id` only
+*seeds* derived numeric ids/guids/filename and is **never** written into the package. It never embeds
+provider keys, headers, tokens, socket paths, local/host paths, executable paths, model/`mmproj` paths,
+raw argv, raw OCR dumps, raw provider/model payloads, image bytes, data URIs, base64, artifact URLs, or
+internal job-directory metadata. **No images/audio/media or LaTeX** in the deck this slice; **no FSRS /
+in-app spaced repetition**. Malformed/empty cards are skipped with a closed-vocab count
+(`skipped_empty` / `skipped_malformed`); **zero surviving cards → a valid empty-deck `.apkg`** (no
+exception), matching the existing route's "empty export, not an error" behaviour. **CSV / anki_tsv /
+quizlet exports are unchanged.** No guide-generation prompt, PDF/HTML/DOCX render, OCR-routing, or
+extraction change; **Chandra extraction integration remains blocked by Slice 45 `status:not_run`**, and
+visual render insertion remains a separate decision. **Scope:** new `pipeline/anki_export.py` +
+`test_scripts/test_anki_export.py` (**46/0** host; route section runs in Docker) + one `apkg` branch in
+`api/server.py` + one button in `frontend/src/components/RecentJobsPanel.jsx` + this entry +
+`CURRENT_TASK.md` / `NEXT_CHAT_HANDOFF.md`. Because this touches the export route + frontend, full
+validation (Docker rebuild/recreate + `/api/health` + `smoke_release.py`) is required.
