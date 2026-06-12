@@ -5,6 +5,86 @@
 
 ---
 
+## Slice 52 — Visual **insertion planner core** (pure, unwired; roadmap V3+) on `slice52-visual-insertion-planner-core`.
+
+- **Purpose:** add a pure, deterministic **insertion planner core** — the next V3+ step after the
+  replacement planner (`docs/VISION_ROADMAP.md` §8). It consumes an already-sanitized
+  `visual_replacement_plan.json`-shaped replacement plan (and, optionally, a **safe-only** source-page
+  anchor inventory) and returns a **separate advisory insertion-position plan** — a per-asset
+  `insertion_mode` / `placement` / `anchor_status` with closed-vocab `reasons`. It does **not** mutate
+  the replacement plan or anchors, persist an artifact, embed visuals, change extraction/guides/
+  rendering, or wire into production. **Not** a Chandra integration slice, **not** a visual-embedding
+  slice.
+- **New module:** `pipeline/visual_insertion_planner.py` (stdlib-only: `re`, `typing`; imports nothing
+  from `fitz`/Tesseract/llama.cpp/Chandra/Mistral/Gemini/LMM/renderers/server/job-manager/extraction/
+  run-job/`visual_*` cores; no `json`/`os`/`pathlib`/`socket`/`subprocess`). Public API (small, pure,
+  total):
+  - `plan_visual_insertion_item(item, *, anchors_by_page=None) -> dict`
+  - `plan_visual_insertions(items, *, anchors_by_page=None) -> list[dict]`
+  - `build_visual_insertion_plan(replacement_plan, *, source_page_anchors=None) -> dict`
+- **Insertion plan report shape:** `{version:1, kind:"visual_insertion_plan", status:"completed",
+  source:"visual_replacement_plan.json", insertions:[…], summary:{insertion_count,
+  figure_reference_count, table_reference_count, text_summary_reference_count, review_only_count,
+  unknown_count, anchor_matched_count, anchor_missing_count}, warnings:[…]}`. Each insertion:
+  `{asset_id, source_page, source_provider, asset_type, candidate_action, insertion_mode, placement,
+  anchor_id, anchor_status, reasons:[…], warnings:[…]}`.
+- **Closed vocab only:** `insertion_mode` ∈ {figure_reference, table_reference, text_summary_reference,
+  review_only, unknown}; `placement` ∈ {source_page_reference, review_appendix, unknown};
+  `anchor_status` ∈ {matched, missing, not_required, unknown}; `candidate_action` ∈
+  {candidate_include_as_figure, candidate_convert_to_table, candidate_summarize_as_text, review_only,
+  unknown}; `source_provider` ∈ {fitz_local, chandra_local, mistral_ocr, unknown}; `asset_type` ∈
+  {page_visual_signal, extracted_figure, table, table_region, equation_block, diagram, figure,
+  image_region, cropped_region, unknown_region, unknown}; closed `reasons`
+  (candidate_include_as_figure/convert_to_table/summarize_as_text, review_only, anchor_matched,
+  anchor_missing, source_page_reference, review_appendix, chandra_blocked, low_information_signal,
+  unknown_candidate_action, input_sanitized); closed `warnings` (replacement_plan_malformed,
+  replacement_item_malformed, asset_id_missing/invalid, source_page_invalid, source_provider_unrecognized,
+  asset_type_unrecognized, candidate_action_unrecognized, anchor_id_invalid, anchor_lookup_missing,
+  input_unrecognized).
+- **Planning rules (advisory, conservative):** `candidate_include_as_figure` → `figure_reference`;
+  `candidate_convert_to_table` → `table_reference`; `candidate_summarize_as_text` →
+  `text_summary_reference`; `review_only` → `review_only` (placement `review_appendix`, anchor
+  `not_required`); `unknown`/malformed → `unknown`. **Anchors are presence-only and safe-only:** for a
+  reference mode, a matching source-page anchor yields `anchor_status:"matched"` + placement
+  `source_page_reference` + a sanitized `anchor_id`; any miss (no inventory, uncovered page, or
+  dropped/invalid anchor id) degrades to `anchor_status:"missing"` + placement `unknown` +
+  `anchor_lookup_missing` — the item stays advisory and must not be placed without an anchor.
+- **Chandra still blocked:** any `chandra_local` item (or one carrying a `chandra_blocked` marker on its
+  input reasons) is **never** mapped to a direct `figure_reference`/`table_reference`/
+  `text_summary_reference` mode — it degrades to `review_only` + `review_appendix` and always carries
+  the closed reason `chandra_blocked`, because Chandra *extraction* integration remains gated by Slice
+  45 `status:not_run` (`operator_input_not_supplied`). This core reads only the planned-item *shape*; it
+  integrates nothing.
+- **Pure / unwired / no production change:** not imported by `run_llm_job.py` or anything else; **no
+  artifact written** (no `visual_insertion_plan.json` this slice); no API route; no frontend/UI; no
+  export-bundle/generic artifact-list exposure; `visual_assets_manifest.json` /
+  `visual_asset_scoring.json` / `visual_replacement_plan.json` schemas unchanged and **never mutated**;
+  no extraction/OCR-routing/prompt/render/guide-output change; no `clean.md` write; no model/
+  llama-server/cloud/network call; no image files/bytes. Captions/source text/provider payloads/paths/
+  tokens/data-URIs/base64/argv are never read into output; an anchor inventory contributes only a
+  sanitized slug-safe `anchor_id` (no raw anchor field echoed).
+- **New test:** `test_scripts/test_visual_insertion_planner.py` (**243/0**) — include_as_figure/
+  convert_to_table/summarize_as_text with a matching anchor → the matching reference mode; review_only
+  needs no anchor; missing anchor degrades with `anchor_lookup_missing`/`anchor_missing`; malformed
+  replacement plan → safe completed report with `replacement_plan_malformed`; malformed item → safe
+  `unknown` fallback; invalid asset id → deterministic slug-safe fallback; invalid source page → `None`
+  + `source_page_invalid`; invalid anchor id dropped (never emitted); chandra_local/chandra_blocked →
+  `chandra_blocked` + never a direct insertion; no mutation of plan/anchors; smuggled
+  captions/source-text/provider-payloads/paths/tokens/base64/data-URIs/image-bytes never leak; summary
+  counts; determinism; no forbidden imports.
+- **Validation:** `compileall api pipeline test_scripts` OK; insertion-planner **243/0**;
+  replacement-planner **186/0**; replacement-plan-artifact **68/0**; scoring-core **146/0**;
+  scoring-artifact **58/0**; advisory-export-bundle skips its endpoint section on host Python (FastAPI
+  absent — covered live in Slice 51); manifest **65/0**; figure-extraction **50/0** (+2 skipped);
+  chandra-normalizer **68/0**; chandra-local-provider **68/0**; chandra-live-harness **96/0**;
+  ocr-modes **121/121**; ocr-routing-policy **120/120**; ocr-routing-integration **56/56**; offline
+  eval scored 3 guides (no regression); frontend build + test green; verify-job-details-visual-advisory
+  green; `git diff --check` clean. `smoke_release.py` / Docker **not required** (pure/unwired — no
+  server/extraction/render/artifact/export/UI behavior touched). **Status:** NOT committed (per
+  instruction) on `slice52-visual-insertion-planner-core`.
+
+---
+
 ## Slice 50 — **Job Details "Visual advisory" diagnostics panel** (read-only UI) on `slice50-jobdetails-visual-advisory-panel`.
 
 - **Purpose:** add a read-only Job Details drawer tab that surfaces the advisory **visual artifact

@@ -2381,3 +2381,51 @@ are still never exported); new `test_scripts/test_visual_advisory_export_bundle.
 entry + `CURRENT_TASK.md` / `NEXT_CHAT_HANDOFF.md`. Because it changes export behavior,
 full validation (Docker rebuild/recreate + `/api/health` + `smoke_release.py`) was run in
 addition to the backend pure-test battery and frontend build/test.
+
+## The visual insertion planner is a pure, anchor-presence-only core that never embeds and stays advisory (Slice 52)
+The visual stack now has a fourth pure planning core — `pipeline/visual_insertion_planner.py`
+— sitting after the replacement planner on the `docs/VISION_ROADMAP.md` §8 path: advisory
+manifest (Slice 40) → scoring (Slice 46/47) → replacement plan (Slice 48/49) → **insertion
+position** (this slice) → an eventual guide embedding (later, separately designed). Given a
+`visual_replacement_plan.json`-shaped plan (and, optionally, a safe-only source-page anchor
+inventory) it returns a **separate advisory `visual_insertion_plan` dict** — per-asset
+`insertion_mode` / `placement` / `anchor_status` with closed-vocab `reasons`. **Why a
+separate pure core (mirroring the scoring/replacement cores):** keeping insertion-position
+*planning* deterministic, total, stdlib-only (`re`, `typing`), and free of any provider/model/
+network/filesystem/image access lets it be exhaustively unit-tested in host Python and reused
+by a later wiring/artifact slice without re-deriving the boundary — and, critically, it makes
+**no** production decision and embeds **no** visuals, so it cannot change generated guides.
+**The boundary that must hold:** (1) **Advisory only** — `insertion_mode` is a *candidate
+position* (`figure_reference` / `table_reference` / `text_summary_reference` / `review_only` /
+`unknown`), never a binding insert/embed decision; the real guide embedding is a later slice.
+(2) **Anchors are presence-only and safe-only** — a source-page *anchor* is a slug-safe
+reference id (e.g. `source_page_0001`), never a coordinate, raw layout, or raw text; the
+optional inventory (list of `{source_page, anchor_id}`, dict keyed by page, or None) yields
+only a sanitized `anchor_id`. A reference mode with a matching anchor → `anchor_status:"matched"`
++ placement `source_page_reference`; any miss (no inventory, uncovered page, or
+dropped/invalid anchor id) → `anchor_status:"missing"` + placement `unknown` +
+`anchor_lookup_missing`, and the item stays advisory — it must not be placed without an anchor.
+An invalid/empty anchor id is **dropped, never emitted**. (3) **Chandra stays blocked** — a
+`chandra_local` item (or one carrying a `chandra_blocked` marker on its input reasons) is
+**never** mapped to a direct figure/table/text reference; it degrades to `review_only` +
+`review_appendix` and always carries the closed reason `chandra_blocked`, because Chandra
+*extraction* integration remains gated by Slice 45 `status:not_run`
+(`operator_input_not_supplied`). (4) **No leak** — every emitted field is a closed-vocab token,
+an int, `None`, an empty list, or a deterministic slug-safe `asset_id`/`anchor_id`; input
+fields are coerced field-by-field and never echoed, so no caption, source/OCR text,
+provider/model payload, image byte, data URI, base64, path, URL, header, token, socket path,
+model/`mmproj` path, executable path, or raw argv can survive into the plan even from a hostile
+record. (5) **Pure / unwired / no production change** — not imported by `run_llm_job.py` or
+anything else; **no artifact written** (no `visual_insertion_plan.json` this slice); no API
+route; no frontend/UI; no export-bundle/generic artifact-list exposure; the manifest / scoring
+/ replacement-plan schemas are unchanged and **never mutated**, and the input replacement plan
+and anchors are **never mutated**; no prompt/render/extraction/OCR-routing/guide-output change;
+no `clean.md` write; no model/llama-server/cloud/network call; no image files/bytes. **Scope:**
+new `pipeline/visual_insertion_planner.py` + `test_scripts/test_visual_insertion_planner.py`
+(**243/0**) + this entry + `CURRENT_TASK.md` / `NEXT_CHAT_HANDOFF.md`. Because the slice is
+pure/unwired and touches no server/extraction/render/artifact/export/UI behavior,
+`smoke_release.py` / Docker were **not required**; validation was the full backend pure-test
+battery (insertion-planner 243/0; replacement-planner 186/0; plan-artifact 68/0; scoring
+146/0 + 58/0; manifest 65/0; figure 50/0+2skip; chandra 68/68/96; ocr 121/120/56), the offline
+eval (3 guides, no regression), the frontend build + `npm run test` + advisory mjs, and
+`git diff --check` clean.

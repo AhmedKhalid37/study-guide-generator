@@ -6,46 +6,63 @@
 > stable overview see `PROJECT_CONTEXT.md`; canonical brief is `../CLAUDE.md`.
 
 ## Current position
-- **Working tree:** **Slice 51 (include visual advisory JSON artifacts in export bundles) — uncommitted,
-  BACKEND export-bundle inclusion (+ focused test), NO frontend change** on branch
-  `slice51-visual-advisory-export-bundle` (branched from trunk after Slice 50 merged at `1ed94c9`).
-  Bundles the three advisory visual **JSON diagnostics** — `visual_assets_manifest.json`,
-  `visual_asset_scoring.json`, `visual_replacement_plan.json` — **alongside** the requested exports
-  **only when they exist** for a job. Inclusion-only slice: **JSON diagnostics only**, no cropped
-  images / image bytes, no production include/omit decision, no visual embedding.
-  - **What it does:** `api/server.py` → `export_bundle` (`POST /api/exports/bundle`) gains a narrow
-    constant `VISUAL_ADVISORY_EXPORT_ARTIFACTS = (manifest, scoring, plan)` and a ride-along loop after
-    the existing selector loop: each present advisory file (`_artifact_path(...).exists()`) is written
-    into the job's bundle folder. The three names are **deliberately NOT** in `EXPORT_ARTIFACTS` /
-    `EXPORT_ARTIFACT_ALIASES` / `ARTIFACTS`, so **no** export-UI artifact type and **no** generic
-    artifact UI row is added and `artifact_types` is unchanged.
-  - **Gate / partial / absent:** advisory ride-alongs do **not** count toward `total_included`, so they
-    never satisfy the "≥1 requested artifact" gate — an all-absent requested bundle still `404`s.
-    Partial set ⇒ only existing files bundled; none ⇒ behavior exactly as before; absent file skipped
-    calmly (never an error, never fails the export).
-  - **Bundle index:** each `manifest.json` job entry gains `visual_advisory_included` — a list of the
-    bundled **filenames** (presence/safe-metadata only). No raw artifact JSON is inlined into the index,
-    logs, or terminal output.
-  - **Comment fix:** stale "never in export bundles" notes in `api/server.py:_artifact_path` and
-    `pipeline/job_manager.py` (scoring/plan props) corrected to "ride-along JSON diagnostic when present,
-    no generic UI row"; the `assets_dir` PNG comment is unchanged (image bytes still never exported).
-  - **Confirmations:** generated guide output, prompts, rendering, extraction, OCR routing, and artifact
-    schemas **unchanged**; visual artifacts **not mutated** by export (byte-identical); candidate actions
-    remain **advisory only**; no generic artifact UI rows / export-UI exposure; no frontend change; no
-    API route change; no `clean.md` write; no model/`llama-server`/cloud/network call; no cropped image /
-    image bytes bundled. Chandra *extraction* integration remains **blocked** by Slice 45
-    `status:not_run`.
-  - **Files:** edited `api/server.py` (constant + ride-along loop + index field + comments),
-    `pipeline/job_manager.py` (comment fix only); new
-    `test_scripts/test_visual_advisory_export_bundle.py`; + `CURRENT_TASK.md` / `NEXT_CHAT_HANDOFF.md`
-    / `DECISIONS.md`.
-  - **Validation:** `compileall api pipeline test_scripts` OK; new export-bundle test (host SKIP — no
-    FastAPI; Docker full coverage); backend visual/ocr/extraction/chandra suites all green (planner
-    186/0, plan-artifact 68/0, scoring 146/0 + 58/0, manifest 65/0, figure 50/0+2skip, chandra
-    68/68/96, ocr 121/120/56, extraction-metadata 9/9); offline eval 3 guides (no regression); frontend
-    build green; `npm run test` green; advisory mjs green; `git diff --check` clean. Full Docker
-    rebuild/recreate + `/api/health` + `smoke_release.py` (export-behavior slice). **Status:** NOT
-    committed (awaiting operator review).
+- **Working tree:** **Slice 52 (visual insertion planner core — pure & unwired) — uncommitted,
+  pipeline pure module + focused test, NO production wiring** on branch
+  `slice52-visual-insertion-planner-core` (branched from trunk after Slice 51 merged at `ee9be55`).
+  Adds `pipeline/visual_insertion_planner.py`: given a `visual_replacement_plan.json`-shaped plan (and,
+  optionally, a **safe-only** source-page anchor inventory), it returns a **separate advisory
+  insertion-position plan** — per-asset `insertion_mode` / `placement` / `anchor_status` with
+  closed-vocab `reasons`. Planning-core slice only: **no artifact written, no embedding, no production
+  decision**.
+  - **Public API (stdlib-only `re`/`typing`):** `plan_visual_insertion_item(item, *,
+    anchors_by_page=None) -> dict`; `plan_visual_insertions(items, *, anchors_by_page=None) ->
+    list[dict]`; `build_visual_insertion_plan(replacement_plan, *, source_page_anchors=None) -> dict`.
+  - **Report shape:** `{version:1, kind:"visual_insertion_plan", status:"completed",
+    source:"visual_replacement_plan.json", insertions:[…], summary:{insertion_count,
+    figure_reference_count, table_reference_count, text_summary_reference_count, review_only_count,
+    unknown_count, anchor_matched_count, anchor_missing_count}, warnings:[…]}`. Each insertion:
+    `{asset_id, source_page, source_provider, asset_type, candidate_action, insertion_mode, placement,
+    anchor_id, anchor_status, reasons, warnings}`.
+  - **Mapping (advisory):** include_as_figure→`figure_reference`, convert_to_table→`table_reference`,
+    summarize_as_text→`text_summary_reference`, review_only→`review_only`(`review_appendix`,
+    anchor `not_required`), unknown/malformed→`unknown`. A matching source-page anchor →
+    `anchor_status:"matched"` + `source_page_reference` + sanitized `anchor_id`; any miss → `missing` +
+    placement `unknown` + `anchor_lookup_missing` (stays advisory). **Chandra** (`chandra_local`
+    provider OR a `chandra_blocked` input marker) is **never** a direct insertion → degrades to
+    `review_only` + `chandra_blocked`.
+  - **Anchors:** safe-only inventory (list of `{source_page, anchor_id}`, dict keyed by page, or None);
+    only a slug-safe `anchor_id` is read; invalid/empty anchor ids are **dropped** (never emitted), a
+    page they covered then degrades to `missing`.
+  - **Confirmations:** pure & total (never raises); **not wired** into `run_llm_job.py`/anything; **no
+    artifact written** (no `visual_insertion_plan.json` this slice); no API route; no frontend/UI; no
+    export-bundle/generic artifact-list exposure; manifest/scoring/replacement-plan schemas unchanged and
+    **never mutated**; replacement plan and anchors **not mutated**; no prompt/render/extraction/
+    OCR-routing/guide-output change; no `clean.md` write; no model/`llama-server`/cloud/network call; no
+    image files/bytes; no caption/source-text/provider-payload/path/token/data-URI/base64/argv leak.
+    Chandra *extraction* integration remains **blocked** by Slice 45 `status:not_run`.
+  - **Files:** new `pipeline/visual_insertion_planner.py`, new
+    `test_scripts/test_visual_insertion_planner.py`; + `CURRENT_TASK.md` / `NEXT_CHAT_HANDOFF.md` /
+    `DECISIONS.md`.
+  - **Validation:** `compileall api pipeline test_scripts` OK; insertion-planner **243/0**; existing
+    replacement-planner **186/0**, plan-artifact **68/0**, scoring **146/0** + **58/0**,
+    advisory-export-bundle host-SKIP (no FastAPI; covered live in Slice 51), manifest **65/0**, figure
+    **50/0**+2skip, chandra **68/68/96**, ocr **121/120/56**; offline eval 3 guides (no regression);
+    frontend build + `npm run test` + advisory mjs green; `git diff --check` clean. `smoke_release.py` /
+    Docker **not required** (pure/unwired — no server/extraction/render/artifact/export/UI behavior
+    touched). **Status:** NOT committed (per instruction).
+
+- **Prior slice — Slice 51 (include visual advisory JSON artifacts in export bundles) — committed
+  `ee9be55`, fast-forward merged + pushed to trunk `chrome-renderer-v1`, BACKEND export-bundle inclusion
+  (+ focused test), NO frontend change** (was on branch `slice51-visual-advisory-export-bundle`, branched
+  from trunk after Slice 50 merged at `1ed94c9`). `export_bundle` (`POST /api/exports/bundle`) gained a
+  narrow `VISUAL_ADVISORY_EXPORT_ARTIFACTS` constant + ride-along loop that bundles the three advisory
+  visual **JSON diagnostics** (`visual_assets_manifest.json`, `visual_asset_scoring.json`,
+  `visual_replacement_plan.json`) **alongside** requested exports **only when present**; the three names
+  stayed **out of** `EXPORT_ARTIFACTS`/`EXPORT_ARTIFACT_ALIASES`/`ARTIFACTS` (no export-UI type, no
+  generic UI row); ride-alongs do **not** count toward `total_included` (all-absent bundle still 404s);
+  bundle index records a `visual_advisory_included` filename list only. JSON diagnostics only — no
+  cropped images/image bytes; artifacts read-only & never mutated; no guide/prompt/render/extraction/
+  routing/schema change. Full Docker rebuild/recreate + `/api/health` + `smoke_release.py` passed.
 
 - **Prior slice — Slice 50 (Job Details "Visual advisory" diagnostics panel) — committed `1ed94c9`,
   fast-forward merged + pushed to trunk `chrome-renderer-v1`, FRONTEND read-only UI (+ pure helper +
