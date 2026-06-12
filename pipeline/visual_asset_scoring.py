@@ -12,11 +12,18 @@ manifest, changing extraction/guides/rendering, or wiring into production.
 What this slice does and does NOT do
 ------------------------------------
 - It **scores** existing ``visual_assets_manifest.json``-shaped assets and returns a
-  brand-new ``visual_asset_scoring`` report dict. It does **not** mutate the input
-  manifest or any asset dict, does **not** write a job artifact, does **not** embed
-  visuals, does **not** call any provider/model/llama-server/network, does **not**
-  open or inspect any image file, and is **not** wired into ``run_llm_job`` or any
-  route/UI/export.
+  brand-new ``visual_asset_scoring`` report dict. The scoring core never mutates the
+  input manifest or any asset dict, never embeds visuals, never calls any
+  provider/model/llama-server/network, and never opens or inspects any image file.
+- Slice 47 adds a thin, advisory **artifact writer**
+  (:func:`write_visual_asset_scoring_report` /
+  :func:`write_skipped_visual_asset_scoring_report`) that persists the report as the
+  exact-name sibling artifact ``visual_asset_scoring.json``, DERIVED from the
+  already-written manifest. The writer is degrade-not-fail (never raises into job
+  generation), does **not** mutate ``visual_assets_manifest.json``, does **not**
+  change guide output / prompts / rendering / extraction / OCR routing, and is
+  reached only by its exact filename (not added to generic artifact lists, export
+  bundles, or UI rows).
 - It deliberately keeps ``recommended_action: "unknown"`` for **every** score. The
   actual ``include_as_figure | convert_to_table | summarize_as_text | omit``
   decision (the V3 "text-replacement test") and any artifact-writing are later,
@@ -44,12 +51,29 @@ even if a hostile asset record smuggles one in.
 """
 from __future__ import annotations
 
+import json
 import re
+import sys
 from typing import Any
 
 REPORT_VERSION = 1
 REPORT_KIND = "visual_asset_scoring"
 REPORT_SOURCE = "visual_assets_manifest.json"
+
+# Slice 47: exact-name advisory artifact derived from visual_assets_manifest.json.
+ARTIFACT_NAME = "visual_asset_scoring.json"
+
+# Closed skip-reason vocabulary for the persisted artifact (Slice 47). Only these
+# tokens may appear as a skipped report's ``reason``; raw exceptions, paths, or
+# manifest payloads are never used.
+SKIP_REASON_MANIFEST_UNAVAILABLE = "visual_manifest_unavailable"
+SKIP_REASON_SCORING_UNAVAILABLE = "visual_scoring_unavailable"
+SKIP_REASON_WRITE_FAILED = "write_failed"
+SKIP_REASONS = {
+    SKIP_REASON_MANIFEST_UNAVAILABLE,
+    SKIP_REASON_SCORING_UNAVAILABLE,
+    SKIP_REASON_WRITE_FAILED,
+}
 
 # --- Closed vocabularies (this module owns what it is allowed to emit) --------
 
@@ -272,6 +296,97 @@ def score_visual_assets_manifest(
         "scores": scores,
         "summary": _summarize(scores),
         "warnings": warnings,
+    }
+
+
+# --- Artifact writer (Slice 47 — advisory, degrade-not-fail) -----------------
+#
+# These are the ONLY job-aware functions in this module. They persist the scoring
+# report as the exact-name sibling artifact ``visual_asset_scoring.json``, derived
+# from the already-written manifest. Mirrors the
+# ``visual_assets_manifest.write_*``/``extraction_metadata`` degrade-to-skipped
+# posture: never raise to the caller, never mutate the source manifest, never gate
+# or fail generation, never touch job status / validation / clean.md.
+
+
+def write_visual_asset_scoring_report(job: Any, manifest: Any) -> dict[str, Any]:
+    """Persist ``visual_asset_scoring.json`` derived from a manifest dict.
+
+    ``manifest`` is the already-written ``visual_assets_manifest.json``-shaped dict
+    (the persisted, sanitized boundary output). The source manifest is **never**
+    mutated. When the manifest is unavailable or not a ``completed`` manifest with a
+    list of assets, a safe *skipped* report is written instead. Any write failure
+    degrades to a ``write_failed`` skipped report. Returns the report dict that was
+    written (advisory; the return value is informational only).
+    """
+    try:
+        if not _is_scorable_manifest(manifest):
+            return write_skipped_visual_asset_scoring_report(
+                job,
+                reason=SKIP_REASON_MANIFEST_UNAVAILABLE,
+                safe_message="Visual assets manifest was unavailable for scoring.",
+            )
+        report = score_visual_assets_manifest(manifest)
+        job.save_text(
+            job.visual_asset_scoring_json,
+            json.dumps(report, indent=2, sort_keys=True) + "\n",
+        )
+        return report
+    except Exception as exc:  # never let an advisory artifact break a job
+        print(
+            f"Visual asset scoring skipped ({type(exc).__name__}); job continues.",
+            file=sys.stderr,
+        )
+        return write_skipped_visual_asset_scoring_report(
+            job,
+            reason=SKIP_REASON_WRITE_FAILED,
+            safe_message="Visual asset scoring report could not be written.",
+        )
+
+
+def write_skipped_visual_asset_scoring_report(
+    job: Any,
+    *,
+    reason: str = SKIP_REASON_SCORING_UNAVAILABLE,
+    safe_message: str = "Visual asset scoring report could not be produced.",
+) -> dict[str, Any]:
+    """Best-effort writer for an explicit *skipped* scoring artifact.
+
+    Uses only closed-vocabulary ``reason`` tokens and a short, safe message; never
+    echoes raw exceptions, paths, or manifest payloads. Never raises.
+    """
+    payload = _skipped_report(reason, safe_message)
+    try:
+        job.save_text(
+            job.visual_asset_scoring_json,
+            json.dumps(payload, indent=2, sort_keys=True) + "\n",
+        )
+    except Exception:
+        pass
+    return payload
+
+
+def _is_scorable_manifest(manifest: Any) -> bool:
+    """True only for a ``completed`` manifest dict carrying a list of assets."""
+    return (
+        isinstance(manifest, dict)
+        and manifest.get("status") == "completed"
+        and isinstance(manifest.get("assets"), list)
+    )
+
+
+def _skipped_report(reason: Any, safe_message: Any) -> dict[str, Any]:
+    safe_reason = reason if reason in SKIP_REASONS else SKIP_REASON_SCORING_UNAVAILABLE
+    return {
+        "version": REPORT_VERSION,
+        "kind": REPORT_KIND,
+        "status": "skipped",
+        "source": REPORT_SOURCE,
+        "reason": safe_reason,
+        "safe_message": str(safe_message)[:300],
+        "scores": [],
+        "summary": _summarize([]),
+        "warnings": [],
     }
 
 

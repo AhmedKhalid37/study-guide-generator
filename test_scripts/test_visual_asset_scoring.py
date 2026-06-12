@@ -484,7 +484,13 @@ def test_no_forbidden_imports() -> None:
                  "run_llm_job", "job_manager", "render", "server"]
     leaks = sorted({tok for ln in import_lines for tok in forbidden if tok in ln})
     check("imports.none_forbidden", not leaks, f"found in imports: {leaks}")
-    allowed_prefixes = ("import re", "from __future__", "from typing import")
+    # Slice 47 adds a thin degrade-not-fail artifact writer, so json/sys (stdlib)
+    # are now legitimately imported. The forbidden-import guard above still rejects
+    # any provider / network / extraction / job-internal import.
+    allowed_prefixes = (
+        "import re", "import json", "import sys",
+        "from __future__", "from typing import",
+    )
     unexpected = [ln for ln in import_lines if not ln.startswith(allowed_prefixes)]
     check("imports.only_expected_stdlib", not unexpected, f"unexpected: {unexpected}")
 

@@ -2171,3 +2171,49 @@ manifest-schema/extraction/`ocr_routing`/API/frontend/Provider-Settings/LMM/rend
 export/`clean.md`/artifact change. Validated by the full pure-test battery
 (scoring 146/0; manifest/figure/chandra/ocr suites green; offline eval no
 regression; frontend build+test green) + `git diff --check` clean.
+
+## Slice 47 — `visual_asset_scoring.json` persisted as an exact-name advisory artifact
+Slice 47 persists the Slice 46 scoring report as the sibling artifact
+`visual_asset_scoring.json`, **derived from** the already-written
+`visual_assets_manifest.json`. It is written in `run_llm_job._attach_sources`
+immediately after `write_visual_assets_manifest(...)`, by reading the just-written
+manifest back off disk (`_read_visual_manifest_for_scoring`, total/`None`-on-error)
+and passing that sanitized dict to `visual_asset_scoring.write_visual_asset_scoring_report`.
+It is reachable **only by exact name** at
+`/api/jobs/{id}/artifacts/visual_asset_scoring.json` (a dedicated branch in
+`_artifact_path`); it is deliberately **not** added to `ARTIFACTS`,
+`EXPORT_ARTIFACTS`, `_artifact_urls`, `_artifact_details`, export bundles, or any
+frontend/UI row. **Why this posture, identical to `extraction_metadata.json` /
+`math_verification.json` / `guide_lint.json` / `visual_assets_manifest.json`:**
+(1) **Advisory, degrade-not-fail.** The writer never raises into job generation —
+a non-scorable/unavailable manifest yields a closed-vocab *skipped* report
+(`visual_manifest_unavailable`), and any write error degrades to a `write_failed`
+skipped report; it never gates/fails the job, never touches job status/validation/
+`clean.md`, and **never mutates** the source manifest. The skipped writer uses
+**closed `reason` tokens only** (`visual_manifest_unavailable`,
+`visual_scoring_unavailable`, `write_failed`) plus a fixed constant `safe_message`;
+it never echoes a raw exception, path, or manifest payload (stderr, if reached,
+carries an exception **class name** only). (2) **Written exactly when the manifest
+is.** Only the PDF-attachment branch that writes `visual_assets_manifest.json`
+calls the scoring writer; non-PDF / no-extraction jobs omit **both** artifacts and
+see zero behavior change. (3) **Exact-name only, never generic.** Keeping it out of
+`ARTIFACTS`/exports/UI means it cannot appear in download lists, ZIP bundles, or the
+Library/Exports surface, and never ships in a guide — it is an inspector-only,
+operator-facing advisory. (4) **No new capability.** The slice writes/serves a file
+and changes nothing else: no guide output, prompt, render, extraction, OCR routing,
+visual embedding, or include/omit decision (`recommended_action` stays `unknown`),
+and no model/`llama-server`/Chandra/Mistral/Gemini/network/image-file access.
+**Chandra independence:** Chandra *extraction* integration remains **blocked** by
+the Slice 45 gate (`status:not_run`, `operator_input_not_supplied`); this slice only
+persists a report derived from whatever manifest the existing `fitz_local` path
+produced. **Scope:** `pipeline/job_manager.py` (`Job.visual_asset_scoring_json`
+property), `api/server.py` (exact-name `_artifact_path` branch),
+`pipeline/visual_asset_scoring.py` (writer + closed skip reasons),
+`pipeline/run_llm_job.py` (wiring + manifest read-back helper),
+`test_scripts/test_visual_asset_scoring.py` (allow stdlib `json`/`sys`), new
+`test_scripts/test_visual_asset_scoring_artifact.py`, + these docs. Validated by the
+full test battery (scoring core 146/0; scoring artifact 58/0; manifest 65/0;
+figure 50/0+2skip; chandra-normalizer/provider/live-harness green; ocr suites green;
+extraction-metadata 9/9; offline eval no regression; frontend build+test green) plus
+a fresh Docker build + `/api/health` + `smoke_release.py` and `git diff --check`
+clean.

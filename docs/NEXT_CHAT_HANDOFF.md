@@ -6,8 +6,46 @@
 > stable overview see `PROJECT_CONTEXT.md`; canonical brief is `../CLAUDE.md`.
 
 ## Current position
-- **Working tree:** **Slice 46 (visual asset scoring core — pure, unwired; roadmap V3) —
-  uncommitted, CODE (new module + test, NO production wiring)** on branch
+- **Working tree:** **Slice 47 (persist `visual_asset_scoring.json` as an advisory exact-name
+  artifact) — uncommitted, CODE (production-wired artifact writer/serving + new test)** on branch
+  `slice47-visual-asset-scoring-artifact` (branched from trunk after Slice 46 merged at `e8e69ed`).
+  Persists the Slice 46 scoring report as the sibling artifact `visual_asset_scoring.json`,
+  **derived from** the already-written `visual_assets_manifest.json`.
+  - **What it does:** writes `visual_asset_scoring.json` in `run_llm_job._attach_sources`
+    immediately after `write_visual_assets_manifest(...)` (reads the just-written manifest back via
+    `_read_visual_manifest_for_scoring`, total/`None`-on-error, then
+    `write_visual_asset_scoring_report(job, manifest)`). Reachable **only by exact name** at
+    `/api/jobs/{id}/artifacts/visual_asset_scoring.json` (dedicated `_artifact_path` branch); absent
+    → graceful 404. New `Job.visual_asset_scoring_json` property. Stable JSON
+    (`indent=2, sort_keys=True`).
+  - **Advisory / degrade-not-fail / no mutation:** the writer never raises into job generation,
+    never gates/fails the job, never touches job status / validation / `clean.md`, and **never
+    mutates** `visual_assets_manifest.json`. Non-scorable/unavailable manifest → `skipped`
+    (`visual_manifest_unavailable`); write error → `skipped` (`write_failed`). Closed skip reasons
+    only; `safe_message` is a fixed constant; stderr (if reached) carries an exception class name
+    only. `recommended_action` stays `unknown` for every score.
+  - **Deliberately NOT exposed generically:** not in `ARTIFACTS`, `EXPORT_ARTIFACTS`,
+    `_artifact_urls`, `_artifact_details`, export bundles, or any frontend/UI row — exact-name
+    download only. Written **exactly when** the manifest is written; non-PDF / no-extraction jobs
+    omit **both** artifacts. No guide-output / prompt / render / extraction / OCR-routing / visual-
+    embedding change; no model/`llama-server`/Chandra/Mistral/Gemini/network/image-file access.
+  - **Chandra still blocked:** Chandra *extraction* integration remains gated by Slice 45
+    `status:not_run` (`operator_input_not_supplied`); this slice only persists a report derived from
+    whatever manifest the existing `fitz_local` path produced — it integrates nothing.
+  - **Files:** `pipeline/job_manager.py`, `api/server.py`, `pipeline/run_llm_job.py`,
+    `pipeline/visual_asset_scoring.py` (writer + closed skip reasons),
+    `test_scripts/test_visual_asset_scoring.py` (allow stdlib `json`/`sys`; **146/0**), new
+    `test_scripts/test_visual_asset_scoring_artifact.py` (**58/0**), + `CURRENT_TASK.md` /
+    `NEXT_CHAT_HANDOFF.md` / `DECISIONS.md`.
+  - **Validation:** `compileall api pipeline test_scripts` OK; scoring-core **146/0**;
+    scoring-artifact **58/0**; manifest **65/0**; figure **50/0** (+2 skip); chandra
+    normalizer/provider/live-harness green; ocr suites green; extraction-metadata **9/9**; offline
+    eval 3 guides (no regression); frontend build+test green; fresh Docker build + `/api/health` ok +
+    `smoke_release.py`; `git diff --check` clean. **Status:** NOT committed (awaiting operator review).
+
+- **Prior slice — Slice 46 (visual asset scoring core — pure, unwired; roadmap V3) —
+  committed `e8e69ed`, fast-forward merged + pushed to trunk `chrome-renderer-v1`, CODE (new
+  module + test, NO production wiring)** (was on branch
   `slice46-visual-asset-scoring-core` (branched from trunk after Slice 45 merged at `591d664`).
   Returns to the **provider-agnostic visual stack** — NOT a Chandra integration slice.
   - **New module:** `pipeline/visual_asset_scoring.py` — a pure, deterministic, stdlib-only
@@ -36,7 +74,8 @@
     **68/0**, chandra-live-harness **96/0**, ocr-modes **121/121**, ocr-routing-policy **120/120**,
     ocr-routing-integration **56/56**, offline eval 3 guides (no regression), frontend build+test
     green, `git diff --check` clean. `smoke_release.py` not required (pure unwired module, no
-    production behavior touched). **Status:** NOT committed (awaiting operator review).
+    production behavior touched). **Status:** committed `e8e69ed`, fast-forward merged + pushed to
+    trunk `chrome-renderer-v1`; Slice 47 (above) builds the persisted artifact on top.
 
 - **Prior slice — Slice 45 (Chandra live-harness validation report + operator runbook) — committed
   `591d664`, fast-forward merged + pushed to trunk `chrome-renderer-v1`, DOCS-ONLY** (was on branch

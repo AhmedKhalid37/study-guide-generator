@@ -3757,6 +3757,11 @@ def _artifact_path(job: Job, artifact_name: str) -> tuple[Path, str]:
         return job.guide_lint_json, "application/json"
     if artifact_name == "visual_assets_manifest.json":
         return job.visual_assets_manifest_json, "application/json"
+    if artifact_name == "visual_asset_scoring.json":
+        # Slice 47: advisory scoring report DERIVED from the visual manifest.
+        # Exact-name download only; deliberately NOT in ARTIFACTS, so it never
+        # appears in _artifact_urls / _artifact_details / export bundles / UI rows.
+        return job.visual_asset_scoring_json, "application/json"
 
     artifact = ARTIFACTS.get(artifact_name)
     if artifact is None:

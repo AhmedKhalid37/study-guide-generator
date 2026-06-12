@@ -140,6 +140,16 @@ class Job:
         return self.dir / "visual_assets_manifest.json"
 
     @property
+    def visual_asset_scoring_json(self) -> Path:
+        # Slice 47: sibling advisory artifact holding the deterministic visual
+        # asset scoring report (pipeline/visual_asset_scoring.py), DERIVED from
+        # visual_assets_manifest.json. Like the other advisory siblings it never
+        # changes job status, never mutates the source manifest, is kept SEPARATE
+        # from validation.json, and is reached only by its exact filename (not
+        # added to the generic ARTIFACTS list / exports / UI rows).
+        return self.dir / "visual_asset_scoring.json"
+
+    @property
     def assets_dir(self) -> Path:
         # Slice 40: holds locally-cropped figure images (PNG) referenced by the
         # visual-assets manifest's `extracted_figure` records via safe RELATIVE

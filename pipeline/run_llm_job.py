@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import json
 import mimetypes
 import os
 import re
@@ -18,6 +19,7 @@ from pipeline.extraction_metadata import (
     write_skipped_extraction_metadata,
 )
 from pipeline.visual_assets_manifest import write_visual_assets_manifest
+from pipeline.visual_asset_scoring import write_visual_asset_scoring_report
 from pipeline.visual_asset_extractor import (
     MAX_FIGURES_PER_JOB,
     extract_local_figures,
@@ -303,6 +305,12 @@ def _attach_sources(
         # branch is skipped and the manifest is byte-identical to Slice 38.
         extracted_assets = _extract_local_figures(job, pdf_extraction_inputs)
         write_visual_assets_manifest(job, extraction_metadata_sources, extracted_assets)
+        # Slice 47: persist the advisory visual-asset SCORING report derived from
+        # the manifest we just wrote. Reads only the persisted (sanitized) manifest
+        # object, never mutates it, and is degrade-not-fail — it never gates or
+        # fails the job. Written exactly when the manifest is written; non-PDF jobs
+        # with no extraction metadata simply omit both artifacts (no call here).
+        write_visual_asset_scoring_report(job, _read_visual_manifest_for_scoring(job))
 
     if not sections:
         return source_text, {
@@ -330,6 +338,22 @@ def _expand_page_ranges(ranges: list[list[int]]) -> set[int]:
         start, end = int(pair[0]), int(pair[1])
         pages.update(range(start, end + 1))
     return pages
+
+
+def _read_visual_manifest_for_scoring(job: Job) -> dict[str, Any] | None:
+    """Read back the just-written ``visual_assets_manifest.json`` for scoring.
+
+    Best-effort and total: returns ``None`` on any read/parse error so the advisory
+    scoring writer degrades to a safe skipped report. Never raises, never mutates.
+    """
+    try:
+        path = job.visual_assets_manifest_json
+        if not path.exists():
+            return None
+        loaded = json.loads(path.read_text(encoding="utf-8"))
+        return loaded if isinstance(loaded, dict) else None
+    except Exception:
+        return None
 
 
 def _extract_local_figures(

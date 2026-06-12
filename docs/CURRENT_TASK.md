@@ -5,6 +5,61 @@
 
 ---
 
+## Slice 47 — Persist `visual_asset_scoring.json` as an **advisory exact-name artifact** on `slice47-visual-asset-scoring-artifact`.
+
+- **Purpose:** persist the Slice 46 scoring report as the sibling artifact
+  `visual_asset_scoring.json`, **derived from** the already-written `visual_assets_manifest.json`.
+  Pure artifact writing/serving — it does **not** change guide output, prompts, extraction, OCR
+  routing, visual embedding, include/omit decisions, UI, or export bundles, and is **not** a Chandra
+  integration slice.
+- **Artifact:** exact name `visual_asset_scoring.json`, written as a sibling of the manifest.
+  Reachable **only by exact name** at `/api/jobs/{id}/artifacts/visual_asset_scoring.json`; absent →
+  graceful 404 ("Artifact not found."), like the other exact-name advisory siblings.
+- **Wiring (production):**
+  - `pipeline/job_manager.py` — new `Job.visual_asset_scoring_json` property (`<job>/visual_asset_scoring.json`).
+  - `api/server.py` — dedicated `_artifact_path` branch mapping the exact name → that path
+    (`application/json`). **Deliberately NOT** added to `ARTIFACTS`, `EXPORT_ARTIFACTS`,
+    `_artifact_urls`, `_artifact_details`, export bundles, or any UI row.
+  - `pipeline/run_llm_job.py` — in `_attach_sources`, immediately after
+    `write_visual_assets_manifest(...)`, calls
+    `write_visual_asset_scoring_report(job, _read_visual_manifest_for_scoring(job))`. The helper
+    reads the just-written manifest back off disk and returns `None` on any read/parse error
+    (total, never raises, never mutates). Written **exactly when** the manifest is written; non-PDF /
+    no-extraction jobs omit **both** artifacts (no call).
+  - `pipeline/visual_asset_scoring.py` — thin degrade-not-fail writer
+    `write_visual_asset_scoring_report(job, manifest)` (+ `write_skipped_visual_asset_scoring_report`,
+    `_is_scorable_manifest`, `_skipped_report`); stable JSON (`indent=2, sort_keys=True`). Closed
+    skip reasons only: `visual_manifest_unavailable`, `visual_scoring_unavailable`, `write_failed`.
+    `safe_message` is a fixed constant; stderr (if reached) carries an **exception class name only**.
+    The Slice 46 `score_visual_assets_manifest(...)` report shape is unchanged.
+- **Degrade-not-fail / no mutation:** the writer never raises into job generation, never gates/fails
+  the job, never touches job status / validation / `clean.md`, and **never mutates**
+  `visual_assets_manifest.json`. A non-scorable/unavailable manifest → `skipped`
+  (`visual_manifest_unavailable`); a write error → `skipped` (`write_failed`).
+- **`recommended_action` stays `unknown`** for every score (no include/omit decision); no model /
+  `llama-server` / Chandra / Mistral / Gemini / network / image-file access; no `clean.md` write.
+- **Chandra still blocked:** Chandra **extraction** integration remains gated by Slice 45
+  `status:not_run` (`operator_input_not_supplied`); this slice only persists a report derived from
+  whatever manifest the existing `fitz_local` path produced — it integrates nothing.
+- **New test:** `test_scripts/test_visual_asset_scoring_artifact.py` (**58/0**; api.server endpoint
+  section auto-skips when FastAPI is absent in host Python — covered in Docker) — completed write +
+  shape/summary counts; `recommended_action` all `unknown`; no caption/image_ref/path/url/base64
+  leak in artifact bytes; manifest file+dict unmutated; manifest→read-back→score integration;
+  skipped on unavailable/malformed manifest (5 cases); write-failure degrades to `write_failed`
+  (via a `save_text`-raising `Job` subclass; no raw exception text in the report); explicit-skipped
+  defaults + out-of-vocab reason coerced; exact-name route resolves & not in
+  `ARTIFACTS`/`EXPORT_ARTIFACTS`/`_artifact_urls`/`_artifact_details`. Also updated
+  `test_scripts/test_visual_asset_scoring.py` to allow stdlib `json`/`sys` (now **146/0**).
+- **Validation:** `compileall api pipeline test_scripts` OK; scoring-core **146/0**; scoring-artifact
+  **58/0**; manifest **65/0**; figure-extraction **50/0** (+2 skipped); chandra-normalizer **68/0**;
+  chandra-local-provider **68/0**; chandra-live-harness **96/0**; ocr-modes **121/121**;
+  ocr-routing-policy **120/120**; ocr-routing-integration **56/56**; extraction-metadata **9/9**;
+  offline eval scored 3 guides (no regression); frontend build + test green; fresh Docker
+  build + `/api/health` ok + `smoke_release.py`; `git diff --check` clean. **Status:** NOT committed
+  (awaiting operator review).
+
+---
+
 ## Slice 46 — Visual asset **scoring core** (pure, unwired; roadmap V3) on `slice46-visual-asset-scoring-core`.
 
 - **Purpose:** add a pure, deterministic **scoring core** for visual asset candidates — the V3
