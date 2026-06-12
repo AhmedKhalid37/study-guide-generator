@@ -2663,3 +2663,36 @@ opts in (default/not-ready ⇒ byte-identical request). Because this touches
 `/api/options` and Builder UI behavior, full validation (Docker rebuild/recreate +
 `/api/health` + `smoke_release.py` + an `/api/options` readiness spot-check) was run.
 **Chandra extraction integration remains blocked by Slice 45 `status:not_run`.**
+
+## Validate the stitched single-figure pilot before expanding visuals (Slice 58)
+The visual pilot was built as a chain of small slices (planner core 52, off-by-default
+insertion 54, per-job opt-in 55, export ride-along 56, readiness guard 57), each with
+its own focused test — but nothing proved the **whole chain** holds end-to-end. Slice 58
+adds a **validation/harness-only** slice (`test_scripts/test_visual_pilot_e2e_validation.py`
++ `docs/VISUAL_PILOT_E2E_VALIDATION.md`) that stitches every stage so the output of each
+feeds the next: safe job-local `assets/<slug>.png` → manifest/replacement-plan shape →
+master flag ON → per-job opt-in ON → exactly one markdown image → HTML/PDF/DOCX render →
+export ZIP carrying the single referenced PNG. **Why before expansion:** multi-figure,
+Chandra, and richer visual work all build on this exact plumbing; proving the
+single-figure path is clean first means an expansion regression shows up as a failing
+stitch rather than a silent downstream surprise, and it pins the safety contract (one
+figure, `fitz_local` only, safe relative ref, generic caption, no over-export, no leak)
+as an executable spec.
+
+**Why synthetic non-private temp data and no provider/model calls:** the harness must be
+runnable anywhere (host or container) with zero network, zero secrets, and zero private
+documents, so it builds its test PNG at runtime with a tiny stdlib `zlib`+`struct`
+generator, writes every PNG/PDF/DOCX/HTML/ZIP under a temp dir, and imports only existing
+pipeline helpers plus `api.server.export_bundle` (driven against temp-dir jobs with
+`_get_job` monkeypatched). **No committed binary/image/PDF/DOCX/ZIP fixture, no base64, no
+data URI**, and a final sweep scans every serialized output for paths/keys/tokens/headers/
+sockets/data-URIs/model markers/argv/URLs. The harness adds **no** production code and
+changes **no** behavior; it degrades cleanly (SKIP) when host deps (Chromium / python-docx
+/ FastAPI) are absent, mirroring the repo's other host-skippable checks.
+
+**Why multi-figure and Chandra stay deferred:** they are explicitly out of scope until the
+single-figure path has a clean validation pass — which this slice establishes (host
+**16/0/2**, in-container **29/0/0**). Manual operator PDF review is recorded honestly as
+`manual_operator_pdf_validation: not_run` (reason `non_private_operator_sample_not_supplied`),
+not asserted as done. **Chandra extraction integration remains blocked by Slice 45
+`status:not_run`.**

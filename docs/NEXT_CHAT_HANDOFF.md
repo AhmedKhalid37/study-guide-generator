@@ -6,9 +6,33 @@
 > stable overview see `PROJECT_CONTEXT.md`; canonical brief is `../CLAUDE.md`.
 
 ## Current position
-- **Working tree:** **Slice 57 (visual-pilot readiness capability + Builder guard) — UNCOMMITTED
-  (per instruction)** on branch `slice57-visual-pilot-readiness-guard` (branched from trunk after **Slice 56**
-  committed `2a09261` + fast-forward merged + pushed). Makes the Builder's per-job visual opt-in **accurately
+- **Working tree:** **Slice 58 (visual-pilot stitched E2E validation harness + record) — UNCOMMITTED
+  (per instruction)** on branch `slice58-visual-pilot-e2e-validation` (branched from trunk after **Slice 57**
+  committed `9c4ccc0` + fast-forward merged + pushed). **Validation/harness slice only — adds NO production
+  code and changes NO behavior.** Proves the already-shipped **single-figure** pilot (Slices 52–57) works as
+  **one connected chain** before any visual expansion: safe job-local `assets/<slug>.png` → manifest /
+  replacement-plan shape → master flag ON → per-job opt-in ON → exactly one markdown image → HTML/PDF/DOCX
+  render → export ZIP carrying the single referenced PNG.
+  - **Files:** new `test_scripts/test_visual_pilot_e2e_validation.py` (stitches a real `JobManager.Job` +
+    `apply_visual_markdown_pilot` + `save_clean_md` + render + `export_bundle`; reuses existing insertion /
+    render / export / options test helpers); new `docs/VISUAL_PILOT_E2E_VALIDATION.md`; doc updates
+    (`CURRENT_TASK.md`, `NEXT_CHAT_HANDOFF.md`, `DECISIONS.md`). **No production/frontend/renderer/export/
+    extraction/OCR-routing/prompt change, no new route, no multi-figure/Chandra/model/cloud call, no committed
+    binary/image fixture.** Test PNG generated at runtime via stdlib `zlib`+`struct`; all temp artifacts removed.
+  - **Verifies (13):** one image · safe `assets/<slug>.png` ref · generic page caption (real `None`-caption
+    path, not raw OCR) · unsafe refs rejected · manifest/plan/source-PNG unmutated · HTML safe relative `<img>`
+    + no abs path · non-empty PDF (SKIP w/o Chromium) · non-empty DOCX (SKIP w/o python-docx) · export carries
+    exactly one referenced PNG under `assets/` · extra crop / blanket assets dir excluded · `files_included`
+    counts requested artifacts only and PNG-alone still `404`s the gate · bundle index records only safe
+    relative `visual_pilot_asset` · final no-leak sweep over every serialized output.
+  - **Results:** host **16/0/2** (DOCX + export skip w/o python-docx/FastAPI); **in container 29/0/0** (full
+    chain). Existing visual/insertion/render/export/options + Anki + offline eval green; `compileall` +
+    `git diff --check` clean; `/api/health` ok. **Manual operator PDF review:
+    `manual_operator_pdf_validation: not_run` (reason `non_private_operator_sample_not_supplied`).** **Chandra
+    extraction still blocked by Slice 45 `not_run`.**
+
+### (previous) Slice 57 — visual-pilot readiness capability + Builder guard — committed `9c4ccc0`, merged to trunk
+- Makes the Builder's per-job visual opt-in **accurately
   reflect whether the pilot can work for a new job**. The toggle stays **default-off** but is **enabled only
   when the backend reports readiness** = global pilot master flag **AND** local figure extraction (which
   produces the `fitz_local` figure the pilot inserts). **Readiness/UX guard only** — it does **not** enable
