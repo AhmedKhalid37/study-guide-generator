@@ -16,13 +16,21 @@ production.
 What this slice does and does NOT do
 ------------------------------------
 - It **plans** ``candidate_*`` actions for already-scored, manifest/scoring-shaped
-  assets and returns a brand-new ``visual_replacement_plan`` report dict. It does
-  **not** mutate the scoring report, the manifest, or any item/asset dict, does
-  **not** write a job artifact (no ``visual_replacement_plan.json`` this slice),
-  does **not** add an API route / UI / export exposure, does **not** embed visuals,
-  does **not** call any provider/model/llama-server/network, and does **not** open
-  or inspect any image file. It is **not** wired into ``run_llm_job`` or anything
-  else.
+  assets and returns a brand-new ``visual_replacement_plan`` report dict. The pure
+  planning core never mutates the scoring report, the manifest, or any item/asset
+  dict, never embeds visuals, never calls any provider/model/llama-server/network,
+  and never opens or inspects any image file.
+- Slice 49 adds a thin, advisory **artifact writer**
+  (:func:`write_visual_replacement_plan_report` /
+  :func:`write_skipped_visual_replacement_plan_report`) that persists the report as
+  the exact-name sibling artifact ``visual_replacement_plan.json``, DERIVED from the
+  already-written ``visual_asset_scoring.json`` report (with an optional
+  presence-only manifest cross-check). The writer is degrade-not-fail (never raises
+  into job generation), does **not** mutate ``visual_asset_scoring.json`` or
+  ``visual_assets_manifest.json``, does **not** change guide output / prompts /
+  rendering / extraction / OCR routing, makes **no** production include/omit
+  decision, and is reached only by its exact filename (not added to generic
+  artifact lists, export bundles, or UI rows).
 - The ``candidate_action`` it assigns is **advisory only** — it is a *candidate*
   (``candidate_include_as_figure`` / ``candidate_convert_to_table`` /
   ``candidate_summarize_as_text`` / ``review_only`` / ``unknown``), never a binding
@@ -44,8 +52,12 @@ and :func:`build_visual_replacement_plan` are pure, *total* functions of already
 sanitized input. The module imports **nothing** from PyMuPDF (``fitz``), Tesseract,
 llama.cpp, a Chandra runtime/provider, Mistral/Gemini/cloud SDKs, the Local Model
 Manager, renderers, the API server, the job manager, or any extraction/run-job
-module — only Python stdlib (``re``, ``typing``). It **never raises** on malformed
-input; it degrades to a safe ``completed`` report with closed-vocabulary warnings.
+module — only Python stdlib (``json``, ``re``, ``sys``, ``typing``); the Slice 49
+artifact writers take a duck-typed ``job`` and call only its ``save_text`` /
+``visual_replacement_plan_json`` members. The pure core **never raises** on
+malformed input; it degrades to a safe ``completed`` report with closed-vocabulary
+warnings, and the writers degrade to a safe ``skipped`` report rather than failing
+a job.
 
 Every emitted field is a fixed token from a closed vocabulary, an int, ``None``, an
 empty list, or a deterministic slug-safe ``asset_id``. Input fields are coerced
@@ -60,12 +72,32 @@ is read into the output.
 """
 from __future__ import annotations
 
+import json
 import re
+import sys
 from typing import Any
 
 REPORT_VERSION = 1
 REPORT_KIND = "visual_replacement_plan"
 REPORT_SOURCE = "visual_asset_scoring.json"
+
+# Slice 49: exact-name advisory artifact derived from visual_asset_scoring.json
+# (with an optional presence-only cross-check against visual_assets_manifest.json).
+ARTIFACT_NAME = "visual_replacement_plan.json"
+
+# Closed skip-reason vocabulary for the persisted artifact (Slice 49). Only these
+# tokens may appear as a skipped report's ``reason``; raw exceptions, paths,
+# scoring payloads, or manifest payloads are never used.
+SKIP_REASON_SCORING_UNAVAILABLE = "visual_scoring_unavailable"
+SKIP_REASON_MANIFEST_UNAVAILABLE = "visual_manifest_unavailable"
+SKIP_REASON_PLANNING_UNAVAILABLE = "visual_replacement_planning_unavailable"
+SKIP_REASON_WRITE_FAILED = "write_failed"
+SKIP_REASONS = {
+    SKIP_REASON_SCORING_UNAVAILABLE,
+    SKIP_REASON_MANIFEST_UNAVAILABLE,
+    SKIP_REASON_PLANNING_UNAVAILABLE,
+    SKIP_REASON_WRITE_FAILED,
+}
 
 # --- Closed vocabularies (this module owns what it is allowed to emit) --------
 
@@ -299,6 +331,109 @@ def build_visual_replacement_plan(
         "items": items,
         "summary": _summarize(items),
         "warnings": _ordered_unique(warnings, _WARNING_ORDER, WARNINGS),
+    }
+
+
+# --- Artifact writer (Slice 49 — advisory, degrade-not-fail) -----------------
+#
+# These are the ONLY job-aware functions in this module. They persist the
+# replacement plan as the exact-name sibling artifact
+# ``visual_replacement_plan.json``, DERIVED from the already-written
+# ``visual_asset_scoring.json`` report (with an optional presence-only manifest
+# cross-check). Mirrors the Slice 47 scoring-writer / ``extraction_metadata``
+# degrade-to-skipped posture: never raise to the caller, never mutate the source
+# scoring report or manifest, never gate or fail generation, never touch job
+# status / validation / clean.md, and never embed visuals.
+
+
+def write_visual_replacement_plan_report(
+    job: Any,
+    scoring_report: Any,
+    *,
+    manifest: Any = None,
+) -> dict[str, Any]:
+    """Persist ``visual_replacement_plan.json`` derived from a scoring report dict.
+
+    ``scoring_report`` is the ``visual_asset_scoring.json``-shaped dict produced by
+    the Slice 47 scoring writer (the persisted, sanitized boundary output). The
+    source scoring report and ``manifest`` are **never** mutated. ``manifest``
+    (optional, ``visual_assets_manifest.json``-shaped) is used only for a
+    presence-only asset-id cross-check; no manifest field is read into the output.
+
+    When the scoring report is unavailable or not a ``completed`` report with a list
+    of scores, a safe *skipped* plan is written instead. Any write failure degrades
+    to a ``write_failed`` skipped plan. Returns the report dict that was written
+    (advisory; the return value is informational only).
+    """
+    try:
+        if not _is_plannable_scoring_report(scoring_report):
+            return write_skipped_visual_replacement_plan_report(
+                job,
+                reason=SKIP_REASON_SCORING_UNAVAILABLE,
+                safe_message="Visual asset scoring report was unavailable for planning.",
+            )
+        report = build_visual_replacement_plan(scoring_report, manifest=manifest)
+        job.save_text(
+            job.visual_replacement_plan_json,
+            json.dumps(report, indent=2, sort_keys=True) + "\n",
+        )
+        return report
+    except Exception as exc:  # never let an advisory artifact break a job
+        print(
+            f"Visual replacement planning skipped ({type(exc).__name__}); job continues.",
+            file=sys.stderr,
+        )
+        return write_skipped_visual_replacement_plan_report(
+            job,
+            reason=SKIP_REASON_WRITE_FAILED,
+            safe_message="Visual replacement plan could not be written.",
+        )
+
+
+def write_skipped_visual_replacement_plan_report(
+    job: Any,
+    *,
+    reason: str = SKIP_REASON_PLANNING_UNAVAILABLE,
+    safe_message: str = "Visual replacement plan could not be produced.",
+) -> dict[str, Any]:
+    """Best-effort writer for an explicit *skipped* replacement-plan artifact.
+
+    Uses only closed-vocabulary ``reason`` tokens and a short, safe message; never
+    echoes raw exceptions, paths, scoring payloads, or manifest payloads. Never
+    raises.
+    """
+    payload = _skipped_report(reason, safe_message)
+    try:
+        job.save_text(
+            job.visual_replacement_plan_json,
+            json.dumps(payload, indent=2, sort_keys=True) + "\n",
+        )
+    except Exception:
+        pass
+    return payload
+
+
+def _is_plannable_scoring_report(scoring_report: Any) -> bool:
+    """True only for a ``completed`` scoring report dict carrying a list of scores."""
+    return (
+        isinstance(scoring_report, dict)
+        and scoring_report.get("status") == "completed"
+        and isinstance(scoring_report.get("scores"), list)
+    )
+
+
+def _skipped_report(reason: Any, safe_message: Any) -> dict[str, Any]:
+    safe_reason = reason if reason in SKIP_REASONS else SKIP_REASON_PLANNING_UNAVAILABLE
+    return {
+        "version": REPORT_VERSION,
+        "kind": REPORT_KIND,
+        "status": "skipped",
+        "source": REPORT_SOURCE,
+        "reason": safe_reason,
+        "safe_message": str(safe_message)[:300],
+        "items": [],
+        "summary": _summarize([]),
+        "warnings": [],
     }
 
 

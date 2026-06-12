@@ -20,6 +20,7 @@ from pipeline.extraction_metadata import (
 )
 from pipeline.visual_assets_manifest import write_visual_assets_manifest
 from pipeline.visual_asset_scoring import write_visual_asset_scoring_report
+from pipeline.visual_replacement_planner import write_visual_replacement_plan_report
 from pipeline.visual_asset_extractor import (
     MAX_FIGURES_PER_JOB,
     extract_local_figures,
@@ -309,8 +310,18 @@ def _attach_sources(
         # the manifest we just wrote. Reads only the persisted (sanitized) manifest
         # object, never mutates it, and is degrade-not-fail — it never gates or
         # fails the job. Written exactly when the manifest is written; non-PDF jobs
-        # with no extraction metadata simply omit both artifacts (no call here).
-        write_visual_asset_scoring_report(job, _read_visual_manifest_for_scoring(job))
+        # with no extraction metadata simply omit these artifacts (no call here).
+        visual_manifest_obj = _read_visual_manifest_for_scoring(job)
+        scoring_report = write_visual_asset_scoring_report(job, visual_manifest_obj)
+        # Slice 49: persist the advisory visual REPLACEMENT PLAN derived from the
+        # scoring report we just wrote; the manifest is passed only for a
+        # presence-only asset-id cross-check. Degrade-not-fail — it never gates or
+        # fails the job, never mutates the scoring report or manifest, makes no
+        # production include/omit decision, and never embeds visuals. If scoring was
+        # skipped/unavailable, a safe skipped plan is written for consistency.
+        write_visual_replacement_plan_report(
+            job, scoring_report, manifest=visual_manifest_obj
+        )
 
     if not sections:
         return source_text, {

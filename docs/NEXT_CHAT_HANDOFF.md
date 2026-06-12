@@ -6,45 +6,62 @@
 > stable overview see `PROJECT_CONTEXT.md`; canonical brief is `../CLAUDE.md`.
 
 ## Current position
-- **Working tree:** **Slice 48 (visual replacement planner core — pure, unwired; roadmap V3) —
-  uncommitted, CODE (new module + test, NO production wiring)** on branch
-  `slice48-visual-replacement-planner-core` (branched from trunk after Slice 47 merged at `b1680fa`).
-  The next V3 step after candidate scoring — turns a scoring report into an advisory **replacement
-  plan**. **Not** a Chandra integration slice.
-  - **New module:** `pipeline/visual_replacement_planner.py` — pure, deterministic, stdlib-only
-    (`re`, `typing`). Consumes a `visual_asset_scoring.json`-shaped scoring report (and, optionally, a
-    `visual_assets_manifest.json`-shaped manifest for a **presence-only** cross-check) and returns a
-    brand-new `visual_replacement_plan` report. Public API:
-    `plan_visual_replacement_candidate(score, *, asset=None)`,
-    `plan_visual_replacement_candidates(scores, *, assets_by_id=None)`,
-    `build_visual_replacement_plan(scoring_report, *, manifest=None)`.
-  - **Output:** `{version:1, kind:"visual_replacement_plan", status:"completed",
-    source:"visual_asset_scoring.json", items:[…], summary:{item_count + per-action counts},
-    warnings:[…]}`. Each item carries a closed-vocab `candidate_action` (candidate_include_as_figure /
-    candidate_convert_to_table / candidate_summarize_as_text / review_only / unknown), `placement`
-    (source_page_reference / unknown), `priority`, sanitized `asset_id` / `source_page` /
-    `source_provider` / `asset_type`, and closed `reasons`/`warnings`. **Advisory only** — a
-    *candidate* action, never a binding include/omit. Captions/source text/provider payloads are
-    never read into output; a manifest cross-check contributes presence only (no field echoed); ids
-    are coerced slug-safe; the functions never raise and **never mutate** the report or manifest.
-  - **Pure / unwired / no production change:** not imported by `run_llm_job.py` or anything else; no
-    artifact written (no `visual_replacement_plan.json` this slice); no API route; no frontend/UI; no
-    export-bundle/generic artifact-list exposure; `visual_assets_manifest.json` /
-    `visual_asset_scoring.json` schemas unchanged and not mutated; no extraction/OCR-routing/prompt/
-    render/guide-output change; no `clean.md` write; no model/llama-server/cloud calls; no image
-    files/bytes. `smoke_release.py`/Docker not required (nothing production-wired touched).
-  - **Chandra still blocked:** any `chandra_local` item is planned only as advisory and always carries
-    the closed reason `chandra_blocked`; Chandra *extraction* integration remains gated by Slice 45
-    `status:not_run` (`operator_input_not_supplied`) until a live harness pass is recorded — this
-    slice reads only the asset *shape* and integrates nothing.
-  - **Files:** new `pipeline/visual_replacement_planner.py`, new
-    `test_scripts/test_visual_replacement_planner.py` (**186/0**), + `CURRENT_TASK.md` /
-    `NEXT_CHAT_HANDOFF.md` / `DECISIONS.md`.
-  - **Validation:** `compileall api pipeline test_scripts` OK; planner **186/0**; scoring-core
-    **146/0**; scoring-artifact **58/0**; manifest **65/0**; figure **50/0** (+2 skip); chandra
-    normalizer/provider/live-harness green; ocr suites green; offline eval 3 guides (no regression);
-    frontend build+test green; `git diff --check` clean. **Status:** NOT committed (awaiting operator
-    review).
+- **Working tree:** **Slice 49 (persist `visual_replacement_plan.json` as an advisory exact-name
+  artifact) — uncommitted, CODE (production-wired artifact writer/serving + new test)** on branch
+  `slice49-visual-replacement-plan-artifact` (branched from trunk after Slice 48 merged at `967748a`).
+  Wires the Slice 48 planner core into the job artifact flow as the sibling artifact
+  `visual_replacement_plan.json`, **derived from** the already-written `visual_asset_scoring.json`
+  (with the manifest passed only for a **presence-only** asset-id cross-check). **Not** a Chandra
+  integration slice; no visuals embedded; no production include/omit decision.
+  - **What it does:** in `run_llm_job._attach_sources`, immediately after
+    `write_visual_asset_scoring_report(...)`, calls
+    `write_visual_replacement_plan_report(job, scoring_report, manifest=visual_manifest_obj)` reusing
+    the already-read manifest object and the returned scoring report (no re-read). Reachable **only by
+    exact name** at `/api/jobs/{id}/artifacts/visual_replacement_plan.json` (dedicated `_artifact_path`
+    branch); absent → graceful 404. New `Job.visual_replacement_plan_json` property. Stable JSON
+    (`indent=2, sort_keys=True`).
+  - **Advisory / degrade-not-fail / no mutation:** new writers
+    `write_visual_replacement_plan_report` / `write_skipped_visual_replacement_plan_report` live in
+    `pipeline/visual_replacement_planner.py` (added stdlib `json`+`sys`; take a duck-typed `job`, no
+    `job_manager` import; the pure planning core is unchanged). The writer never raises into job
+    generation, never gates/fails the job, never touches job status / validation / `clean.md`, and
+    **never mutates** `visual_asset_scoring.json` or `visual_assets_manifest.json` (manifest =
+    presence only). Scoring unavailable/skipped → `skipped` (`visual_scoring_unavailable`); write
+    error → `skipped` (`write_failed`). Closed skip reasons; short `safe_message`; stderr (if reached)
+    carries an exception class name only.
+  - **Report shape (Slice 48, preserved):** `{version:1, kind:"visual_replacement_plan",
+    status:"completed"|"skipped", source:"visual_asset_scoring.json", items, summary, warnings}`.
+    Candidate actions stay **advisory only** (candidate_include_as_figure / candidate_convert_to_table
+    / candidate_summarize_as_text / review_only / unknown). The plan never carries
+    `image_ref`/`caption`/`source_text`, image bytes, data URIs, base64, paths, URLs, headers, tokens,
+    socket/model/mmproj/executable paths, raw argv, or raw provider/OCR payloads.
+  - **Deliberately NOT exposed generically:** not in `ARTIFACTS`, `EXPORT_ARTIFACTS`, `_artifact_urls`,
+    `_artifact_details`, export bundles, or any frontend/UI row — exact-name download only.
+  - **Chandra still blocked:** any `chandra_local` item is planned only as advisory and carries
+    `chandra_blocked`; Chandra *extraction* integration remains gated by Slice 45 `status:not_run`
+    (`operator_input_not_supplied`).
+  - **Files:** `pipeline/visual_replacement_planner.py` (+writers), `pipeline/job_manager.py`
+    (+property), `api/server.py` (+exact-name branch), `pipeline/run_llm_job.py` (+wiring + import),
+    new `test_scripts/test_visual_replacement_plan_artifact.py` (**68/0**), updated
+    `test_scripts/test_visual_replacement_planner.py` (**186/0**, import hygiene now allows `json`/`sys`),
+    + `CURRENT_TASK.md` / `NEXT_CHAT_HANDOFF.md` / `DECISIONS.md`.
+  - **Validation:** `compileall api pipeline test_scripts` OK; planner **186/0**; plan-artifact
+    **68/0**; scoring-core **146/0**; scoring-artifact **58/0**; manifest **65/0**; figure **50/0**
+    (+2 skip); chandra normalizer/provider/live-harness green; ocr suites green; extraction-metadata
+    **9/9**; offline eval 3 guides (no regression); frontend build+test green; `git diff --check`
+    clean. Full Docker rebuild/recreate + `/api/health` + `smoke_release.py` required (touches
+    `api/server.py` + `job_manager.py` + `run_llm_job.py`). **Status:** NOT committed (awaiting
+    operator review).
+
+- **Prior slice — Slice 48 (visual replacement planner core — pure, unwired; roadmap V3) — committed
+  `967748a`, fast-forward merged + pushed to trunk `chrome-renderer-v1`, CODE (new module + test, NO
+  production wiring)** (was on branch `slice48-visual-replacement-planner-core`, branched from trunk
+  after Slice 47 merged at `b1680fa`). Added `pipeline/visual_replacement_planner.py` — pure,
+  deterministic planner that turns a `visual_asset_scoring.json`-shaped report into an advisory
+  `visual_replacement_plan` (public API `plan_visual_replacement_candidate` /
+  `plan_visual_replacement_candidates` / `build_visual_replacement_plan`). Slice 49 then wired its new
+  artifact writers in. Advisory candidate actions only; never mutates report/manifest; Chandra items
+  carry `chandra_blocked`. Test `test_visual_replacement_planner.py`.
 
 - **Prior slice — Slice 47 (persist `visual_asset_scoring.json` as an advisory exact-name artifact) —
   committed `b1680fa`, fast-forward merged + pushed to trunk `chrome-renderer-v1`, CODE

@@ -416,15 +416,20 @@ def test_no_forbidden_imports() -> None:
         for ln in src.splitlines()
         if ln.strip().startswith(("import ", "from "))
     ]
+    # Slice 49 added an advisory artifact writer, so ``json`` (safe serializer) and
+    # ``sys`` (stderr note) are now legitimate stdlib imports. The dangerous imports
+    # (network / filesystem / model runtimes / cross-module pipeline code) stay
+    # forbidden — the writer takes a duck-typed ``job`` and never imports job_manager.
     forbidden = ["fitz", "pymupdf", "pytesseract", "tesseract", "llama_cpp",
                  "llama-cpp", "mistral", "google.generativeai", "genai", "gemini",
                  "chandra", "local_model", "companion", "requests", "httpx",
-                 "urllib", "socket", "subprocess", "json",
+                 "urllib", "socket", "subprocess",
                  "visual_assets_manifest", "visual_asset_scoring", "visual_asset_extractor",
                  "extract", "run_llm_job", "job_manager", "render", "server"]
     leaks = sorted({tok for ln in import_lines for tok in forbidden if tok in ln})
     check("imports.none_forbidden", not leaks, f"found in imports: {leaks}")
-    allowed_prefixes = ("import re", "from __future__", "from typing import")
+    allowed_prefixes = ("import json", "import re", "import sys",
+                        "from __future__", "from typing import")
     unexpected = [ln for ln in import_lines if not ln.startswith(allowed_prefixes)]
     check("imports.only_expected_stdlib", not unexpected, f"unexpected: {unexpected}")
 

@@ -2257,3 +2257,50 @@ new `pipeline/visual_replacement_planner.py` + new
 change. Validated by the full pure-test battery (planner 186/0; scoring 146/0;
 scoring-artifact 58/0; manifest/figure/chandra/ocr suites green; offline eval no
 regression; frontend build+test green) + `git diff --check` clean.
+
+## Slice 49 — `visual_replacement_plan.json` persisted as a second-level exact-name advisory artifact
+Slice 49 wires the Slice 48 planner core into the job artifact flow as a new
+exact-name advisory artifact `visual_replacement_plan.json`, **derived from** the
+already-written `visual_asset_scoring.json` report (with the manifest passed only for
+a **presence-only** asset-id cross-check). It is written in
+`run_llm_job._attach_sources` immediately after `write_visual_asset_scoring_report(...)`,
+reusing the returned scoring report and the already-read manifest object (no re-read).
+**Why this shape (mirroring the Slice 47 scoring-artifact decision):** (1) **Second-level
+advisory, derived not authoritative.** The visual stack is now manifest (V1 source) →
+scoring (Slice 47 advisory) → replacement plan (Slice 49 advisory, derived from
+scoring). The plan is a *candidate* layer the operator/later slice reviews — it makes
+**no** production include/omit/render/prompt decision and embeds **no** visual, so
+generated guides are byte-unaffected. (2) **Exact-name route only, no generic
+exposure.** A dedicated `_artifact_path` branch maps
+`/api/jobs/{id}/artifacts/visual_replacement_plan.json` → the new
+`Job.visual_replacement_plan_json`; it is deliberately **not** added to `ARTIFACTS`,
+`EXPORT_ARTIFACTS`, `_artifact_urls`, `_artifact_details`, export bundles, or any UI
+row — so no new artifact appears in generic lists/exports/frontend, and an absent file
+returns the standard graceful 404. This keeps the advisory boundary the manifest and
+scoring artifacts already established. (3) **Degrade-not-fail, never mutates inputs.**
+The writers (`write_visual_replacement_plan_report` /
+`write_skipped_visual_replacement_plan_report`, added to
+`pipeline/visual_replacement_planner.py` with stdlib `json`+`sys`, taking a duck-typed
+`job` — no `job_manager` import) never raise into job generation, never gate/fail the
+job, never touch job status / validation / `clean.md`, and **never mutate**
+`visual_asset_scoring.json` or `visual_assets_manifest.json`. When scoring is
+skipped/unavailable a safe `skipped` plan (`visual_scoring_unavailable`) is written for
+consistency with the Slice 47 posture; a write error degrades to `write_failed`. Closed
+skip-reason vocabulary only; short `safe_message`; stderr (if reached) carries an
+exception class name only. (4) **No-leak preserved.** The plan never carries
+`image_ref`/`caption`/`source_text`, image bytes, data URIs, base64, paths, URLs,
+headers, tokens, socket/model/`mmproj`/executable paths, raw argv, or raw
+provider/OCR payloads; reasons/warnings stay closed vocabulary. **Chandra independence:**
+a `chandra_local` item is planned only as advisory and carries `chandra_blocked`;
+Chandra *extraction* integration remains **blocked** by the Slice 45 gate
+(`status:not_run`, `operator_input_not_supplied`). **Scope:**
+`pipeline/visual_replacement_planner.py` (+writers), `pipeline/job_manager.py`
+(+`visual_replacement_plan_json` property), `api/server.py` (+exact-name branch),
+`pipeline/run_llm_job.py` (+wiring/import), new
+`test_scripts/test_visual_replacement_plan_artifact.py` (68/0), updated
+`test_scripts/test_visual_replacement_planner.py` (186/0, import hygiene now allows
+`json`/`sys`) + this entry + `CURRENT_TASK.md` / `NEXT_CHAT_HANDOFF.md`; no
+manifest/scoring-schema/extraction/`ocr_routing`/prompt/render/guide-output/frontend/
+export-bundle/`clean.md` change. Because it touches `api/server.py` + `job_manager.py`
++ `run_llm_job.py`, full validation (Docker rebuild/recreate + `/api/health` +
+`smoke_release.py`) is required in addition to the pure-test battery.

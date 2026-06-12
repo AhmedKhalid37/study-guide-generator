@@ -5,6 +5,73 @@
 
 ---
 
+## Slice 49 — Persist `visual_replacement_plan.json` as an **advisory exact-name artifact** on `slice49-visual-replacement-plan-artifact`.
+
+- **Purpose:** wire the Slice 48 replacement-planner core into the job artifact flow as the sibling
+  artifact `visual_replacement_plan.json`, **derived from** the already-written
+  `visual_asset_scoring.json` report (with the manifest passed only for a **presence-only** asset-id
+  cross-check). Pure artifact writing/serving — it does **not** change guide output, prompts,
+  extraction, OCR routing, visual embedding, include/omit decisions, UI, or export bundles, and is
+  **not** a Chandra integration slice. This is a second-level advisory artifact: manifest (V1 source)
+  → scoring (Slice 47 advisory) → replacement plan (Slice 49 advisory, derived from scoring).
+- **Artifact:** exact name `visual_replacement_plan.json`, written as a sibling of the scoring report.
+  Reachable **only by exact name** at `/api/jobs/{id}/artifacts/visual_replacement_plan.json`; absent
+  → graceful 404 ("Artifact not found."), like the other exact-name advisory siblings.
+- **Wiring (production):**
+  - `pipeline/job_manager.py` — new `Job.visual_replacement_plan_json` property
+    (`<job>/visual_replacement_plan.json`).
+  - `api/server.py` — dedicated `_artifact_path` branch mapping the exact name → that path
+    (`application/json`). Deliberately **NOT** added to `ARTIFACTS` / `EXPORT_ARTIFACTS` /
+    `_artifact_urls` / `_artifact_details` → no generic artifact-list, export-bundle, or UI row.
+  - `pipeline/visual_replacement_planner.py` — new degrade-not-fail writers
+    `write_visual_replacement_plan_report(job, scoring_report, *, manifest=None)` and
+    `write_skipped_visual_replacement_plan_report(job, *, reason=…, safe_message=…)`. Added stdlib
+    imports `json` + `sys`; the writers take a duck-typed `job` and call only its `save_text` /
+    `visual_replacement_plan_json` (no `job_manager` import). The pure planning core is unchanged.
+  - `pipeline/run_llm_job.py` — after `write_visual_asset_scoring_report(...)`, calls
+    `write_visual_replacement_plan_report(job, scoring_report, manifest=visual_manifest_obj)` reusing
+    the already-read manifest object and the returned scoring report (no re-read).
+- **Writer behavior:** when the scoring report is a `completed` report with a list of `scores`, builds
+  the plan via `build_visual_replacement_plan(scoring_report, manifest=…)` and writes it
+  (`json.dumps(..., indent=2, sort_keys=True)`). When scoring is skipped/unavailable, writes a safe
+  **skipped** plan (`status:"skipped"`, closed `reason` + short `safe_message`, `items:[]`) for
+  consistency with the Slice 47 posture. Any write failure degrades to a `write_failed` skipped plan.
+  Never raises into job generation, never gates/fails the job, never touches job status / validation /
+  `clean.md`. Closed skip reasons: `visual_scoring_unavailable`, `visual_manifest_unavailable`,
+  `visual_replacement_planning_unavailable`, `write_failed`.
+- **Report shape preserved (Slice 48):** `{version:1, kind:"visual_replacement_plan",
+  status:"completed"|"skipped", source:"visual_asset_scoring.json", items, summary, warnings}`.
+  Candidate actions remain **advisory only** (`candidate_include_as_figure` / `candidate_convert_to_table`
+  / `candidate_summarize_as_text` / `review_only` / `unknown`) — no production include/omit/render/
+  prompt decision is made, no visual is embedded.
+- **No mutation / no leak:** `visual_assets_manifest.json` and `visual_asset_scoring.json` are read
+  only and **never mutated** (manifest contributes presence only — no field echoed). The plan never
+  carries `image_ref`/`caption`/`source_text`, image bytes, data URIs, base64, paths, URLs, headers,
+  tokens, socket/model/mmproj/executable paths, raw argv, raw provider/OCR payloads, or private
+  document text; reasons/warnings are closed vocabulary.
+- **Chandra still blocked:** any `chandra_local` item is planned **only as advisory** and carries
+  `chandra_blocked`; Chandra *extraction* integration remains gated by Slice 45 `status:not_run`
+  (`operator_input_not_supplied`).
+- **New test:** `test_scripts/test_visual_replacement_plan_artifact.py` (**68/0**, api.server section
+  auto-skipped in host Python) — completed write shape + summary counts; one item per score; advisory
+  actions only; chandra item blocked+advisory; no caption/image_ref/source/path/url/base64 leak; no
+  `image_ref`/`caption` field on items; scoring report + manifest not mutated (in-memory + on-disk
+  bytes); manifest→scoring→plan integration with `has_manifest_match`; skipped on unavailable scoring
+  (none/empty/skipped/scores-not-list/non-dict); skipped on write failure (no raw exception, no file
+  left); explicit skipped writer defaults + out-of-vocab reason coercion; malformed scoring plans
+  safely; exact-name route maps + not in ARTIFACTS/EXPORT_ARTIFACTS/_artifact_urls/_artifact_details.
+  Existing planner test updated (**186/0**) — import hygiene now allows `json`/`sys`.
+- **Validation:** `compileall api pipeline test_scripts` OK; planner **186/0**; plan-artifact **68/0**;
+  scoring-core **146/0**; scoring-artifact **58/0**; manifest **65/0**; figure-extraction **50/0**
+  (+2 skipped); chandra-normalizer **68/0**; chandra-local-provider **68/0**; chandra-live-harness
+  **96/0**; ocr-modes **121/121**; ocr-routing-policy **120/120**; ocr-routing-integration **56/56**;
+  extraction-metadata **9/9**; offline eval scored 3 guides (no regression); frontend build + test
+  green; `git diff --check` clean. Full Docker rebuild/recreate + `/api/health` + `smoke_release.py`
+  required (touches `api/server.py` + `job_manager.py` + `run_llm_job.py`). **Status:** NOT committed
+  (awaiting operator review).
+
+---
+
 ## Slice 48 — Visual **replacement planner core** (pure, unwired; roadmap V3) on `slice48-visual-replacement-planner-core`.
 
 - **Purpose:** add a pure, deterministic **replacement planner core** — the next V3
@@ -70,7 +137,8 @@
   ocr-modes **121/121**; ocr-routing-policy **120/120**; ocr-routing-integration **56/56**; offline
   eval scored 3 guides (no regression); frontend build + test green; `git diff --check` clean.
   `smoke_release.py` / Docker **not required** (pure/unwired — no server/extraction/render/artifact
-  behavior touched). **Status:** NOT committed (awaiting operator review).
+  behavior touched). **Status:** committed (`967748a`) and fast-forward-merged to
+  `chrome-renderer-v1`; pushed.
 
 ---
 

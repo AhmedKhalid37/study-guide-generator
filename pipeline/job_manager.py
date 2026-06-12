@@ -150,6 +150,18 @@ class Job:
         return self.dir / "visual_asset_scoring.json"
 
     @property
+    def visual_replacement_plan_json(self) -> Path:
+        # Slice 49: sibling advisory artifact holding the deterministic visual
+        # replacement plan (pipeline/visual_replacement_planner.py), DERIVED from
+        # visual_asset_scoring.json (with an optional presence-only cross-check
+        # against visual_assets_manifest.json). Like the other advisory siblings it
+        # never changes job status, never mutates the source scoring report or
+        # manifest, makes no production include/omit decision, is kept SEPARATE from
+        # validation.json, and is reached only by its exact filename (not added to
+        # the generic ARTIFACTS list / exports / UI rows).
+        return self.dir / "visual_replacement_plan.json"
+
+    @property
     def assets_dir(self) -> Path:
         # Slice 40: holds locally-cropped figure images (PNG) referenced by the
         # visual-assets manifest's `extracted_figure` records via safe RELATIVE
