@@ -5,7 +5,69 @@
 
 ---
 
-## Slice 42 — Chandra output normalizer core (uncommitted on `slice42-chandra-output-normalizer-core`).
+## Slice 43 — Chandra local provider/client skeleton (uncommitted on `slice43-chandra-local-provider-skeleton`; DISABLED / UNWIRED).
+
+- **Purpose:** add a small, **disabled/unwired** Chandra local provider/client skeleton
+  that names the third boundary in the Chandra chain and makes it testable —
+  **without running any model**:
+  page image bytes → **OpenAI-compatible `llama-server` request shape** →
+  (a future integration runs the model) → raw Chandra output string →
+  **Slice 42 normalizer** → safe normalized output. **Foundation slice only**, not a
+  provider integration: nothing in a production path constructs or calls it.
+- **What it does NOT do:** does not run Chandra / `llama-server`; opens no socket; makes
+  no real model/server/network call (tests use injected fake responses only); does not
+  download or open any model / mmproj / quant file; does not wire into
+  `pipeline/extract.py` or OCR routing; does not change `ocr_routing`,
+  `extraction_metadata.json`, or the `visual_assets_manifest.json` schema; writes no
+  `clean.md`; embeds no visuals; adds no API route, frontend toggle, Provider Settings,
+  or Local Model Manager change; does not touch prompts/render/exports or any generated
+  guide. `ChandraLocalProvider.enabled is False` by construction.
+- **Module:** new **`pipeline/chandra_local_provider.py`** — stdlib-only (`base64`,
+  `typing`) + the Slice 42 normalizer; **no new dependency**, **no import** of
+  `fitz`/Tesseract/llama.cpp/`openai`/Mistral/Gemini/Chandra-runtime/LMM/`socket`/
+  `subprocess`/HTTP client. Public API:
+  - `build_chandra_image_message_payload(image_bytes, *, mime_type="image/png", prompt=None) -> dict`
+    — OpenAI-compatible multimodal chat payload (`messages=[{role:"user", content:[text, image_url]}]`,
+    conservative `temperature=0.0` + `max_tokens`); image → base64 data URI **only here**;
+    no model id / base URL / host path / argv embedded. Non-bytes input raises `TypeError`
+    (developer-misuse guard) without echoing the value; unknown/hostile `mime_type` collapses to PNG.
+  - `parse_chandra_chat_response(response) -> {"content": str, "warnings": [...]}` — accepts the
+    `{"choices":[{"message":{"content":...}}]}` dict shape and SDK-object equivalents; **total**
+    (never raises), degrades to closed-vocab warnings (`empty_response`/`no_choices`/`no_message`/
+    `no_content`/`malformed_response`), and **never echoes the raw provider payload**.
+  - `normalize_chandra_chat_response(response, *, source_page=1) -> dict` — bridges parse →
+    `normalize_chandra_output(...)`; returns the Slice 42 `kind:"chandra_normalized_output"`
+    envelope (all leak-scrubbing delegated to the normalizer); empty/malformed → valid
+    `completed` output with `empty_output`.
+  - `class ChandraLocalProvider` (`provider_id="chandra_local"`, `enabled=False`,
+    `is_enabled() -> False`) — thin handle delegating to the module functions.
+- **Default OCR/layout prompt:** `CHANDRA_OCR_LAYOUT_PROMPT` constant requests layout HTML with
+  `data-label` + `data-bbox`, HTML tables, LaTeX math, and captioned diagrams/figures. It is a
+  fixed template constant, **not** wired into guide generation.
+- **Tests:** new **`test_scripts/test_chandra_local_provider.py`** — **68/0** (payload shape +
+  no model/path/argv leak; prompt requests `data-label`/`data-bbox`/tables/LaTeX/captions; image
+  data URI only in the request, not in parsed/normalized output; mime whitelist; non-bytes
+  rejected w/o echo; parse normal/object/degrade/no-echo; normalizer bridge incl. empty + malicious
+  scrub; provider disabled/unwired; no-forbidden-imports). Injected fake responses only — no real
+  Chandra dump, model file, or local path.
+- **Validation (all green):** `python -m compileall api pipeline test_scripts`;
+  `test_chandra_normalizer` 68/0; `test_chandra_local_provider` 68/0; `test_visual_assets_manifest`
+  65/0 (manifest unchanged); `test_local_figure_extraction` 50/0/2-skip; `test_ocr_provider` 18/18;
+  `test_ocr_routing_policy` 120/120; `test_ocr_routing_integration` 56/56; `eval/run_eval.py
+  --offline --all` (3 guides, no regression, delta 0.0); frontend `build` + `test` green;
+  `git diff --check` clean. `smoke_release.py` not required — no server/extraction/render/artifact
+  behavior is touched (no production wiring).
+- **Files:** new `pipeline/chandra_local_provider.py`, new `test_scripts/test_chandra_local_provider.py`,
+  this log, `NEXT_CHAT_HANDOFF.md`, `DECISIONS.md`. **No app integration, no manifest schema change,
+  no extraction/OCR/prompt/render/UI/export change.** **Do not commit until the operator says so.**
+- **Next (design, not built):** a `chandra_local` integration slice that flips `enabled` behind an
+  explicit, **off-by-default** local OCR route on the LMM `llama-server` path — running the model,
+  handing its raw string to this bridge, with **Tesseract/`fitz` fallback and degrade-not-fail**
+  behavior; then candidate scoring/`recommended_action` and asset-aware prompt/render embed.
+
+---
+
+## Slice 42 — Chandra output normalizer core (committed `6e7f55f`, merged + pushed to trunk `chrome-renderer-v1`).
 
 - **Purpose:** add a **pure, deterministic Chandra output normalizer** that turns a
   *raw Chandra layout string* (the `data-bbox` + `data-label` HTML-ish output Slice 41

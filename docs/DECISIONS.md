@@ -2015,3 +2015,39 @@ manifest about *visuals* and `clean.md` about *prose*. **Scope:** new
 integration, no Chandra/`llama-server` call, no model files, no extraction/OCR/prompt/render/UI/
 export change, no manifest schema change.** Validated green (focused battery incl. manifest
 backward-compat, eval offline, frontend build/test, smoke 29/0/0).
+
+## The Chandra local provider lands as a disabled, unwired skeleton split from integration (2026-06-12, Slice 43)
+Slice 42 left the Chandra chain one boundary short of a usable provider: the pure normalizer
+turns a *raw string* into safe `source_text` + asset candidates, but nothing yet shapes the
+`llama-server` request or extracts the model's reply. Slice 43 adds exactly that seam —
+`pipeline/chandra_local_provider.py` — and the durable choice is to ship it **disabled and
+unwired** (a request-builder + response-parser + a thin normalizer bridge, `ChandraLocalProvider.
+enabled = False`), fully decoupled from extraction/OCR routing and from any real model call.
+**Why this shape.** (1) **Split the deterministic boundary from the flaky integration, again.**
+Building an OpenAI-compatible multimodal payload (`messages=[text, image_url]`) and parsing
+`{"choices":[{"message":{"content":...}}]}` are pure, unit-testable transforms; running the model
+on the LMM `llama-server` path (process lifecycle, sockets, VRAM, latency, fallback) is not.
+Landing the transforms first — hardened and regression-tested (68/0) with **injected fake
+responses only** — lets a later integration slice be a thin "run model → hand raw string to
+`normalize_chandra_chat_response`" wrapper behind an explicit, off-by-default route. (2)
+**Disabled-by-construction is the safety posture, not a TODO.** `enabled = False` and the absence
+of any production constructor mean this slice cannot change a single generated guide, extraction
+result, or artifact even by accident; it is provable by reading the diff (no import touches
+`extract.py`/routing/`api`). (3) **Keep the leak boundary in one place.** The provider does *not*
+re-implement scrubbing — `normalize_chandra_chat_response` delegates all path/URL/key/`.sock`/argv/
+base64/`<script>` scrubbing to the Slice 42 normalizer, which owns that boundary. The provider's
+only added hygiene is local to its two new responsibilities: the parser is **total** and emits
+closed-vocab warnings without ever echoing the raw provider payload, and image bytes are encoded to
+a base64 data URI **only inside the request builder** (never logged, never returned by
+parse/normalize). The request shape deliberately embeds **no** model id, base URL, host path, argv,
+or `--image-min-tokens` flag — those are integration concerns, and a `mime_type` whitelist stops a
+caller smuggling an arbitrary string into the data-URI prefix. (4) **Stdlib-only, no new
+dependency.** It imports only `base64`/`typing` + the Slice 42 normalizer; notably **not** `openai`/
+`urllib`/`socket`/`subprocess` — the OpenAI-compatible *shape* is a plain dict, so proving the
+boundary needs no client and no transport. **Scope:** new `pipeline/chandra_local_provider.py` +
+`test_scripts/test_chandra_local_provider.py` only; **no app integration, no real Chandra/
+`llama-server`/network call, no model files, no extraction/OCR-routing/`clean.md`/prompt/render/UI/
+export change, no manifest or `extraction_metadata.json` schema change.** Validated green
+(`test_chandra_local_provider` 68/0, `test_chandra_normalizer` 68/0, OCR + manifest battery, eval
+offline no-regression, frontend build/test, `git diff --check` clean); `smoke_release.py` not
+required since no production-wired behavior is touched.

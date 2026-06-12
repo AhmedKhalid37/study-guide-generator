@@ -6,43 +6,60 @@
 > stable overview see `PROJECT_CONTEXT.md`; canonical brief is `../CLAUDE.md`.
 
 ## Current position
-- **Working tree:** **Slice 42 (Chandra output normalizer core) — uncommitted** on branch
-  `slice42-chandra-output-normalizer-core` (branched from trunk after Slice 41 merged). A
-  **pure, deterministic** normalizer that converts a *raw Chandra layout string* (the
-  `data-bbox` + `data-label` HTML-ish output Slice 41 confirmed) into a safe **`source_text`**
-  fragment **and** **`visual_assets_manifest.json`-shaped asset candidates** — **without
-  running Chandra, `llama-server`, or any model.** Normalization core only, **NOT** provider
-  integration / extraction wiring.
-  - **Module:** new `pipeline/chandra_normalizer.py` — pure stdlib (`re`,
-    `html.parser.HTMLParser`, `typing`); no new dependency; **no import** of
-    `fitz`/Tesseract/llama.cpp/Mistral/Gemini/Chandra-runtime/LMM. Public API:
-    `normalize_chandra_output(raw, *, source_page=1)` (total, never raises) +
-    `extract_chandra_blocks` / `chandra_blocks_to_source_text` /
-    `chandra_blocks_to_manifest_assets`.
-  - **Output:** `{version:1, kind:"chandra_normalized_output", status:"completed",
-    source_provider:"chandra_local", source_text, assets[], warnings[]}`. Assets mirror the
-    Slice 38/40 manifest asset shape (`asset_id` `page_<NNNN>_chandra_<II>`, closed
-    `asset_type`, coerced `bbox`, `caption`, `recommended_action:"unknown"`, **`asset_ref:null`**,
-    `signals.chandra_label`). Labels map to a closed vocab (`table`/`equation_block`/`diagram`/
-    `figure`/`image_region`/`unknown_region`); text/caption blocks feed `source_text` only,
-    not assets.
-  - **Safe by construction:** every captured/raw string is scrubbed field-by-field (strips
-    URLs, abs/UNC/Windows paths, `.sock`, `Authorization`/`Bearer`, key-like tokens, `--flag`
-    argv, `data:…;base64`/long base64, `<script>`/`<style>`, residual tags, control chars);
-    JSON-safe; closed-vocab warnings only; never raises on malformed/non-string input.
-  - **NOT done this slice:** no Chandra/`llama-server` call; no model/mmproj/quant file; no
-    extraction/OCR-routing wiring; no `clean.md` write; no candidate scoring; no manifest
-    schema change; no prompt/render/UI/export change; no generated-guide change.
-  - **Tests:** new `test_scripts/test_chandra_normalizer.py` — **68/0** (handcrafted synthetic
-    fixtures only — no real dump/private doc/screenshot/local path). Validation all green:
-    `compileall`; full focused battery incl. `test_visual_assets_manifest` (manifest
-    unchanged) + `test_local_figure_extraction`; eval `--offline --all` (no regression);
-    frontend build + test; `smoke_release.py` 29/0/0; `git diff --check` clean.
-  - **Files:** `pipeline/chandra_normalizer.py`, `test_scripts/test_chandra_normalizer.py`,
+- **Working tree:** **Slice 43 (Chandra local provider/client skeleton) — uncommitted,
+  DISABLED / UNWIRED** on branch `slice43-chandra-local-provider-skeleton` (branched from trunk
+  after Slice 42 merged). A small skeleton that names the third Chandra boundary and makes it
+  testable **without running any model**: page image bytes → **OpenAI-compatible `llama-server`
+  request shape** → (a future integration runs the model) → raw output string → **Slice 42
+  normalizer** → safe output. **Foundation only**, NOT a provider integration — nothing in a
+  production path constructs or calls it.
+  - **Module:** new `pipeline/chandra_local_provider.py` — stdlib-only (`base64`, `typing`) +
+    the Slice 42 normalizer; no new dependency; **no import** of `fitz`/Tesseract/llama.cpp/
+    `openai`/Mistral/Gemini/Chandra-runtime/LMM/`socket`/`subprocess`/HTTP client. Public API:
+    `build_chandra_image_message_payload(image_bytes, *, mime_type="image/png", prompt=None)`,
+    `parse_chandra_chat_response(response)`, `normalize_chandra_chat_response(response, *,
+    source_page=1)`, and `class ChandraLocalProvider` (`provider_id="chandra_local"`,
+    `enabled=False`, `is_enabled()→False`).
+  - **Request shape:** OpenAI-compatible multimodal chat payload
+    (`messages=[{role:"user", content:[{type:"text"}, {type:"image_url"}]}]`,
+    `temperature=0.0`, `max_tokens`); image → base64 data URI **only inside the builder**; no
+    model id / base URL / host path / argv embedded. `CHANDRA_OCR_LAYOUT_PROMPT` requests layout
+    HTML w/ `data-label` + `data-bbox`, HTML tables, LaTeX math, captioned diagrams/figures (a
+    template constant, **not** wired into generation). Non-bytes → `TypeError` w/o echo; unknown
+    mime collapses to PNG.
+  - **Response shape:** `parse_chandra_chat_response` accepts `{"choices":[{"message":{"content":
+    ...}}]}` + SDK-object equivalents; **total** (never raises); degrades to closed-vocab warnings
+    (`empty_response`/`no_choices`/`no_message`/`no_content`/`malformed_response`) and **never
+    echoes the raw payload**. `normalize_chandra_chat_response` bridges parse →
+    `normalize_chandra_output(...)`, returning the Slice 42 `kind:"chandra_normalized_output"`
+    envelope (all leak-scrubbing delegated to Slice 42); empty/malformed → valid `completed` +
+    `empty_output`.
+  - **NOT done this slice:** no real Chandra/`llama-server`/network/socket call (injected fake
+    responses only); no model/mmproj/quant file; no `pipeline/extract.py` or OCR-routing wiring;
+    no `ocr_routing`/`extraction_metadata.json`/`visual_assets_manifest.json` change; no
+    `clean.md` write; no visual embed; no API route; no frontend toggle / Provider Settings / LMM
+    change; no prompt/render/export change; no generated-guide change. `enabled` is `False`.
+  - **Tests:** new `test_scripts/test_chandra_local_provider.py` — **68/0** (injected fake
+    responses only; payload shape + no model/path/argv leak; prompt requests `data-label`/
+    `data-bbox`/tables/LaTeX/captions; image data URI only in request not in parsed/normalized;
+    mime whitelist; non-bytes rejected w/o echo; parse normal/object/degrade/no-echo; normalizer
+    bridge incl. empty + malicious scrub; provider disabled; no-forbidden-imports). Validation all
+    green: `compileall`; `test_chandra_normalizer` 68/0; the focused battery incl.
+    `test_visual_assets_manifest` 65/0 (unchanged) + `test_local_figure_extraction` 50/0/2 +
+    `test_ocr_provider`/`test_ocr_routing_policy`/`test_ocr_routing_integration`; eval
+    `--offline --all` (no regression, delta 0.0); frontend build + test; `git diff --check` clean.
+    `smoke_release.py` not required — no production behavior touched.
+  - **Files:** `pipeline/chandra_local_provider.py`, `test_scripts/test_chandra_local_provider.py`,
     `CURRENT_TASK.md`, this handoff, `DECISIONS.md`. **Do not commit until the operator says so.**
-  - **Next (design, not built):** a `chandra_local` provider/integration slice that runs the
-    model on the LMM `llama-server` path and feeds *this* normalizer; candidate
-    scoring/`recommended_action`; asset-aware prompt/render embed.
+  - **Next (design, not built):** an integration slice that flips `enabled` behind an explicit,
+    **off-by-default** local OCR route on the LMM `llama-server` path — running the model, handing
+    its raw string to this bridge, with **Tesseract/`fitz` fallback and degrade-not-fail**; then
+    candidate scoring/`recommended_action` and asset-aware prompt/render embed.
+- **Slice 42 (Chandra output normalizer core) — committed `6e7f55f`, merged + pushed to trunk
+  `chrome-renderer-v1`.** A pure, deterministic, model-free normalizer (`pipeline/
+  chandra_normalizer.py`) that turns a raw Chandra layout string into a safe `source_text` fragment
+  + `visual_assets_manifest.json`-shaped asset candidates (closed vocab, field-by-field scrubbed,
+  total/never-raises). Slice 43 builds the disabled request/response skeleton on top of it.
 - **Slice 41 (Chandra GGUF hands-on spike) — committed `218de18`, merged + pushed to trunk
   `chrome-renderer-v1`; docs-only.** Hands-on confirmation that Chandra OCR 2 runs as GGUF on
   the existing `llama.cpp`/`llama-server` path (self-built ~676 MB mmproj + text quants from
