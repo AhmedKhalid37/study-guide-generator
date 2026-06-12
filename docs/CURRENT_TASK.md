@@ -5,6 +5,75 @@
 
 ---
 
+## Slice 48 — Visual **replacement planner core** (pure, unwired; roadmap V3) on `slice48-visual-replacement-planner-core`.
+
+- **Purpose:** add a pure, deterministic **replacement planner core** — the next V3
+  step after candidate scoring (`docs/VISION_ROADMAP.md` §8). It consumes an
+  already-sanitized `visual_asset_scoring.json`-shaped scoring report (and, optionally, a
+  `visual_assets_manifest.json`-shaped manifest for a **presence-only** cross-check) and returns a
+  **separate advisory replacement plan** — a per-asset `candidate_action` / `placement` / `priority`
+  with closed-vocab `reasons`. It does **not** mutate the scoring report or manifest, persist an
+  artifact, embed visuals, change extraction/guides/rendering, or wire into production. **Not** a
+  Chandra integration slice.
+- **New module:** `pipeline/visual_replacement_planner.py` (stdlib-only: `re`, `typing`; imports
+  nothing from `fitz`/Tesseract/llama.cpp/Chandra/Mistral/Gemini/LMM/renderers/server/job-manager/
+  extraction/run-job/`visual_asset_scoring`/`visual_assets_manifest`). Public API (small, pure, total):
+  - `plan_visual_replacement_candidate(score, *, asset=None) -> dict`
+  - `plan_visual_replacement_candidates(scores, *, assets_by_id=None) -> list[dict]`
+  - `build_visual_replacement_plan(scoring_report, *, manifest=None) -> dict`
+- **Plan report shape:** `{version:1, kind:"visual_replacement_plan", status:"completed",
+  source:"visual_asset_scoring.json", items:[…], summary:{item_count,
+  candidate_include_as_figure_count, candidate_convert_to_table_count,
+  candidate_summarize_as_text_count, review_only_count, unknown_count}, warnings:[…]}`. Each item:
+  `{asset_id, source_page, source_provider, asset_type, priority, candidate_action, placement,
+  reasons:[…], warnings:[…]}`.
+- **Closed vocab only:** `candidate_action` ∈ {candidate_include_as_figure, candidate_convert_to_table,
+  candidate_summarize_as_text, review_only, unknown}; `placement` ∈ {source_page_reference, unknown};
+  `priority` ∈ {high, medium, low, unknown}; `source_provider` ∈ {fitz_local, chandra_local,
+  mistral_ocr, unknown}; `asset_type` ∈ {page_visual_signal, extracted_figure, table, table_region,
+  equation_block, diagram, figure, image_region, cropped_region, unknown_region, unknown}; closed
+  `reasons` (score_high/medium/low, asset_type_diagram/figure/table/equation/page_signal,
+  has_manifest_match, missing_manifest_match, review_required, chandra_blocked, low_information_signal,
+  unknown_asset_type, input_sanitized); closed `warnings` (scoring_report_malformed,
+  score_item_malformed, asset_lookup_missing, asset_id_missing/invalid, asset_type_unrecognized,
+  source_provider_unrecognized, priority_unrecognized, candidate_action_unresolved, input_unrecognized).
+- **Planning rules (advisory, conservative):** high/medium visual figure types (diagram, figure,
+  image_region, cropped_region, extracted_figure) → `candidate_include_as_figure`; high/medium
+  table/table_region → `candidate_convert_to_table`; high/medium equation_block (or a *legitimately*
+  unknown visual block) → `candidate_summarize_as_text`; low priority / bare page signal →
+  `review_only`; malformed/unknown-priority → `unknown`. A recognized-but-unmapped or
+  coerced-unrecognized type at actionable priority falls back to `review_only` +
+  `candidate_action_unresolved` (never guesses an embedding). `placement` is `source_page_reference`
+  only for an actionable candidate with a known source page, else `unknown`.
+- **Chandra still blocked:** any `chandra_local` item is planned **only as advisory** and always
+  carries the closed reason `chandra_blocked`, because Chandra *extraction* integration remains gated
+  by Slice 45 `status:not_run` (`operator_input_not_supplied`). This core reads only the asset
+  *shape*; it integrates nothing.
+- **Pure / unwired / no production change:** not imported by `run_llm_job.py` or anything else; no
+  artifact written (no `visual_replacement_plan.json` this slice); no API route; no frontend/UI; no
+  export-bundle/generic artifact-list exposure; `visual_assets_manifest.json` /
+  `visual_asset_scoring.json` schemas unchanged and **never mutated**; no extraction/OCR-routing/
+  prompt/render/guide-output change; no `clean.md` write; no model/llama-server/cloud/network call; no
+  image files/bytes. Captions/source text/provider payloads are never read into output; a manifest
+  cross-check contributes **presence only** (no manifest field echoed).
+- **New test:** `test_scripts/test_visual_replacement_planner.py` (**186/0**) — include_as_figure for
+  all high-priority visual types; medium/high table→convert; high/medium equation (and legit-unknown
+  block)→summarize; low/page-signal→review_only; malformed score item→safe `unknown` fallback;
+  malformed scoring report→safe completed report with `scoring_report_malformed`; manifest
+  presence-match without field leak; missing match→`missing_manifest_match`+`asset_lookup_missing`;
+  chandra_local→`chandra_blocked` + still advisory; no mutation of report/manifest; smuggled
+  secrets/paths/base64/data-URIs/argv never leak; invalid asset ids→deterministic slug-safe fallback;
+  summary counts; determinism; no forbidden imports.
+- **Validation:** `compileall api pipeline test_scripts` OK; planner **186/0**; scoring-core **146/0**;
+  scoring-artifact **58/0**; manifest **65/0**; figure-extraction **50/0** (+2 skipped);
+  chandra-normalizer **68/0**; chandra-local-provider **68/0**; chandra-live-harness **96/0**;
+  ocr-modes **121/121**; ocr-routing-policy **120/120**; ocr-routing-integration **56/56**; offline
+  eval scored 3 guides (no regression); frontend build + test green; `git diff --check` clean.
+  `smoke_release.py` / Docker **not required** (pure/unwired — no server/extraction/render/artifact
+  behavior touched). **Status:** NOT committed (awaiting operator review).
+
+---
+
 ## Slice 47 — Persist `visual_asset_scoring.json` as an **advisory exact-name artifact** on `slice47-visual-asset-scoring-artifact`.
 
 - **Purpose:** persist the Slice 46 scoring report as the sibling artifact

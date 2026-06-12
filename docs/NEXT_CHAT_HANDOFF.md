@@ -6,9 +6,50 @@
 > stable overview see `PROJECT_CONTEXT.md`; canonical brief is `../CLAUDE.md`.
 
 ## Current position
-- **Working tree:** **Slice 47 (persist `visual_asset_scoring.json` as an advisory exact-name
-  artifact) — uncommitted, CODE (production-wired artifact writer/serving + new test)** on branch
-  `slice47-visual-asset-scoring-artifact` (branched from trunk after Slice 46 merged at `e8e69ed`).
+- **Working tree:** **Slice 48 (visual replacement planner core — pure, unwired; roadmap V3) —
+  uncommitted, CODE (new module + test, NO production wiring)** on branch
+  `slice48-visual-replacement-planner-core` (branched from trunk after Slice 47 merged at `b1680fa`).
+  The next V3 step after candidate scoring — turns a scoring report into an advisory **replacement
+  plan**. **Not** a Chandra integration slice.
+  - **New module:** `pipeline/visual_replacement_planner.py` — pure, deterministic, stdlib-only
+    (`re`, `typing`). Consumes a `visual_asset_scoring.json`-shaped scoring report (and, optionally, a
+    `visual_assets_manifest.json`-shaped manifest for a **presence-only** cross-check) and returns a
+    brand-new `visual_replacement_plan` report. Public API:
+    `plan_visual_replacement_candidate(score, *, asset=None)`,
+    `plan_visual_replacement_candidates(scores, *, assets_by_id=None)`,
+    `build_visual_replacement_plan(scoring_report, *, manifest=None)`.
+  - **Output:** `{version:1, kind:"visual_replacement_plan", status:"completed",
+    source:"visual_asset_scoring.json", items:[…], summary:{item_count + per-action counts},
+    warnings:[…]}`. Each item carries a closed-vocab `candidate_action` (candidate_include_as_figure /
+    candidate_convert_to_table / candidate_summarize_as_text / review_only / unknown), `placement`
+    (source_page_reference / unknown), `priority`, sanitized `asset_id` / `source_page` /
+    `source_provider` / `asset_type`, and closed `reasons`/`warnings`. **Advisory only** — a
+    *candidate* action, never a binding include/omit. Captions/source text/provider payloads are
+    never read into output; a manifest cross-check contributes presence only (no field echoed); ids
+    are coerced slug-safe; the functions never raise and **never mutate** the report or manifest.
+  - **Pure / unwired / no production change:** not imported by `run_llm_job.py` or anything else; no
+    artifact written (no `visual_replacement_plan.json` this slice); no API route; no frontend/UI; no
+    export-bundle/generic artifact-list exposure; `visual_assets_manifest.json` /
+    `visual_asset_scoring.json` schemas unchanged and not mutated; no extraction/OCR-routing/prompt/
+    render/guide-output change; no `clean.md` write; no model/llama-server/cloud calls; no image
+    files/bytes. `smoke_release.py`/Docker not required (nothing production-wired touched).
+  - **Chandra still blocked:** any `chandra_local` item is planned only as advisory and always carries
+    the closed reason `chandra_blocked`; Chandra *extraction* integration remains gated by Slice 45
+    `status:not_run` (`operator_input_not_supplied`) until a live harness pass is recorded — this
+    slice reads only the asset *shape* and integrates nothing.
+  - **Files:** new `pipeline/visual_replacement_planner.py`, new
+    `test_scripts/test_visual_replacement_planner.py` (**186/0**), + `CURRENT_TASK.md` /
+    `NEXT_CHAT_HANDOFF.md` / `DECISIONS.md`.
+  - **Validation:** `compileall api pipeline test_scripts` OK; planner **186/0**; scoring-core
+    **146/0**; scoring-artifact **58/0**; manifest **65/0**; figure **50/0** (+2 skip); chandra
+    normalizer/provider/live-harness green; ocr suites green; offline eval 3 guides (no regression);
+    frontend build+test green; `git diff --check` clean. **Status:** NOT committed (awaiting operator
+    review).
+
+- **Prior slice — Slice 47 (persist `visual_asset_scoring.json` as an advisory exact-name artifact) —
+  committed `b1680fa`, fast-forward merged + pushed to trunk `chrome-renderer-v1`, CODE
+  (production-wired artifact writer/serving + new test)** (was on branch
+  `slice47-visual-asset-scoring-artifact`, branched from trunk after Slice 46 merged at `e8e69ed`).
   Persists the Slice 46 scoring report as the sibling artifact `visual_asset_scoring.json`,
   **derived from** the already-written `visual_assets_manifest.json`.
   - **What it does:** writes `visual_asset_scoring.json` in `run_llm_job._attach_sources`
@@ -29,19 +70,6 @@
     download only. Written **exactly when** the manifest is written; non-PDF / no-extraction jobs
     omit **both** artifacts. No guide-output / prompt / render / extraction / OCR-routing / visual-
     embedding change; no model/`llama-server`/Chandra/Mistral/Gemini/network/image-file access.
-  - **Chandra still blocked:** Chandra *extraction* integration remains gated by Slice 45
-    `status:not_run` (`operator_input_not_supplied`); this slice only persists a report derived from
-    whatever manifest the existing `fitz_local` path produced — it integrates nothing.
-  - **Files:** `pipeline/job_manager.py`, `api/server.py`, `pipeline/run_llm_job.py`,
-    `pipeline/visual_asset_scoring.py` (writer + closed skip reasons),
-    `test_scripts/test_visual_asset_scoring.py` (allow stdlib `json`/`sys`; **146/0**), new
-    `test_scripts/test_visual_asset_scoring_artifact.py` (**58/0**), + `CURRENT_TASK.md` /
-    `NEXT_CHAT_HANDOFF.md` / `DECISIONS.md`.
-  - **Validation:** `compileall api pipeline test_scripts` OK; scoring-core **146/0**;
-    scoring-artifact **58/0**; manifest **65/0**; figure **50/0** (+2 skip); chandra
-    normalizer/provider/live-harness green; ocr suites green; extraction-metadata **9/9**; offline
-    eval 3 guides (no regression); frontend build+test green; fresh Docker build + `/api/health` ok +
-    `smoke_release.py`; `git diff --check` clean. **Status:** NOT committed (awaiting operator review).
 
 - **Prior slice — Slice 46 (visual asset scoring core — pure, unwired; roadmap V3) —
   committed `e8e69ed`, fast-forward merged + pushed to trunk `chrome-renderer-v1`, CODE (new

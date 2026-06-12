@@ -2217,3 +2217,43 @@ figure 50/0+2skip; chandra-normalizer/provider/live-harness green; ocr suites gr
 extraction-metadata 9/9; offline eval no regression; frontend build+test green) plus
 a fresh Docker build + `/api/health` + `smoke_release.py` and `git diff --check`
 clean.
+
+## Slice 48 — Visual replacement planner is a separate pure core, advisory only
+Slice 48 adds `pipeline/visual_replacement_planner.py`, a pure, deterministic,
+stdlib-only core that consumes a `visual_asset_scoring.json`-shaped scoring report
+(and optionally a `visual_assets_manifest.json`-shaped manifest, **presence-only**)
+and returns a brand-new `visual_replacement_plan` report — a per-asset
+`candidate_action` / `placement` / `priority` with closed-vocab `reasons`/`warnings`.
+**Why a separate core, kept advisory and unwired (mirroring the Slice 46 scoring
+core):** (1) **Advisory candidate, not a decision.** The `candidate_action`
+(`candidate_include_as_figure` / `candidate_convert_to_table` /
+`candidate_summarize_as_text` / `review_only` / `unknown`) is a *candidate* the
+operator/later slice reviews — never a binding include/omit and never something that
+embeds a visual or changes generated guide text. Keeping the planner pure and unwired
+means the V3 stack can mature (manifest → scoring → plan) before any V4+ slice makes a
+production include/omit decision, so each layer stays independently testable and
+reversible. (2) **Closed vocabulary + no echo, by construction.** Every emitted field
+is a fixed token, an int, `None`, an empty list, or a slug-safe `asset_id`; captions,
+raw source/OCR text, and provider payloads are never read into output, and a manifest
+cross-check contributes **presence only** (`has_manifest_match` / `missing_manifest_match`)
+— no manifest field is echoed. A recognized-but-unmapped or coerced-unrecognized type
+at actionable priority falls back to `review_only` + `candidate_action_unresolved`
+rather than guessing an embedding. This keeps the same no-leak guarantee the manifest
+and scoring cores hold (no path/URL/token/header/socket/model/`mmproj`/argv/base64/
+data-URI/image-byte can survive a hostile record). (3) **No persistence/wiring this
+slice.** It writes no `visual_replacement_plan.json`, adds no route/UI/export, imports
+nothing from `fitz`/Tesseract/llama.cpp/Chandra/Mistral/Gemini/LMM/renderers/server/
+job-manager/extraction/run-job/`visual_asset_scoring`/`visual_assets_manifest`, makes no
+model/network/file/image call, and is not imported by `run_llm_job.py` — so it changes
+zero production behavior and `smoke_release.py`/Docker are not required. **Chandra
+independence:** a `chandra_local` item is planned only as advisory and always carries
+the closed reason `chandra_blocked`; Chandra *extraction* integration remains **blocked**
+by the Slice 45 gate (`status:not_run`, `operator_input_not_supplied`) until a live
+harness pass is recorded — this core merely understands the asset *shape*. **Scope:**
+new `pipeline/visual_replacement_planner.py` + new
+`test_scripts/test_visual_replacement_planner.py` (186/0) + this entry +
+`CURRENT_TASK.md` / `NEXT_CHAT_HANDOFF.md`; no manifest/scoring-schema/extraction/
+`ocr_routing`/API/frontend/Provider-Settings/LMM/render/export/`clean.md`/artifact
+change. Validated by the full pure-test battery (planner 186/0; scoring 146/0;
+scoring-artifact 58/0; manifest/figure/chandra/ocr suites green; offline eval no
+regression; frontend build+test green) + `git diff --check` clean.
