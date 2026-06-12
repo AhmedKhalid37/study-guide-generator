@@ -5,7 +5,66 @@
 
 ---
 
-## Slice 45 — Chandra live-harness validation report + operator runbook (DOCS-ONLY) on `slice45-chandra-live-harness-validation-report`.
+## Slice 46 — Visual asset **scoring core** (pure, unwired; roadmap V3) on `slice46-visual-asset-scoring-core`.
+
+- **Purpose:** add a pure, deterministic **scoring core** for visual asset candidates — the V3
+  "candidate scoring" step from `docs/VISION_ROADMAP.md` §8, sitting between the advisory manifest
+  (V1) and any future guide-inclusion decision (V4+). It scores existing
+  `visual_assets_manifest.json`-shaped assets and returns a **separate advisory scoring report**;
+  it does **not** mutate the manifest, change guides/rendering, embed visuals, or wire into
+  production. **Not** a Chandra integration slice.
+- **New module:** `pipeline/visual_asset_scoring.py` (stdlib-only: `re`, `typing`; imports nothing
+  from `fitz`/Tesseract/llama.cpp/Chandra/Mistral/Gemini/LMM/renderers/server/job-manager/
+  extraction). Public API (small, pure, total):
+  - `score_visual_asset_candidate(asset, *, page_context=None) -> dict`
+  - `score_visual_asset_candidates(assets, *, page_context_by_page=None) -> list[dict]`
+  - `score_visual_assets_manifest(manifest, *, page_context_by_page=None) -> dict`
+- **Report shape:** `{version:1, kind:"visual_asset_scoring", status:"completed",
+  source:"visual_assets_manifest.json", scores:[…], summary:{asset_count, high/medium/low/
+  unknown_priority_count}, warnings:[…]}`. Each score:
+  `{asset_id, source_page, source_provider, asset_type, recommended_action:"unknown", priority,
+  include_score, reasons:[…], warnings:[…]}`.
+- **Closed vocab only:** `priority` ∈ {high, medium, low, unknown}; `recommended_action` stays
+  **`unknown` for every score** this slice; `source_provider` ∈ {fitz_local, chandra_local,
+  mistral_ocr, unknown}; `asset_type` ∈ {page_visual_signal, extracted_figure, table, table_region,
+  equation_block, diagram, figure, image_region, cropped_region, unknown_region, unknown};
+  closed `reasons` tokens (asset_type_table/diagram/equation/extracted_figure, has_bbox,
+  has_caption, large_region, page_has_images, page_has_drawings, provider_*, low_information_signal,
+  unknown_asset_type, input_sanitized); closed `warnings` tokens (asset_id_missing/invalid,
+  source_page_invalid, asset_type_unrecognized, source_provider_unrecognized, bbox_invalid,
+  signals_invalid, manifest_malformed, input_unrecognized).
+- **Behavior:** pure/deterministic/total — never raises, never mutates input, no clock/random/
+  network/file/image access. Invalid/missing asset ids → deterministic slug-safe fallback
+  (`asset_0001`); source page coerced to a positive int or `None`; bbox parsed only as 4 finite
+  ordered numbers; **captions used only as a boolean `has_caption` signal and never emitted**;
+  unknown/malformed assets score `unknown`/`low` with closed warnings. Heuristics keep
+  tables/diagrams/equations/extracted-figures above a bare `page_visual_signal`; strong page
+  signals lift a page signal at most low→medium (conservative).
+- **Unwired / no production change:** not imported by `pipeline/run_llm_job.py` or anything else;
+  no artifact written; `pipeline/visual_assets_manifest.py` unchanged (no schema change); no
+  extraction/OCR-routing change; no Chandra provider/harness change; no model/llama-server/cloud
+  calls; no API route; no frontend/UI; no Provider Settings/LMM change; no prompt/render/export
+  change; no `clean.md` write; no image files/bytes.
+- **Chandra still blocked:** Chandra **extraction** integration remains gated by Slice 45
+  `status:not_run` (`operator_input_not_supplied`) until a live harness pass is recorded. This
+  slice only *reads the asset shape* the Slice 42 normalizer would emit; it integrates nothing.
+- **New test:** `test_scripts/test_visual_asset_scoring.py` (**146/0**) — minimal page_visual_signal;
+  extracted_figure with bbox+large-region; Chandra diagram/table/equation_block shapes; deterministic
+  priority ordering; action-always-unknown; bbox invalid → `bbox_invalid`; id missing/unsafe →
+  safe fallback; malformed/non-dict manifest+assets safe; no input mutation; no raw caption emitted;
+  smuggled path/URL/token/header/base64/data-URI/argv/socket/gguf/mmproj strings never appear;
+  source_page coercion; no forbidden imports.
+- **Validation:** `compileall api pipeline test_scripts` OK; scoring **146/0**; manifest **65/0**;
+  figure-extraction **50/0** (+2 skipped); chandra-normalizer **68/0**; chandra-local-provider
+  **68/0**; chandra-live-harness **96/0**; ocr-modes **121/121**; ocr-routing-policy **120/120**;
+  ocr-routing-integration **56/56**; offline eval scored 3 guides (no regression); frontend
+  build OK + frontend test green; `git diff --check` clean. `smoke_release.py` **not required** —
+  no production-wired/server/extraction/render/artifact behavior is touched (pure unwired module).
+- **Status: NOT committed** (awaiting operator review).
+
+---
+
+## Slice 45 — Chandra live-harness validation report + operator runbook (DOCS-ONLY) — committed `591d664`, fast-forward merged + pushed to trunk `chrome-renderer-v1`.
 
 - **Purpose:** a **docs-only gate/report** slice that records (a) **how to safely run** the
   Slice 44 Chandra live validation harness and (b) a **sanitized** live validation result if an
@@ -39,7 +98,7 @@
 - **Validation:** `git diff --check` clean; `git diff --name-only` docs-only (new
   `docs/CHANDRA_LIVE_HARNESS_VALIDATION.md` + `CURRENT_TASK.md` + `NEXT_CHAT_HANDOFF.md` +
   `DECISIONS.md`). No build/smoke required — no code touched.
-- **Status: NOT committed** (awaiting operator review).
+- **Status: committed `591d664`, fast-forward merged + pushed to trunk `chrome-renderer-v1`.**
 
 ---
 

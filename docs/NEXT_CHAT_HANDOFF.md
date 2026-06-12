@@ -6,9 +6,41 @@
 > stable overview see `PROJECT_CONTEXT.md`; canonical brief is `../CLAUDE.md`.
 
 ## Current position
-- **Working tree:** **Slice 45 (Chandra live-harness validation report + operator runbook) —
-  uncommitted, DOCS-ONLY** on branch `slice45-chandra-live-harness-validation-report` (branched
-  from trunk after Slice 44 merged at `8468c16`). A **gate/report** slice — no code/test/app change.
+- **Working tree:** **Slice 46 (visual asset scoring core — pure, unwired; roadmap V3) —
+  uncommitted, CODE (new module + test, NO production wiring)** on branch
+  `slice46-visual-asset-scoring-core` (branched from trunk after Slice 45 merged at `591d664`).
+  Returns to the **provider-agnostic visual stack** — NOT a Chandra integration slice.
+  - **New module:** `pipeline/visual_asset_scoring.py` — a pure, deterministic, stdlib-only
+    (`re`, `typing`) scoring core for `visual_assets_manifest.json`-shaped asset candidates. It is
+    the V3 "candidate scoring" step (`docs/VISION_ROADMAP.md` §8) between the advisory manifest (V1)
+    and any future inclusion decision (V4+). Public API:
+    `score_visual_asset_candidate(asset, *, page_context=None)`,
+    `score_visual_asset_candidates(assets, *, page_context_by_page=None)`,
+    `score_visual_assets_manifest(manifest, *, page_context_by_page=None)`.
+  - **Output:** a brand-new `visual_asset_scoring` report (`scores[]` + `summary` priority counts +
+    closed `warnings`). Each score has `priority` ∈ {high, medium, low, unknown}, a numeric
+    `include_score`, closed-vocab `reasons`/`warnings`, and `recommended_action` that **stays
+    `unknown` for every score this slice** (no include/omit decision yet). Captions are used only as
+    a boolean `has_caption` signal and are **never emitted**; ids/page/provider/type are coerced to
+    safe closed-vocab/slug-safe values; the function never raises and **never mutates** the input.
+  - **Pure / unwired / no production change:** not imported by `run_llm_job.py` or anything else; no
+    artifact written; `pipeline/visual_assets_manifest.py` unchanged (no schema change); no
+    extraction/OCR-routing/API/frontend/Provider-Settings/LMM/render/export change; no `clean.md`
+    write; no model/llama-server/cloud calls; no image files/bytes.
+  - **Chandra still blocked:** Chandra *extraction* integration remains gated by Slice 45
+    `status:not_run` (`operator_input_not_supplied`) until a live harness pass is recorded — this
+    slice only reads the asset *shape* the Slice 42 normalizer would emit; it integrates nothing.
+  - **New test:** `test_scripts/test_visual_asset_scoring.py` (**146/0**).
+  - **Validation:** `compileall api pipeline test_scripts` OK; scoring **146/0**, manifest **65/0**,
+    figure-extraction **50/0** (+2 skipped), chandra-normalizer **68/0**, chandra-local-provider
+    **68/0**, chandra-live-harness **96/0**, ocr-modes **121/121**, ocr-routing-policy **120/120**,
+    ocr-routing-integration **56/56**, offline eval 3 guides (no regression), frontend build+test
+    green, `git diff --check` clean. `smoke_release.py` not required (pure unwired module, no
+    production behavior touched). **Status:** NOT committed (awaiting operator review).
+
+- **Prior slice — Slice 45 (Chandra live-harness validation report + operator runbook) — committed
+  `591d664`, fast-forward merged + pushed to trunk `chrome-renderer-v1`, DOCS-ONLY** (was on branch
+  `slice45-chandra-live-harness-validation-report`). A **gate/report** slice — no code/test/app change.
   - **New doc:** `docs/CHANDRA_LIVE_HARNESS_VALIDATION.md` — operator runbook for the Slice 44
     harness: purpose (proves the request/response/normalizer boundary only — not production wiring,
     not extraction integration, not release smoke), operator-owned preconditions (operator starts
@@ -27,7 +59,7 @@
     no model/mmproj/quant file or raw OCR/provider output committed.
   - **Validation:** `git diff --check` clean; `git diff --name-only` docs-only
     (`docs/CHANDRA_LIVE_HARNESS_VALIDATION.md` + `CURRENT_TASK.md` + this handoff + `DECISIONS.md`).
-    No build/smoke required. **Status:** NOT committed (awaiting operator review).
+    No build/smoke required. **Status:** committed `591d664`, fast-forward merged + pushed to trunk.
 
 - **Prior slice — Slice 44 (Chandra local provider live validation harness) — committed `8468c16`,
   fast-forward merged + pushed to trunk `chrome-renderer-v1`, MANUAL / OPT-IN ONLY** (was on branch

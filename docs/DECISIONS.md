@@ -2123,3 +2123,51 @@ Settings/LMM/render/export/`clean.md` change, no `llama-server` management, no
 subprocess/Docker, and no model/mmproj/quant or raw OCR/provider output committed.
 Validated by `git diff --check` (clean) + `git diff --name-only` (docs-only); no
 build/smoke needed.
+
+## Visual asset scoring is a separate pure core that never mutates the manifest and keeps `recommended_action:"unknown"` (2026-06-12, Slice 46)
+The V3 "candidate scoring" step (`docs/VISION_ROADMAP.md` §8) is implemented as a
+new **pure, stdlib-only, unwired** module `pipeline/visual_asset_scoring.py` that
+*reads* `visual_assets_manifest.json`-shaped assets and returns a **brand-new,
+separate** `visual_asset_scoring` report (`scores[]` with `priority` /
+`include_score` / closed-vocab `reasons` + a `summary` of priority counts). It does
+**not** mutate the manifest or any asset dict, write any artifact, or wire into
+extraction/generation/render/UI/exports. **Why:** (1) **Scoring must be a distinct
+artifact from the manifest, not an in-place field.** The manifest
+(`pipeline.visual_assets_manifest`) is the provider-agnostic *inventory* boundary;
+folding mutable scores into it would blur "what visuals exist" with "which belong
+in the guide" — the exact separation `VISION_ROADMAP.md` §8 insists on (page
+*classification* ≠ asset *scoring*). Keeping scoring a pure function
+`manifest → report` means the manifest stays a stable input, the scorer has no
+side effects, and a later slice can choose to persist the report (or fold a chosen
+action back) deliberately rather than by accident. So this slice writes **no**
+artifact and changes **no** manifest schema. (2) **`recommended_action` stays
+`"unknown"` for every score.** This core only assigns *priority* + a numeric
+*include_score* from cheap deterministic signals (asset type, valid bbox, presence
+of a caption, large-region ratio, page image/drawing signals); the actual
+`include_as_figure | convert_to_table | summarize_as_text | omit` decision (the V3
+"text-replacement test") and any guide wiring are later, separately-designed slices
+(V4+). Emitting a real action now would imply an inclusion decision the pipeline is
+not ready to honor. (3) **The scorer is the security boundary, like the manifest
+and the Chandra normalizer before it.** Every output field is a fixed closed-vocab
+token, an int/float, `None`, or a deterministic slug-safe id; ids/page/provider/
+type are coerced field-by-field; a bad bbox/id/page/provider/type yields a closed
+warning, not an echo; **captions are used only as a boolean `has_caption` signal
+and are never emitted**; and the function never raises and **never mutates** its
+input. No raw path, URL, header, token, data URI, base64, image byte, raw
+caption/OCR text, socket/model/`mmproj`/executable path, or argv can survive even
+if a hostile asset smuggles one in (covered by a dedicated leak test). (4)
+**Stdlib-only and unwired keeps it safe to land now.** It imports nothing from
+`fitz`/Tesseract/llama.cpp/Chandra/Mistral/Gemini/LMM/renderers/server/job-manager/
+extraction, makes no model/network/file/image call, and is not imported by
+`run_llm_job.py` — so it changes zero production behavior and `smoke_release.py` is
+not required. **Chandra independence:** this is a provider-agnostic visual-stack
+slice, **not** Chandra integration; it merely understands the asset *shape* the
+Slice 42 Chandra normalizer would emit. Chandra *extraction* integration remains
+**blocked** by the Slice 45 gate (`status:not_run`,
+`operator_input_not_supplied`) until a live harness pass is recorded. **Scope:** new
+`pipeline/visual_asset_scoring.py` + new `test_scripts/test_visual_asset_scoring.py`
+(146/0) + this entry + `CURRENT_TASK.md` / `NEXT_CHAT_HANDOFF.md`; no
+manifest-schema/extraction/`ocr_routing`/API/frontend/Provider-Settings/LMM/render/
+export/`clean.md`/artifact change. Validated by the full pure-test battery
+(scoring 146/0; manifest/figure/chandra/ocr suites green; offline eval no
+regression; frontend build+test green) + `git diff --check` clean.
