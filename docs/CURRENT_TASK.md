@@ -5,7 +5,46 @@
 
 ---
 
-## Slice 70 — **Table-vs-diagram visual-classification precision**, on `slice70-visual-pilot-table-diagram-precision`. **NOT COMMITTED.**
+## Slice 71 — **Table-vs-diagram precision operator validation**, on `slice71-visual-pilot-table-diagram-operator-validation`. **NOT COMMITTED.**
+
+- **Validation/docs slice only.** Reruns the existing operator harness against the real, **non-private** operator
+  sample now that **Slice 70's table-vs-diagram classifier precision fix** is on trunk, then reads Slice 68's
+  sanitized selection trace + manually inspects the rendered PDF/HTML/DOCX to record — closed vocabulary only —
+  whether the pilot now selects an irreplaceable diagram/figure instead of only reconstructable tables. **No
+  production pipeline/API/frontend code changed; no heuristic tuned; no ranking/cap/default/gate/render/export/
+  extraction-OCR routing change; no model/provider/cloud call.** Docs-only — **no harness correction was needed.**
+- **Outcome this session (honest): `table_diagram_precision_operator_validation: run` — `status: ok`,
+  `trace_artifact_present: true`, `trace_no_leak_sweep: clean`, `effective_max_images: 2`, `inserted_visual_count: 2`,
+  `safe_candidate_count: 11`, `unsafe_candidate_count: 0`, `selected_count: 2`,
+  `type_counts {diagram_or_figure: 9, reconstructable_table: 2, unknown: 0, decorative_or_low_information: 0}`,
+  `selected_visual_type: tables_only`, `irreplaceable_visual_selected: false`, `selected_figures_quality:
+  all_useful_or_acceptable`, `selection_explanation: tables_still_misclassified_as_diagram_or_figure`,
+  `pdf_render_ok/pdf_image_visible/docx_render_ok/export_zip_ok/export_png_included: true`,
+  `warnings: [multiple_figures_present_one_inserted]`, `failure_category: none`, `no_leak_sweep: clean`.**
+- **Slice 70 measurably improved classification but did not yet generalize.** The trace's `type_counts` is **no longer
+  collapsed** — `diagram_or_figure: 9` **and** `reconstructable_table: 2` (Slice 69 read 11 / 0), and the 2 typed
+  tables were correctly **deprioritized** (`deprioritized_reconstructable_table: 2`). **But manual inspection
+  ground-truths that both *selected* visuals are still reconstructable two-column definition tables** — they are
+  densely ruled with wrapped multi-line cells, so the Slice 70 two-column-split guard (several *separated* row bands
+  per column) does not fire and they still type as `diagram_or_figure`, leading the diagram tier in priority order.
+  **Genuine irreplaceable diagrams/figures were present and correctly extracted among the safe candidates but were
+  NOT selected** — so this is still **classification precision**, not extraction and not pure ranking.
+- **Next work (recorded, not started):** `continue_table_vs_diagram_classification_precision` — keep improving the
+  deterministic local classifier for densely-ruled / wrapped-text two-column tables (or design a controlled
+  understanding layer in a separate slice). **Do not** proceed to UI polish or cap expansion until an irreplaceable
+  diagram/figure is selected in real validation, or there is a deliberate product decision to accept tables.
+- **Hard boundaries honored:** no cap above 2, no UI count selector, no Chandra/Mistral/Gemini/cloud OCR, no
+  model/provider/`llama-server` call, no image generation, no OCR-routing/renderer/prompt/export change, no new API
+  route. Chandra remains blocked by its own live-validation gate.
+- **Safety / no-leak:** only sanitized closed-vocab + bounded-numeric fields recorded; **no** real PDF path/filename,
+  document text, OCR text, source caption/table text, image bytes, base64, data URI, full URL, raw argv, token,
+  model/mmproj/executable path, provider payload, or raw exception. The runtime
+  `visual_markdown_selection_trace.json` was **inspected but not committed**; nothing binary/image/PDF/DOCX/ZIP/
+  runtime committed. **Slice 71 is NOT committed.**
+
+---
+
+## Slice 70 — **Table-vs-diagram visual-classification precision**, on `slice70-visual-pilot-table-diagram-precision`. **COMMITTED + MERGED to `chrome-renderer-v1` (fast-forward).**
 
 - **Production classification slice (precision only).** Slice 69's real-sample selection trace localized the
   remaining failure to *classification*, not extraction/ranking/cap/export/rendering/UI: **all 11 safe candidates were

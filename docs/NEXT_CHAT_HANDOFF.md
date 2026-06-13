@@ -6,9 +6,42 @@
 > stable overview see `PROJECT_CONTEXT.md`; canonical brief is `../CLAUDE.md`.
 
 ## Current position
-- **Working tree:** **Slice 70 (table-vs-diagram visual-classification precision) — UNCOMMITTED (per instruction)**
-  on branch `slice70-visual-pilot-table-diagram-precision` (branched from fresh trunk after Slice 69 was
-  committed/merged). **Production classification slice — precision only; cap/default/two-key gate/UI/`/api/options`/
+- **Working tree:** **Slice 71 (table-vs-diagram precision operator validation) — UNCOMMITTED (per instruction)** on
+  branch `slice71-visual-pilot-table-diagram-operator-validation` (branched from fresh trunk after Slice 70 was
+  committed/merged). **Validation/docs slice — no production pipeline/API/frontend code changed; no heuristic tuned;
+  no ranking/cap/default/gate/render/export/extraction-OCR routing change; no model/provider/cloud call.** It reruns
+  the operator harness on the real, **non-private** sample now that Slice 70's classifier precision fix is on trunk,
+  then reads the sanitized trace + manually inspects the rendered PDF/HTML/DOCX.
+  - **Outcome (honest): `table_diagram_precision_operator_validation: run` — `status: ok`, `trace_artifact_present:
+    true`, `trace_no_leak_sweep: clean`, `effective_max_images: 2`, `inserted_visual_count: 2`,
+    `safe_candidate_count: 11`, `unsafe_candidate_count: 0`, `selected_count: 2`, `type_counts {diagram_or_figure: 9,
+    reconstructable_table: 2, unknown: 0, decorative_or_low_information: 0}`, `selected_visual_type: tables_only`,
+    `irreplaceable_visual_selected: false`, `selected_figures_quality: all_useful_or_acceptable`,
+    `selection_explanation: tables_still_misclassified_as_diagram_or_figure`, render/export all ok,
+    `warnings: [multiple_figures_present_one_inserted]`, `failure_category: none`, `no_leak_sweep: clean`.**
+  - **Slice 70 measurably improved classification but did not yet generalize.** `type_counts` is no longer collapsed
+    (9 diagram + 2 table vs Slice 69's 11 + 0), and the 2 typed tables were correctly deprioritized. **But the two
+    *selected* visuals are still reconstructable two-column definition tables** (densely ruled, wrapped-text cells, so
+    the two-column-split guard does not fire and they still type as `diagram_or_figure`). **Genuine irreplaceable
+    diagrams/figures were present + correctly extracted among the safe candidates but were not selected** — still a
+    classification-precision gap, not extraction and not pure ranking.
+  - **Decision / next work:** `continue_table_vs_diagram_classification_precision` (or a separately-designed
+    controlled understanding layer). **Do not** proceed to UI polish or cap expansion until an irreplaceable
+    diagram/figure is selected in real validation, or there is a deliberate product decision to accept tables. **Do
+    not** expand beyond cap 2; no UI count selector; no Chandra/Mistral/Gemini/model/provider/cloud integration.
+    Chandra remains blocked by its own live-validation gate.
+  - **Docs-only:** updated `VISUAL_PILOT_OPERATOR_VALIDATION.md`, `CURRENT_TASK.md`, this file, `DECISIONS.md`. No
+    harness correction needed; no frontend/UI; no extraction/OCR-routing/prompt/render/export change; no
+    Chandra/model/provider/cloud call. `git diff --check` clean. Only sanitized closed-vocab + bounded-numeric fields
+    recorded — no real PDF path/filename, document text, OCR text, source caption/table text, image bytes, base64,
+    data URI, full URL, raw argv, token, model/mmproj/executable path, or provider payload. The runtime
+    `visual_markdown_selection_trace.json` was **inspected but not committed**; nothing binary/image/PDF/DOCX/ZIP/
+    runtime committed. **Slice 71 is NOT committed.**
+
+### Prior position (Slice 70 — committed & merged)
+- **Slice 70 (table-vs-diagram visual-classification precision) — COMMITTED + MERGED to `chrome-renderer-v1`
+  (fast-forward)** on branch `slice70-visual-pilot-table-diagram-precision` (branched from fresh trunk after Slice 69
+  was committed/merged). **Production classification slice — precision only; cap/default/two-key gate/UI/`/api/options`/
   render/export/extraction-OCR routing all unchanged; no model/provider/cloud call.** It acts on Slice 69's trace
   finding that all safe candidates were classified `diagram_or_figure` while the selected visuals were, by manual
   inspection, reconstructable two-column tables (`selection_explanation: tables_misclassified_as_diagram_or_figure`).
