@@ -5,7 +5,49 @@
 
 ---
 
-## Slice 64 — **Prefer diagrams over reconstructable tables (visual-type ranking)**, on `slice64-visual-pilot-diagram-first-ranking`. **NOT COMMITTED.**
+## Slice 65 — **Diagram-first real operator validation record**, on `slice65-visual-pilot-diagram-first-operator-validation`. **NOT COMMITTED.**
+
+- **Validation/docs slice.** Records a real, sanitized operator validation of the **Slice 64 diagram-first
+  ranking** behavior against the same already-supplied non-private operator sample. Slice 64 proved diagram-first
+  ranking **synthetically and in Docker** but explicitly left the **real** operator revalidation *not run*; Slice
+  65 closes that one gap. **No production pipeline/API/frontend code changed; no new visual behavior added.**
+  **Docs-only — no harness correction was needed.**
+- **What was done:** used the rebuilt Slice 64 container, ran the existing operator harness
+  (`validate_visual_pilot_operator_sample.py`) with `GUIDEFORGE_ENABLE_VISUAL_MARKDOWN_IMAGE_PILOT=1`,
+  `GUIDEFORGE_LOCAL_FIGURE_EXTRACTION=1`, `GUIDEFORGE_VISUAL_MARKDOWN_MAX_IMAGES=2` against the non-private sample
+  (copied in/out via the running compose container; sample removed from the container afterward), copied the
+  rendered PDF/HTML/DOCX to a host folder, and inspected the inserted visuals by hand.
+- **Recorded (sanitized, closed vocab):** `diagram_first_operator_visual_quality_review: run` · `status: ok` ·
+  `pilot_inserted: true` · **`inserted_visual_count: 2`** · **`selected_visual_type: tables_only`** ·
+  **`irreplaceable_visual_selected: false`** · **`selected_figures_quality: all_useful_or_acceptable`** ·
+  `pdf_render_ok/pdf_image_visible/docx_render_ok/export_zip_ok/export_png_included: true` ·
+  `warnings: [multiple_figures_present_one_inserted]` · `failure_category: none` · `no_leak_sweep: clean`.
+- **Honest outcome — diagram-first did *not* change the real selection.** The two inserted visuals are still
+  **reconstructable tables**, and the genuinely irreplaceable visual content present elsewhere in the sample was
+  **not** selected. **Root cause (sanitized):** the Slice 64 ranking only re-orders when its deterministic pixel
+  classifier can tell a `reconstructable_table` from a `diagram_or_figure`; the table-grid heuristic fires only on
+  a strong regular horizontal **and** vertical rule grid, and it did **not** recognize these **lightly-ruled**
+  tables as tables — so every safe candidate landed in the same visual-type tier and selection fell back
+  **byte-for-byte** to the prior Slice 60/62 quality-and-order pick. The classifier behaved exactly as designed
+  (no regression); it simply had no clear table-vs-diagram signal to act on here. `decision_gate:
+  diagram_first_ranking_did_not_change_real_outcome` · `next_recommended_slice:
+  improve_visual_type_detection_before_ui_polish`.
+- **Decision:** because `selected_visual_type: tables_only`, the next visual slice should **continue visual-type
+  ranking / detection work before any UI or placement polish** — specifically strengthen table-vs-diagram
+  detection (recognize borderless/lightly-ruled tables and/or detect genuine diagrams more strongly) so the
+  ranking has a real signal. **Do not expand beyond cap 2, no UI count selector, no Chandra/Mistral/Gemini/
+  model/provider/cloud integration.** Default remains exactly 1; hard cap remains 2.
+- **Out of scope (unchanged):** no frontend/UI, no `/api/options`/route change, no cap change, no
+  extraction/OCR-routing/prompt/render/export behavior change, no model/provider/cloud/`llama-server`/image-gen
+  call. Chandra remains blocked by its own live-validation gate.
+- **Safety / no-leak:** only sanitized closed-vocab fields recorded — no real PDF path/filename, document text,
+  OCR text, image bytes, base64, data URI, full URL, raw argv, token, or model/mmproj/executable path in any
+  doc/test/artifact/log; the host review folder lives outside the repo and **nothing binary/image/PDF/DOCX/ZIP/
+  runtime was committed**. **Slice 65 is NOT committed.**
+
+---
+
+## Slice 64 — **Prefer diagrams over reconstructable tables (visual-type ranking)**, on `slice64-visual-pilot-diagram-first-ranking`. **COMMITTED + MERGED to `chrome-renderer-v1`.**
 
 - **Production-behavior slice (ranking only).** Slice 63 proved the cap-2 plumbing on a real sample but
   selected **tables only**; tables are useful yet often **reconstructable** from extracted text into clean
@@ -55,7 +97,8 @@
 - **Safety / no-leak:** classifier returns only closed-vocab tokens + bounded numerics in internal info dicts;
   no real PDF path/filename, document text, OCR text, image bytes, base64, data URI, full URL, raw argv, token,
   or model/mmproj/executable path in any doc/test/artifact/log. No committed binary/image/PDF/DOCX/ZIP/runtime
-  fixture. **Slice 64 is NOT committed.**
+  fixture. **Slice 64 is COMMITTED + MERGED to `chrome-renderer-v1` (fast-forward).** The optional real operator
+  revalidation that this entry left *not run* was subsequently performed and recorded in **Slice 65** above.
 
 ---
 

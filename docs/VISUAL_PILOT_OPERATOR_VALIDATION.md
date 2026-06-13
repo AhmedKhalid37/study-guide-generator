@@ -340,3 +340,117 @@ preserving truly irreplaceable visuals — only partially met.
   filename, document text, OCR text, image bytes, base64, data URI, full URL, raw argv,
   token, model/mmproj/executable path, or raw exception. No binary/image/PDF/DOCX/ZIP/runtime
   output was committed.
+
+---
+
+## Slice 65 — diagram-first real operator validation (post-Slice-64 decision check)
+
+> Validation-record slice. **No production pipeline/API/frontend code changed.** It adds
+> NO visual behavior. It only *reran* the existing manual harness against the same real,
+> **non-private** operator sample with the Slice 62 cap kept at `2` and the **Slice 64
+> diagram-first ranking now in production**, to answer the one question Slice 64 left open:
+> does diagram-first ranking actually make the **real** sample select hard-to-reconstruct
+> diagrams/figures over reconstructable tables? **Docs-only — no harness correction needed.**
+
+### Why this record exists
+
+Slice 64 proved **synthetically** (and in Docker) that, when both are present, a
+diagram/figure outranks a reconstructable table. What it explicitly did **not** do was a
+**real** operator revalidation — its `CURRENT_TASK` note recorded the optional real run as
+*not run* and warned the desired outcome (`selected_visual_type: diagrams_or_figures_present` /
+`irreplaceable_visual_selected: true`) must **not** be assumed. Slice 65 closes that: same
+harness, same already-supplied non-private sample, run inside the rebuilt Slice 64 container
+with `GUIDEFORGE_VISUAL_MARKDOWN_MAX_IMAGES=2`, then a human inspection of the rendered PDF /
+HTML / DOCX copied to a host folder.
+
+### Diagram-first review — recorded result (sanitized, closed vocab)
+
+```
+diagram_first_operator_visual_quality_review: run
+status: ok
+pilot_inserted: true
+inserted_visual_count: 2
+selected_visual_type: tables_only
+irreplaceable_visual_selected: false
+selected_figures_quality: all_useful_or_acceptable
+pdf_render_ok: true
+pdf_image_visible: true
+docx_render_ok: true
+export_zip_ok: true
+export_png_included: true
+warnings:
+  - multiple_figures_present_one_inserted
+failure_category: none
+no_leak_sweep: clean
+```
+
+The operator classified the selected visuals using only the closed vocabularies
+`selected_visual_type: diagrams_or_figures_present · tables_only · mixed_diagram_and_table ·
+unclear`, `irreplaceable_visual_selected: true · false · unknown`, and
+`selected_figures_quality: all_useful_or_acceptable · mixed_quality ·
+decorative_or_bad_present · unclear`, after inspecting the rendered PDF / HTML / DOCX from a
+host output folder (the real sample path/filename and the figures' source contents are **not**
+recorded here).
+
+### Why diagram-first did not change the real-sample outcome (sanitized)
+
+The honest result is that, on this real sample, the diagram-first ranking did **not** change
+the selection from the Slice 63 outcome: the two inserted visuals are still
+**reconstructable tables**, and the genuinely irreplaceable visual content present elsewhere
+in the sample was **not** selected. Recorded with safe closed-vocabulary tokens:
+
+```
+selected_visual_type: tables_only
+irreplaceable_visual_selected: false
+decision_gate: diagram_first_ranking_did_not_change_real_outcome
+root_cause: table_grid_heuristic_did_not_classify_lightly_ruled_tables_as_table
+next_recommended_slice: improve_visual_type_detection_before_ui_polish
+```
+
+The Slice 64 ranking only re-orders candidates when its deterministic pixel classifier can
+tell a `reconstructable_table` apart from a `diagram_or_figure`. On this sample the table-grid
+heuristic — which fires only on a strong regular **horizontal *and* vertical** rule grid — did
+**not** recognize the inserted visuals as tables (they lack a full ruled grid), so every safe
+candidate landed in the same visual-type tier and selection fell back **byte-for-byte** to the
+prior Slice 60/62 quality-and-order pick. The classifier behaved exactly as designed (no
+regression); it simply had no clear table-vs-diagram signal to act on for these particular
+visuals. So the visual-type *priority* tier was real but **uniform** here, and the diagram-first
+preference never engaged.
+
+> Note on the `multiple_figures_present_one_inserted` warning: it is the existing
+> closed-vocabulary token, emitted whenever the source held more than one figure candidate.
+> Under cap-2 its `_one_inserted` suffix is a known legacy misnomer — two figures were inserted
+> here — but the trigger condition is still literally true and the actual count is recorded
+> unambiguously in `inserted_visual_count: 2`. Renaming a closed-vocab token stays out of scope
+> for a validation slice.
+
+### Interpretation
+
+- Slice 64 made diagram-first ranking **production behavior** and proved it **synthetically**.
+- This Slice 65 record checks whether the real sample now selects diagrams/figures,
+  mixed diagram+table, or still tables-only.
+- **Recorded verdict: `selected_visual_type: tables_only`, `irreplaceable_visual_selected:
+  false`, `selected_figures_quality: all_useful_or_acceptable`** with **2 figures inserted** —
+  the plumbing again worked end-to-end (selection → capped multi-insertion → PDF/HTML/DOCX
+  render → export bundle), and both inserted visuals are legible, content-bearing, non-decorative
+  material that rendered visibly and rode along in the export ZIP.
+- **But the higher-value goal is still unmet on the real sample:** the selected visuals are
+  reconstructable tables, not the irreplaceable diagrams/figures the feature exists to protect,
+  because the table-grid classifier did not fire for these lightly-ruled tables and therefore had
+  nothing to deprioritize.
+- **Per the desired-outcome rule, this is recorded honestly as the actual result, not a pass.**
+  Because `selected_visual_type: tables_only`, **future work should continue visual-type ranking
+  before any UI/placement polish** — specifically, strengthen table-vs-diagram detection (e.g.
+  recognize borderless / lightly-ruled tables and/or detect genuine diagrams more strongly) so
+  the ranking has a real signal to act on. **Do not expand beyond cap 2.** **Do not add a UI count
+  selector.** **Do not add Chandra/Mistral/Gemini/model/provider/cloud integration.**
+- A `mixed_diagram_and_table` or `diagrams_or_figures_present` / `irreplaceable_visual_selected:
+  true` result would instead have meant the ranking is now working on real material and **future
+  work could consider placement/citation polish**; `decorative_or_bad_present` or `unclear` would
+  have meant **do not expand visual behavior — keep doing selection-quality work**.
+- **Chandra extraction integration remains blocked by its own live-validation gate**; this record
+  does not touch it.
+- Only the sanitized closed-vocabulary fields above were recorded — **no** real PDF path,
+  filename, document text, OCR text, image bytes, base64, data URI, full URL, raw argv, token,
+  model/mmproj/executable path, or raw exception. No binary/image/PDF/DOCX/ZIP/runtime output was
+  committed.

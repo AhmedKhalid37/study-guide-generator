@@ -2983,3 +2983,35 @@ integration**. Chandra remains blocked by its own live-validation gate. The opti
 operator revalidation was **not** run in this slice (no non-private sample available); its actual
 `selected_visual_type` / `irreplaceable_visual_selected` result must be recorded only if/when the
 harness is rerun, not assumed.
+
+**Slice 65 — diagram-first ranking did not change the real-sample outcome; continue visual-type
+*detection* before any UI/placement polish (validation record only).** The real operator
+revalidation that Slice 64 deferred was run against the same non-private sample inside the rebuilt
+Slice 64 container (cap 2, both enable gates), and the result was recorded **honestly as the actual
+outcome, not the desired one**: `diagram_first_operator_visual_quality_review: run`, `status: ok`,
+`pilot_inserted: true`, `inserted_visual_count: 2`, **`selected_visual_type: tables_only`**,
+**`irreplaceable_visual_selected: false`**, `selected_figures_quality: all_useful_or_acceptable`,
+all renders/export true, `warnings: [multiple_figures_present_one_inserted]`, `failure_category:
+none`, `no_leak_sweep: clean`. **Why diagram-first did not help here:** the Slice 64 ranking only
+re-orders candidates when its deterministic pixel classifier can separate a `reconstructable_table`
+from a `diagram_or_figure`, and that table signal is a strong regular **horizontal *and* vertical**
+rule grid. The visuals the pilot selected on this sample are **lightly-ruled** tables that do not
+present a full grid, so the classifier did not tag them `reconstructable_table`; with no table
+candidate to deprioritize, every safe candidate sat in the same visual-type tier and selection fell
+back **byte-for-byte** to the prior Slice 60/62 quality-and-order pick. This is **not a
+regression** — the classifier behaved exactly as designed (degrade-to-`unknown`/uniform-tier when
+the signal is unclear); it simply had no clear table-vs-diagram signal to act on, so the
+genuinely-irreplaceable visual content present elsewhere in the sample was not preferred.
+**Decision:** because the real outcome is still `tables_only`, the next visual slice is **not** UI
+or placement/citation polish; it should **continue visual-type work at the *detection* layer** —
+strengthen table-vs-diagram classification so the ranking has a real signal (e.g. recognize
+borderless / lightly-ruled tables as tables, and/or detect genuine diagrams/figures more strongly).
+The constraints stay firm: **no expansion beyond cap 2, no arbitrary-N support, no UI count
+selector, no extraction/OCR-routing/prompt/render/export change, and no Chandra/Mistral/Gemini/
+model/provider/cloud integration**; the default remains exactly one figure and Chandra remains
+blocked by its own live-validation gate. This refines (does not reverse) Slice 64: the ranking is
+correct and proven synthetically, but on real material the **detection** that feeds it is the
+binding constraint. The validation was **docs-only — no harness correction was needed** — and only
+sanitized closed-vocabulary fields were recorded (no real PDF path/filename, document/OCR text,
+image bytes, base64, data URI, full URL, raw argv, token, or model/mmproj/executable path), with no
+binary/image/PDF/DOCX/ZIP/runtime output committed.
