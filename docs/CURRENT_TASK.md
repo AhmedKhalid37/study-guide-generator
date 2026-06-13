@@ -5,7 +5,46 @@
 
 ---
 
-## Slice 74 — **Visual caption / source-page polish (final in-lab visual-pilot polish)**, on `slice74-visual-pilot-caption-page-polish`. **NOT COMMITTED.**
+## Slice 75 — **Diverse visual-pilot exit validation**, on `slice75-visual-pilot-diverse-exit-validation`. **NOT COMMITTED.**
+
+- **Validation / exit-decision slice only.** Slice 75 is intentionally **not** more caption polish, not more
+  table/diagram heuristic work, and not a UI slice. It checks whether enough **diverse, manually categorized,
+  non-private** operator samples are available to decide whether the default-off visual markdown pilot should remain
+  opt-in, become more discoverable, or pause pending a controlled understanding layer such as Chandra. Chandra remains
+  blocked by its own live-validation gate.
+- **Outcome:** `diverse_visual_pilot_exit_validation: not_run`; `reason:
+  non_private_diverse_samples_not_available`. An operator-local sample count was present, but no safe manual mapping
+  from samples to the requested closed categories was available in this session, and the slice rules forbid guessing
+  categories from local PDFs. No harness run was performed and no trace/render/export artifacts were produced.
+- **Target category records (all skipped):** `math_heavy_deck`, `mostly_text_only_pdf`,
+  `low_quality_or_scan_like_pdf`, `mixed_diagrams_tables_deck`, and `no_good_figures_deck` each recorded
+  `status: skipped`, `skip_reason: sample_not_available`, `trace_artifact_present: not_applicable`,
+  `trace_no_leak_sweep: not_applicable`, `effective_max_images: not_applicable`, `inserted_visual_count: 0`,
+  all candidate/type/selected counts `0`, `selected_visual_type: none_inserted`,
+  `irreplaceable_visual_selected: not_applicable`, `selected_figures_quality: none_inserted`,
+  `caption_status: not_applicable`, `graceful_omission: not_applicable`, all render/export booleans
+  `not_applicable`, `warnings: [sample_unavailable]`, `failure_category: sample_unavailable`,
+  `no_leak_sweep: clean`.
+- **Aggregate exit record:** `validated_category_count: 0`, `available_category_count: 0`, `pilot_inserted_count: 0`,
+  `graceful_omission_count: 0`, `bad_selection_count: 0`, `caption_safe_count: 0`,
+  `pdf_image_visible_count: 0`, `docx_render_ok_count: 0`, `export_png_included_count: 0`,
+  `no_leak_sweep: clean`, `exit_recommendation: insufficient_evidence`, `exit_reason:
+  diverse_validation_insufficient_sample_count`.
+- **Scope / safety:** docs-only (`VISUAL_PILOT_OPERATOR_VALIDATION.md`, this file, `NEXT_CHAT_HANDOFF.md`,
+  `DECISIONS.md`). No production pipeline/API/frontend code changed; no harness was added; no selection,
+  classification, ranking, cap, caption, export, renderer, OCR-routing, prompt, provider/model/cloud, or UI behavior
+  changed. No Chandra/model/provider/cloud call. No committed binary/image/PDF/DOCX/ZIP/runtime output, eval JSON, or
+  `visual_markdown_selection_trace.json`. No sample path, filename, document text, OCR text, source caption/table text,
+  image bytes, base64, data URI, full URL, provider payload, token, raw argv, model/mmproj/executable path, or raw
+  exception recorded.
+- **Decision:** keep the visual markdown pilot default-off / opt-in for now due insufficient diverse evidence. The
+  morphology loop remains paused; the caption micro-loop is not starting. Next useful step is an operator-provided
+  closed-category mapping for multiple known non-private samples, then rerun this exit-validation slice without
+  changing visual behavior.
+
+---
+
+## Slice 74 — **Visual caption / source-page polish (final in-lab visual-pilot polish)**, on `slice74-visual-pilot-caption-page-polish`. **COMMITTED + MERGED to `chrome-renderer-v1` (fast-forward).**
 
 - **Small user-visible polish slice — NOT a new heuristic loop.** Slice 73 proved (on the real, non-private operator
   sample) that the pilot now selects irreplaceable diagrams/figures (`selected_visual_type: diagrams_or_figures_present`,
@@ -53,7 +92,8 @@
 - **Safety / no-leak:** only a fixed caption string + bounded page integer is emitted into the guide; tests build every
   PNG at runtime in a temp dir — nothing binary/image/PDF/DOCX/ZIP/runtime committed; runtime eval result JSONs stay
   gitignored. No real PDF path/filename, document/OCR/table/source-caption text, image bytes, base64, data URI, full URL,
-  raw argv, token, or model/mmproj/executable path recorded. **Slice 74 is NOT committed.**
+  raw argv, token, or model/mmproj/executable path recorded. **Slice 74 commit `9e92e5a`, fast-forward merged + pushed
+  to trunk `chrome-renderer-v1`.**
 
 ---
 

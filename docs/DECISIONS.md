@@ -3438,3 +3438,35 @@ has the dependency and records no skips.
 **Next.** No caption micro-loop. Next recommended slice: `diverse_visual_pilot_exit_validation` across multiple
 document types to decide whether visual markdown remains opt-in, becomes more discoverable, or pauses pending a
 controlled understanding layer such as Chandra.
+
+## Slice 75 — diverse visual-pilot exit validation recorded insufficient evidence (2026-06-13)
+Slice 75 was created as an exit-decision checkpoint for the default-off visual markdown pilot after Slice 73's
+real-sample success and Slice 74's final in-lab caption/source-page polish. It was explicitly **not** another
+caption-polish slice, not another table/diagram morphology heuristic slice, and not a UI slice. The morphology loop
+remains paused, the caption micro-loop is not starting, and Chandra remains blocked by its own live-validation gate.
+
+**Availability result.** `diverse_visual_pilot_exit_validation: not_run`, `reason:
+non_private_diverse_samples_not_available`. An operator-local sample count was present, but no safe manual mapping from
+samples to the requested closed categories was available in this session. A sample count alone is not a category
+assignment, and the slice rules forbid guessing categories from local PDFs. No harness run was performed and no
+trace/render/export artifacts were produced.
+
+**Recorded category status.** The target categories `math_heavy_deck`, `mostly_text_only_pdf`,
+`low_quality_or_scan_like_pdf`, `mixed_diagrams_tables_deck`, and `no_good_figures_deck` were each recorded as
+`status: skipped`, `skip_reason: sample_not_available`, `failure_category: sample_unavailable`, with
+`trace_artifact_present: not_applicable`, `trace_no_leak_sweep: not_applicable`, `effective_max_images:
+not_applicable`, zero candidate/selected/type counts, render/export fields `not_applicable`, `warnings:
+[sample_unavailable]`, and `no_leak_sweep: clean`.
+
+**Aggregate decision.** `validated_category_count: 0`, `available_category_count: 0`, `pilot_inserted_count: 0`,
+`graceful_omission_count: 0`, `bad_selection_count: 0`, `caption_safe_count: 0`, `pdf_image_visible_count: 0`,
+`docx_render_ok_count: 0`, `export_png_included_count: 0`, `no_leak_sweep: clean`, `exit_recommendation:
+insufficient_evidence`, `exit_reason: diverse_validation_insufficient_sample_count`.
+
+**Scope / no-leak.** Docs only — `VISUAL_PILOT_OPERATOR_VALIDATION.md`, `CURRENT_TASK.md`, `NEXT_CHAT_HANDOFF.md`, and
+this file. No production pipeline/API/frontend code changed; no harness was added; no selection, classification,
+ranking, cap, caption, export, renderer, OCR-routing, prompt, provider/model/cloud, or UI behavior changed. No
+Chandra/model/provider/cloud call. No committed binary/image/PDF/DOCX/ZIP/runtime output, eval JSON, or selection
+trace. No sample path/filename, document text, OCR text, source caption/table text, image bytes, base64, data URI, full
+URL, provider payload, token, raw argv, model/mmproj/executable path, or raw exception was recorded. **Slice 75 is NOT
+committed.**

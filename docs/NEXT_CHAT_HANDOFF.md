@@ -6,12 +6,42 @@
 > stable overview see `PROJECT_CONTEXT.md`; canonical brief is `../CLAUDE.md`.
 
 ## Current position
-- **Working tree:** **Slice 74 (visual caption / source-page polish) — UNCOMMITTED (per instruction)** on branch
-  `slice74-visual-pilot-caption-page-polish` (branched from fresh trunk after Slice 73 was committed/merged). **Final
-  in-lab visual-pilot polish slice — NOT a new heuristic/caption micro-loop.** It adds a safe, generic italic caption
-  line **below** each inserted visual; it changes **no** selection, ranking, classification, cap, default, two-key gate,
-  export, renderer, provider/model/cloud, OCR-routing, prompt, or UI behavior. The table-vs-diagram morphology loop is
-  **paused/frozen** after Slice 73's real-sample success. **No separate caption-validation follow-up slice exists.**
+- **Working tree:** **Slice 75 (diverse visual-pilot exit validation) — UNCOMMITTED (per instruction)** on branch
+  `slice75-visual-pilot-diverse-exit-validation` (branched from fresh trunk after Slice 74 was committed/merged). This
+  is a **validation / exit-decision slice only**: not another caption polish slice, not another table/diagram heuristic
+  slice, and not a UI slice. It records whether enough diverse, manually categorized, known non-private operator samples
+  are available to decide whether the default-off visual markdown pilot should remain opt-in, become more discoverable,
+  or pause pending a controlled understanding layer. Chandra remains blocked by its own live-validation gate.
+  - **Outcome:** `diverse_visual_pilot_exit_validation: not_run`; `reason:
+    non_private_diverse_samples_not_available`. A local operator sample count alone was not enough: no safe manual
+    mapping from samples to the requested closed categories was available, and the slice rules forbid guessing categories
+    from local PDFs. No harness run; no trace/render/export artifacts.
+  - **Target categories:** `math_heavy_deck`, `mostly_text_only_pdf`, `low_quality_or_scan_like_pdf`,
+    `mixed_diagrams_tables_deck`, and `no_good_figures_deck` were all recorded as `status: skipped`,
+    `skip_reason: sample_not_available`, `failure_category: sample_unavailable`, `no_leak_sweep: clean`, with all
+    candidate/type/selected/render/export counts zero or `not_applicable`.
+  - **Aggregate exit record:** `validated_category_count: 0`, `available_category_count: 0`,
+    `pilot_inserted_count: 0`, `graceful_omission_count: 0`, `bad_selection_count: 0`, `caption_safe_count: 0`,
+    `pdf_image_visible_count: 0`, `docx_render_ok_count: 0`, `export_png_included_count: 0`,
+    `no_leak_sweep: clean`, `exit_recommendation: insufficient_evidence`, `exit_reason:
+    diverse_validation_insufficient_sample_count`.
+  - **Decision:** keep the visual markdown pilot default-off / opt-in until diverse evidence exists. The morphology loop
+    remains paused; the caption micro-loop is not starting; Slice 75 did not change visual behavior.
+  - **Files:** docs only — `docs/VISUAL_PILOT_OPERATOR_VALIDATION.md`, `docs/CURRENT_TASK.md`, this file,
+    `docs/DECISIONS.md`. No frontend/UI; no production pipeline/API code; no harness correction; no extraction/
+    OCR-routing/prompt/render/export/caption/cap/ranking/classification/selection/provider change; no Chandra/model/
+    provider/cloud call. No committed binary/image/PDF/DOCX/ZIP/runtime output, eval JSON, or selection trace. No sample
+    path/filename, document text, OCR text, source caption/table text, image bytes, base64, data URI, full URL, raw argv,
+    provider payload, token, model/mmproj/executable path, or raw exception recorded. **Slice 75 is NOT committed.**
+
+### Prior position (Slice 74 — committed & merged)
+- **Slice 74 (visual caption / source-page polish) — COMMITTED `9e92e5a` + MERGED to `chrome-renderer-v1`
+  (fast-forward)** on branch `slice74-visual-pilot-caption-page-polish` (branched from fresh trunk after Slice 73 was
+  committed/merged). **Final in-lab visual-pilot polish slice — NOT a new heuristic/caption micro-loop.** It adds a
+  safe, generic italic caption line **below** each inserted visual; it changes **no** selection, ranking,
+  classification, cap, default, two-key gate, export, renderer, provider/model/cloud, OCR-routing, prompt, or UI
+  behavior. The table-vs-diagram morphology loop is **paused/frozen** after Slice 73's real-sample success. **No
+  separate caption-validation follow-up slice exists.**
   - **Status flags:** `visual_pilot_morphology_loop_status: paused_after_real_success`,
     `visual_pilot_polish_scope: final_in_lab_caption_page_polish`,
     `next_recommended_slice: diverse_visual_pilot_exit_validation`.
@@ -43,7 +73,7 @@
     change; no Chandra/model/provider/cloud call. Only a fixed caption string + bounded page integer is emitted — no real
     PDF path/filename, document/OCR/table/source-caption text, image bytes, base64, data URI, full URL, raw argv, token,
     or model/mmproj/executable path. Every test PNG is runtime-built in a temp dir; nothing binary/image/PDF/DOCX/ZIP/
-    runtime committed. **Slice 74 is NOT committed.**
+    runtime committed. **Slice 74 commit `9e92e5a`, fast-forward merged + pushed to trunk `chrome-renderer-v1`.**
 
 ### Prior position (Slice 73 — committed & merged)
 - **Slice 73 (dense-wrapped-table real operator validation) — COMMITTED `76e837b` + MERGED to `chrome-renderer-v1`

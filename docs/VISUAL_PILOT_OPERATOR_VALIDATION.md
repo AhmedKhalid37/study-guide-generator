@@ -148,6 +148,219 @@ token, or raw exception was recorded.
 
 ---
 
+## Slice 75 — diverse visual-pilot exit validation (not run)
+
+> Docs/validation-record only. **No production code, frontend, export, extraction/OCR
+> routing, prompt, render, caption, ranking, classification, cap, or selection behavior
+> changed.** This slice is an exit-decision checkpoint for the default-off visual markdown
+> pilot, not another visual-polish or table/diagram morphology slice.
+
+Slice 74 was the final in-lab caption/source-page polish slice. The morphology loop remains
+paused after Slice 73's real-sample success, the caption micro-loop is not starting, and
+Chandra remains blocked by its own live-validation gate.
+
+### Availability result
+
+```
+diverse_visual_pilot_exit_validation: not_run
+reason: non_private_diverse_samples_not_available
+```
+
+An operator-local sample count was present, but no safe manual category mapping was
+available for the requested diverse validation categories. A sample count alone is not a
+category assignment, and this slice explicitly forbids guessing categories from local PDFs.
+No harness run was performed, no runtime trace/render/export artifacts were produced, and
+no sample path or filename was recorded.
+
+### Per-category sanitized records
+
+Each target category below was unavailable for this slice because no manually mapped
+non-private sample was provided.
+
+```text
+category: math_heavy_deck
+status: skipped
+skip_reason: sample_not_available
+trace_artifact_present: not_applicable
+trace_no_leak_sweep: not_applicable
+effective_max_images: not_applicable
+inserted_visual_count: 0
+safe_candidate_count: 0
+unsafe_candidate_count: 0
+selected_count: 0
+type_counts:
+  diagram_or_figure: 0
+  reconstructable_table: 0
+  unknown: 0
+  decorative_or_low_information: 0
+selected_visual_type: none_inserted
+irreplaceable_visual_selected: not_applicable
+selected_figures_quality: none_inserted
+caption_status: not_applicable
+graceful_omission: not_applicable
+pdf_render_ok: not_applicable
+pdf_image_visible: not_applicable
+docx_render_ok: not_applicable
+export_zip_ok: not_applicable
+export_png_included: not_applicable
+warnings:
+  - sample_unavailable
+failure_category: sample_unavailable
+no_leak_sweep: clean
+
+category: mostly_text_only_pdf
+status: skipped
+skip_reason: sample_not_available
+trace_artifact_present: not_applicable
+trace_no_leak_sweep: not_applicable
+effective_max_images: not_applicable
+inserted_visual_count: 0
+safe_candidate_count: 0
+unsafe_candidate_count: 0
+selected_count: 0
+type_counts:
+  diagram_or_figure: 0
+  reconstructable_table: 0
+  unknown: 0
+  decorative_or_low_information: 0
+selected_visual_type: none_inserted
+irreplaceable_visual_selected: not_applicable
+selected_figures_quality: none_inserted
+caption_status: not_applicable
+graceful_omission: not_applicable
+pdf_render_ok: not_applicable
+pdf_image_visible: not_applicable
+docx_render_ok: not_applicable
+export_zip_ok: not_applicable
+export_png_included: not_applicable
+warnings:
+  - sample_unavailable
+failure_category: sample_unavailable
+no_leak_sweep: clean
+
+category: low_quality_or_scan_like_pdf
+status: skipped
+skip_reason: sample_not_available
+trace_artifact_present: not_applicable
+trace_no_leak_sweep: not_applicable
+effective_max_images: not_applicable
+inserted_visual_count: 0
+safe_candidate_count: 0
+unsafe_candidate_count: 0
+selected_count: 0
+type_counts:
+  diagram_or_figure: 0
+  reconstructable_table: 0
+  unknown: 0
+  decorative_or_low_information: 0
+selected_visual_type: none_inserted
+irreplaceable_visual_selected: not_applicable
+selected_figures_quality: none_inserted
+caption_status: not_applicable
+graceful_omission: not_applicable
+pdf_render_ok: not_applicable
+pdf_image_visible: not_applicable
+docx_render_ok: not_applicable
+export_zip_ok: not_applicable
+export_png_included: not_applicable
+warnings:
+  - sample_unavailable
+failure_category: sample_unavailable
+no_leak_sweep: clean
+
+category: mixed_diagrams_tables_deck
+status: skipped
+skip_reason: sample_not_available
+trace_artifact_present: not_applicable
+trace_no_leak_sweep: not_applicable
+effective_max_images: not_applicable
+inserted_visual_count: 0
+safe_candidate_count: 0
+unsafe_candidate_count: 0
+selected_count: 0
+type_counts:
+  diagram_or_figure: 0
+  reconstructable_table: 0
+  unknown: 0
+  decorative_or_low_information: 0
+selected_visual_type: none_inserted
+irreplaceable_visual_selected: not_applicable
+selected_figures_quality: none_inserted
+caption_status: not_applicable
+graceful_omission: not_applicable
+pdf_render_ok: not_applicable
+pdf_image_visible: not_applicable
+docx_render_ok: not_applicable
+export_zip_ok: not_applicable
+export_png_included: not_applicable
+warnings:
+  - sample_unavailable
+failure_category: sample_unavailable
+no_leak_sweep: clean
+
+category: no_good_figures_deck
+status: skipped
+skip_reason: sample_not_available
+trace_artifact_present: not_applicable
+trace_no_leak_sweep: not_applicable
+effective_max_images: not_applicable
+inserted_visual_count: 0
+safe_candidate_count: 0
+unsafe_candidate_count: 0
+selected_count: 0
+type_counts:
+  diagram_or_figure: 0
+  reconstructable_table: 0
+  unknown: 0
+  decorative_or_low_information: 0
+selected_visual_type: none_inserted
+irreplaceable_visual_selected: not_applicable
+selected_figures_quality: none_inserted
+caption_status: not_applicable
+graceful_omission: not_applicable
+pdf_render_ok: not_applicable
+pdf_image_visible: not_applicable
+docx_render_ok: not_applicable
+export_zip_ok: not_applicable
+export_png_included: not_applicable
+warnings:
+  - sample_unavailable
+failure_category: sample_unavailable
+no_leak_sweep: clean
+```
+
+### Aggregate exit record
+
+```text
+diverse_visual_pilot_exit_validation: not_run
+validated_category_count: 0
+available_category_count: 0
+pilot_inserted_count: 0
+graceful_omission_count: 0
+bad_selection_count: 0
+caption_safe_count: 0
+pdf_image_visible_count: 0
+docx_render_ok_count: 0
+export_png_included_count: 0
+no_leak_sweep: clean
+exit_recommendation: insufficient_evidence
+exit_reason: diverse_validation_insufficient_sample_count
+```
+
+### Decision
+
+The current evidence is insufficient to make the visual markdown pilot more discoverable.
+Keep it default-off / opt-in until multiple known non-private samples are manually mapped
+to closed categories and validated without changing visual behavior. Do not resume the
+caption micro-loop or table/diagram morphology loop from this result.
+
+Only sanitized closed-vocabulary and bounded numeric fields were recorded. No real PDF
+path, filename, document text, OCR text, source caption/table text, image bytes, base64,
+data URI, full URL, provider payload, token, raw argv, model/mmproj/executable path, or
+raw exception was recorded.
+
+---
+
 ## Slice 61 — post-fix operator visual-quality review (decision gate)
 
 > Docs/validation-record only. **No production code, frontend, export, extraction/OCR
