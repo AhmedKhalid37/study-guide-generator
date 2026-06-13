@@ -5,7 +5,61 @@
 
 ---
 
-## Slice 67 — **Improved-light-table real operator validation**, on `slice67-visual-pilot-light-table-operator-validation`. **NOT COMMITTED.**
+## Slice 68 — **Sanitized visual-pilot selection trace / candidate audit**, on `slice68-visual-pilot-sanitized-selection-trace`. **NOT COMMITTED.**
+
+- **Production diagnostic slice (visibility only).** Slice 67 proved the real post-Slice-66 cap-2 run still
+  selected **two useful-but-reconstructable tables only** (`selected_visual_type: tables_only`,
+  `irreplaceable_visual_selected: false`); the next problem is **visibility, not more blind heuristic tuning**.
+  Slice 68 adds a bounded, sanitized **candidate-audit artifact** so future real operator runs can explain *why*
+  diagrams were not selected — which candidates existed, their classified visual type, and why the chosen tables
+  outranked them. **Diagnostic only — ranking/cap/default/two-key-gate/UI/render/export/extraction-OCR routing all
+  unchanged; no model/provider/cloud call added.**
+- **What changed (one production file):** `pipeline/visual_markdown_insertion.py`. Added
+  `build_visual_markdown_selection_trace(...)` + `_emit_selection_trace(...)` (and small pure helpers), and wired
+  `_emit_selection_trace` into `apply_visual_markdown_pilot` at the three both-gates-pass exits (inserted,
+  insert-failed, no-candidate). Selection logic, the `_pick_candidates`/`_best_typed` ranking core, the cap reader,
+  and the two-key gate are **byte-for-byte unchanged** — the trace is built by an independent, read-only pass that
+  never influences the decision.
+- **Exact artifact:** `visual_markdown_selection_trace.json`, written to the job dir **only** when the global
+  master env switch is ON **and** the job opted in **and** candidate selection was attempted (including the
+  no-candidate / low-quality skip — that is exactly the case worth auditing). **Never** written when the master
+  switch is off, the job did not opt in, or the pilot code is not reached. Build/write is wrapped degrade-never-fail
+  — a trace problem can never fail generation and leaves no partial file.
+- **Sanitized + bounded.** Top level is whitelisted: `schema_version`, `status`, `reason`, `effective_max_images`,
+  `inserted_visual_count`, `selected_candidates`, `candidate_summary`, `warnings`. Per-selected-candidate carries
+  only safe fields (`asset_id`, safe `assets/<slug>.png` `asset_ref`, `source_page`, `source_provider`,
+  `visual_type`, `visual_type_score`, `classification`, `quality_score`, `quality_reasons`, `placement`, `rank`,
+  `selected`, `selection_reason`); `candidate_summary` is counts only (`total_manifest_assets`,
+  `safe_candidate_count`, `unsafe_candidate_count`, `selected_count`, `type_counts`, `rejection_reason_counts`). All
+  reasons are **closed-vocabulary tokens** (`selected_by_diagram_first_ranking` · `selected_by_quality_ranking` ·
+  `selected_by_priority_order` · `rejected_low_quality` · `rejected_unsafe_ref` · `rejected_wrong_provider` ·
+  `rejected_wrong_asset_type` · `rejected_duplicate_asset_ref` · `rejected_duplicate_asset_id` ·
+  `rejected_secondary_below_quality_floor` · `deprioritized_reconstructable_table` · `classified_*`). **No** absolute
+  path, source filename, document/OCR/caption/extracted-table text, image bytes, base64, data URI, provider payload,
+  raw exception, URL, token, raw argv, or model/mmproj/executable path is ever included. Chandra/Mistral/
+  page_visual_signal candidates are **counted/rejected** but never written raw.
+- **New focused test:** `test_scripts/test_visual_pilot_selection_trace_sanitized.py` (20-point coverage:
+  written/not-written gating, default cap 1 / env cap 2, selected+inserted counts, tables-only vs diagram-selected
+  via safe tokens, safe/unsafe counts, unsafe-ref counted-not-raw, foreign-provider rejection, full no-leak sweep,
+  trace-failure-never-fails-generation, default-off byte-identical, two-key gate unchanged, cap constants unchanged,
+  export excludes the trace, pilot does not write `clean.md`). **56/56 pass host and in-container.**
+- **Validation:** `compileall api pipeline test_scripts` OK; the full visual-pilot suite + operator self-test +
+  insertion/render/export/anki/options + `eval --offline --all` all green host-side; rebuilt + recreated the
+  container, `/api/health` `{"ok":true}`, `smoke_release.py` **29/29**, and the visual-pilot suite re-run
+  in-container (selection-trace 56/0, light-table 66/0, type-ranking 64/0, multifigure 78/0, quality-gate 54/0,
+  operator self-test PASS). `git diff --check` clean. The container test copies were removed after the run.
+- **Decision recorded:** instrument before tuning. The next visual slice can read this trace on a real run to decide
+  whether the diagrams are being **classified** wrong (type detection) or **ranked/capped** wrong (selection), rather
+  than guessing. **Do not** change ranking/cap/default in this slice; **do not** expand beyond hard cap 2, add a UI
+  count selector, or add Chandra/Mistral/Gemini/model/provider/cloud integration. Chandra remains blocked by its own
+  live-validation gate.
+- **Safety / no-leak:** no real PDF path/filename, document text, OCR text, image bytes, base64, data URI, full URL,
+  raw argv, token, model/mmproj/executable path, or provider payload recorded; nothing binary/image/PDF/DOCX/ZIP/
+  runtime committed. **Slice 68 is NOT committed.**
+
+---
+
+## Slice 67 — **Improved-light-table real operator validation**, on `slice67-visual-pilot-light-table-operator-validation`. **COMMITTED + MERGED to `chrome-renderer-v1` (fast-forward).**
 
 - **Validation/docs slice only.** Records whether Slice 66's strengthened lightly-ruled / text-heavy table
   detection lets the **real** non-private operator sample finally select a hard-to-reconstruct diagram/figure

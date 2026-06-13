@@ -3104,3 +3104,57 @@ no extraction/OCR-routing/prompt/render/export change, no new API route. Only th
 were recorded — no real PDF path/filename, document text, OCR text, image bytes, base64, data URI, full URL, raw
 argv, token, model/mmproj/executable path, or provider payload — and nothing binary/image/PDF/DOCX/ZIP/runtime was
 committed. **Slice 67 is NOT committed.** Chandra remains blocked by its own live-validation gate.
+
+## Slice 68 — instrument before tuning: add a sanitized visual-pilot selection trace / candidate audit
+Slice 67 reran the real post-Slice-66 cap-2 operator sample and it STILL selected two useful-but-reconstructable
+tables only (`selected_visual_type: tables_only`, `irreplaceable_visual_selected: false`); no irreplaceable
+diagram/figure was chosen. The honest conclusion is that the bottleneck is no longer cap, UI, or another blind
+heuristic — it is **visibility**: we cannot tell, on a real run, whether diagrams are being mis-**classified** (the
+type detector calls them `unknown`) or correctly classified but mis-**ranked/capped**. So Slice 68 adds a
+bounded, sanitized **candidate-audit artifact** instead of tuning another heuristic in the dark.
+
+**What it is.** A single job artifact `visual_markdown_selection_trace.json`, written by
+`apply_visual_markdown_pilot` only when BOTH gates are on (global env master switch AND per-job opt-in) AND
+candidate selection was attempted — including the no-candidate / low-quality skip, which is exactly the case worth
+auditing. It is **diagnostic only**: the selection/ranking core (`_pick_candidates` / `_best_typed`), the cap
+reader, the default, and the two-key gate are byte-for-byte unchanged. The trace is built by an independent,
+read-only pass (`build_visual_markdown_selection_trace` → `_summarize_trace_candidates`) that re-applies the same
+hard safety gates and the existing quality + visual-type classifiers purely to *describe* the decision; it never
+influences it. Build and write are wrapped degrade-never-fail — a trace problem can never fail generation and
+leaves no partial file.
+
+**Why this shape.** The trace answers, safely: was the pilot skipped or inserted; what effective cap was used; how
+many safe vs unsafe candidates existed; how many were selected; what visual types were found; did the selection
+include diagrams or only tables; and why each candidate was selected, rejected, or deprioritized. It does this with
+a whitelisted top level (`schema_version`, `status`, `reason`, `effective_max_images`, `inserted_visual_count`,
+`selected_candidates`, `candidate_summary`, `warnings`), safe per-selected-candidate fields (`asset_id`, safe
+`assets/<slug>.png` `asset_ref`, `source_page`, `source_provider`, `visual_type`, `visual_type_score`,
+`classification`, `quality_score`, `quality_reasons`, `placement`, `rank`, `selected`, `selection_reason`), and a
+counts-only `candidate_summary` (`total_manifest_assets`, `safe_candidate_count`, `unsafe_candidate_count`,
+`selected_count`, `type_counts`, `rejection_reason_counts`). Full per-candidate detail is emitted **only** for the
+selected candidates; rejected/unsafe candidates contribute to counts only, which keeps the leak surface minimal.
+All reasons are closed-vocabulary tokens (`selected_by_diagram_first_ranking` · `selected_by_quality_ranking` ·
+`selected_by_priority_order` · `rejected_low_quality` · `rejected_unsafe_ref` · `rejected_wrong_provider` ·
+`rejected_wrong_asset_type` · `rejected_duplicate_asset_ref` · `rejected_duplicate_asset_id` ·
+`rejected_secondary_below_quality_floor` · `deprioritized_reconstructable_table` · `classified_*`).
+
+**No-leak (firm).** The trace carries ONLY closed-vocabulary tokens, bounded integers / rounded floats, and the
+already-safe `assets/<slug>.png` ref. It NEVER carries an absolute path, the source document filename, document /
+OCR / caption / extracted-table text, image bytes, base64, a data URI, a raw provider payload, a raw exception, a
+raw URL, a token, raw argv, or a model/mmproj/executable path. Chandra / Mistral / page_visual_signal candidates
+are counted and rejected with closed tokens, never written raw. Export is unchanged — the ride-along allowlist is
+PNG-only and name-based, so the new JSON never bundles.
+
+**Scope (firm).** One production file (`pipeline/visual_markdown_insertion.py`) plus one new test
+(`test_scripts/test_visual_pilot_selection_trace_sanitized.py`, 20-point coverage). No frontend/UI, no
+`/api/options`, no extraction/OCR routing / prompt / render / export behavior change, no new API route, no cap
+change beyond the existing hard cap 2, no UI count selector, and no Chandra/Mistral/Gemini/model/provider/cloud/
+`llama-server` call. The old parked Slice 60 trace stash was **not** applied or dropped — this is a clean
+reimplementation from current trunk. Validation: `compileall` OK; full visual-pilot suite + operator self-test +
+insertion/render/export/anki/options + `eval --offline --all` green host-side; container rebuilt + recreated,
+`/api/health` `{"ok":true}`, `smoke_release.py` 29/29, in-container suite green (selection-trace 56/0, light-table
+66/0, type-ranking 64/0, multifigure 78/0, quality-gate 54/0, operator self-test PASS); `git diff --check` clean.
+Only sanitized closed-vocabulary fields were recorded — no real PDF path/filename, document text, OCR text, image
+bytes, base64, data URI, full URL, raw argv, token, model/mmproj/executable path, or provider payload — and nothing
+binary/image/PDF/DOCX/ZIP/runtime was committed. **Slice 68 is NOT committed.** Chandra remains blocked by its own
+live-validation gate.

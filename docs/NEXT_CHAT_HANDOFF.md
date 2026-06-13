@@ -6,10 +6,44 @@
 > stable overview see `PROJECT_CONTEXT.md`; canonical brief is `../CLAUDE.md`.
 
 ## Current position
-- **Working tree:** **Slice 67 (improved-light-table real operator validation) — UNCOMMITTED (per instruction)** on
-  branch `slice67-visual-pilot-light-table-operator-validation` (branched from fresh trunk after Slice 66 was
-  committed/merged). **Validation/docs slice — no production pipeline/API/frontend code changed; no new visual
-  behavior.** It closes the one gap Slice 66 left open: rerun the cap-2 operator harness on the **real**
+- **Working tree:** **Slice 68 (sanitized visual-pilot selection trace / candidate audit) — UNCOMMITTED (per
+  instruction)** on branch `slice68-visual-pilot-sanitized-selection-trace` (branched from fresh trunk after
+  Slice 67 was committed/merged). **Production diagnostic slice — visibility only; ranking/cap/default/two-key
+  gate/UI/render/export/extraction-OCR routing all unchanged; no model/provider/cloud call.** It acts on Slice 67's
+  finding that the real post-Slice-66 cap-2 run STILL selected two useful-but-reconstructable tables only: rather
+  than tune another heuristic blind, it adds a bounded, sanitized candidate-audit artifact so future real runs can
+  explain *why* diagrams were not selected.
+  - **What changed (one production file):** `pipeline/visual_markdown_insertion.py` — added
+    `build_visual_markdown_selection_trace(...)` + `_emit_selection_trace(...)` (and small pure helpers), wired into
+    `apply_visual_markdown_pilot` at the three both-gates-pass exits. The selection/ranking core, cap reader, and
+    two-key gate are byte-for-byte unchanged; the trace is an independent read-only pass.
+  - **Exact artifact:** `visual_markdown_selection_trace.json`, written to the job dir **only** when the master env
+    switch is ON **and** the job opted in **and** selection was attempted (including the no-candidate/low-quality
+    skip). Never written when the master switch is off, the job did not opt in, or the pilot is not reached.
+    Build/write is degrade-never-fail (a trace problem never fails generation, leaves no partial file).
+  - **Sanitized + bounded:** whitelisted top level (`schema_version`, `status`, `reason`, `effective_max_images`,
+    `inserted_visual_count`, `selected_candidates`, `candidate_summary`, `warnings`); per-candidate safe fields +
+    closed-vocabulary reason tokens only; `candidate_summary` is counts only. No path/filename/document/OCR/caption/
+    table text, image bytes, base64, data URI, provider payload, raw exception, URL, token, raw argv, or model path.
+    Chandra/Mistral/page_visual_signal candidates are counted/rejected, never written raw.
+  - **New test:** `test_scripts/test_visual_pilot_selection_trace_sanitized.py` (20-point coverage). **56/56 pass
+    host and in-container.** Full visual-pilot suite + operator self-test + insertion/render/export/anki/options +
+    `eval --offline --all` green host-side; container rebuilt+recreated, `/api/health` `{"ok":true}`,
+    `smoke_release.py` **29/29**, in-container suite green (selection-trace 56/0, light-table 66/0, type-ranking
+    64/0, multifigure 78/0, quality-gate 54/0, operator self-test PASS). `git diff --check` clean.
+  - **Decision:** instrument before tuning. A future visual slice reads this trace on a real run to tell whether
+    diagrams are mis-**classified** (type detection) or mis-**ranked/capped** (selection), instead of guessing. **Do
+    not** change ranking/cap/default here; **no** UI count selector, **no** Chandra/Mistral/Gemini/model/provider/
+    cloud integration. Chandra remains blocked by its own live-validation gate.
+  - **No-leak:** no real PDF path/filename, document/OCR text, image bytes, base64, data URI, full URL, raw argv,
+    token, model/mmproj/executable path, or provider payload recorded; nothing binary/image/PDF/DOCX/ZIP/runtime
+    committed. **Slice 68 is NOT committed.**
+
+### Prior position (Slice 67 — committed & merged)
+- **Slice 67 (improved-light-table real operator validation) — COMMITTED + MERGED to `chrome-renderer-v1`
+  (fast-forward)** on branch `slice67-visual-pilot-light-table-operator-validation` (branched from fresh trunk after
+  Slice 66 was committed/merged). **Validation/docs slice — no production pipeline/API/frontend code changed; no new
+  visual behavior.** It closed the one gap Slice 66 left open: rerun the cap-2 operator harness on the **real**
   non-private sample to see whether the strengthened lightly-ruled-table detector finally lets diagram-first
   ranking pick a hard-to-reconstruct diagram/figure instead of tables only.
   - **Outcome this session: `light_table_operator_visual_quality_review: run` — `status: ok`,

@@ -383,10 +383,16 @@ def apply_visual_markdown_pilot(job: Any, clean_md: Any) -> tuple[str, dict[str,
         candidates, reason = _pick_candidates(job, max_images=max_images)
         if not candidates:
             _log(f"Visual markdown pilot: no figure inserted ({reason}).")
-            return text, {"status": "skipped", "reason": reason}
+            info = {"status": "skipped", "reason": reason}
+            # Slice 68: both gates passed and candidate selection WAS attempted, so a
+            # sanitized selection trace is emitted even though nothing was inserted —
+            # this is exactly the case future runs need to audit (why no figure).
+            _emit_selection_trace(job, max_images=max_images, selected=[], info=info)
+            return text, info
         new_text, info = insert_visual_markdown_references(text, candidates)
         if info.get("status") != STATUS_INSERTED:
             _log(f"Visual markdown pilot: no figure inserted ({info.get('reason')}).")
+            _emit_selection_trace(job, max_images=max_images, selected=candidates, info=info)
             return text, info
         # Carry the closed-vocabulary quality diagnostics (Slice 60) of the FIRST
         # (strongest) figure on the success info for backward compatibility. These are
@@ -405,6 +411,9 @@ def apply_visual_markdown_pilot(job: Any, clean_md: Any) -> tuple[str, dict[str,
             f"Visual markdown pilot: inserted {count} figure(s) "
             f"({info.get('placement')})."
         )
+        # Slice 68: sanitized diagnostic candidate audit (closed-vocab / bounded-numeric
+        # only). Wrapped internally so a trace problem can never fail the insertion.
+        _emit_selection_trace(job, max_images=max_images, selected=candidates, info=info)
         return new_text, info
     except Exception as exc:  # never let the pilot break a job
         _log(f"Visual markdown pilot skipped ({type(exc).__name__}); job continues.")
@@ -1514,6 +1523,351 @@ def _asset_info(candidate: Any, placement: str) -> dict[str, Any]:
         "quality_reasons": list(reasons) if isinstance(reasons, list) else None,
         "visual_type": visual_type if visual_type in VISUAL_TYPES else None,
     }
+
+
+# --- Slice 68: sanitized visual-pilot selection trace (diagnostic only) --------
+#
+# Slice 67 reran the real post-Slice-66 cap-2 operator sample and it STILL selected
+# two useful-but-reconstructable tables only; no irreplaceable diagram/figure was
+# chosen. Before any further blind heuristic tuning, this slice adds a bounded,
+# sanitized candidate-audit artifact so future real runs can explain *why* diagrams
+# were not selected (which candidates existed, their classified visual type, and why
+# the chosen tables outranked them). It is DIAGNOSTIC ONLY: it never changes ranking,
+# the cap, the default, the two-key gate, the UI, render/export behavior, or extraction/
+# OCR routing, and it adds no model/provider/cloud call. It is written only when both
+# gates are on AND candidate selection was attempted, and degrades-never-fails.
+#
+# Hard no-leak contract (same discipline as the rest of this module): the trace carries
+# ONLY closed-vocabulary tokens and bounded integers/rounded floats plus the already-
+# safe ``assets/<slug>.png`` ref. It NEVER carries an absolute path, the source document
+# filename, document/OCR/caption/extracted-table text, image bytes, base64, a data URI,
+# a raw provider payload, a raw exception, a raw URL, a token, raw argv, or a model/
+# mmproj/executable path.
+
+SELECTION_TRACE_FILENAME = "visual_markdown_selection_trace.json"
+SELECTION_TRACE_SCHEMA_VERSION = 1
+
+# Closed selection-reason vocabulary (diagnostic only; never embedded in the guide).
+TRACE_SELECTED_DIAGRAM_FIRST = "selected_by_diagram_first_ranking"
+TRACE_SELECTED_QUALITY = "selected_by_quality_ranking"
+TRACE_SELECTED_PRIORITY = "selected_by_priority_order"
+# Closed rejection / deprioritization vocabulary.
+TRACE_REJECTED_LOW_QUALITY = "rejected_low_quality"
+TRACE_REJECTED_UNSAFE_REF = "rejected_unsafe_ref"
+TRACE_REJECTED_WRONG_PROVIDER = "rejected_wrong_provider"
+TRACE_REJECTED_WRONG_ASSET_TYPE = "rejected_wrong_asset_type"
+TRACE_REJECTED_DUP_REF = "rejected_duplicate_asset_ref"
+TRACE_REJECTED_DUP_ID = "rejected_duplicate_asset_id"
+TRACE_REJECTED_SECONDARY_FLOOR = "rejected_secondary_below_quality_floor"
+TRACE_DEPRIORITIZED_TABLE = "deprioritized_reconstructable_table"
+
+# Closed classification vocabulary (one per safe candidate; mirrors the visual-type token).
+TRACE_CLASSIFIED_UNKNOWN = "classified_unknown"
+TRACE_CLASSIFIED_TABLE = "classified_reconstructable_table"
+TRACE_CLASSIFIED_DIAGRAM = "classified_diagram_or_figure"
+TRACE_CLASSIFIED_DECORATIVE = "classified_decorative_or_low_information"
+
+_VT_TO_CLASSIFIED = {
+    VISUAL_TYPE_DIAGRAM: TRACE_CLASSIFIED_DIAGRAM,
+    VISUAL_TYPE_TABLE: TRACE_CLASSIFIED_TABLE,
+    VISUAL_TYPE_UNKNOWN: TRACE_CLASSIFIED_UNKNOWN,
+    VISUAL_TYPE_DECORATIVE: TRACE_CLASSIFIED_DECORATIVE,
+}
+
+SELECTION_TRACE_SELECTION_REASONS = {
+    TRACE_SELECTED_DIAGRAM_FIRST,
+    TRACE_SELECTED_QUALITY,
+    TRACE_SELECTED_PRIORITY,
+}
+SELECTION_TRACE_REJECTION_REASONS = {
+    TRACE_REJECTED_LOW_QUALITY,
+    TRACE_REJECTED_UNSAFE_REF,
+    TRACE_REJECTED_WRONG_PROVIDER,
+    TRACE_REJECTED_WRONG_ASSET_TYPE,
+    TRACE_REJECTED_DUP_REF,
+    TRACE_REJECTED_DUP_ID,
+    TRACE_REJECTED_SECONDARY_FLOOR,
+    TRACE_DEPRIORITIZED_TABLE,
+}
+
+
+def _bump(counts: dict[str, int], token: str) -> None:
+    counts[token] = counts.get(token, 0) + 1
+
+
+def _trace_placement(info: dict[str, Any]) -> str | None:
+    placement = info.get("placement")
+    if placement in (PLACEMENT_SOURCE_PAGE_ANCHOR, PLACEMENT_VISUAL_REFERENCE_SECTION):
+        return placement
+    return None
+
+
+def _safe_quality_score(value: Any) -> float | None:
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        return None
+    return round(_clamp_quality(float(value)), 3)
+
+
+def _safe_quality_reasons(value: Any) -> list[str]:
+    if not isinstance(value, list):
+        return []
+    return [r for r in value if isinstance(r, str) and r in QUALITY_REASONS]
+
+
+def _safe_inserted_count(value: Any) -> int:
+    if isinstance(value, bool) or not isinstance(value, int):
+        return 0
+    if value < 0:
+        return 0
+    if value > _HARD_MAX_IMAGES:
+        return _HARD_MAX_IMAGES
+    return value
+
+
+def _summarize_trace_candidates(
+    job: Any, manifest_obj: Any, selected_slugs: set[str]
+) -> dict[str, Any]:
+    """One sanitized pass over the manifest assets → safe/unsafe counts + per-type tally.
+
+    Re-applies (independently of the selection core, so ranking is untouched) the same
+    hard provider/asset-type/Chandra/safe-ref/file gates, records a closed rejection token
+    for every asset that fails one, and for each unique *safe* candidate records its bounded
+    quality + closed visual-type classification. Returns the assembled fields plus the list
+    of safe-candidate records the caller needs to assign soft (post-quality) rejection
+    tokens. Pure w.r.t. inputs apart from reading the already-safe crops read-only; never
+    raises.
+    """
+    assets = manifest_obj.get("assets") if isinstance(manifest_obj, dict) else None
+    assets = assets if isinstance(assets, list) else []
+
+    safe_records: list[dict[str, Any]] = []
+    unsafe = 0
+    rejection_counts: dict[str, int] = {}
+    type_counts: dict[str, int] = {}
+    seen_ids: set[str] = set()
+    seen_refs: set[str] = set()
+
+    for asset in assets:
+        if not isinstance(asset, dict):
+            unsafe += 1
+            _bump(rejection_counts, TRACE_REJECTED_WRONG_ASSET_TYPE)
+            continue
+        if asset.get("source_provider") != SOURCE_PROVIDER_FITZ_LOCAL:
+            unsafe += 1
+            _bump(rejection_counts, TRACE_REJECTED_WRONG_PROVIDER)
+            continue
+        if asset.get("asset_type") != ASSET_TYPE_EXTRACTED_FIGURE:
+            unsafe += 1
+            _bump(rejection_counts, TRACE_REJECTED_WRONG_ASSET_TYPE)
+            continue
+        reasons = asset.get("reasons")
+        if isinstance(reasons, list) and "chandra_blocked" in reasons:
+            unsafe += 1
+            _bump(rejection_counts, TRACE_REJECTED_WRONG_PROVIDER)
+            continue
+        ref = validate_visual_asset_ref(asset.get("image_ref"))
+        if ref is None or not _asset_file_ok(job, ref):
+            unsafe += 1
+            _bump(rejection_counts, TRACE_REJECTED_UNSAFE_REF)
+            continue
+        slug = _safe_slug(asset.get("asset_id"))
+        if slug and slug in seen_ids:
+            unsafe += 1
+            _bump(rejection_counts, TRACE_REJECTED_DUP_ID)
+            continue
+        if ref in seen_refs:
+            unsafe += 1
+            _bump(rejection_counts, TRACE_REJECTED_DUP_REF)
+            continue
+        if slug:
+            seen_ids.add(slug)
+        seen_refs.add(ref)
+
+        quality = score_visual_markdown_candidate_for_pilot(asset)
+        decorative = bool(quality.get("decorative"))
+        if decorative:
+            visual_type = VISUAL_TYPE_DECORATIVE
+        else:
+            visual_type = classify_visual_markdown_candidate_type_for_pilot(
+                job, {"asset_ref": ref}
+            )
+            if visual_type not in VISUAL_TYPES:
+                visual_type = VISUAL_TYPE_UNKNOWN
+        _bump(type_counts, visual_type)
+        safe_records.append(
+            {
+                "slug": slug or "figure",
+                "score": _safe_quality_score(quality.get("score")) or 0.0,
+                "decorative": decorative,
+                "visual_type": visual_type,
+                "selected": bool(slug and slug in selected_slugs),
+            }
+        )
+
+    return {
+        "total_manifest_assets": len(assets),
+        "safe_records": safe_records,
+        "unsafe_candidate_count": unsafe,
+        "rejection_counts": rejection_counts,
+        "type_counts": type_counts,
+    }
+
+
+def build_visual_markdown_selection_trace(
+    job: Any,
+    *,
+    max_images: Any,
+    selected: Any,
+    info: Any,
+    manifest: Any = None,
+) -> dict[str, Any]:
+    """Build the sanitized selection-trace dict (Slice 68). Total; never raises.
+
+    ``selected`` is the list of enriched candidate dicts actually chosen (possibly empty);
+    ``info`` is the pilot outcome info (status / reason / placement / inserted count). The
+    returned dict contains only the whitelisted top-level fields, closed-vocabulary tokens,
+    bounded integers / rounded floats, and the already-safe ``assets/<slug>.png`` ref. No
+    path, document/OCR/caption text, image bytes, base64, data URI, provider payload, raw
+    exception, URL, token, raw argv, or model/executable path is ever included.
+    """
+    selected = selected if isinstance(selected, list) else []
+    info = info if isinstance(info, dict) else {}
+
+    raw_status = info.get("status")
+    status = STATUS_INSERTED if raw_status == STATUS_INSERTED else "skipped"
+    if status == STATUS_INSERTED:
+        reason = STATUS_INSERTED
+        inserted_count = _safe_inserted_count(info.get("inserted_visual_count"))
+    else:
+        candidate_reason = info.get("reason")
+        reason = candidate_reason if candidate_reason in SKIP_REASONS else None
+        inserted_count = 0
+
+    manifest_obj = manifest if isinstance(manifest, dict) else _read_json(
+        _path(job, "visual_assets_manifest_json")
+    )
+
+    # Selected slugs / diagram flag from the actually-chosen candidates.
+    selected_slugs: set[str] = set()
+    diagram_selected = False
+    for candidate in selected:
+        if not isinstance(candidate, dict):
+            continue
+        slug = _safe_slug(candidate.get("asset_id"))
+        if slug:
+            selected_slugs.add(slug)
+        vt = candidate.get("visual_type")
+        if vt == VISUAL_TYPE_DIAGRAM:
+            diagram_selected = True
+
+    summary = _summarize_trace_candidates(job, manifest_obj, selected_slugs)
+    safe_records = summary["safe_records"]
+    rejection_counts = summary["rejection_counts"]
+    any_table_accepted = any(
+        r["visual_type"] == VISUAL_TYPE_TABLE and not r["decorative"] for r in safe_records
+    )
+
+    # Soft (post-quality) rejection tokens for safe candidates that were not selected.
+    for record in safe_records:
+        if record["selected"]:
+            continue
+        if record["decorative"]:
+            _bump(rejection_counts, TRACE_REJECTED_LOW_QUALITY)
+        elif record["score"] < _QG_SECONDARY_MIN_SCORE:
+            _bump(rejection_counts, TRACE_REJECTED_SECONDARY_FLOOR)
+        elif record["visual_type"] == VISUAL_TYPE_TABLE and diagram_selected:
+            _bump(rejection_counts, TRACE_DEPRIORITIZED_TABLE)
+
+    placement = _trace_placement(info)
+    selected_candidates: list[dict[str, Any]] = []
+    for rank, candidate in enumerate(selected):
+        if not isinstance(candidate, dict):
+            continue
+        slug = _safe_slug(candidate.get("asset_id")) or "figure"
+        vt = candidate.get("visual_type")
+        vt = vt if vt in VISUAL_TYPES else VISUAL_TYPE_UNKNOWN
+        if vt == VISUAL_TYPE_DIAGRAM and any_table_accepted:
+            selection_reason = TRACE_SELECTED_DIAGRAM_FIRST
+        elif rank == 0:
+            selection_reason = TRACE_SELECTED_QUALITY
+        else:
+            selection_reason = TRACE_SELECTED_PRIORITY
+        selected_candidates.append(
+            {
+                "asset_id": slug,
+                "asset_ref": validate_visual_asset_ref(candidate.get("asset_ref")),
+                "source_page": _safe_page(candidate.get("source_page")),
+                "source_provider": SOURCE_PROVIDER_FITZ_LOCAL,
+                "visual_type": vt,
+                "visual_type_score": score_visual_type_priority_for_pilot(vt),
+                "classification": _VT_TO_CLASSIFIED[vt],
+                "quality_score": _safe_quality_score(candidate.get("quality_score")),
+                "quality_reasons": _safe_quality_reasons(candidate.get("quality_reasons")),
+                "placement": placement,
+                "rank": rank,
+                "selected": True,
+                "selection_reason": selection_reason,
+            }
+        )
+
+    candidate_summary = {
+        "total_manifest_assets": summary["total_manifest_assets"],
+        "safe_candidate_count": len(safe_records),
+        "unsafe_candidate_count": summary["unsafe_candidate_count"],
+        "selected_count": len(selected_candidates),
+        "type_counts": {k: v for k, v in summary["type_counts"].items() if v},
+        "rejection_reason_counts": {k: v for k, v in rejection_counts.items() if v},
+    }
+
+    return {
+        "schema_version": SELECTION_TRACE_SCHEMA_VERSION,
+        "status": status,
+        "reason": reason,
+        "effective_max_images": _coerce_max_images(max_images),
+        "inserted_visual_count": inserted_count,
+        "selected_candidates": selected_candidates,
+        "candidate_summary": candidate_summary,
+        "warnings": [],
+    }
+
+
+def _selection_trace_path(job: Any) -> str | None:
+    job_dir = _job_dir(job)
+    if job_dir is None:
+        return None
+    try:
+        return os.path.join(os.fspath(job_dir), SELECTION_TRACE_FILENAME)
+    except TypeError:
+        return None
+
+
+def _write_selection_trace(job: Any, trace: dict[str, Any]) -> None:
+    path = _selection_trace_path(job)
+    if path is None:
+        return
+    try:
+        with open(path, "w", encoding="utf-8") as fh:
+            json.dump(trace, fh, indent=2, sort_keys=True)
+            fh.write("\n")
+    except Exception:
+        pass
+
+
+def _emit_selection_trace(
+    job: Any, *, max_images: Any, selected: Any, info: Any
+) -> None:
+    """Build + persist the sanitized selection trace. Degrade-never-fail (Slice 68).
+
+    Any problem building or writing the trace is swallowed so a diagnostic can never
+    break generation; the trace is best-effort and advisory only.
+    """
+    try:
+        trace = build_visual_markdown_selection_trace(
+            job, max_images=max_images, selected=selected, info=info
+        )
+        _write_selection_trace(job, trace)
+    except Exception:
+        _log("Visual markdown pilot: selection trace skipped; job continues.")
 
 
 def _has_anchor_line(text: str, marker: str) -> bool:
