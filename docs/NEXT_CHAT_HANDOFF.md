@@ -6,7 +6,40 @@
 > stable overview see `PROJECT_CONTEXT.md`; canonical brief is `../CLAUDE.md`.
 
 ## Current position
-- **Working tree:** **Slice 63 (cap-2 real operator validation record) — UNCOMMITTED (per instruction)** on
+- **Working tree:** **Slice 64 (prefer diagrams over reconstructable tables — visual-type ranking) —
+  UNCOMMITTED (per instruction)** on branch `slice64-visual-pilot-diagram-first-ranking` (branched from fresh
+  trunk after Slice 63 was committed/merged). **Production-behavior slice, ranking only — no expansion.**
+  - **Why:** Slice 63's cap-2 real validation selected **tables only**; tables are often reconstructable from
+    extracted text. The visual feature exists especially to preserve visuals an LLM **cannot** recreate
+    (diagrams, flowcharts, screenshots, labeled figures, network maps). So Slice 64 improves **ranking**:
+    prefer **diagram/figure** over **reconstructable table** when both are available, still allowing tables when
+    they are the **best/only** useful visual.
+  - **What changed (one file):** `pipeline/visual_markdown_insertion.py` — a pixel-only visual-type classifier
+    (`classify_visual_markdown_candidate_type_for_pilot`) + priority scorer
+    (`score_visual_type_priority_for_pilot`) wired as a **type-first / quality-second** tier into the existing
+    pickers (`_pick_candidate`, `_pick_candidates`/`_select_multi`, new `_best_typed`). Closed vocab:
+    `diagram_or_figure > reconstructable_table > unknown > decorative_or_low_information`.
+  - **Safety:** only the already-safe, job-dir-contained `assets/<slug>.png` crop is opened (ref + realpath
+    re-validated), read read-only with **Pillow**, reduced to bounded non-sensitive summary features (size,
+    aspect, blank ratio, h/v rule counts, edge density). **No OCR, no model/provider/network, no image-byte
+    serialize/log, no path/source-text recorded, no new artifact.** Pillow-absent / unreadable / too-small ⇒
+    `unknown` ⇒ **byte-identical fallback** to prior Slice 60/62 quality-only selection.
+  - **Invariants held:** default-off byte-identical; two-key gate unchanged; **default cap 1**; **hard cap 2**;
+    `fitz_local`/`extracted_figure`-only; unsafe-ref / Chandra / Mistral / `page_visual_signal` still rejected.
+    **No frontend/UI, no `/api/options`, no cap change, no extraction/OCR-routing/prompt/render/export change,
+    no Chandra/Mistral/Gemini/model/provider/cloud call.**
+  - **Tests:** new `test_scripts/test_visual_pilot_visual_type_ranking.py` (runtime tiny PNG fixtures; pixel
+    cases skip without Pillow). Host ranking **64/0/0**; all existing visual/anki/eval green; in-container
+    ranking **64/0/0**, multifigure **78/0/0**, quality_gate **54/0/0**, operator `--self-test` PASS; Docker
+    build/up ok, `/api/health` `{"ok":true}`, `smoke_release.py` **29/0/0**; `git diff --check` clean.
+  - **Optional real operator revalidation:** **not run** (no non-private sample in this environment); record the
+    actual `selected_visual_type` / `irreplaceable_visual_selected` only if the harness is later rerun.
+  - **No-leak:** closed-vocab tokens + bounded numerics only; no real PDF path/filename, document/OCR text, image
+    bytes, base64, data URI, full URL, raw argv, token, or model/mmproj/executable path; no committed
+    binary/image/PDF/DOCX/ZIP/runtime fixture. **Slice 64 is NOT committed.**
+
+### Prior position (Slice 63 — committed & merged)
+- **Slice 63 (cap-2 real operator validation record) — COMMITTED + MERGED to `chrome-renderer-v1`** on
   branch `slice63-visual-pilot-cap2-operator-validation` (branched from fresh trunk after Slice 62 was
   committed/merged). **Validation/docs slice — no production pipeline/API/frontend code changed and no new
   visual behavior added.** It records a real, sanitized operator validation of the Slice 62 **cap-2** path

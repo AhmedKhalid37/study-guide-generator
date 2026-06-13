@@ -2947,3 +2947,39 @@ when they are the best/only useful visual. The constraints stay firm: **do not e
 2, no UI count selector, and no Chandra/Mistral/Gemini/model/provider/cloud integration.** The
 default remains exactly one figure. This refines (does not reverse) the "cap-2 output is useful"
 conclusion above: the plumbing is proven; selection *quality by type* is the remaining work.
+
+**Slice 64 — prefer hard-to-reconstruct diagrams/figures over reconstructable tables, by a
+deterministic pixel-only visual-type ranking (ranking only, no expansion).** Acting on the Slice
+63 nuance, the off-by-default visual pilot now ranks safe candidates by **visual type first,
+existing metadata quality second**, using a closed vocabulary `diagram_or_figure >
+reconstructable_table > unknown > decorative_or_low_information`. **Why:** tables are often
+reconstructable from extracted text into clean generated tables, whereas diagrams/flowcharts/
+screenshots/labeled figures/network maps are exactly the visuals an LLM cannot reliably recreate —
+so when both are available the diagram/figure should win, while a good table is still selected when
+it is the best/only useful visual. **How (kept conservative on purpose):** only the
+**already-safe, already-job-dir-contained** `assets/<slug>.png` crop is opened (ref + realpath
+containment re-validated first as defence in depth), read read-only with **Pillow**, converted to
+grayscale, bounded-downscaled, and reduced to a handful of **bounded, non-sensitive** summary
+features — size, aspect, near-white blank ratio, full horizontal/vertical rule counts, rough edge
+density. A strong regular horizontal+vertical rule grid ⇒ `reconstructable_table`; substantial
+non-grid graphic content ⇒ `diagram_or_figure`; near-empty / extreme banner with low edges ⇒
+`decorative_or_low_information`; anything ambiguous ⇒ `unknown`. **Why this is safe:** the
+classifier **never OCRs the crop, calls a model/provider/network, base64/serializes/logs image
+bytes, records a path or source text, or adds an artifact** — it returns only a closed-vocab token
+and bounded numerics into internal info dicts. **Why it cannot regress existing behavior:** if
+Pillow is unavailable, the crop is unreadable/corrupt, or it is below the minimum analyzable size,
+the type degrades to `unknown`, which makes the type priority uniform across candidates, so
+selection reduces **byte-for-byte** to the prior Slice 60/62 quality-only pick (`_best_typed`
+collapses to `_best_within_margin` when one tier is present). All hard invariants are unchanged:
+default-off byte-identical output, the two-key gate, **default cap exactly 1**, **hard cap 2**,
+`fitz_local`/`extracted_figure`-only, and the unsafe-ref / Chandra / Mistral / `page_visual_signal`
+rejections. **Why no over-rejection:** a pixel-decorative candidate is ranked last but never
+hard-dropped by pixels — the Slice 60 *metadata* gate remains the only hard decorative drop — so a
+lone metadata-accepted candidate is still inserted (we do not try to "solve" computer vision, only
+to break the diagram-vs-table tie when it is clear). **Scope discipline:** ranking only — no
+arbitrary N-figure support, no UI count selector, no `/api/options` change, no extraction/OCR-
+routing/prompt/render/export change, and **no Chandra/Mistral/Gemini/model/provider/cloud
+integration**. Chandra remains blocked by its own live-validation gate. The optional **real**
+operator revalidation was **not** run in this slice (no non-private sample available); its actual
+`selected_visual_type` / `irreplaceable_visual_selected` result must be recorded only if/when the
+harness is rerun, not assumed.

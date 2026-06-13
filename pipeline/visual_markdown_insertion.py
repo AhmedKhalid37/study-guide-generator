@@ -223,6 +223,61 @@ PLACEMENT_SOURCE_PAGE_ANCHOR = "source_page_anchor"
 PLACEMENT_VISUAL_REFERENCE_SECTION = "visual_reference_section"
 
 
+# --- Slice 64: deterministic visual-TYPE prioritization (pixel-only, never raises) ---
+#
+# Slice 63's cap-2 operator validation passed the plumbing but selected *tables only*.
+# Tables are useful yet frequently reconstructable from extracted text into clean
+# generated Markdown/HTML tables; the higher-value reason to embed a source visual is to
+# preserve diagrams/flowcharts/screenshots/labeled figures/network maps and other graphics
+# an LLM cannot reliably recreate. Slice 64 adds a conservative, deterministic visual-TYPE
+# classifier so, when quality is otherwise acceptable, a hard-to-reconstruct diagram/figure
+# is preferred over a reconstructable table — while a good table is still selected when it
+# is the best/only useful visual.
+#
+# The classifier reads ONLY the already-safe, already-job-dir-contained ``assets/<slug>.png``
+# crop (the same file the Slice 60 gate already validated), computes a handful of bounded,
+# non-sensitive summary features (size, aspect, blank ratio, horizontal/vertical rule counts,
+# rough edge density), and returns a closed-vocabulary token. It never OCRs the crop, never
+# calls a model/provider/network, never base64/serializes/logs image bytes, never records a
+# path or source text, and adds no artifact. If Pillow is unavailable, the crop is unreadable,
+# or it is too small to analyze, it degrades to ``unknown`` and the prior (Slice 60/62)
+# quality-only selection behavior is preserved.
+
+# Closed visual-type vocabulary (diagnostic only; never embedded in the guide).
+VISUAL_TYPE_DIAGRAM = "diagram_or_figure"
+VISUAL_TYPE_TABLE = "reconstructable_table"
+VISUAL_TYPE_DECORATIVE = "decorative_or_low_information"
+VISUAL_TYPE_UNKNOWN = "unknown"
+VISUAL_TYPES = {
+    VISUAL_TYPE_DIAGRAM,
+    VISUAL_TYPE_TABLE,
+    VISUAL_TYPE_DECORATIVE,
+    VISUAL_TYPE_UNKNOWN,
+}
+# Preferred order when quality is otherwise acceptable:
+#   diagram_or_figure > reconstructable_table > unknown > decorative_or_low_information
+_VISUAL_TYPE_PRIORITY = {
+    VISUAL_TYPE_DIAGRAM: 3,
+    VISUAL_TYPE_TABLE: 2,
+    VISUAL_TYPE_UNKNOWN: 1,
+    VISUAL_TYPE_DECORATIVE: 0,
+}
+
+# Visual-type analysis thresholds (conservative; tuned to act only when the distinction
+# is clear, never to "solve" computer vision). All bounded; no value is sensitive.
+_VT_MIN_ANALYZE_DIM = 24     # below this (either original dim) ⇒ too small ⇒ unknown
+_VT_MAX_DIM = 160            # bounded downscale cap for cheap pure-Python analysis
+_VT_DARK = 110               # grayscale value below this counts as "ink" (line/shape)
+_VT_LIGHT = 235              # grayscale value above this counts as near-white background
+_VT_LINE_FRAC = 0.5          # row/col with ≥ this fraction of ink counts as a full rule
+_VT_GRID_MIN_LINES = 3       # ≥ this many horizontal AND vertical rules ⇒ table-like grid
+_VT_EDGE_DELTA = 40          # adjacent-pixel |Δ| at/above this counts as an edge
+_VT_EDGE_MIN = 0.03          # edge fraction at/above this ⇒ meaningful graphic content
+_VT_BLANK_MAX = 0.92         # near-white fraction at/above this (and low edges) ⇒ low-info
+_VT_BANNER_ASPECT = 8.0      # width/height at/above this with low edges ⇒ decorative strip
+_VT_NARROW_ASPECT = 0.18     # width/height at/below this with low edges ⇒ decorative sliver
+
+
 # --- Flag --------------------------------------------------------------------
 
 
@@ -312,6 +367,8 @@ def apply_visual_markdown_pilot(job: Any, clean_md: Any) -> tuple[str, dict[str,
         if isinstance(first, dict):
             info["quality_score"] = first.get("quality_score")
             info["quality_reasons"] = first.get("quality_reasons")
+            first_type = first.get("visual_type")
+            info["visual_type"] = first_type if first_type in VISUAL_TYPES else None
         # The single-figure path returns no count; normalize it so every successful
         # insertion advertises a safe integer count (1 or 2).
         info.setdefault("inserted_visual_count", 1)
@@ -455,13 +512,17 @@ def _pick_candidate(
         return None, (SKIP_CANDIDATE_UNSAFE if saw_unsafe else SKIP_CANDIDATE_UNAVAILABLE)
 
     # Quality gate: score each safe candidate, drop hard-decorative ones, and pick
-    # the best of the rest (priority order wins unless a rival is clearly better).
+    # the best of the rest. Slice 64: among the accepted candidates a hard-to-reconstruct
+    # diagram/figure outranks a reconstructable table (visual-type tier first), and within
+    # a tier the established quality near-margin rule decides. With no analyzable crop the
+    # type priority is uniform and this is identical to the prior quality-only pick.
     scored = [score_visual_markdown_candidate_for_pilot(asset) for asset, _ in ordered]
     accepted = [i for i, q in enumerate(scored) if not q["decorative"]]
     if not accepted:
         return None, SKIP_CANDIDATE_LOW_QUALITY
 
-    chosen = _best_within_margin(accepted, scored)
+    types = _visual_type_priorities(job, ordered, accepted)
+    chosen = _best_typed(accepted, scored, types)
     _asset, candidate = ordered[chosen]
     return _enrich_candidate(candidate, scored[chosen]), STATUS_INSERTED
 
@@ -525,7 +586,8 @@ def _pick_candidates(
     if not accepted:
         return [], SKIP_CANDIDATE_LOW_QUALITY
 
-    chosen_indices = _select_multi(ordered, scored, accepted, cap)
+    types = _visual_type_priorities(job, ordered, accepted)
+    chosen_indices = _select_multi(ordered, scored, accepted, cap, types)
     return [_enrich_candidate(ordered[i][1], scored[i]) for i in chosen_indices], STATUS_INSERTED
 
 
@@ -534,14 +596,20 @@ def _select_multi(
     scored: list[dict[str, Any]],
     accepted: list[int],
     cap: int,
+    types: list[int],
 ) -> list[int]:
-    """Choose up to ``cap`` candidate indices, strongest first, with Slice 62 rules.
+    """Choose up to ``cap`` candidate indices, strongest first, with Slice 62/64 rules.
 
-    The first index is the established single-best pick (priority preserved on near
-    ties). Each subsequent index must clear the secondary quality floor and avoid
-    duplicate asset ids / refs; a distinct source page is preferred, falling back to a
-    same-page figure only when no distinct-page candidate qualifies. ``accepted`` is
-    non-empty; the returned list preserves selection order (strongest first).
+    The first index is the single-best pick, now visual-type aware (Slice 64): a
+    hard-to-reconstruct diagram/figure outranks a reconstructable table, and within a
+    visual-type tier the established quality near-margin rule decides. Each subsequent
+    index must clear the secondary quality floor and avoid duplicate asset ids / refs; a
+    distinct source page is preferred, falling back to a same-page figure only when no
+    distinct-page candidate qualifies, and within the eligible pool the same type-first /
+    quality-second ordering applies (so a second diagram is preferred over a table when
+    both qualify). ``accepted`` is non-empty; the returned list preserves selection order
+    (strongest first). With no analyzable crop the type priority is uniform and this
+    reduces to the unchanged Slice 62 behavior.
     """
     selected: list[int] = []
     selected_pages: set[int] = set()
@@ -578,19 +646,20 @@ def _select_multi(
             return False
         return True
 
-    # First figure: the single-best pick (no secondary floor — the strongest stands
-    # on its own even if it is only neutral quality).
-    _take(_best_within_margin(accepted, scored))
+    # First figure: the single-best pick — visual-type tier first, then the quality
+    # near-rule (no secondary floor; the strongest stands on its own even if only neutral).
+    _take(_best_typed(accepted, scored, types))
 
     # Subsequent figures, up to the cap: prefer a distinct page; only fall back to a
-    # same-page figure when no distinct-page candidate qualifies.
+    # same-page figure when no distinct-page candidate qualifies. Within the eligible pool
+    # the same type-first / quality-second ordering applies.
     while len(selected) < cap:
         pool = [i for i in accepted if _eligible(i, prefer_distinct=True)]
         if not pool:
             pool = [i for i in accepted if _eligible(i, prefer_distinct=False)]
         if not pool:
             break
-        _take(_best_within_margin(pool, scored))
+        _take(_best_typed(pool, scored, types))
 
     return selected
 
@@ -765,6 +834,211 @@ def _clamp_quality(value: float) -> float:
 def _ordered_quality_reasons(tokens: list[str]) -> list[str]:
     present = {t for t in tokens if t in QUALITY_REASONS}
     return [t for t in _QUALITY_REASON_ORDER if t in present]
+
+
+# --- Slice 64: deterministic visual-TYPE classification (pixel-only) ----------
+
+
+def score_visual_type_priority_for_pilot(visual_type: Any) -> int:
+    """Closed-vocabulary visual-type → ranking priority (higher = preferred).
+
+    ``diagram_or_figure`` (3) > ``reconstructable_table`` (2) > ``unknown`` (1) >
+    ``decorative_or_low_information`` (0). Any unrecognized value maps to the neutral
+    ``unknown`` priority so an unexpected token can never out-rank a real classification.
+    Total; never raises.
+    """
+    return _VISUAL_TYPE_PRIORITY.get(visual_type, _VISUAL_TYPE_PRIORITY[VISUAL_TYPE_UNKNOWN])
+
+
+def classify_visual_markdown_candidate_type_for_pilot(job: Any, candidate: Any) -> str:
+    """Classify a *safe* candidate's visual TYPE from its job-local crop (Slice 64).
+
+    Returns one closed-vocabulary token: ``diagram_or_figure`` · ``reconstructable_table``
+    · ``decorative_or_low_information`` · ``unknown``. The candidate's ``asset_ref`` is
+    re-validated and re-confirmed inside the job directory (defence in depth) before the
+    PNG is opened read-only with Pillow, converted to grayscale, bounded-downscaled, and
+    summarized into a few non-sensitive numeric features. It NEVER OCRs the crop, calls a
+    model/provider/network, base64/serializes/logs image bytes, records a path or source
+    text, or writes any artifact. Degrade-never-fail: a missing/unsafe ref, missing Pillow,
+    an unreadable/too-small image, or any error yields ``unknown`` (which preserves the
+    prior quality-only selection behavior). Never raises.
+    """
+    if not isinstance(candidate, dict):
+        return VISUAL_TYPE_UNKNOWN
+    features = _visual_type_features(job, candidate.get("asset_ref"))
+    if features is None:
+        return VISUAL_TYPE_UNKNOWN
+    return _classify_visual_type_from_features(features)
+
+
+def _visual_type_features(job: Any, asset_ref: Any) -> dict[str, float] | None:
+    """Bounded, non-sensitive summary features of a safe crop, or ``None`` (Slice 64).
+
+    Re-applies the safe-ref + job-dir containment gates, then reads the PNG via Pillow
+    (lazy import; optional dependency). Returns only small rounded numeric features —
+    no pixels, bytes, path, or text are retained or returned. ``None`` whenever the crop
+    cannot be analyzed (no Pillow, unreadable, or below ``_VT_MIN_ANALYZE_DIM``). Never
+    raises and never logs image content.
+    """
+    ref = validate_visual_asset_ref(asset_ref)
+    if ref is None or not _asset_file_ok(job, ref):
+        return None
+    try:
+        from PIL import Image  # optional dependency; absent ⇒ degrade to unknown
+    except Exception:
+        return None
+    try:
+        job_dir = os.path.realpath(str(_job_dir(job)))
+        target = os.path.realpath(os.path.join(job_dir, ref))
+        with Image.open(target) as im:
+            orig_w, orig_h = im.size
+            if (orig_w < _VT_MIN_ANALYZE_DIM or orig_h < _VT_MIN_ANALYZE_DIM):
+                return None
+            gray = im.convert("L")
+            longest = max(orig_w, orig_h)
+            if longest > _VT_MAX_DIM:
+                scale = _VT_MAX_DIM / float(longest)
+                gray = gray.resize(
+                    (max(1, int(orig_w * scale)), max(1, int(orig_h * scale)))
+                )
+            w, h = gray.size
+            pixels = list(gray.getdata())
+    except Exception:
+        return None
+    if w <= 0 or h <= 0 or len(pixels) < w * h:
+        return None
+    return _summarize_gray_pixels(pixels, w, h, orig_w, orig_h)
+
+
+def _summarize_gray_pixels(
+    pixels: list[int], w: int, h: int, orig_w: int, orig_h: int
+) -> dict[str, float]:
+    """Compute the bounded visual-type features from a grayscale pixel buffer.
+
+    Pure arithmetic over a bounded (≤ ``_VT_MAX_DIM`` per side) buffer. Produces only
+    rounded scalar summaries: blank ratio, horizontal/vertical full-rule counts and
+    densities, rough edge density, and the original aspect ratio. No pixel values leave
+    this function.
+    """
+    total = w * h
+    light_count = 0
+    line_rows = 0
+    for r in range(h):
+        base = r * w
+        dark_in_row = 0
+        for c in range(w):
+            value = pixels[base + c]
+            if value <= _VT_DARK:
+                dark_in_row += 1
+            elif value >= _VT_LIGHT:
+                light_count += 1
+        if w > 0 and dark_in_row / w >= _VT_LINE_FRAC:
+            line_rows += 1
+
+    line_cols = 0
+    for c in range(w):
+        dark_in_col = 0
+        for r in range(h):
+            if pixels[r * w + c] <= _VT_DARK:
+                dark_in_col += 1
+        if h > 0 and dark_in_col / h >= _VT_LINE_FRAC:
+            line_cols += 1
+
+    # Rough edge density: horizontal adjacent-pixel transitions above a delta.
+    edges = 0
+    pairs = 0
+    for r in range(h):
+        base = r * w
+        prev = pixels[base]
+        for c in range(1, w):
+            value = pixels[base + c]
+            if abs(value - prev) >= _VT_EDGE_DELTA:
+                edges += 1
+            prev = value
+            pairs += 1
+
+    blank_ratio = (light_count / total) if total > 0 else 1.0
+    edge_density = (edges / pairs) if pairs > 0 else 0.0
+    aspect = (orig_w / orig_h) if orig_h > 0 else 0.0
+    return {
+        "blank_ratio": round(blank_ratio, 4),
+        "edge_density": round(edge_density, 4),
+        "n_line_rows": float(line_rows),
+        "n_line_cols": float(line_cols),
+        "h_line_density": round(line_rows / h, 4) if h > 0 else 0.0,
+        "v_line_density": round(line_cols / w, 4) if w > 0 else 0.0,
+        "aspect": round(aspect, 4),
+    }
+
+
+def _classify_visual_type_from_features(features: dict[str, float]) -> str:
+    """Map bounded features to a closed visual-type token (conservative; never raises).
+
+    Order of decision: near-empty / decorative strip first (low information), then a clear
+    horizontal+vertical rule grid ⇒ table, then meaningful non-grid graphic content ⇒
+    diagram/figure; anything ambiguous degrades to ``unknown`` so prior behavior holds.
+    """
+    blank_ratio = features.get("blank_ratio", 0.0)
+    edge_density = features.get("edge_density", 0.0)
+    n_line_rows = features.get("n_line_rows", 0.0)
+    n_line_cols = features.get("n_line_cols", 0.0)
+    aspect = features.get("aspect", 0.0)
+
+    low_edges = edge_density < _VT_EDGE_MIN
+    # Near-empty crop, or an extreme banner/sliver with little content ⇒ low-information.
+    if low_edges and blank_ratio >= _VT_BLANK_MAX:
+        return VISUAL_TYPE_DECORATIVE
+    if low_edges and aspect > 0 and (aspect >= _VT_BANNER_ASPECT or aspect <= _VT_NARROW_ASPECT):
+        return VISUAL_TYPE_DECORATIVE
+    # A regular grid of full horizontal AND vertical rules ⇒ reconstructable table.
+    if n_line_rows >= _VT_GRID_MIN_LINES and n_line_cols >= _VT_GRID_MIN_LINES:
+        return VISUAL_TYPE_TABLE
+    # Substantial non-grid graphic content ⇒ a hard-to-reconstruct diagram/figure.
+    if edge_density >= _VT_EDGE_MIN and blank_ratio < _VT_BLANK_MAX:
+        return VISUAL_TYPE_DIAGRAM
+    return VISUAL_TYPE_UNKNOWN
+
+
+def _visual_type_priorities(
+    job: Any,
+    ordered: list[tuple[dict[str, Any], dict[str, Any]]],
+    accepted: list[int],
+) -> list[int]:
+    """Type-priority per ``ordered`` index; classify & annotate ACCEPTED candidates only.
+
+    Returns a list aligned to ``ordered`` where accepted indices carry their visual-type
+    ranking priority and every other index carries the neutral ``unknown`` priority (those
+    indices are never in a selection pool, so their value is inert). As a side effect each
+    accepted candidate dict gains a safe closed-vocabulary ``visual_type`` token for
+    diagnostics. Never raises — classification already degrades to ``unknown`` on any
+    problem, so when no crop is analyzable this returns a uniform priority and selection
+    falls back to the unchanged quality-only behavior.
+    """
+    neutral = _VISUAL_TYPE_PRIORITY[VISUAL_TYPE_UNKNOWN]
+    priorities = [neutral] * len(ordered)
+    accepted_set = set(accepted)
+    for i in accepted_set:
+        candidate = ordered[i][1]
+        visual_type = classify_visual_markdown_candidate_type_for_pilot(job, candidate)
+        if isinstance(candidate, dict):
+            candidate["visual_type"] = visual_type
+        priorities[i] = score_visual_type_priority_for_pilot(visual_type)
+    return priorities
+
+
+def _best_typed(pool: list[int], scored: list[dict[str, Any]], types: list[int]) -> int:
+    """Best index in ``pool``: highest visual-type tier first, then the quality near-rule.
+
+    Within the strongest visual-type tier present in ``pool`` the established
+    :func:`_best_within_margin` quality rule decides (highest score wins; earliest priority
+    on ties / near-ties). When every pooled candidate shares one type tier (e.g. all
+    ``unknown`` — the common degrade case) this is identical to ``_best_within_margin`` over
+    the whole pool, so prior selection behavior is preserved byte-for-byte. ``pool`` must be
+    non-empty.
+    """
+    top_priority = max(types[i] for i in pool)
+    tier = [i for i in pool if types[i] == top_priority]
+    return _best_within_margin(tier, scored)
 
 
 def _build_candidate_from_asset(
@@ -1076,8 +1350,9 @@ def _asset_info(candidate: Any, placement: str) -> dict[str, Any]:
     """A small, safe per-figure diagnostic record (no path / text / image bytes)."""
     if not isinstance(candidate, dict):
         return {"asset_id": None, "asset_ref": None, "source_page": 0, "placement": placement,
-                "quality_score": None, "quality_reasons": None}
+                "quality_score": None, "quality_reasons": None, "visual_type": None}
     reasons = candidate.get("quality_reasons")
+    visual_type = candidate.get("visual_type")
     return {
         "asset_id": candidate.get("asset_id"),
         "asset_ref": candidate.get("asset_ref"),
@@ -1085,6 +1360,7 @@ def _asset_info(candidate: Any, placement: str) -> dict[str, Any]:
         "placement": placement,
         "quality_score": candidate.get("quality_score"),
         "quality_reasons": list(reasons) if isinstance(reasons, list) else None,
+        "visual_type": visual_type if visual_type in VISUAL_TYPES else None,
     }
 
 

@@ -5,7 +5,61 @@
 
 ---
 
-## Slice 63 — **Cap-2 real operator validation record**, on `slice63-visual-pilot-cap2-operator-validation`. **NOT COMMITTED.**
+## Slice 64 — **Prefer diagrams over reconstructable tables (visual-type ranking)**, on `slice64-visual-pilot-diagram-first-ranking`. **NOT COMMITTED.**
+
+- **Production-behavior slice (ranking only).** Slice 63 proved the cap-2 plumbing on a real sample but
+  selected **tables only**; tables are useful yet often **reconstructable** from extracted text into clean
+  generated tables. Slice 64 adds a conservative, deterministic **visual-type ranking** so a hard-to-reconstruct
+  **diagram/figure** is preferred over a reconstructable **table** when both are available — while a good table
+  is still selected when it is the **best/only** useful visual. **Scope is ranking, not expansion.**
+- **What changed (one file):** `pipeline/visual_markdown_insertion.py`. Added a pixel-only visual-type
+  classifier (`classify_visual_markdown_candidate_type_for_pilot`), a priority scorer
+  (`score_visual_type_priority_for_pilot`), and wired a **type-first / quality-second** selection tier into the
+  existing single- and multi-figure pickers (`_pick_candidate`, `_pick_candidates` → `_select_multi`, via a new
+  `_best_typed` helper). All Slice 60 quality gating and Slice 62 cap/secondary-floor/page-diversity rules are
+  unchanged underneath.
+- **Closed visual-type vocabulary:** `diagram_or_figure` · `reconstructable_table` ·
+  `decorative_or_low_information` · `unknown`. **Preferred order:** `diagram_or_figure > reconstructable_table >
+  unknown > decorative_or_low_information`.
+- **How classification works (safe, deterministic):** only the **already-safe, already-job-dir-contained**
+  `assets/<slug>.png` crop is opened (re-validated for ref + realpath containment first), read read-only with
+  **Pillow**, converted to grayscale, bounded-downscaled, and summarized into a few **bounded non-sensitive**
+  features (size, aspect, near-white blank ratio, full horizontal/vertical rule counts, rough edge density).
+  Tables = strong regular horizontal+vertical grid; diagrams = substantial non-grid graphic content;
+  decorative = near-empty / extreme banner with low edges. **It never OCRs, calls a model/provider/network,
+  base64/serializes/logs image bytes, records a path or source text, or adds an artifact.**
+- **Degrade-never-fail / backward-compatible:** if Pillow is unavailable, the crop is unreadable/corrupt, or it
+  is too small to analyze, the type is **`unknown`** — which makes the type priority uniform, so selection
+  **falls back byte-for-byte** to the prior Slice 60/62 quality-only behavior. Default-off output stays
+  byte-identical; the two-key gate is unchanged; **default cap remains exactly 1**; **hard cap remains 2**;
+  `fitz_local`/`extracted_figure`-only and all unsafe-ref / Chandra / Mistral / `page_visual_signal` rejections
+  are unchanged.
+- **Ranking behavior (proven in tests):** diagram beats table at cap 1; two diagrams beat a table at cap 2; one
+  diagram + one table at cap 2 selects **both with the diagram first**; only-tables still selects a table;
+  pixel-decorative is **not** preferred just to avoid a table; a lone metadata-accepted candidate is still
+  inserted (no over-rejection).
+- **Tests:** new `test_scripts/test_visual_pilot_visual_type_ranking.py` (runtime-built tiny PNG fixtures in
+  temp dirs — diagram/table/decorative drawn with Pillow, solid/corrupt via stdlib; pixel cases skip cleanly
+  without Pillow). Host: ranking **64/0/0**; existing multifigure / quality_gate / e2e / insertion / render /
+  export_asset / options / anki / operator `--self-test` / offline eval all green; `git diff --check` clean.
+  **In-container (full deps):** ranking **64/0/0**, multifigure **78/0/0**, quality_gate **54/0/0**, operator
+  `--self-test` PASS (Pillow 12.2.0 present). **Docker:** `docker compose build` + `up --force-recreate` ok,
+  `/api/health` `{"ok":true}`, `smoke_release.py` **29/0/0**.
+- **Optional real operator revalidation:** **not run** this slice (no non-private operator sample available in
+  this environment). The desired-but-not-assumed outcome is `selected_visual_type: diagrams_or_figures_present`
+  / `irreplaceable_visual_selected: true`; the actual result must be recorded only if/when the harness is rerun.
+- **Out of scope (unchanged):** no frontend/UI, no UI count selector, no `/api/options` change, no cap change,
+  no new API route, no extraction/OCR-routing/prompt/render/export behavior change, no Chandra/Mistral/Gemini/
+  model/provider/cloud/`llama-server` call, no image generation. Chandra remains blocked by its own
+  live-validation gate.
+- **Safety / no-leak:** classifier returns only closed-vocab tokens + bounded numerics in internal info dicts;
+  no real PDF path/filename, document text, OCR text, image bytes, base64, data URI, full URL, raw argv, token,
+  or model/mmproj/executable path in any doc/test/artifact/log. No committed binary/image/PDF/DOCX/ZIP/runtime
+  fixture. **Slice 64 is NOT committed.**
+
+---
+
+## Slice 63 — **Cap-2 real operator validation record**, on `slice63-visual-pilot-cap2-operator-validation`. **COMMITTED + MERGED to `chrome-renderer-v1`.**
 
 - **Validation/docs slice.** Records a real, sanitized operator validation of the **Slice 62 cap-2 path**
   against the same already-supplied non-private operator sample. Slice 62 validated the capped multi-figure
