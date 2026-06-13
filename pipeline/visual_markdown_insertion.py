@@ -306,6 +306,36 @@ _LT_MIN_COL_BLOCKS = 2    # ≥ this many gutter-separated column blocks ⇒ col
 _LT_GAP_CV_MAX = 0.5      # band-gap coefficient-of-variation at/below this ⇒ regular spacing
 
 
+# --- Slice 70: two-column / glossary / definition-table precision -------------
+#
+# Slice 69's real operator selection trace localized the remaining failure precisely:
+# all 11 safe candidates were classified ``diagram_or_figure`` while the two *selected*
+# visuals were, by manual inspection, clean two-column definition/glossary TABLES — so
+# diagram-first ranking had no signal and reconstructable tables won. The mechanism: a
+# glossary/definition table has VARIABLE-height rows (multi-line definitions wrap), so its
+# horizontal text bands are NOT evenly spaced; Slice 66's text-grid path requires a *regular*
+# row rhythm (``row_band_regular``) and therefore misses it, and with no drawn rules the
+# lightly-ruled path misses it too — leaving it to fall through to ``diagram_or_figure``.
+#
+# Slice 70 adds one more bounded, deterministic, pixel-only signal: a ``two_col_split``. It
+# fires only when the crop has exactly TWO substantial text columns separated by a real
+# gutter (whitespace or a thin drawn divider) AND *each* column independently contains
+# several separated horizontal text bands. The per-column row-band requirement is the key
+# guard that keeps a labeled DIAGRAM a diagram: a diagram's "columns" are continuous shapes
+# (one or two bands) and its connectors/diagonals smear ink across the middle so there are
+# rarely two clean text columns — text presence alone is never enough, the layout must be a
+# regular two-column row structure. Regularity of row spacing is intentionally NOT required,
+# which is exactly what lets variable-height glossary/definition rows qualify. Same hard
+# limits as Slice 64/66: pixel-only over the already-safe, already-job-dir-contained crop;
+# never OCRs, never calls a model/provider/network, never base64/serializes/logs image bytes,
+# never records a path or source text, adds no artifact, and degrades to ``unknown`` whenever
+# the crop cannot be analyzed.
+_TT_SIDE_MIN_FRAC = 0.10   # each of the two columns must span ≥ this fraction of the width
+_TT_GUTTER_MIN_FRAC = 0.04 # the separator between the two columns must span ≥ this fraction
+_TT_BLOCK_INK_MIN = 0.02   # each column's mean text-ink fraction must be ≥ this (real content)
+_TT_MIN_COL_ROWS = 3       # each column must contain ≥ this many separated horizontal text bands
+
+
 # --- Flag --------------------------------------------------------------------
 
 
@@ -1016,6 +1046,9 @@ def _summarize_gray_pixels(
     row_band_regular = _runs_regular(text_bands)
     n_col_blocks = _count_col_blocks(col_text, _LT_COL_GUTTER_MAX)
 
+    # Slice 70: strong two-column split (glossary/definition table), regularity NOT required.
+    two_col_split = _two_column_split(pixels, w, h, col_text)
+
     return {
         "blank_ratio": round(blank_ratio, 4),
         "edge_density": round(edge_density, 4),
@@ -1027,6 +1060,7 @@ def _summarize_gray_pixels(
         "n_text_bands": float(n_text_bands),
         "row_band_regular": float(row_band_regular),
         "n_col_blocks": float(n_col_blocks),
+        "two_col_split": float(two_col_split),
     }
 
 
@@ -1094,6 +1128,88 @@ def _count_col_blocks(col_text: list[float], gutter_max: float) -> int:
     return blocks
 
 
+def _content_column_spans(col_text: list[float], gutter_max: float) -> list[tuple[int, int]]:
+    """Contiguous content-column ``(start, end_exclusive)`` spans (Slice 70).
+
+    A column with text fraction ``> gutter_max`` is content; a run of such columns is one
+    span; a column ``<= gutter_max`` is a whitespace gutter that closes the current span.
+    Mirrors :func:`_count_col_blocks` but returns the spans so the two-column split can
+    measure widths, gutters, and per-column row structure. Pure; never raises.
+    """
+    spans: list[tuple[int, int]] = []
+    start: int | None = None
+    for i, value in enumerate(col_text):
+        if value > gutter_max:
+            if start is None:
+                start = i
+        else:
+            if start is not None:
+                spans.append((start, i))
+                start = None
+    if start is not None:
+        spans.append((start, len(col_text)))
+    return spans
+
+
+def _column_row_band_count(pixels: list[int], w: int, h: int, x0: int, x1: int) -> int:
+    """Number of separated horizontal text bands within one column's x-range (Slice 70).
+
+    Builds a per-row softer-ink (``_LT_INK``) text-fraction profile restricted to columns
+    ``[x0, x1)`` and counts its separated bands with the established :func:`_profile_runs`
+    rule. A glossary/definition column has several entry rows separated by whitespace
+    (≥ several bands); a diagram's continuous shape spans the height as one or two bands.
+    Bounded (≤ ``_VT_MAX_DIM`` per side); pure; never raises.
+    """
+    span = x1 - x0
+    if span <= 0 or h <= 0:
+        return 0
+    profile: list[float] = []
+    for r in range(h):
+        base = r * w
+        ink = 0
+        for c in range(x0, x1):
+            if pixels[base + c] <= _LT_INK:
+                ink += 1
+        profile.append(ink / span)
+    return len(_profile_runs(profile, _LT_ROW_TEXT_MIN, _LT_ROW_BLANK_MAX))
+
+
+def _two_column_split(pixels: list[int], w: int, h: int, col_text: list[float]) -> float:
+    """1.0 iff the crop is a regular two-column (glossary/definition) table, else 0.0 (Slice 70).
+
+    Fires only when ALL hold (conservative, multi-signal — never "contains text"):
+
+    * exactly **two** substantial content columns (each ≥ ``_TT_SIDE_MIN_FRAC`` of the width),
+    * separated by a real gutter (≥ ``_TT_GUTTER_MIN_FRAC`` of the width — whitespace, or a
+      thin drawn divider that leaves the surrounding band narrow),
+    * both columns carry real ink (mean text fraction ≥ ``_TT_BLOCK_INK_MIN``), and
+    * **each** column independently contains ≥ ``_TT_MIN_COL_ROWS`` separated horizontal text
+      bands (the guard that keeps a labeled diagram a diagram: its columns are continuous
+      shapes, not stacks of text rows).
+
+    Row-spacing regularity is intentionally NOT required, so variable-height definition rows
+    qualify. Pure; bounded; never raises.
+    """
+    if w <= 0 or h <= 0:
+        return 0.0
+    spans = _content_column_spans(col_text, _LT_COL_GUTTER_MAX)
+    substantial = [(s, e) for (s, e) in spans if (e - s) / w >= _TT_SIDE_MIN_FRAC]
+    if len(substantial) != 2:
+        return 0.0
+    (ls, le), (rs, re) = substantial
+    if (rs - le) / w < _TT_GUTTER_MIN_FRAC:
+        return 0.0
+    left_ink = sum(col_text[ls:le]) / (le - ls) if le > ls else 0.0
+    right_ink = sum(col_text[rs:re]) / (re - rs) if re > rs else 0.0
+    if left_ink < _TT_BLOCK_INK_MIN or right_ink < _TT_BLOCK_INK_MIN:
+        return 0.0
+    if _column_row_band_count(pixels, w, h, ls, le) < _TT_MIN_COL_ROWS:
+        return 0.0
+    if _column_row_band_count(pixels, w, h, rs, re) < _TT_MIN_COL_ROWS:
+        return 0.0
+    return 1.0
+
+
 def _looks_like_reconstructable_table(features: dict[str, float]) -> bool:
     """True iff the bounded features describe a lightly ruled / text-heavy table (Slice 66).
 
@@ -1106,19 +1222,25 @@ def _looks_like_reconstructable_table(features: dict[str, float]) -> bool:
       backed by either the row rhythm or the column structure.
 
     A genuine diagram (irregular row spacing, no clean full-height column gutters, no repeated
-    horizontal rules) satisfies neither. Pure; never raises.
+    horizontal rules) satisfies neither. Slice 70 adds a third path — a strong two-column
+    split — so glossary/definition tables with *variable-height* (irregular) rows still
+    qualify without weakening the diagram guard. Pure; never raises.
     """
     n_text_bands = features.get("n_text_bands", 0.0)
     row_band_regular = features.get("row_band_regular", 0.0)
     n_col_blocks = features.get("n_col_blocks", 0.0)
     n_line_rows = features.get("n_line_rows", 0.0)
     n_line_cols = features.get("n_line_cols", 0.0)
+    two_col_split = features.get("two_col_split", 0.0)
 
     has_row_rhythm = n_text_bands >= _LT_MIN_TEXT_BANDS and row_band_regular >= 1.0
     has_columns = n_col_blocks >= _LT_MIN_COL_BLOCKS
     has_h_rules = n_line_rows >= _VT_GRID_MIN_LINES
     weak_v_rules = n_line_cols < _VT_GRID_MIN_LINES
 
+    # Slice 70 two-column split: two text columns of stacked rows (regularity not required).
+    if two_col_split >= 1.0:
+        return True
     # Text-grid: regular rows arranged in clear columns.
     if has_row_rhythm and has_columns:
         return True

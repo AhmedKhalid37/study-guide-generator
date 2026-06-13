@@ -3203,3 +3203,48 @@ URI, full URL, raw argv, token, model/mmproj/executable path, or provider payloa
 `visual_markdown_selection_trace.json` was inspected but **not committed**, and nothing
 binary/image/PDF/DOCX/ZIP/runtime was committed. **Slice 69 is NOT committed.** Chandra remains blocked by its own
 live-validation gate.
+
+## Slice 70 — fix table-vs-diagram *classification precision*, not ranking, to break the `tables_only` deadlock
+Slice 69's selection trace conclusively localized the visual-pilot bottleneck to **classification**: all 11 safe
+candidates were classified `diagram_or_figure` while the two selected visuals were, by manual inspection,
+reconstructable two-column definition/glossary **tables**, so diagram-first ranking (Slice 64) had no signal and
+the clean tables won on quality (`selection_explanation: tables_misclassified_as_diagram_or_figure`). The decision
+gate from Slice 69 was explicit — `improve_visual_type_classification_table_vs_diagram_precision`, **not** extraction
+(diagrams were present and extracted) and **not** a blind ranking/threshold change (ranking was correct but
+signal-starved). Slice 70 implements exactly that and nothing more.
+
+**Root mechanism.** A glossary/definition table has **variable-height rows** (multi-line definitions wrap), so its
+horizontal text bands are *not* evenly spaced. Slice 66's text-grid table path requires a *regular* row rhythm
+(`row_band_regular`) and therefore missed it; with no drawn rules the lightly-ruled path missed it too; so the crop
+fell through to `diagram_or_figure`. The fix had to recognize a two-column table **without** assuming regular row
+spacing, while still keeping a labeled diagram a diagram.
+
+**What was added.** One bounded, deterministic, pixel-only feature — **`two_col_split`** — computed from the same
+already-safe, already-job-dir-contained crop the Slice 60/64/66 gates already validated. It returns 1.0 only when
+ALL hold: (a) exactly **two** substantial text columns (each ≥ a width fraction), (b) separated by a **real gutter**
+(whitespace, or a thin drawn divider that leaves the separator band narrow), (c) both columns carry real ink, and
+(d) **each** column independently contains several **separated horizontal text bands**. Condition (d) is the
+deliberate guard that keeps a labeled diagram a diagram — a diagram's "columns" are continuous shapes (one or two
+bands) and its connectors/diagonals smear ink across the middle, so it rarely presents two clean text columns; text
+presence alone never flips a diagram. Row-spacing **regularity is intentionally not required**, which is precisely
+what now catches variable-height glossary/definition rows. A new third path in
+`_looks_like_reconstructable_table` consumes the feature; everything else (strong-grid path, Slice 66 text-grid /
+lightly-ruled paths, decorative/low-info guards, diagram fallback, degrade-to-`unknown`) is unchanged.
+
+**Why classification, not ranking/cap.** With tables correctly typed `reconstructable_table` (priority 2) and
+diagrams `diagram_or_figure` (priority 3), the existing diagram-first ranking does the rest unchanged: a diagram
+beats a reconstructable table at cap 1; at cap 2 one of each selects both with the diagram first; two diagrams plus
+a table selects the two diagrams; tables are still selected when best/only. No ranking, cap, default, two-key gate,
+`/api/options`, render, export, extraction, OCR routing, prompt, or frontend code was touched, and no
+model/provider/cloud/`llama-server` call was added. The Slice 68 selection trace reflects the improved
+classification automatically (`type_counts` no longer collapse to one bucket) with **no artifact schema change**.
+
+**Boundaries / no-leak (firm).** Cap stays hard-capped at **2**, default stays **1**; `fitz_local` +
+`extracted_figure` only; safe `assets/<slug>.png` only; file-inside-job-dir gate; Chandra/Mistral/
+`page_visual_signal` still rejected; degrade-never-fail (no Pillow / unreadable / too-small ⇒ `unknown`, prior
+behavior). The classifier never OCRs, never base64/serializes/logs image bytes, never records a path or source text,
+and adds no artifact. New focused test `test_scripts/test_visual_pilot_table_diagram_precision.py` (24-point
+coverage) builds every PNG at runtime in a temp dir — nothing binary/image/PDF/DOCX/ZIP/runtime is committed, and no
+real PDF path/filename, document text, OCR text, image bytes, base64, data URI, full URL, raw argv, token,
+model/mmproj/executable path, or provider payload appears anywhere. **Slice 70 is NOT committed.** Chandra remains
+blocked by its own live-validation gate.

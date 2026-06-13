@@ -5,7 +5,57 @@
 
 ---
 
-## Slice 69 — **Real operator selection-trace audit**, on `slice69-visual-pilot-selection-trace-operator-audit`. **NOT COMMITTED.**
+## Slice 70 — **Table-vs-diagram visual-classification precision**, on `slice70-visual-pilot-table-diagram-precision`. **NOT COMMITTED.**
+
+- **Production classification slice (precision only).** Slice 69's real-sample selection trace localized the
+  remaining failure to *classification*, not extraction/ranking/cap/export/rendering/UI: **all 11 safe candidates were
+  classified `diagram_or_figure`** while the two *selected* visuals were, by manual inspection, clean two-column
+  definition/glossary **tables** (`selection_explanation: tables_misclassified_as_diagram_or_figure`). Slice 70
+  improves the deterministic, bounded, pixel-only visual-type classifier so **two-column / glossary / definition
+  tables classify as `reconstructable_table`** instead of `diagram_or_figure`, giving Slice 64's diagram-first
+  ranking a real signal — while genuine diagrams/figures (including labeled ones) stay `diagram_or_figure`.
+- **Root mechanism fixed.** A glossary/definition table has **variable-height rows** (multi-line definitions wrap),
+  so its horizontal text bands are *not* evenly spaced; Slice 66's text-grid path requires a *regular* row rhythm and
+  missed it, and with no drawn rules the lightly-ruled path missed it too — so it fell through to
+  `diagram_or_figure`. Slice 70 adds one bounded pixel-only feature, **`two_col_split`**, that fires only when the
+  crop has **exactly two substantial text columns separated by a real gutter** (whitespace or a thin drawn divider)
+  **AND each column independently contains several separated horizontal text bands**. The per-column row-band
+  requirement is the guard that keeps a labeled **diagram** a diagram — text presence alone never flips a diagram;
+  row-spacing regularity is intentionally **not** required, which is what now catches variable-height glossary rows.
+- **Behavior:** two-column/glossary/definition tables → `reconstructable_table`; lightly-ruled two-column, text-band
+  central-gutter, and strong-grid tables remain `reconstructable_table`; irregular labeled diagrams, flowcharts, and
+  diagrams whose labels make text-like dark bands remain `diagram_or_figure`. **Diagrams beat reconstructable tables**
+  (cap 1 picks the diagram; cap 2 with one of each selects both, diagram first; cap 2 with two diagrams + a table
+  selects the two diagrams). **Tables are still allowed when best/only.** The existing Slice 68 selection trace
+  reflects the improved classification automatically (`type_counts` no longer collapse) — **no artifact schema
+  change**.
+- **Hard boundaries honored:** cap still hard-capped at **2**, default still **1**, `fitz_local` + `extracted_figure`
+  only, safe `assets/<slug>.png` only, file-inside-job-dir gate, Chandra/Mistral/`page_visual_signal` still rejected,
+  degrade-never-fail (no Pillow / unreadable / too-small ⇒ `unknown`, prior behavior). **No** frontend/UI change, **no**
+  `/api/options` change, **no** export/cap/OCR-routing/renderer/prompt/extraction change, **no** model/provider/cloud/
+  `llama-server` call, **no** new API route, **no** committed binary/image/PDF/DOCX/ZIP/runtime fixture (every PNG is
+  runtime-built in a temp dir). Chandra remains blocked by its own live-validation gate.
+- **Tests:** new `test_scripts/test_visual_pilot_table_diagram_precision.py` (24-point coverage, **70/70** pass host;
+  **70/70** with `GUIDEFORGE_VISUAL_MARKDOWN_MAX_IMAGES=2`). Full visual-pilot suite + operator self-test +
+  insertion/render/export/anki/options + `eval --offline --all` (no regression, 0.8306→0.8306) green host-side; the
+  rebuilt+recreated container is `/api/health` `{"ok":true}` and the in-container visual suite is green
+  (precision 70/0, selection-trace 56/0, light-table 66/0, type-ranking 64/0, multifigure 78/0, quality-gate 54/0,
+  operator self-test PASS). `git diff --check` clean. **Slice 70 is NOT committed.**
+- **Release smoke (`smoke_release.py`):** `release_smoke_status: transient_failure_then_green_on_rerun` ·
+  `release_smoke_failure_category: outline_ordering_check` · `slice70_visual_tests: green` ·
+  `slice70_docker_health: green` · `slice70_not_cause: confirmed`. A first run reported **28/29** with a single
+  `outline_ordering_check` miss (`pos=[-1,-1,-1]`); an unchanged rerun on the same Slice 70 branch/container passed
+  **29/0/0** with that same check green — i.e. a flaky LLM section-ordering check, **not** caused by Slice 70 (which
+  only adds a deterministic pixel-only visual-type feature and cannot affect generated outline text). No raw
+  generated guide content recorded.
+- **Safety / no-leak:** classifier reads only bounded non-sensitive pixel summaries; never OCRs, never base64/
+  serializes/logs image bytes, never records a path or source text, adds no artifact. No real PDF path/filename,
+  document text, OCR text, image bytes, base64, data URI, full URL, raw argv, token, model/mmproj/executable path, or
+  provider payload anywhere.
+
+---
+
+## Slice 69 — **Real operator selection-trace audit**, on `slice69-visual-pilot-selection-trace-operator-audit`. **COMMITTED + MERGED to `chrome-renderer-v1` (fast-forward).**
 
 - **Validation/docs slice only.** Reruns the existing operator harness against the real, **non-private**
   operator sample with **Slice 68's sanitized selection trace** (`visual_markdown_selection_trace.json`) enabled,

@@ -6,8 +6,43 @@
 > stable overview see `PROJECT_CONTEXT.md`; canonical brief is `../CLAUDE.md`.
 
 ## Current position
-- **Working tree:** **Slice 69 (real operator selection-trace audit) — UNCOMMITTED (per instruction)** on branch
-  `slice69-visual-pilot-selection-trace-operator-audit` (branched from fresh trunk after Slice 68 was
+- **Working tree:** **Slice 70 (table-vs-diagram visual-classification precision) — UNCOMMITTED (per instruction)**
+  on branch `slice70-visual-pilot-table-diagram-precision` (branched from fresh trunk after Slice 69 was
+  committed/merged). **Production classification slice — precision only; cap/default/two-key gate/UI/`/api/options`/
+  render/export/extraction-OCR routing all unchanged; no model/provider/cloud call.** It acts on Slice 69's trace
+  finding that all safe candidates were classified `diagram_or_figure` while the selected visuals were, by manual
+  inspection, reconstructable two-column tables (`selection_explanation: tables_misclassified_as_diagram_or_figure`).
+  - **What changed:** `pipeline/visual_markdown_insertion.py` gains one bounded, deterministic, pixel-only feature —
+    **`two_col_split`** — and a third `_looks_like_reconstructable_table` path. It fires only when the crop has
+    **exactly two substantial text columns separated by a real gutter** (whitespace or a thin drawn divider) **AND
+    each column independently contains several separated horizontal text bands**. So **two-column / glossary /
+    definition tables now classify as `reconstructable_table`** (regularity of row spacing is *not* required — which
+    is what fixes variable-height definition rows), while a **labeled diagram stays `diagram_or_figure`** (its
+    columns are continuous shapes, not stacks of text rows; text presence alone never flips it). Diagram-first
+    ranking (Slice 64) then prefers diagrams over reconstructable tables, but tables are still selected when best/only.
+  - **Trace:** the Slice 68 selection trace reflects the improved classification automatically — `type_counts` no
+    longer collapse to one bucket. **No artifact schema change.**
+  - **New test:** `test_scripts/test_visual_pilot_table_diagram_precision.py` (24-point coverage). **70/70 pass host
+    and at cap 2.** Full visual-pilot suite + operator self-test + insertion/render/export/anki/options +
+    `eval --offline --all` (no regression, 0.8306→0.8306) green host-side; container rebuilt+recreated, `/api/health`
+    `{"ok":true}`, in-container visual suite green. `git diff --check` clean.
+  - **Release smoke:** `release_smoke_status: transient_failure_then_green_on_rerun`,
+    `release_smoke_failure_category: outline_ordering_check`, `slice70_visual_tests: green`,
+    `slice70_docker_health: green`, `slice70_not_cause: confirmed`. A first `smoke_release.py` run was 28/29 with one
+    flaky `outline_ordering_check` miss; an unchanged rerun on the same Slice 70 branch/container passed **29/0/0**
+    with that check green. The check is an LLM section-ordering assertion, unrelated to the deterministic pixel-only
+    classifier change. No raw generated guide content recorded.
+  - **Decision:** classification precision was the real bottleneck; fix it deterministically and locally, do not
+    guess ranking/threshold changes. **Do not** expand beyond cap 2; **no** UI count selector; **no**
+    Chandra/Mistral/Gemini/model/provider/cloud/`llama-server` integration; **no** OCR-routing/renderer/prompt/export
+    change. Chandra remains blocked by its own live-validation gate.
+  - **No-leak:** no real PDF path/filename, document/OCR text, image bytes, base64, data URI, full URL, raw argv,
+    token, model/mmproj/executable path, or provider payload recorded; nothing binary/image/PDF/DOCX/ZIP/runtime
+    committed (every PNG is runtime-built in a temp dir). **Slice 70 is NOT committed.**
+
+### Prior position (Slice 69 — committed & merged)
+- **Slice 69 (real operator selection-trace audit) — COMMITTED + MERGED to `chrome-renderer-v1` (fast-forward)** on
+  branch `slice69-visual-pilot-selection-trace-operator-audit` (branched from fresh trunk after Slice 68 was
   committed/merged). **Validation/docs slice — no production pipeline/API/frontend code changed; no new visual
   behavior; no ranking/cap/default/gate/render/export/extraction-OCR routing change; no model/provider/cloud call.**
   It uses Slice 68's sanitized selection trace (`visual_markdown_selection_trace.json`) on the real, **non-private**
