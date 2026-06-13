@@ -2758,3 +2758,64 @@ single-figure operator gate authorizes nothing beyond the existing one-figure pi
 Multi-figure insertion is still **not** approved and stays out of scope until separately
 designed, and **Chandra extraction integration remains blocked by its own live-validation
 gate (Slice 45 `status:not_run`).**
+
+## Visual pilot ranks for content quality, and "PDF ok" must mean a visible image (Slice 60)
+The single-figure visual pilot originally inserted the **first** safe `fitz_local`
+`extracted_figure` it found (replacement-plan preferred, else manifest order). Manual
+operator review of one real, non-private sample showed two problems: extraction itself
+was **mostly fine** (multiple usable table/figure crops), but the pilot picked a
+**low-value chapter-title / title-page crop**, and the harness reported `pdf_render_ok:
+true` even though the rendered PDF showed a **broken/missing image marker**, not a visible
+embedded image. An earlier Slice 60 attempt added a *selection trace artifact*; that was
+the wrong fix and was **parked (stashed, never committed)**.
+
+**Decision A — rank, don't just take the first.** Before insertion, the already-safe
+candidates are scored by a conservative **deterministic** quality gate
+(`score_visual_markdown_candidate_for_pilot` / `rank_visual_markdown_candidates` /
+`is_decorative_visual_candidate`) that uses **only already-available manifest metadata** —
+`source_page`, `bbox`, and the `signals` page/crop dimensions. It prefers content-sized
+figures and **drops confident decorative chrome** (title-page full crops, header/footer
+banner strips, tiny logos/icons), while **preserving replacement-plan / manifest priority
+order on ties and near-ties** (a rival displaces it only when clearly better, by a margin).
+**Why metadata-only:** the gate must not read private document text, OCR text, captions,
+source contents, or image bytes, and must not call any model/provider — so it can only use
+fields the manifest already sanitized. **Why degrade-not-reject on sparse metadata:** a
+genuine figure can lack page/crop dimensions; with metadata absent the gate returns a
+neutral, non-decorative score so a good figure is never over-rejected. When **every** safe
+candidate is decorative it **omits** rather than inserting junk (new closed reason
+`visual_candidate_low_quality`, byte-identical guide). The **one-figure maximum**, the
+default-off env master switch + per-job opt-in, all hard safety gates, and the
+never-Chandra/Mistral/`page_visual_signal` rules are **unchanged**.
+
+**Decision B — `pdf_render_ok` ≠ `pdf_image_visible`.** A non-empty rendered PDF does not
+prove the inserted figure is visible; a broken/missing relative ref renders a **tiny
+~14×16 broken-image placeholder icon** (or only alt text), not the figure. The operator
+harness now reports a separate `pdf_image_visible` field, computed with PyMuPDF
+`page.get_images(full=True)` and counting **only images ≥ 32 px on both sides** (True only
+when a real, figure-sized image is embedded — the placeholder icon is filtered out), `null`
+when PyMuPDF is unavailable. **Why a separate field, not a stricter `pdf_render_ok`:** the
+two answer different questions ("did a PDF render" vs "is the figure actually embedded"),
+and conflating them would have hidden exactly the failure manual review caught.
+
+**Decision B-root-cause — the "broken PDF marker" was a harness layout artifact, not a
+production bug.** `pdf_renderer.render_pdf` writes its intermediate HTML next to the
+**output PDF** (`pdf.with_suffix(".html")`), and Chromium resolves the relative
+`assets/<slug>.png` ref against **that** directory. **Production always renders to
+`job.final_pdf`, a sibling of `clean.md` and `assets/`**, so the figure embeds correctly.
+The Slice 59 manual harness wrote `operator_final.pdf` to the temp **base** dir (outside
+the job dir), so `assets/` resolved to a non-existent path and Chromium embedded only the
+placeholder icon — which is what manual review saw and recorded as `pdf_image_visible:
+false`. **Fix:** the harness now renders **inside the job dir** (a sibling of `assets/`),
+mirroring production. **Why not touch the renderer:** it is correct for the production
+layout (and is load-bearing/tuned); the bug was purely the harness's output location.
+Post-fix in-container `--self-test` reports `pdf_image_visible: true`.
+
+**Why this does NOT open multi-figure or Chandra:** still **one figure maximum**; no
+Chandra/Mistral/Gemini/cloud/model/provider/llama-server call; **Chandra remains blocked by
+its own live-validation gate**. Only sanitized closed-vocabulary review fields are recorded
+— pre-fix: `selected_figure_quality: decorative_or_low_information`, `pdf_image_visible:
+false`, `docx_image_visible: true`, `failure_category: selection_quality_insufficient`,
+`no_leak_sweep: clean`; post-fix (`--self-test`, same code path a real run uses):
+`status: ok`, `pilot_inserted: true`, `pdf_image_visible: true`, `warnings: []`,
+`failure_category: none`, `no_leak_sweep: clean` — no real PDF path/filename/text/OCR/image
+bytes/base64/data URI. **Slice 60 is not committed.**

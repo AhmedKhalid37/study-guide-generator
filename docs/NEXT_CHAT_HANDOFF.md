@@ -6,6 +6,54 @@
 > stable overview see `PROJECT_CONTEXT.md`; canonical brief is `../CLAUDE.md`.
 
 ## Current position
+- **Working tree:** **Slice 60 (visual-pilot quality gate + PDF image-visibility validation) — UNCOMMITTED
+  (per instruction)** on branch `slice60-visual-pilot-quality-gate` (branched from fresh trunk; trunk HEAD
+  Slice 59 `a79e99d`). **Replaces an earlier, abandoned Slice 60 trace-artifact direction** — that work is
+  **parked in a `git stash` (not committed)** after manual review showed the real issues were selection quality
+  and PDF image visibility, not missing trace metadata.
+  - **What changed:** `pipeline/visual_markdown_insertion.py` gains a conservative, deterministic **quality
+    gate** that **ranks** the already-safe `extracted_figure` candidates using **only** existing manifest
+    metadata (`source_page`, `bbox`, `signals` page/crop dims) — preferring content figures and dropping
+    decorative title-page/header/footer/banner/logo crops. New helpers
+    `score_visual_markdown_candidate_for_pilot` / `rank_visual_markdown_candidates` /
+    `is_decorative_visual_candidate`; new closed skip reason `visual_candidate_low_quality` when every safe
+    candidate is decorative (omit, byte-identical guide). **All hard safety gates and the one-figure rule are
+    unchanged; sparse metadata degrades to neutral so good figures are never over-rejected.** The operator
+    harness adds an **eleventh** summary field `pdf_image_visible` (embedded image object via PyMuPDF
+    `get_images(full=True)`), distinct from `pdf_render_ok`. **No production wiring change** (`apply_visual_
+    markdown_pilot` is still the only call site, from Slice 54); **no frontend/UI, export, extraction/OCR-
+    routing, prompt, route, multi-figure, or Chandra/model/cloud change; no committed binary/image/PDF/DOCX/ZIP
+    fixture.**
+  - **Files:** `pipeline/visual_markdown_insertion.py`; `test_scripts/validate_visual_pilot_operator_sample.py`
+    (+`pdf_image_visible`); new `test_scripts/test_visual_pilot_quality_gate.py`; `docs/CURRENT_TASK.md` /
+    `docs/NEXT_CHAT_HANDOFF.md` / `docs/DECISIONS.md`. (e2e test gained a fitz-guarded image-embed check.)
+  - **Safety/no-leak:** the gate reads no private text/OCR/caption/image bytes and makes no model/provider call;
+    all diagnostics are closed-vocab tokens + numeric scores. The real sample PDF path/filename/contents are
+    **not** recorded anywhere.
+  - **Root cause of the "broken PDF marker" — a harness layout artifact, NOT a production bug.** `render_pdf`
+    writes its intermediate HTML next to the **output PDF**, so Chromium resolves the relative `assets/<slug>.png`
+    ref against the output PDF's directory. **Production renders to `job.final_pdf` (a sibling of `clean.md` +
+    `assets/`)**, so the figure embeds correctly. The Slice 59 harness wrote the PDF to the temp base dir
+    (outside the job dir) → `assets/` didn't resolve → Chromium embedded only a tiny ~14×16 broken-image
+    placeholder icon (what review saw). **Fixed** by rendering the harness PDF inside the job dir; **the
+    renderer was not changed** (it was already correct for the production layout).
+  - **Pre-fix human review (sanitized, closed vocab):** `operator_visual_quality_review: run` ·
+    `selected_figure_quality: decorative_or_low_information` · `extraction_candidate_quality: mostly_usable` ·
+    `crop_quality: mostly_good_some_label_loss` · `pdf_image_visible: false` · `docx_image_visible: true` ·
+    `failure_category: selection_quality_insufficient` · `no_leak_sweep: clean`.
+  - **Post-fix sanitized result (in-container `--self-test`):** `status: ok` · `pilot_inserted: true` ·
+    `pdf_render_ok: true` · **`pdf_image_visible: true`** · `docx_render_ok: true` · `export_zip_ok: true` ·
+    `export_png_included: true` · `warnings: []` · `failure_category: none` · `no_leak_sweep: clean`.
+  - **Results:** host — `compileall` clean; new gate test **50/0/1** (PDF-vis skips w/o PyMuPDF+Chromium);
+    operator `--self-test` PASS; `test_visual_pilot_e2e_validation.py` 16/0/3; insertion 53/0 (off) & 77/0 (on);
+    render 6/0/1; export-asset 9/0; options 16/0; anki 46/0; eval `--offline --all` no regression; `git diff
+    --check` clean. **Docker:** `compose build` + `up -d --force-recreate` OK; `/api/health` → `{"ok":true}`;
+    `smoke_release.py` **29/0/0**; in-container gate test **54/0/0** (PDF-vis positive+negative pass), e2e
+    **30/0/0**, operator `--self-test` PASS with `pdf_image_visible: true`. Test scripts were copied into the
+    container `/tmp`, run, then removed; nothing committed.
+  - **Slice 60 is NOT committed.**
+
+### Prior position (superseded)
 - **Working tree:** **Slice 59 (visual-pilot manual operator validation harness + runbook) — UNCOMMITTED
   (per instruction)** on branch `slice59-visual-pilot-operator-validation-harness` (branched from trunk after
   **Slice 58** committed `39dc162` + fast-forward merged + pushed). **Validation/harness slice only — adds NO

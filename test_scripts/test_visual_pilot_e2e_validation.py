@@ -379,6 +379,22 @@ def stage_render(work: Path) -> None:
                 check("render.pdf_no_raise", False, type(exc).__name__)
             else:
                 check("render.pdf_nonempty", out_pdf.is_file() and out_pdf.stat().st_size > 0)
+                # Slice 60: a non-empty PDF is not enough — confirm the figure is an
+                # embedded image object, not a broken/alt-text-only marker. SKIP only
+                # when PyMuPDF is unavailable on the host.
+                try:
+                    import fitz  # PyMuPDF
+                except Exception as exc:
+                    skip("render.pdf_image_visible", f"PyMuPDF unavailable ({type(exc).__name__})")
+                else:
+                    embedded = False
+                    try:
+                        with fitz.open(str(out_pdf)) as doc:
+                            embedded = any(page.get_images(full=True) for page in doc)
+                    except Exception as exc:
+                        skip("render.pdf_image_visible", f"inspect unavailable ({type(exc).__name__})")
+                    else:
+                        check("render.pdf_image_visible", embedded)
 
     # (8) DOCX generation embeds or degrades without raising; SKIP if python-docx absent.
     try:

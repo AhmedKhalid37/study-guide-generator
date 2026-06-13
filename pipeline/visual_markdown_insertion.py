@@ -105,6 +105,9 @@ SKIP_DISABLED = "visual_pilot_disabled"
 SKIP_JOB_OPT_OUT = "visual_pilot_job_opt_out"
 SKIP_CANDIDATE_UNAVAILABLE = "visual_candidate_unavailable"
 SKIP_CANDIDATE_UNSAFE = "visual_candidate_unsafe"
+# Slice 60: every safe candidate failed the conservative decorative/low-information
+# quality gate, so the pilot omits a figure rather than inserting obvious junk.
+SKIP_CANDIDATE_LOW_QUALITY = "visual_candidate_low_quality"
 SKIP_ASSET_MISSING = "visual_asset_missing"
 SKIP_ASSET_PATH_INVALID = "visual_asset_path_invalid"
 SKIP_INSERT_FAILED = "visual_markdown_insert_failed"
@@ -116,12 +119,84 @@ SKIP_REASONS = {
     SKIP_JOB_OPT_OUT,
     SKIP_CANDIDATE_UNAVAILABLE,
     SKIP_CANDIDATE_UNSAFE,
+    SKIP_CANDIDATE_LOW_QUALITY,
     SKIP_ASSET_MISSING,
     SKIP_ASSET_PATH_INVALID,
     SKIP_INSERT_FAILED,
     SKIP_FORMAT_UNSUPPORTED,
     SKIP_RENDER_DEGRADED,
 }
+
+# --- Slice 60: conservative deterministic quality gate -----------------------
+#
+# Manual operator review found the pilot could select a low-value title-page /
+# chapter-title crop when better content figures existed. This gate ranks the
+# already-safe ``extracted_figure`` candidates using ONLY already-available
+# manifest metadata (source page, bbox, page/crop dimensions) — it never inspects
+# private text, OCR text, source contents, or image bytes, and never calls a model.
+# It prefers content-bearing figures and avoids decorative title/header/footer/logo/
+# banner crops, while degrading safely (no over-rejection) when metadata is sparse.
+
+# Closed quality-reason vocabulary (diagnostic only; never embedded in the guide).
+QUALITY_TITLE_PAGE = "quality_title_page"
+QUALITY_FULL_PAGE_CROP = "quality_full_page_crop"
+QUALITY_BANNER_SHAPE = "quality_banner_shape"
+QUALITY_NARROW_SHAPE = "quality_narrow_shape"
+QUALITY_SMALL_AREA = "quality_small_area"
+QUALITY_TINY_CROP = "quality_tiny_crop"
+QUALITY_HEADER_REGION = "quality_header_region"
+QUALITY_FOOTER_REGION = "quality_footer_region"
+QUALITY_CONTENT_SIZED = "quality_content_sized"
+QUALITY_METADATA_SPARSE = "quality_metadata_sparse"
+QUALITY_REASONS = {
+    QUALITY_TITLE_PAGE,
+    QUALITY_FULL_PAGE_CROP,
+    QUALITY_BANNER_SHAPE,
+    QUALITY_NARROW_SHAPE,
+    QUALITY_SMALL_AREA,
+    QUALITY_TINY_CROP,
+    QUALITY_HEADER_REGION,
+    QUALITY_FOOTER_REGION,
+    QUALITY_CONTENT_SIZED,
+    QUALITY_METADATA_SPARSE,
+}
+# Deterministic emit order for quality reasons.
+_QUALITY_REASON_ORDER = [
+    QUALITY_TITLE_PAGE,
+    QUALITY_FULL_PAGE_CROP,
+    QUALITY_CONTENT_SIZED,
+    QUALITY_SMALL_AREA,
+    QUALITY_BANNER_SHAPE,
+    QUALITY_NARROW_SHAPE,
+    QUALITY_HEADER_REGION,
+    QUALITY_FOOTER_REGION,
+    QUALITY_TINY_CROP,
+    QUALITY_METADATA_SPARSE,
+]
+
+# Geometry thresholds (conservative; tuned to flag only confident decoration).
+_QG_TITLE_PAGE = 1            # page 1 is treated as a likely title/cover page
+_QG_FULL_PAGE_RATIO = 0.9     # bbox area / page area at/above this ⇒ full-page crop
+_QG_GOOD_AREA_MIN = 0.04      # substantial content figure lower bound
+_QG_GOOD_AREA_MAX = 0.85      # below the full-page band
+_QG_SMALL_AREA_RATIO = 0.02   # below this ⇒ tiny region
+_QG_BANNER_ASPECT = 8.0       # width/height at/above this ⇒ banner-like strip
+_QG_NARROW_ASPECT = 0.18      # width/height at/below this ⇒ tall sliver
+_QG_EDGE_FRAC = 0.12          # within this fraction of the top/bottom page edge
+_QG_EDGE_BAND_FRAC = 0.14     # crop height fraction at/below this ⇒ thin strip
+_QG_TINY_PX = 64              # both crop dims at/below this ⇒ logo/icon
+_QG_SELECTION_MARGIN = 0.15   # a rival only displaces priority order if clearly better
+
+# Score adjustments (higher score = better). Base score is 1.0.
+_QG_TITLE_PENALTY = 0.4
+_QG_FULL_PAGE_PENALTY = 0.3
+_QG_CONTENT_BONUS = 0.2
+_QG_SMALL_AREA_PENALTY = 0.3
+_QG_EDGE_PENALTY = 0.2
+_QG_BANNER_PENALTY = 0.3
+_QG_NARROW_PENALTY = 0.2
+_QG_TINY_PENALTY = 0.3
+_QG_MAX_SCORE = 1.5
 
 # Placement tokens (diagnostic only).
 PLACEMENT_SOURCE_PAGE_ANCHOR = "source_page_anchor"
@@ -181,6 +256,11 @@ def apply_visual_markdown_pilot(job: Any, clean_md: Any) -> tuple[str, dict[str,
         if info.get("status") != STATUS_INSERTED:
             _log(f"Visual markdown pilot: no figure inserted ({info.get('reason')}).")
             return text, info
+        # Carry the closed-vocabulary quality diagnostics (Slice 60) on the success
+        # info. These are advisory only and contain no path / text / image bytes.
+        if isinstance(candidate, dict):
+            info["quality_score"] = candidate.get("quality_score")
+            info["quality_reasons"] = candidate.get("quality_reasons")
         _log(
             "Visual markdown pilot: inserted one figure "
             f"({info.get('placement')})."
@@ -222,7 +302,16 @@ def _pick_candidate(
     manifest: Any = None,
     replacement_plan: Any = None,
 ) -> tuple[dict[str, Any] | None, str]:
-    """Selection core returning ``(candidate_or_None, closed_reason)``."""
+    """Selection core returning ``(candidate_or_None, closed_reason)``.
+
+    Slice 60: all hard safety gates are unchanged (``fitz_local`` ``extracted_figure``
+    only, safe ``assets/<slug>.png`` ref, real file inside the job dir, never Chandra/
+    Mistral/page-signal). On top of those, the *safe* candidates are now ranked by a
+    conservative deterministic quality gate so a content figure beats a decorative
+    title/header/footer/logo/banner crop, and a set of only-decorative candidates
+    omits rather than inserts junk. Priority order (replacement-plan first, then
+    manifest order) is preserved on ties / near-ties.
+    """
     manifest_obj = manifest if isinstance(manifest, dict) else _read_json(_path(job, "visual_assets_manifest_json"))
     if not isinstance(manifest_obj, dict):
         return None, SKIP_CANDIDATE_UNAVAILABLE
@@ -232,30 +321,231 @@ def _pick_candidate(
         return None, SKIP_CANDIDATE_UNAVAILABLE
 
     saw_unsafe = False
+    seen_ids: set[str] = set()
+    # Each entry: (manifest_asset, built_candidate). Replacement-plan preferred
+    # items come first (in plan order), then manifest order; de-duplicated by id.
+    ordered: list[tuple[dict[str, Any], dict[str, Any]]] = []
 
-    # Preferred: a replacement-plan include-as-figure item, resolved in the manifest.
     plan_obj = replacement_plan if isinstance(replacement_plan, dict) else _read_json(
         _path(job, "visual_replacement_plan_json")
     )
     for asset_id in _plan_figure_asset_ids(plan_obj):
+        if asset_id in seen_ids:
+            continue
         asset = assets_by_id.get(asset_id)
         if asset is None:
             continue
         built, ok = _build_candidate_from_asset(job, asset, origin="replacement_plan")
         if built is not None:
-            return built, STATUS_INSERTED
-        if not ok:
+            seen_ids.add(asset_id)
+            ordered.append((asset, built))
+        elif not ok:
             saw_unsafe = True
 
-    # Fallback: first safe extracted figure in manifest order (flag-on only path).
     for asset in _ordered_figure_assets(manifest_obj):
+        slug = _safe_slug(asset.get("asset_id"))
+        if slug and slug in seen_ids:
+            continue
         built, ok = _build_candidate_from_asset(job, asset, origin="manifest")
         if built is not None:
-            return built, STATUS_INSERTED
-        if not ok:
+            if slug:
+                seen_ids.add(slug)
+            ordered.append((asset, built))
+        elif not ok:
             saw_unsafe = True
 
-    return None, (SKIP_CANDIDATE_UNSAFE if saw_unsafe else SKIP_CANDIDATE_UNAVAILABLE)
+    if not ordered:
+        return None, (SKIP_CANDIDATE_UNSAFE if saw_unsafe else SKIP_CANDIDATE_UNAVAILABLE)
+
+    # Quality gate: score each safe candidate, drop hard-decorative ones, and pick
+    # the best of the rest (priority order wins unless a rival is clearly better).
+    scored = [score_visual_markdown_candidate_for_pilot(asset) for asset, _ in ordered]
+    accepted = [i for i, q in enumerate(scored) if not q["decorative"]]
+    if not accepted:
+        return None, SKIP_CANDIDATE_LOW_QUALITY
+
+    top = max(scored[i]["score"] for i in accepted)
+    contenders = [i for i in accepted if top - scored[i]["score"] <= _QG_SELECTION_MARGIN]
+    chosen = min(contenders)  # earliest priority among the near-top candidates
+
+    _asset, candidate = ordered[chosen]
+    quality = scored[chosen]
+    enriched = dict(candidate)
+    enriched["quality_score"] = quality["score"]
+    enriched["quality_reasons"] = list(quality["reasons"])
+    return enriched, STATUS_INSERTED
+
+
+# --- Slice 60: deterministic quality scoring (metadata-only, never raises) ----
+
+
+def score_visual_markdown_candidate_for_pilot(asset: Any) -> dict[str, Any]:
+    """Assess one ``extracted_figure`` asset's quality from manifest metadata only.
+
+    Returns ``{"score": float, "decorative": bool, "reasons": [closed tokens]}``.
+    ``score`` is higher-is-better (base ``1.0``); ``decorative`` is True only when the
+    metadata makes it *confident* the crop is a logo/header/footer/title-page chrome
+    (those are dropped before selection). Uses solely already-sanitized fields —
+    ``source_page``, ``bbox``, and the ``signals`` page/crop dimensions — and never
+    reads private text, OCR text, captions, or image bytes, and never raises. When the
+    geometry/size metadata is absent it degrades to a neutral, non-decorative score so
+    a perfectly good figure with sparse metadata is never over-rejected.
+    """
+    reasons: list[str] = []
+    score = 1.0
+    decorative = False
+    if not isinstance(asset, dict):
+        return {"score": 0.0, "decorative": True, "reasons": [QUALITY_METADATA_SPARSE]}
+
+    page = _safe_page(asset.get("source_page"))
+    bbox = _quality_bbox(asset.get("bbox"))
+    raw_signals = asset.get("signals")
+    signals = raw_signals if isinstance(raw_signals, dict) else {}
+    page_w = _quality_dim(signals.get("page_width"))
+    page_h = _quality_dim(signals.get("page_height"))
+    crop_w = _quality_dim(signals.get("crop_width_px"))
+    crop_h = _quality_dim(signals.get("crop_height_px"))
+
+    have_geometry = bbox is not None and page_w is not None and page_h is not None
+    have_crop_px = crop_w is not None and crop_h is not None
+
+    if page == _QG_TITLE_PAGE:
+        reasons.append(QUALITY_TITLE_PAGE)
+        score -= _QG_TITLE_PENALTY
+
+    aspect: float | None = None
+    if have_geometry:
+        x0, y0, x1, y1 = bbox  # type: ignore[misc]
+        box_w = x1 - x0
+        box_h = y1 - y0
+        page_area = page_w * page_h  # type: ignore[operator]
+        area_ratio = (box_w * box_h) / page_area if page_area > 0 else 0.0
+        aspect = (box_w / box_h) if box_h > 0 else None
+        top_frac = y0 / page_h  # type: ignore[operator]
+        bottom_frac = y1 / page_h  # type: ignore[operator]
+        height_frac = box_h / page_h  # type: ignore[operator]
+        thin_edge_strip = height_frac <= _QG_EDGE_BAND_FRAC and (
+            top_frac <= _QG_EDGE_FRAC or bottom_frac >= 1.0 - _QG_EDGE_FRAC
+        )
+
+        if area_ratio >= _QG_FULL_PAGE_RATIO:
+            reasons.append(QUALITY_FULL_PAGE_CROP)
+            score -= _QG_FULL_PAGE_PENALTY
+            if page == _QG_TITLE_PAGE:
+                decorative = True  # a full-page crop on the title page is chrome
+        elif _QG_GOOD_AREA_MIN <= area_ratio <= _QG_GOOD_AREA_MAX and not thin_edge_strip:
+            reasons.append(QUALITY_CONTENT_SIZED)
+            score += _QG_CONTENT_BONUS
+        elif area_ratio < _QG_SMALL_AREA_RATIO:
+            reasons.append(QUALITY_SMALL_AREA)
+            score -= _QG_SMALL_AREA_PENALTY
+
+        # A thin strip hugging the top/bottom edge is header/footer decoration.
+        if thin_edge_strip:
+            at_top = top_frac <= _QG_EDGE_FRAC
+            reasons.append(QUALITY_HEADER_REGION if at_top else QUALITY_FOOTER_REGION)
+            score -= _QG_EDGE_PENALTY
+            if aspect is not None and aspect >= _QG_BANNER_ASPECT:
+                decorative = True  # a wide thin strip at the page edge is a banner
+
+    # Fall back to pixel aspect when there is no usable bbox geometry.
+    if aspect is None and have_crop_px and crop_h > 0:  # type: ignore[operator]
+        aspect = crop_w / crop_h  # type: ignore[operator]
+    if aspect is not None:
+        if aspect >= _QG_BANNER_ASPECT and QUALITY_BANNER_SHAPE not in reasons:
+            reasons.append(QUALITY_BANNER_SHAPE)
+            score -= _QG_BANNER_PENALTY
+        elif aspect <= _QG_NARROW_ASPECT:
+            reasons.append(QUALITY_NARROW_SHAPE)
+            score -= _QG_NARROW_PENALTY
+
+    # A crop that is small in BOTH pixel dimensions is a logo/icon — confident junk.
+    if have_crop_px and crop_w <= _QG_TINY_PX and crop_h <= _QG_TINY_PX:  # type: ignore[operator]
+        reasons.append(QUALITY_TINY_CROP)
+        score -= _QG_TINY_PENALTY
+        decorative = True
+
+    if not have_geometry and not have_crop_px:
+        reasons.append(QUALITY_METADATA_SPARSE)
+
+    return {
+        "score": round(_clamp_quality(score), 3),
+        "decorative": decorative,
+        "reasons": _ordered_quality_reasons(reasons),
+    }
+
+
+def is_decorative_visual_candidate(asset: Any) -> bool:
+    """True iff the quality gate is confident this figure asset is decorative chrome."""
+    return bool(score_visual_markdown_candidate_for_pilot(asset)["decorative"])
+
+
+def rank_visual_markdown_candidates(assets: Any) -> int | None:
+    """Index of the best figure asset to insert from a priority-ordered list, or None.
+
+    ``assets`` is an ordered list (highest a-priori priority first) of manifest
+    ``extracted_figure`` asset dicts. Hard-decorative candidates are dropped; among
+    the rest the highest quality score wins, but priority order is preserved on ties
+    and near-ties (a rival only displaces it when clearly better). Returns ``None``
+    when the input is empty/invalid or every candidate is hard-decorative. Pure and
+    total: never mutates the input and never raises.
+    """
+    if not isinstance(assets, list) or not assets:
+        return None
+    scored = [score_visual_markdown_candidate_for_pilot(a) for a in assets]
+    accepted = [i for i, q in enumerate(scored) if not q["decorative"]]
+    if not accepted:
+        return None
+    top = max(scored[i]["score"] for i in accepted)
+    contenders = [i for i in accepted if top - scored[i]["score"] <= _QG_SELECTION_MARGIN]
+    return min(contenders)
+
+
+def _quality_bbox(value: Any) -> list[float] | None:
+    """Coerce a bbox to a well-ordered ``[x0, y0, x1, y1]`` of finite floats, or None."""
+    if not isinstance(value, (list, tuple)) or len(value) != 4:
+        return None
+    coords: list[float] = []
+    for item in value:
+        if isinstance(item, bool):
+            return None
+        try:
+            number = float(item)
+        except (TypeError, ValueError):
+            return None
+        if number != number or number in (float("inf"), float("-inf")):  # NaN / inf
+            return None
+        coords.append(number)
+    x0, y0, x1, y1 = coords
+    if x1 <= x0 or y1 <= y0:
+        return None
+    return [x0, y0, x1, y1]
+
+
+def _quality_dim(value: Any) -> float | None:
+    """Coerce a positive finite dimension (page/crop size), else None."""
+    if value is None or isinstance(value, bool):
+        return None
+    try:
+        number = float(value)
+    except (TypeError, ValueError):
+        return None
+    if number != number or number in (float("inf"), float("-inf")):  # NaN / inf
+        return None
+    return number if number > 0 else None
+
+
+def _clamp_quality(value: float) -> float:
+    if value < 0.0:
+        return 0.0
+    if value > _QG_MAX_SCORE:
+        return _QG_MAX_SCORE
+    return value
+
+
+def _ordered_quality_reasons(tokens: list[str]) -> list[str]:
+    present = {t for t in tokens if t in QUALITY_REASONS}
+    return [t for t in _QUALITY_REASON_ORDER if t in present]
 
 
 def _build_candidate_from_asset(

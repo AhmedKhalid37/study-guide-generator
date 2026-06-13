@@ -21,7 +21,7 @@ Two modes:
 Safety / no-leak (enforced for BOTH modes):
   * Never prints the PDF path, basename, document text, OCR text, image bytes, base64,
     data URIs, tokens, headers, model/mmproj/executable paths, raw argv, or full URLs.
-  * Emits only a fixed, closed-vocabulary summary (the ten fields below) plus closed
+  * Emits only a fixed, closed-vocabulary summary (the eleven fields below) plus closed
     closed-vocab step/skip markers. A final sweep scans every pipeline-derived string.
   * Exceptions are sanitized to closed ``failure_category`` tokens (only an exception
     *type name* is ever surfaced, never a message that could carry a path / private text).
@@ -77,19 +77,22 @@ WARN_NO_FIGURE = "no_extracted_figure"
 WARN_EXTRACTION_DEP = "extraction_dependency_unavailable"
 WARN_HTML_SKIPPED = "html_render_skipped_no_dependency"
 WARN_PDF_SKIPPED = "pdf_render_skipped_no_chromium"
+WARN_PDF_IMAGE_CHECK_SKIPPED = "pdf_image_check_skipped_no_fitz"
+WARN_PDF_IMAGE_NOT_EMBEDDED = "pdf_image_not_embedded"
 WARN_DOCX_SKIPPED = "docx_render_skipped_no_dependency"
 WARN_EXPORT_SKIPPED = "export_skipped_no_fastapi"
 WARN_MULTI_FIGURE = "multiple_figures_present_one_inserted"
 
 WARNING_VOCAB = frozenset({
     WARN_NO_FIGURE, WARN_EXTRACTION_DEP, WARN_HTML_SKIPPED, WARN_PDF_SKIPPED,
+    WARN_PDF_IMAGE_CHECK_SKIPPED, WARN_PDF_IMAGE_NOT_EMBEDDED,
     WARN_DOCX_SKIPPED, WARN_EXPORT_SKIPPED, WARN_MULTI_FIGURE,
 })
 
 SUMMARY_FIELDS = (
     "status", "pilot_inserted", "safe_asset_ref_present", "html_render_ok",
-    "pdf_render_ok", "docx_render_ok", "export_zip_ok", "export_png_included",
-    "warnings", "failure_category",
+    "pdf_render_ok", "pdf_image_visible", "docx_render_ok", "export_zip_ok",
+    "export_png_included", "warnings", "failure_category",
 )
 
 # --- No-leak sweep (forbidden value shapes) ---------------------------------------
@@ -135,6 +138,46 @@ def _emit(token: str) -> None:
     print(f"[step] {token}")
 
 
+# A broken/missing image ref does not leave the PDF empty of image objects — the
+# renderer embeds a tiny broken-image PLACEHOLDER ICON (~14x16 px). A genuine extracted
+# figure is rasterized far larger. So "visible" means an embedded image whose BOTH sides
+# clear this threshold; that filters the placeholder icon (the exact broken-marker case)
+# while admitting any real figure.
+_PDF_MIN_IMAGE_SIDE = 32
+
+
+def _pdf_embeds_image(pdf_path) -> bool | None:
+    """True iff the rendered PDF embeds a real (non-placeholder) raster image.
+
+    Slice 60: a non-empty PDF file does NOT prove the inserted figure is visible — a
+    broken/missing relative ref renders a tiny broken-image placeholder icon (or only the
+    alt/caption text), not the figure. This opens the PDF with PyMuPDF and inspects each
+    page's embedded image objects, counting only those at least ``_PDF_MIN_IMAGE_SIDE`` px
+    on both sides (so the placeholder icon does not register as visible). Returns
+    True/False, or ``None`` when PyMuPDF is unavailable or the PDF cannot be inspected.
+    Never raises; reads only the integer width/height of each image object — never image
+    bytes, paths, or text.
+    """
+    try:
+        import fitz  # PyMuPDF
+    except Exception:
+        return None
+    try:
+        with fitz.open(str(pdf_path)) as doc:
+            for page in doc:
+                try:
+                    for image in page.get_images(full=True):
+                        width = int(image[2])
+                        height = int(image[3])
+                        if width >= _PDF_MIN_IMAGE_SIDE and height >= _PDF_MIN_IMAGE_SIDE:
+                            return True
+                except Exception:
+                    continue
+        return False
+    except Exception:
+        return None
+
+
 # --- Synthetic PNG builder (stdlib only; self-test data, never committed) ----------
 def _build_png(width: int = 2, height: int = 2) -> bytes:
     def chunk(tag: bytes, data: bytes) -> bytes:
@@ -158,6 +201,11 @@ def _new_summary() -> dict:
         "safe_asset_ref_present": False,
         "html_render_ok": None,
         "pdf_render_ok": None,
+        # Slice 60: distinct from pdf_render_ok — True only when the rendered PDF
+        # actually EMBEDS at least one raster image object (the inserted figure is
+        # visible), False when it rendered to a broken/alt-text-only marker, and None
+        # when the embedding check could not run (no PyMuPDF / PDF not rendered).
+        "pdf_image_visible": None,
         "docx_render_ok": None,
         "export_zip_ok": None,
         "export_png_included": None,
@@ -262,7 +310,9 @@ def _prepare_from_pdf(job, pdf_path: Path, summary: dict) -> bool:
 def _prepare_synthetic(job, summary: dict) -> bool:
     slug = "s00_page_0003_figure_01"
     asset_ref = f"assets/{slug}.png"
-    (job.assets_dir / f"{slug}.png").write_bytes(_build_png())
+    # A figure-sized synthetic PNG so the strengthened pdf_image_visible check (which
+    # ignores the tiny broken-image placeholder icon) registers it as a real image.
+    (job.assets_dir / f"{slug}.png").write_bytes(_build_png(64, 64))
     manifest = {
         "version": 1, "kind": "visual_assets_manifest", "status": "completed",
         "source": "extraction_metadata.json",
@@ -352,7 +402,15 @@ def _validate_prepared_job(job, output_dir: Path, summary: dict) -> None:
             _warn(summary, WARN_PDF_SKIPPED)
             _emit("pdf_render_skipped_no_chromium")
         else:
-            out_pdf = output_dir / "operator_final.pdf"
+            # Slice 60 FIX: render INSIDE the job dir so the PDF (and its sibling .html)
+            # sit next to ``assets/``. ``render_pdf`` writes the intermediate HTML next to
+            # the OUTPUT pdf and Chromium resolves the relative ``assets/<slug>.png`` ref
+            # against that HTML's directory — exactly how production renders to
+            # ``job.final_pdf`` (a job sibling). The earlier harness wrote the PDF to the
+            # temp base dir, so the ref resolved to a non-existent ``assets/`` and Chromium
+            # embedded only a tiny broken-image placeholder icon. That was a harness
+            # layout artifact, NOT a production bug.
+            out_pdf = job.dir / "operator_final.pdf"
             try:
                 render_pdf(job.clean_md, out_pdf)
                 summary["pdf_render_ok"] = out_pdf.is_file() and out_pdf.stat().st_size > 0
@@ -361,6 +419,21 @@ def _validate_prepared_job(job, output_dir: Path, summary: dict) -> None:
                 summary["pdf_render_ok"] = False
                 _emit(f"render_failed:{type(exc).__name__}")
                 _set_failure(summary, FAILURE_RENDER)
+            # Slice 60: a rendered PDF is not enough — confirm the figure is actually
+            # embedded/visible (not a broken alt-text marker). Only meaningful once the
+            # pilot inserted a figure and the PDF rendered.
+            if summary["pdf_render_ok"]:
+                visible = _pdf_embeds_image(out_pdf)
+                summary["pdf_image_visible"] = visible
+                if visible is None:
+                    _warn(summary, WARN_PDF_IMAGE_CHECK_SKIPPED)
+                    _emit("pdf_image_check_skipped_no_fitz")
+                elif visible:
+                    _emit("pdf_image_visible")
+                else:
+                    if summary["pilot_inserted"]:
+                        _warn(summary, WARN_PDF_IMAGE_NOT_EMBEDDED)
+                    _emit("pdf_image_not_embedded")
 
     # --- DOCX render ---
     try:
@@ -544,7 +617,8 @@ def run_self_test() -> int:
         meta("booleans_are_tristate",
              all(summary[k] in (True, False, None) for k in (
                  "pilot_inserted", "safe_asset_ref_present", "html_render_ok",
-                 "pdf_render_ok", "docx_render_ok", "export_zip_ok", "export_png_included")))
+                 "pdf_render_ok", "pdf_image_visible", "docx_render_ok",
+                 "export_zip_ok", "export_png_included")))
         meta("pilot_inserted_in_self_test", summary["pilot_inserted"] is True)
         meta("safe_asset_ref_present_in_self_test", summary["safe_asset_ref_present"] is True)
         meta("no_leak_sweep_clean", _final_sweep(text))

@@ -5,6 +5,79 @@
 
 ---
 
+## Slice 60 — **Visual-pilot quality gate + PDF image-visibility validation**, on `slice60-visual-pilot-quality-gate`. **NOT COMMITTED.**
+
+- **Why this replaced the earlier trace direction:** an earlier Slice 60 attempt added a *selection trace
+  artifact*. Manual operator review showed that was the wrong fix — the real problems were **selection quality**
+  and **PDF image visibility**, not missing trace metadata. The trace work was **parked (stashed, not committed)**
+  and this quality-gate slice took its place.
+- **What manual review found (sanitized):** the real, non-private sample produced **multiple** extracted
+  figures and **most table/figure crops were usable** (some label loss). But the pilot selected a **low-value
+  chapter-title / title-page crop**, and the PDF check was too weak — it reported `pdf_render_ok: true` while
+  manual inspection showed a **broken/missing image marker** instead of a visible embedded image.
+  - Recorded **pre-fix** human-review result (closed vocab):
+    `operator_visual_quality_review: run` · `selected_figure_quality: decorative_or_low_information` ·
+    `extraction_candidate_quality: mostly_usable` · `crop_quality: mostly_good_some_label_loss` ·
+    `pdf_image_visible: false` · `docx_image_visible: true` ·
+    `failure_category: selection_quality_insufficient` · `no_leak_sweep: clean`.
+  - Recorded **post-fix** sanitized result (in-container `--self-test`, and the same code path a real run
+    uses): `status: ok` · `pilot_inserted: true` · `pdf_render_ok: true` · **`pdf_image_visible: true`** ·
+    `docx_render_ok: true` · `export_zip_ok: true` · `export_png_included: true` · `warnings: []` ·
+    `failure_category: none` · `no_leak_sweep: clean`. The earlier `pdf_image_visible: false` was the harness
+    layout artifact described below, now resolved; the quality gate independently fixes the decorative-selection
+    half.
+- **Quality gate (`pipeline/visual_markdown_insertion.py`):** the hard safety gates are **unchanged**
+  (`fitz_local` only · `extracted_figure` only · safe `assets/<slug>.png` · real file inside the job dir · one
+  figure maximum · degrade-never-fail · never Chandra/Mistral/`page_visual_signal`). On top of those, the safe
+  candidates are now **ranked** by a conservative, deterministic gate using **only already-available manifest
+  metadata** — `source_page`, `bbox`, and the `signals` page/crop dimensions. It **never** inspects private
+  text, OCR text, captions, source contents, or image bytes, and **never** calls a model.
+  - New helpers: `score_visual_markdown_candidate_for_pilot(asset)` →
+    `{score, decorative, reasons}`; `rank_visual_markdown_candidates(assets)` → best index or `None`;
+    `is_decorative_visual_candidate(asset)`. Closed-vocab quality reasons only (`quality_title_page`,
+    `quality_full_page_crop`, `quality_content_sized`, `quality_small_area`, `quality_banner_shape`,
+    `quality_narrow_shape`, `quality_header_region`, `quality_footer_region`, `quality_tiny_crop`,
+    `quality_metadata_sparse`).
+  - Behavior: prefer content-sized figures; **drop** confident decorative chrome (title-page full crop,
+    header/footer banner strips, tiny logos/icons); penalize banner/narrow/small/full-page shapes for ranking;
+    **preserve replacement-plan / manifest priority order on ties and near-ties** (a rival only displaces it
+    when clearly better, by a margin). When all safe candidates are decorative → **omit** with new closed reason
+    `visual_candidate_low_quality` (no insertion, byte-identical guide). When metadata is **sparse** it degrades
+    to a neutral, non-decorative score so a good figure is **never over-rejected** (the synthetic-fixture shape).
+    Still **one figure maximum**; default-off / opt-in gates unchanged; no frontend/UI/export/extraction/OCR/
+    prompt change, no new route.
+- **PDF image-visibility validation (harness `test_scripts/validate_visual_pilot_operator_sample.py`):** new
+  summary field **`pdf_image_visible`** distinguishes “a PDF rendered” (`pdf_render_ok`) from “the inserted
+  figure is actually an **embedded, figure-sized image object**” (`pdf_image_visible`). Implemented with PyMuPDF
+  (`page.get_images(full=True)`); a broken/missing ref renders only a tiny **~14×16 broken-image placeholder
+  icon**, so the check counts only images ≥ 32 px on both sides (the placeholder does not register). Skips
+  calmly (`null` + closed warning `pdf_image_check_skipped_no_fitz`) when PyMuPDF is unavailable on host; Docker
+  covers it with 0 skips. Summary is now **eleven** closed-vocab fields; still no path/filename/text/OCR/bytes/
+  base64.
+- **Root cause of the “broken PDF marker” — a harness layout artifact, NOT a production bug.** `render_pdf`
+  writes its intermediate HTML next to the **output PDF** (`pdf.with_suffix(".html")`), and Chromium resolves
+  the relative `assets/<slug>.png` ref against **that** directory. Production always renders to **`job.final_pdf`**
+  — a sibling of `clean.md` and `assets/` — so the figure embeds correctly. The Slice 59 harness wrote
+  `operator_final.pdf` to the temp **base** dir (outside the job dir), so `assets/` resolved to a non-existent
+  path and Chromium embedded only the broken-image placeholder — which is what manual review saw. **Fix:** the
+  harness now renders the PDF **inside the job dir** (sibling of `assets/`), mirroring production exactly. No
+  renderer change was needed (the renderer was already correct for the production layout).
+- **Tests:** new `test_scripts/test_visual_pilot_quality_gate.py` (50 host PASS / 1 skip — PDF-visibility skips
+  w/o PyMuPDF+Chromium on host): content-beats-decorative for title/banner/tiny/header-footer; single
+  content-sized inserts; only-junk omits safely; unsafe refs & Chandra/Mistral/`page_visual_signal` excluded;
+  one-figure rule, default-off byte-identical, two-key gate truth-table; no-mutation; full no-leak sweep; PDF
+  **embedding** (not just non-empty) positive **and** negative (missing ref → not visible). `e2e` test gained a
+  fitz-guarded `render.pdf_image_visible` check; operator `--self-test` updated for the new field.
+- **Results (host):** `compileall` clean; new gate test 50/0/1; `validate_*_operator_sample.py --self-test`
+  PASS; `test_visual_pilot_e2e_validation.py` 16/0/3; `test_visual_markdown_insertion.py` 53/0 (flag-off) and
+  77/0 (flag-on); `test_visual_markdown_render.py` 6/0/1; export-asset 9/0; options 16/0; anki 46/0; eval
+  `--offline --all` no regression; `git diff --check` clean. Docker validation: see handoff.
+- **Boundaries reaffirmed:** still **one figure maximum**; **no** Chandra/Mistral/Gemini/cloud/model/provider/
+  llama-server call; **no** multi-figure support; Chandra remains blocked by its own live-validation gate. The
+  real sample PDF path/filename and document contents are **not** recorded anywhere.
+
+---
+
 ## Slice 59 — **Visual-pilot manual operator validation harness + runbook**, on `slice59-visual-pilot-operator-validation-harness`. **NOT COMMITTED.**
 
 - **Purpose:** make it safe and repeatable for an operator to validate the **current single-figure visual
