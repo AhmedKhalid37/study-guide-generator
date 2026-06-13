@@ -5,7 +5,48 @@
 
 ---
 
-## Slice 68 — **Sanitized visual-pilot selection trace / candidate audit**, on `slice68-visual-pilot-sanitized-selection-trace`. **NOT COMMITTED.**
+## Slice 69 — **Real operator selection-trace audit**, on `slice69-visual-pilot-selection-trace-operator-audit`. **NOT COMMITTED.**
+
+- **Validation/docs slice only.** Reruns the existing operator harness against the real, **non-private**
+  operator sample with **Slice 68's sanitized selection trace** (`visual_markdown_selection_trace.json`) enabled,
+  then reads that trace to explain *why* the real sample still selects tables instead of irreplaceable diagrams —
+  without leaking source material. **No production pipeline/API/frontend code changed; no new visual behavior; no
+  ranking/cap/default/gate/render/export/extraction-OCR routing change; no model/provider/cloud call.** Docs-only —
+  **no harness correction was needed.**
+- **Outcome this session: `selection_trace_operator_audit: run` — `status: ok`, `trace_artifact_present: true`,
+  `trace_no_leak_sweep: clean`, `effective_max_images: 2`, `inserted_visual_count: 2`, `safe_candidate_count: 11`,
+  `unsafe_candidate_count: 0`, `selected_count: 2`.** The non-private sample was available, so the cap-2 harness
+  **was** run inside the rebuilt Slice 68 container; the trace + rendered PDF/HTML/DOCX were copied to a host folder
+  and inspected by hand. Trace was checked for leaks **before** any field was transcribed (clean).
+- **Root cause finally localized — it is classification, not extraction or pure ranking.** The trace's `type_counts`
+  shows **all 11 safe candidates classified `diagram_or_figure`** (`reconstructable_table: 0`, `unknown: 0`,
+  `decorative_or_low_information: 0`). Manual inspection ground-truths the discrepancy: the two **selected** visuals
+  are clean two-column definition/glossary **tables** (`selected_visual_type: tables_only`,
+  `irreplaceable_visual_selected: false`, `selected_figures_quality: all_useful_or_acceptable`), and at least one
+  **genuinely irreplaceable schematic diagram was present among the safe candidates but was NOT selected**. Because
+  the pixel classifier over-accepts reconstructable tables as `diagram_or_figure`, every candidate carries the same
+  `visual_type_score: 3`, diagram-first ranking has nothing to discriminate on, and pure quality score picks the
+  clean tables (`quality_score: 1.2`) ahead of the real diagram. `selection_explanation:
+  tables_misclassified_as_diagram_or_figure`.
+- **Next work (recorded, not started):** `improve_visual_type_classification_table_vs_diagram_precision` — the
+  deterministic local pixel classifier must separate reconstructable tables from genuine diagrams so diagram-first
+  ranking gets a real signal. **Not** extraction (diagrams present) and **not** a blind ranking/threshold change
+  (ranking is signal-starved, not wrong). The trace is **sufficient** to localize this; its per-candidate
+  rejection-reason coverage is sparse (only `rejected_secondary_below_quality_floor: 1` for nine unselected
+  candidates) — a possible future *trace* refinement, not a reason to guess heuristics.
+- **Hard boundaries honored:** no cap above 2, no UI count selector, no Chandra/Mistral/Gemini/cloud OCR, no
+  model/provider/llama-server call, no image generation, no OCR-routing/renderer/prompt/export change, no new API
+  route. **Do not proceed to UI polish or cap expansion** until an irreplaceable diagram/figure is selected in real
+  validation, or there is a deliberate product decision to accept tables.
+- **Safety / no-leak:** only sanitized closed-vocab + bounded-numeric fields recorded; **no** real PDF path/filename,
+  document text, OCR text, source caption/table text, image bytes, base64, data URI, full URL, raw argv, token,
+  model/mmproj/executable path, provider payload, or raw exception. The runtime
+  `visual_markdown_selection_trace.json` was **inspected but not committed**; nothing binary/image/PDF/DOCX/ZIP/
+  runtime committed. **Slice 69 is NOT committed.**
+
+---
+
+## Slice 68 — **Sanitized visual-pilot selection trace / candidate audit**, on `slice68-visual-pilot-sanitized-selection-trace`. **COMMITTED + MERGED to `chrome-renderer-v1` (fast-forward).**
 
 - **Production diagnostic slice (visibility only).** Slice 67 proved the real post-Slice-66 cap-2 run still
   selected **two useful-but-reconstructable tables only** (`selected_visual_type: tables_only`,

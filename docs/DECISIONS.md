@@ -3158,3 +3158,48 @@ Only sanitized closed-vocabulary fields were recorded — no real PDF path/filen
 bytes, base64, data URI, full URL, raw argv, token, model/mmproj/executable path, or provider payload — and nothing
 binary/image/PDF/DOCX/ZIP/runtime was committed. **Slice 68 is NOT committed.** Chandra remains blocked by its own
 live-validation gate.
+
+## Slice 69 — the selection trace localizes the real bottleneck to *classification*, not extraction or ranking
+Slice 68 added the sanitized selection trace specifically so a real run could answer the question Slices 63/65/67
+could not — *why* the non-private operator sample keeps selecting reconstructable tables instead of irreplaceable
+diagrams — without leaking source material. Slice 69 ran that trace on the real sample (cap 2, both enable gates,
+inside the rebuilt Slice 68 container) and read it. **This is a validation/docs slice; no heuristic was tuned, and
+no production pipeline/API/frontend code, ranking, cap, default, gate, render, export, extraction, or OCR routing
+was changed.**
+
+**What the trace showed (sanitized).** `selection_trace_operator_audit: run` · `status: ok` ·
+`trace_artifact_present: true` · `trace_no_leak_sweep: clean` · `effective_max_images: 2` ·
+`inserted_visual_count: 2` · `safe_candidate_count: 11` · `unsafe_candidate_count: 0` · `selected_count: 2`. The
+decisive field is `type_counts`: **all 11 safe candidates were classified `diagram_or_figure`** —
+`reconstructable_table: 0`, `unknown: 0`, `decorative_or_low_information: 0`. Manual inspection of the rendered
+PDF/HTML/DOCX ground-truths the discrepancy: the two selected visuals are clean two-column definition/glossary
+**tables** (`selected_visual_type: tables_only`, `irreplaceable_visual_selected: false`, `selected_figures_quality:
+all_useful_or_acceptable`), and at least one genuinely irreplaceable schematic diagram **was present among the safe
+candidates but was not selected**.
+
+**Why tables still win — the mechanism, finally explained.** The deterministic pixel visual-type classifier
+**over-accepts**: it labels reconstructable definition tables (and decorative banners and code boxes) as
+`diagram_or_figure` alongside the genuine schematic. With every candidate carrying the same `visual_type_score: 3`,
+Slice 64's diagram-first ranking has **no discriminating signal**, so selection falls back to pure quality score —
+and the clean, content-sized definition tables (`quality_score: 1.2`) outrank the real diagram.
+`selection_explanation: tables_misclassified_as_diagram_or_figure`. This is the **classification** branch of the
+Slice 68 decision tree, not extraction (diagrams are present and extracted) and not a blind ranking/threshold
+change (ranking is correct but starved of signal).
+
+**Decision / next work.** The next visual slice is `improve_visual_type_classification_table_vs_diagram_precision`:
+strengthen the local, pixel-only classifier so reconstructable tables are separated from genuine diagrams, giving
+diagram-first ranking a real signal on the real sample. **Do not** proceed to UI polish or cap expansion until an
+irreplaceable diagram/figure is actually selected in real validation, or there is a deliberate product decision to
+accept tables. The trace is **sufficient** to localize the bottleneck; its per-candidate rejection-reason coverage
+is sparse (only `rejected_secondary_below_quality_floor: 1` for the nine unselected safe candidates), which is a
+possible future *trace* refinement but not a reason to guess heuristics. **Do not expand beyond hard cap 2; no UI
+count selector; no Chandra/Mistral/Gemini/model/provider/cloud/`llama-server` call.**
+
+**Scope / no-leak (firm).** Docs only — `VISUAL_PILOT_OPERATOR_VALIDATION.md`, `CURRENT_TASK.md`,
+`NEXT_CHAT_HANDOFF.md`, and this file; **no harness correction was needed**. The trace was inspected for leaks
+**before** any field was transcribed, and only the sanitized closed-vocabulary + bounded-numeric fields above were
+recorded — no real PDF path/filename, document text, OCR text, source caption/table text, image bytes, base64, data
+URI, full URL, raw argv, token, model/mmproj/executable path, or provider payload. The runtime
+`visual_markdown_selection_trace.json` was inspected but **not committed**, and nothing
+binary/image/PDF/DOCX/ZIP/runtime was committed. **Slice 69 is NOT committed.** Chandra remains blocked by its own
+live-validation gate.

@@ -571,3 +571,127 @@ next_recommended_slice: add_sanitized_selection_trace_before_more_heuristics
   filename, document text, OCR text, image bytes, base64, data URI, full URL, raw argv, token,
   model/mmproj/executable path, provider payload, or raw exception. No binary/image/PDF/DOCX/ZIP/
   runtime output was committed.
+
+---
+
+## Slice 69 — selection-trace operator audit (post-Slice-68 root-cause check)
+
+> Validation-record slice. **No production pipeline/API/frontend code changed.** It adds NO
+> visual behavior and changes no ranking/cap/default/gate/render/export/extraction-OCR routing.
+> Its only purpose is to *rerun* the existing manual harness against the same real,
+> **non-private** operator sample now that **Slice 68's sanitized selection trace
+> (`visual_markdown_selection_trace.json`) is available**, and to read that trace to explain
+> *why* the real sample still selects tables instead of irreplaceable diagrams — without
+> leaking any source material. **Docs-only — no harness correction was needed.**
+
+### Why this record exists
+
+Slices 63/65/67 all recorded the same honest real-sample outcome — `selected_visual_type:
+tables_only`, `irreplaceable_visual_selected: false` — but none could explain the *mechanism*
+without inspecting source material. Slice 67's decision gate was explicit:
+`next_recommended_slice: add_sanitized_selection_trace_before_more_heuristics`. Slice 68
+delivered that trace (diagnostic only, closed-vocab / bounded-numeric, degrade-never-fail).
+Slice 69 closes the loop: same harness, same already-supplied non-private sample, run inside the
+rebuilt Slice 68 container with cap 2 and the trace enabled, then a human inspection of the
+rendered PDF / HTML / DOCX **and** of the sanitized trace, recorded only as the actual result.
+
+### Selection-trace audit — recorded result (sanitized, closed vocab)
+
+```
+selection_trace_operator_audit: run
+status: ok
+trace_artifact_present: true
+trace_no_leak_sweep: clean
+effective_max_images: 2
+inserted_visual_count: 2
+safe_candidate_count: 11
+unsafe_candidate_count: 0
+selected_count: 2
+type_counts:
+  diagram_or_figure: 11
+  reconstructable_table: 0
+  unknown: 0
+  decorative_or_low_information: 0
+selected_visual_type: tables_only
+irreplaceable_visual_selected: false
+selected_figures_quality: all_useful_or_acceptable
+selection_explanation: tables_misclassified_as_diagram_or_figure
+```
+
+The non-private operator sample was available at the operator-local location, so the cap-2
+operator harness **was** run inside the rebuilt Slice 68 container
+(`GUIDEFORGE_ENABLE_VISUAL_MARKDOWN_IMAGE_PILOT=1`, `GUIDEFORGE_LOCAL_FIGURE_EXTRACTION=1`,
+`GUIDEFORGE_VISUAL_MARKDOWN_MAX_IMAGES=2`). The generated `visual_markdown_selection_trace.json`
+plus the rendered PDF / HTML / DOCX were copied to a host folder; the trace was inspected for
+leaks **before** any field was transcribed (it carried only closed-vocab tokens, bounded
+integers / rounded floats, page numbers, and already-safe `assets/<slug>.png` refs — clean), and
+the operator inspected the inserted visuals by hand using only the closed vocabularies
+`selected_visual_type`, `irreplaceable_visual_selected`, and `selected_figures_quality`. The real
+sample path/filename and the figures' source contents are **not** recorded here.
+
+### What the trace revealed — the root cause (sanitized)
+
+The trace newly explains the long-standing `tables_only` outcome, and the explanation is a
+**classification** problem, not extraction or pure ranking:
+
+- **Extraction is not the bottleneck.** There were **11 safe candidates** (`safe_candidate_count:
+  11`, `unsafe_candidate_count: 0`); manual inspection confirmed at least one genuinely
+  irreplaceable schematic diagram (a labeled multi-step figure that cannot be reconstructed from
+  text) **was** present among them and was correctly extracted.
+- **The deterministic pixel visual-type classifier over-accepts.** The trace's `type_counts` shows
+  **all 11 safe candidates classified as `diagram_or_figure`** and **zero** as
+  `reconstructable_table` / `unknown` / `decorative_or_low_information`. In reality the bucket
+  contained reconstructable two-column definition/glossary tables, a decorative chapter-title
+  banner, code/pseudocode boxes, **and** the genuine schematic figure — yet the classifier could
+  not tell them apart and labelled them identically.
+- **Diagram-first ranking is therefore starved of signal.** With every candidate carrying the same
+  `visual_type_score: 3`, Slice 64's diagram-first ordering has nothing to discriminate on, so
+  selection falls back to pure quality score. The two clean, content-sized definition tables
+  (`quality_score: 1.2`, `selected_by_quality_ranking` / `selected_by_priority_order`) outranked
+  the genuine schematic figure and were selected; the irreplaceable diagram was **not** selected.
+
+```
+selected_visual_type: tables_only
+irreplaceable_visual_selected: false
+selection_explanation: tables_misclassified_as_diagram_or_figure
+root_cause: visual_type_classifier_cannot_distinguish_tables_from_diagrams
+decision_gate: classification_precision_is_the_real_bottleneck
+next_recommended_slice: improve_visual_type_classification_table_vs_diagram_precision
+```
+
+### Interpretation
+
+- Slice 68 added the sanitized selection trace; Slice 69 used it on the real non-private sample to
+  understand **why tables still win over diagrams** without leaking source material — exactly the
+  question Slices 63/65/67 could not answer.
+- The trace shows **diagrams are present among the safe candidates** (so the next work is **not**
+  extraction / candidate generation) and that they are **classified correctly *enough* to be
+  selectable** — the failure is that **reconstructable tables are *also* classified as
+  `diagram_or_figure`**, collapsing every candidate into one bucket and neutralizing diagram-first
+  ranking.
+- Per the prompt's branch logic this is the **classification** branch: *diagrams exist but the
+  visual-type signal is wrong* (tables are not being separated from diagrams). The next work is
+  **visual-type classification precision — specifically table-vs-diagram discrimination** — not a
+  blind ranking/threshold change (ranking is correct but signal-starved) and not extraction.
+- The trace is **sufficient** to localize the bottleneck (the `type_counts` collapse is
+  conclusive). Its per-candidate **rejection-reason coverage is sparse** for non-selected,
+  above-floor candidates (only `rejected_secondary_below_quality_floor: 1` was recorded for the
+  nine unselected safe candidates), because the trace assigns soft-rejection tokens only in narrow
+  cases. That is a possible future *trace* refinement, but it does **not** block this slice's
+  conclusion and is **not** a reason to guess heuristics.
+- **Do not proceed to UI polish or cap expansion** until an irreplaceable diagram/figure is
+  actually selected in real validation, or there is a deliberate product decision to accept tables.
+  `decision_gate: classification_precision_is_the_real_bottleneck`.
+- **Do not expand beyond cap 2. Do not add a UI count selector. Do not add
+  Chandra/Mistral/Gemini/model/provider/cloud integration.** Chandra extraction integration remains
+  blocked by its own live-validation gate; this record does not touch it.
+- All render/export plumbing again worked end-to-end (`pdf_render_ok` / `pdf_image_visible` /
+  `docx_render_ok` / `export_zip_ok` / `export_png_included: true`, `warnings:
+  [multiple_figures_present_one_inserted]`, `failure_category: none`); the two selected tables are
+  legible, content-bearing, non-decorative material — `selected_figures_quality:
+  all_useful_or_acceptable` — they are simply **reconstructable, not irreplaceable**.
+- Only the sanitized closed-vocabulary fields above were recorded — **no** real PDF path,
+  filename, document text, OCR text, source caption/table text, image bytes, base64, data URI,
+  full URL, raw argv, token, model/mmproj/executable path, provider payload, or raw exception. The
+  runtime `visual_markdown_selection_trace.json` was **inspected but not committed**; no
+  binary/image/PDF/DOCX/ZIP/runtime output was committed.

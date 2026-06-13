@@ -6,8 +6,51 @@
 > stable overview see `PROJECT_CONTEXT.md`; canonical brief is `../CLAUDE.md`.
 
 ## Current position
-- **Working tree:** **Slice 68 (sanitized visual-pilot selection trace / candidate audit) — UNCOMMITTED (per
-  instruction)** on branch `slice68-visual-pilot-sanitized-selection-trace` (branched from fresh trunk after
+- **Working tree:** **Slice 69 (real operator selection-trace audit) — UNCOMMITTED (per instruction)** on branch
+  `slice69-visual-pilot-selection-trace-operator-audit` (branched from fresh trunk after Slice 68 was
+  committed/merged). **Validation/docs slice — no production pipeline/API/frontend code changed; no new visual
+  behavior; no ranking/cap/default/gate/render/export/extraction-OCR routing change; no model/provider/cloud call.**
+  It uses Slice 68's sanitized selection trace (`visual_markdown_selection_trace.json`) on the real, **non-private**
+  operator sample to explain *why* tables still win over diagrams — the one thing Slices 63/65/67 could not answer
+  without leaking source material.
+  - **Outcome this session: `selection_trace_operator_audit: run` — `status: ok`, `trace_artifact_present: true`,
+    `trace_no_leak_sweep: clean`, `effective_max_images: 2`, `inserted_visual_count: 2`, `safe_candidate_count: 11`,
+    `unsafe_candidate_count: 0`, `selected_count: 2`.** The non-private sample was available, so the cap-2 harness
+    **was** run inside the rebuilt Slice 68 container (`GUIDEFORGE_ENABLE_VISUAL_MARKDOWN_IMAGE_PILOT=1`,
+    `GUIDEFORGE_LOCAL_FIGURE_EXTRACTION=1`, `GUIDEFORGE_VISUAL_MARKDOWN_MAX_IMAGES=2`); the trace + rendered
+    PDF/HTML/DOCX were copied to a host folder and inspected by hand. The trace was checked for leaks **before** any
+    field was transcribed (clean).
+  - **Root cause finally localized — classification, not extraction or pure ranking.** The trace's `type_counts`
+    shows **all 11 safe candidates classified `diagram_or_figure`** (`reconstructable_table: 0`, `unknown: 0`,
+    `decorative_or_low_information: 0`). Manual inspection ground-truths the discrepancy: the two **selected** visuals
+    are clean two-column definition/glossary **tables** (`selected_visual_type: tables_only`,
+    `irreplaceable_visual_selected: false`, `selected_figures_quality: all_useful_or_acceptable`), and at least one
+    **genuinely irreplaceable schematic diagram was present among the safe candidates but was NOT selected**. Because
+    the pixel classifier over-accepts reconstructable tables as `diagram_or_figure`, every candidate carries the same
+    `visual_type_score: 3`, diagram-first ranking has no discriminating signal, and pure quality score picks the
+    clean tables (`quality_score: 1.2`) ahead of the real diagram. `selection_explanation:
+    tables_misclassified_as_diagram_or_figure`.
+  - **Next work (recorded, not started):** `improve_visual_type_classification_table_vs_diagram_precision` — the
+    deterministic local pixel classifier must separate reconstructable tables from genuine diagrams so diagram-first
+    ranking gets a real signal. **Not** extraction (diagrams present) and **not** a blind ranking/threshold change
+    (ranking is signal-starved, not wrong). The trace is **sufficient** to localize this; its per-candidate
+    rejection-reason coverage is sparse (only `rejected_secondary_below_quality_floor: 1` for the nine unselected
+    safe candidates) — a possible future *trace* refinement, not a reason to guess heuristics.
+  - **Decision:** **do not proceed to UI polish or cap expansion** until an irreplaceable diagram/figure is selected
+    in real validation, or there is a deliberate product decision to accept tables. **Do not expand beyond cap 2; no
+    UI count selector; no Chandra/Mistral/Gemini/model/provider/cloud integration.** Chandra remains blocked by its
+    own live-validation gate.
+  - **Docs-only:** updated `VISUAL_PILOT_OPERATOR_VALIDATION.md`, `CURRENT_TASK.md`, this file, `DECISIONS.md`. No
+    harness correction needed; no frontend/UI; no extraction/OCR-routing/prompt/render/export change; no
+    Chandra/model/provider/cloud call. `git diff --check` clean. Only sanitized closed-vocab + bounded-numeric fields
+    recorded — no real PDF path/filename, document text, OCR text, source caption/table text, image bytes, base64,
+    data URI, full URL, raw argv, token, model/mmproj/executable path, or provider payload. The runtime
+    `visual_markdown_selection_trace.json` was **inspected but not committed**; nothing binary/image/PDF/DOCX/ZIP/
+    runtime committed. **Slice 69 is NOT committed.**
+
+### Prior position (Slice 68 — committed & merged)
+- **Slice 68 (sanitized visual-pilot selection trace / candidate audit) — COMMITTED + MERGED to `chrome-renderer-v1`
+  (fast-forward)** on branch `slice68-visual-pilot-sanitized-selection-trace` (branched from fresh trunk after
   Slice 67 was committed/merged). **Production diagnostic slice — visibility only; ranking/cap/default/two-key
   gate/UI/render/export/extraction-OCR routing all unchanged; no model/provider/cloud call.** It acts on Slice 67's
   finding that the real post-Slice-66 cap-2 run STILL selected two useful-but-reconstructable tables only: rather
@@ -29,15 +72,9 @@
   - **New test:** `test_scripts/test_visual_pilot_selection_trace_sanitized.py` (20-point coverage). **56/56 pass
     host and in-container.** Full visual-pilot suite + operator self-test + insertion/render/export/anki/options +
     `eval --offline --all` green host-side; container rebuilt+recreated, `/api/health` `{"ok":true}`,
-    `smoke_release.py` **29/29**, in-container suite green (selection-trace 56/0, light-table 66/0, type-ranking
-    64/0, multifigure 78/0, quality-gate 54/0, operator self-test PASS). `git diff --check` clean.
-  - **Decision:** instrument before tuning. A future visual slice reads this trace on a real run to tell whether
-    diagrams are mis-**classified** (type detection) or mis-**ranked/capped** (selection), instead of guessing. **Do
-    not** change ranking/cap/default here; **no** UI count selector, **no** Chandra/Mistral/Gemini/model/provider/
-    cloud integration. Chandra remains blocked by its own live-validation gate.
-  - **No-leak:** no real PDF path/filename, document/OCR text, image bytes, base64, data URI, full URL, raw argv,
-    token, model/mmproj/executable path, or provider payload recorded; nothing binary/image/PDF/DOCX/ZIP/runtime
-    committed. **Slice 68 is NOT committed.**
+    `smoke_release.py` **29/29**, in-container suite green. `git diff --check` clean. **Slice 68 commit `9a8f10d`,
+    fast-forward merged + pushed to trunk `chrome-renderer-v1`.** Its real-sample selection-trace audit is the
+    subject of the Slice 69 current-position record above.
 
 ### Prior position (Slice 67 — committed & merged)
 - **Slice 67 (improved-light-table real operator validation) — COMMITTED + MERGED to `chrome-renderer-v1`
