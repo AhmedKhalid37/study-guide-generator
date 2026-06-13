@@ -2819,3 +2819,44 @@ false`, `docx_image_visible: true`, `failure_category: selection_quality_insuffi
 `status: ok`, `pilot_inserted: true`, `pdf_image_visible: true`, `warnings: []`,
 `failure_category: none`, `no_leak_sweep: clean` — no real PDF path/filename/text/OCR/image
 bytes/base64/data URI. **Slice 60 is not committed.**
+
+## Slice 61 — the post-fix operator visual-quality review is the decision gate for the next visual step
+After Slice 60 fixed the quality gate and the PDF image-visibility check and reran the
+real, non-private operator validation green (`status: ok`, `pilot_inserted: true`,
+`pdf_render_ok: true`, `pdf_image_visible: true`, `docx_render_ok: true`, `export_zip_ok:
+true`, `export_png_included: true`, `warnings: [multiple_figures_present_one_inserted]`,
+`failure_category: none`, `no_leak_sweep: clean`), the one open question was **human**: is
+the figure the gated pilot now selects actually worth showing? Slice 61 records that verdict
+as a **docs/validation-record-only** slice — **no production code, frontend, export,
+extraction/OCR routing, prompt, render, or route change; no multi-figure; no Chandra/model/
+provider/cloud call; no committed binary/image/PDF/DOCX/ZIP/runtime output.**
+
+**Why a separate review slice instead of folding the verdict into Slice 60.** Slice 60
+deliberately left the human classification out so the code/validation slice could commit on
+mechanical evidence alone, and the subjective figure-quality call could be made against the
+**rebuilt** post-fix container with the operator inspecting the actually-rendered figure.
+Keeping the verdict in its own slice also keeps it as an explicit, auditable **decision
+gate** for the next visual step rather than a buried note.
+
+**Recorded result (sanitized, closed vocab):**
+`postfix_operator_visual_quality_review: run` · `status: ok` · `pilot_inserted: true` ·
+**`selected_figure_quality: useful_diagram_or_table`** · `pdf_render_ok: true` ·
+`pdf_image_visible: true` · `docx_render_ok: true` · `export_zip_ok: true` ·
+`export_png_included: true` · `warnings: [multiple_figures_present_one_inserted]` ·
+`failure_category: none` · `no_leak_sweep: clean`. The pre-fix Slice 60 review
+(`decorative_or_low_information`, `extraction_candidate_quality: mostly_usable`,
+`crop_quality: mostly_good_some_label_loss`, `pdf_image_visible: false`, `docx_image_visible:
+true`, `failure_category: selection_quality_insufficient`) is preserved for comparison.
+
+**Decision rule and outcome.** The closed vocabulary is `useful_diagram_or_table` ·
+`acceptable_but_not_best` · `decorative_or_low_information` · `wrong_or_bad_crop` ·
+`unclear`. A verdict of `useful_diagram_or_table` / `acceptable_but_not_best` clears the bar
+to **cautiously consider multi-figure or improved placement next**; a verdict of
+`decorative_or_low_information` / `wrong_or_bad_crop` / `unclear` means **keep improving
+selection quality before any multi-figure work**. The recorded verdict is
+`useful_diagram_or_table`, so the cautious-next-step branch applies — but only as a
+**separately-designed slice**, still **one figure maximum** until that slice is scoped.
+**Chandra remains blocked by its own live-validation gate** and is untouched here. Only
+sanitized closed-vocabulary fields were recorded — no real PDF path/filename, document text,
+OCR text, image bytes, base64, data URI, full URL, raw argv, token, model/mmproj/executable
+path, or raw exception. **Slice 61 is not committed.**

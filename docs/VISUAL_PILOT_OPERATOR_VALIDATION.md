@@ -145,3 +145,82 @@ token, or raw exception was recorded.
 - **Chandra extraction integration remains blocked by Slice 45 `status:not_run`.**
 - **Multi-figure expansion remains deferred**; the single-figure operator validation pass
   is now recorded, but multi-figure insertion stays out of scope until separately designed.
+
+---
+
+## Slice 61 — post-fix operator visual-quality review (decision gate)
+
+> Docs/validation-record only. **No production code, frontend, export, extraction/OCR
+> routing, prompt, or render behavior changed.** This records a sanitized **post-fix**
+> human quality review of the single figure the pilot selects **after** the Slice 60
+> quality gate, run against the same non-private operator sample through the freshly
+> rebuilt Slice 60 container. It is the decision gate for whether the next visual step
+> is multi-figure / improved placement or continued selection-quality work.
+
+### Why this review exists
+
+Slice 59 (real operator run) and Slice 60 proved the **visual plumbing and the
+`fitz_local` extraction source are viable** — figures extract, one is inserted, and the
+embedded image is now actually visible in the rendered PDF. The remaining open question
+was purely **human**: is the figure the pilot now picks actually *worth* showing? The
+pre-fix selection picked a **low-value chapter-title / title-page crop**. Slice 60 added
+deterministic quality gating (drop decorative chrome, prefer content figures) **and**
+fixed the harness PDF layout so the embedded image renders. This slice records the
+operator's post-fix verdict on the selected figure.
+
+### Post-fix review — recorded result (sanitized, closed vocab)
+
+```
+postfix_operator_visual_quality_review: run
+status: ok
+pilot_inserted: true
+selected_figure_quality: useful_diagram_or_table
+pdf_render_ok: true
+pdf_image_visible: true
+docx_render_ok: true
+export_zip_ok: true
+export_png_included: true
+warnings:
+  - multiple_figures_present_one_inserted
+failure_category: none
+no_leak_sweep: clean
+```
+
+The operator classified the post-fix selected figure using only the closed vocabulary
+`useful_diagram_or_table` · `acceptable_but_not_best` · `decorative_or_low_information` ·
+`wrong_or_bad_crop` · `unclear`, after inspecting the rendered PDF / HTML / DOCX from a
+host output folder (the real sample path/filename and the figure's source contents are
+**not** recorded here).
+
+### Pre-fix review — preserved for comparison (Slice 60, sanitized)
+
+```
+operator_visual_quality_review: run
+selected_figure_quality: decorative_or_low_information
+extraction_candidate_quality: mostly_usable
+crop_quality: mostly_good_some_label_loss
+pdf_image_visible: false
+docx_image_visible: true
+failure_category: selection_quality_insufficient
+no_leak_sweep: clean
+```
+
+### Interpretation
+
+- Slice 59 / Slice 60 proved the **visual plumbing and the extraction source are viable**.
+- The **pre-fix** selection picked a **low-value title / chapter crop**, and the pre-fix
+  PDF check was a harness-layout artifact that showed only a broken-image placeholder.
+- Slice 60 added **deterministic quality gating** (drop decorative chrome, prefer content
+  figures) and **fixed the harness PDF layout** so the embedded image renders.
+- The **post-fix operator review is the decision gate** for the next visual step.
+- **Recorded verdict: `useful_diagram_or_table`.** This is in the
+  `useful_diagram_or_table` / `acceptable_but_not_best` band, so **cautious multi-figure
+  or improved placement may be considered next** — as a separately-designed slice, still
+  one figure at a time until that slice is scoped.
+- A `decorative_or_low_information`, `wrong_or_bad_crop`, or `unclear` verdict would
+  instead have meant **keep improving selection quality before any multi-figure work**.
+- **Chandra extraction integration remains blocked by its own live-validation gate**
+  (Slice 45 `status:not_run`); this review does not touch it.
+- Only the sanitized closed-vocabulary fields above were recorded — **no** real PDF path,
+  filename, document text, OCR text, image bytes, base64, data URI, full URL, raw argv,
+  token, model/mmproj/executable path, or raw exception.

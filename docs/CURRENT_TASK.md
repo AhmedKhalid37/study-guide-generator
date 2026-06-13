@@ -5,7 +5,45 @@
 
 ---
 
-## Slice 60 — **Visual-pilot quality gate + PDF image-visibility validation**, on `slice60-visual-pilot-quality-gate`. **NOT COMMITTED.**
+## Slice 61 — **Post-fix visual-quality operator review record**, on `slice61-visual-pilot-postfix-quality-review`. **NOT COMMITTED.**
+
+- **Docs / validation-record only.** No production code, frontend/UI, export, extraction/OCR-routing, prompt,
+  render, or route change; no multi-figure, no Chandra/model/provider/cloud call; no committed binary/image/
+  PDF/DOCX/ZIP/runtime output. Slice 60 is committed and merged to trunk (`chrome-renderer-v1`) ahead of this.
+- **Why:** Slice 60 fixed the quality gate and the PDF image-visibility check, and reran the real, non-private
+  operator validation with `status: ok` · `pilot_inserted: true` · `pdf_render_ok: true` · `pdf_image_visible:
+  true` · `docx_render_ok: true` · `export_zip_ok: true` · `export_png_included: true` ·
+  `warnings: [multiple_figures_present_one_inserted]` · `failure_category: none` · `no_leak_sweep: clean`. The
+  one thing Slice 60 deliberately left open was the **human** quality classification of the now-selected figure.
+  This slice records that post-fix verdict as the decision gate for the next visual step.
+- **What was done:** reran the existing operator harness (`validate_visual_pilot_operator_sample.py`) inside the
+  freshly rebuilt Slice 60 container against the already-supplied non-private sample, copied the rendered
+  PDF/HTML/DOCX to a host output folder, and had the operator classify the selected figure using only the closed
+  vocabulary `useful_diagram_or_table` · `acceptable_but_not_best` · `decorative_or_low_information` ·
+  `wrong_or_bad_crop` · `unclear`.
+- **Recorded post-fix review (sanitized, closed vocab):**
+  `postfix_operator_visual_quality_review: run` · `status: ok` · `pilot_inserted: true` ·
+  **`selected_figure_quality: useful_diagram_or_table`** · `pdf_render_ok: true` · `pdf_image_visible: true` ·
+  `docx_render_ok: true` · `export_zip_ok: true` · `export_png_included: true` ·
+  `warnings: [multiple_figures_present_one_inserted]` · `failure_category: none` · `no_leak_sweep: clean`.
+  The **pre-fix** Slice 60 review (`selected_figure_quality: decorative_or_low_information` ·
+  `extraction_candidate_quality: mostly_usable` · `crop_quality: mostly_good_some_label_loss` ·
+  `pdf_image_visible: false` · `docx_image_visible: true` ·
+  `failure_category: selection_quality_insufficient` · `no_leak_sweep: clean`) is preserved for comparison.
+- **Decision-gate outcome:** `useful_diagram_or_table` falls in the
+  `useful_diagram_or_table` / `acceptable_but_not_best` band → **cautious multi-figure or improved placement may
+  be considered next**, as a separately-designed slice and still one figure at a time until that slice is
+  scoped. Chandra remains blocked by its own live-validation gate.
+- **Files:** `docs/VISUAL_PILOT_OPERATOR_VALIDATION.md` (new Slice 61 section), `docs/CURRENT_TASK.md`,
+  `docs/NEXT_CHAT_HANDOFF.md`, `docs/DECISIONS.md` — **docs only**.
+- **Safety / no-leak:** only sanitized closed-vocabulary fields recorded; no real PDF path/filename, document
+  text, OCR text, image bytes, base64, data URI, full URL, raw argv, token, model/mmproj/executable path, or
+  raw exception. Harness temp files were copied into the container `/tmp`, run, then removed; nothing committed.
+- **Slice 61 is NOT committed.**
+
+---
+
+## Slice 60 — **Visual-pilot quality gate + PDF image-visibility validation**, on `slice60-visual-pilot-quality-gate`. **COMMITTED & merged to trunk.**
 
 - **Why this replaced the earlier trace direction:** an earlier Slice 60 attempt added a *selection trace
   artifact*. Manual operator review showed that was the wrong fix — the real problems were **selection quality**
