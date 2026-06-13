@@ -278,6 +278,34 @@ _VT_BANNER_ASPECT = 8.0      # width/height at/above this with low edges ⇒ dec
 _VT_NARROW_ASPECT = 0.18     # width/height at/below this with low edges ⇒ decorative sliver
 
 
+# --- Slice 66: lightly-ruled / text-heavy reconstructable-table detection -----
+#
+# Slice 65's real operator validation showed the Slice 64 classifier only caught a *strong*
+# full horizontal+vertical rule grid as a table; the real sample's lightly ruled / text-heavy
+# tables stayed ``unknown`` (their faint rules and antialiased text never reached the strict
+# ``_VT_DARK`` ink threshold), so every candidate stayed in one type tier and diagram-first
+# ranking never engaged — two useful but reconstructable tables were selected. Slice 66 adds a
+# few extra *bounded* projection features — a softer-ink horizontal text-band rhythm and a
+# vertical column-gutter structure — so a table with weak/no drawn rules is still recognized as
+# ``reconstructable_table``, while a genuine diagram (no regular row/column rhythm) stays
+# ``diagram_or_figure``. Same hard limits as Slice 64: pixel-only over the already-safe,
+# already-job-dir-contained crop; never OCRs, never calls a model/provider/network, never
+# base64/serializes/logs image bytes, never records a path or source text, adds no artifact,
+# and degrades to ``unknown`` (prior behavior) whenever the crop cannot be analyzed.
+
+# A separate, softer ink threshold used ONLY for the new text-band / column-gutter projections.
+# ``_VT_DARK`` (110) counts only near-black rule/shape pixels; downscaled, antialiased printed
+# text is mid-gray and would be missed — which is exactly why the real light tables fell to
+# ``unknown``. Anything clearly darker than light-gray counts as "text ink" for the projection.
+_LT_INK = 180
+_LT_ROW_TEXT_MIN = 0.05   # row text-ink fraction at/above this ⇒ a text (ink) row
+_LT_ROW_BLANK_MAX = 0.01  # row text-ink fraction at/below this ⇒ a blank separator row
+_LT_COL_GUTTER_MAX = 0.06 # column text-ink fraction at/below this ⇒ a whitespace gutter column
+_LT_MIN_TEXT_BANDS = 3    # ≥ this many separated text bands ⇒ a repeated-row rhythm
+_LT_MIN_COL_BLOCKS = 2    # ≥ this many gutter-separated column blocks ⇒ column structure
+_LT_GAP_CV_MAX = 0.5      # band-gap coefficient-of-variation at/below this ⇒ regular spacing
+
+
 # --- Flag --------------------------------------------------------------------
 
 
@@ -917,32 +945,44 @@ def _summarize_gray_pixels(
 
     Pure arithmetic over a bounded (≤ ``_VT_MAX_DIM`` per side) buffer. Produces only
     rounded scalar summaries: blank ratio, horizontal/vertical full-rule counts and
-    densities, rough edge density, and the original aspect ratio. No pixel values leave
-    this function.
+    densities, rough edge density, the original aspect ratio, and (Slice 66) the
+    softer-ink text-band rhythm + column-gutter structure used to spot lightly ruled /
+    text-heavy reconstructable tables. No pixel values leave this function.
     """
     total = w * h
     light_count = 0
     line_rows = 0
+    row_text: list[float] = []  # Slice 66: per-row softer-ink text fraction
     for r in range(h):
         base = r * w
         dark_in_row = 0
+        text_in_row = 0
         for c in range(w):
             value = pixels[base + c]
             if value <= _VT_DARK:
                 dark_in_row += 1
             elif value >= _VT_LIGHT:
                 light_count += 1
+            if value <= _LT_INK:
+                text_in_row += 1
         if w > 0 and dark_in_row / w >= _VT_LINE_FRAC:
             line_rows += 1
+        row_text.append(text_in_row / w if w > 0 else 0.0)
 
     line_cols = 0
+    col_text: list[float] = []  # Slice 66: per-column softer-ink text fraction
     for c in range(w):
         dark_in_col = 0
+        text_in_col = 0
         for r in range(h):
-            if pixels[r * w + c] <= _VT_DARK:
+            value = pixels[r * w + c]
+            if value <= _VT_DARK:
                 dark_in_col += 1
+            if value <= _LT_INK:
+                text_in_col += 1
         if h > 0 and dark_in_col / h >= _VT_LINE_FRAC:
             line_cols += 1
+        col_text.append(text_in_col / h if h > 0 else 0.0)
 
     # Rough edge density: horizontal adjacent-pixel transitions above a delta.
     edges = 0
@@ -960,6 +1000,13 @@ def _summarize_gray_pixels(
     blank_ratio = (light_count / total) if total > 0 else 1.0
     edge_density = (edges / pairs) if pairs > 0 else 0.0
     aspect = (orig_w / orig_h) if orig_h > 0 else 0.0
+
+    # Slice 66: softer-ink text-band rhythm (rows) and column-gutter structure (columns).
+    text_bands = _profile_runs(row_text, _LT_ROW_TEXT_MIN, _LT_ROW_BLANK_MAX)
+    n_text_bands = len(text_bands)
+    row_band_regular = _runs_regular(text_bands)
+    n_col_blocks = _count_col_blocks(col_text, _LT_COL_GUTTER_MAX)
+
     return {
         "blank_ratio": round(blank_ratio, 4),
         "edge_density": round(edge_density, 4),
@@ -968,15 +1015,117 @@ def _summarize_gray_pixels(
         "h_line_density": round(line_rows / h, 4) if h > 0 else 0.0,
         "v_line_density": round(line_cols / w, 4) if w > 0 else 0.0,
         "aspect": round(aspect, 4),
+        "n_text_bands": float(n_text_bands),
+        "row_band_regular": float(row_band_regular),
+        "n_col_blocks": float(n_col_blocks),
     }
+
+
+def _profile_runs(profile: list[float], ink_min: float, blank_max: float) -> list[tuple[int, int]]:
+    """Contiguous *ink* runs in a 1-D projection, separated by *blank* values (Slice 66).
+
+    A value ``>= ink_min`` is ink (opens / extends a run); a value ``<= blank_max`` is a
+    blank separator (closes a run). An ambiguous value in between keeps an open run open but
+    never starts one — so faint speckle between bands does not merge them. Returns a list of
+    ``(start, end_exclusive)`` index runs. Pure; never raises.
+    """
+    runs: list[tuple[int, int]] = []
+    start: int | None = None
+    for i, value in enumerate(profile):
+        if value >= ink_min:
+            if start is None:
+                start = i
+        elif value <= blank_max:
+            if start is not None:
+                runs.append((start, i))
+                start = None
+        # else ambiguous: keep an open run open, but do not start a new one.
+    if start is not None:
+        runs.append((start, len(profile)))
+    return runs
+
+
+def _runs_regular(runs: list[tuple[int, int]]) -> float:
+    """1.0 iff ``runs`` are evenly spaced (regular row rhythm), else 0.0 (Slice 66).
+
+    Regularity = the coefficient of variation of consecutive run-center gaps is at/below
+    ``_LT_GAP_CV_MAX``. Fewer than three runs cannot establish a rhythm ⇒ 0.0. Pure; never
+    raises (a degenerate zero/near-zero mean spacing ⇒ 0.0).
+    """
+    if len(runs) < _LT_MIN_TEXT_BANDS:
+        return 0.0
+    centers = [(s + e) / 2.0 for s, e in runs]
+    gaps = [centers[i + 1] - centers[i] for i in range(len(centers) - 1)]
+    if not gaps:
+        return 0.0
+    mean = sum(gaps) / len(gaps)
+    if mean <= 0.0:
+        return 0.0
+    var = sum((g - mean) ** 2 for g in gaps) / len(gaps)
+    cv = (var ** 0.5) / mean
+    return 1.0 if cv <= _LT_GAP_CV_MAX else 0.0
+
+
+def _count_col_blocks(col_text: list[float], gutter_max: float) -> int:
+    """Number of gutter-separated column blocks in a vertical text projection (Slice 66).
+
+    A column with text fraction ``> gutter_max`` is content; a run of content columns is one
+    block; a column ``<= gutter_max`` is a whitespace gutter that ends the current block. So a
+    three-column table reads as three blocks; full-width prose reads as one. Pure; never raises.
+    """
+    blocks = 0
+    in_block = False
+    for value in col_text:
+        if value > gutter_max:
+            if not in_block:
+                blocks += 1
+                in_block = True
+        else:
+            in_block = False
+    return blocks
+
+
+def _looks_like_reconstructable_table(features: dict[str, float]) -> bool:
+    """True iff the bounded features describe a lightly ruled / text-heavy table (Slice 66).
+
+    Two conservative, dual-signal paths (both require more than one independent table cue so a
+    diagram's incidental banding can never qualify):
+
+    * **Text-grid** — a regular repeated text-band rhythm *and* a multi-column gutter structure
+      (rows arranged in columns, no drawn rules needed); or
+    * **Lightly ruled** — multiple full horizontal rules *without* a strong vertical-rule grid,
+      backed by either the row rhythm or the column structure.
+
+    A genuine diagram (irregular row spacing, no clean full-height column gutters, no repeated
+    horizontal rules) satisfies neither. Pure; never raises.
+    """
+    n_text_bands = features.get("n_text_bands", 0.0)
+    row_band_regular = features.get("row_band_regular", 0.0)
+    n_col_blocks = features.get("n_col_blocks", 0.0)
+    n_line_rows = features.get("n_line_rows", 0.0)
+    n_line_cols = features.get("n_line_cols", 0.0)
+
+    has_row_rhythm = n_text_bands >= _LT_MIN_TEXT_BANDS and row_band_regular >= 1.0
+    has_columns = n_col_blocks >= _LT_MIN_COL_BLOCKS
+    has_h_rules = n_line_rows >= _VT_GRID_MIN_LINES
+    weak_v_rules = n_line_cols < _VT_GRID_MIN_LINES
+
+    # Text-grid: regular rows arranged in clear columns.
+    if has_row_rhythm and has_columns:
+        return True
+    # Lightly ruled: horizontal rules + row/column structure, but no strong vertical grid.
+    if has_h_rules and weak_v_rules and (has_row_rhythm or has_columns):
+        return True
+    return False
 
 
 def _classify_visual_type_from_features(features: dict[str, float]) -> str:
     """Map bounded features to a closed visual-type token (conservative; never raises).
 
     Order of decision: near-empty / decorative strip first (low information), then a clear
-    horizontal+vertical rule grid ⇒ table, then meaningful non-grid graphic content ⇒
-    diagram/figure; anything ambiguous degrades to ``unknown`` so prior behavior holds.
+    horizontal+vertical rule grid ⇒ table, then (Slice 66) a lightly ruled / text-heavy table
+    by its text-band rhythm + column-gutter structure ⇒ table, then meaningful non-grid graphic
+    content ⇒ diagram/figure; anything ambiguous degrades to ``unknown`` so prior behavior holds.
     """
     blank_ratio = features.get("blank_ratio", 0.0)
     edge_density = features.get("edge_density", 0.0)
@@ -992,6 +1141,9 @@ def _classify_visual_type_from_features(features: dict[str, float]) -> str:
         return VISUAL_TYPE_DECORATIVE
     # A regular grid of full horizontal AND vertical rules ⇒ reconstructable table.
     if n_line_rows >= _VT_GRID_MIN_LINES and n_line_cols >= _VT_GRID_MIN_LINES:
+        return VISUAL_TYPE_TABLE
+    # Slice 66: a lightly ruled / text-heavy table (weak/no drawn rules) ⇒ still a table.
+    if _looks_like_reconstructable_table(features):
         return VISUAL_TYPE_TABLE
     # Substantial non-grid graphic content ⇒ a hard-to-reconstruct diagram/figure.
     if edge_density >= _VT_EDGE_MIN and blank_ratio < _VT_BLANK_MAX:

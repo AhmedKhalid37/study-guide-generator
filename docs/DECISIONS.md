@@ -3015,3 +3015,57 @@ binding constraint. The validation was **docs-only — no harness correction was
 sanitized closed-vocabulary fields were recorded (no real PDF path/filename, document/OCR text,
 image bytes, base64, data URI, full URL, raw argv, token, or model/mmproj/executable path), with no
 binary/image/PDF/DOCX/ZIP/runtime output committed.
+
+---
+
+## Slice 66 — detect lightly-ruled / text-heavy tables as `reconstructable_table`, by a softer-ink text-band + column-gutter analysis, before any UI polish (Slice 66)
+
+**Decision.** Slice 65 proved (on the real sample) that Slice 64's diagram-first ranking **did not change the
+outcome**: the two selected visuals stayed **useful tables only** (`selected_visual_type: tables_only`,
+`irreplaceable_visual_selected: false`), because the Slice 64 classifier recognized a table **only** from a
+*strong full horizontal+vertical rule grid* — the sample's **lightly-ruled / text-heavy** tables stayed
+`unknown`, so every candidate sat in one visual-type tier and the ranking had no signal. Acting on Slice 65's
+`next_recommended_slice: improve_visual_type_detection_before_ui_polish`, Slice 66 strengthens the
+**deterministic, local, pixel-only** visual-type *detection* (not the ranking, cap, or gates) so a lightly-ruled
+/ reconstructable table classifies as `reconstructable_table` rather than `unknown`, giving the existing
+diagram-first ranking a real signal to act on.
+
+**How.** One file (`pipeline/visual_markdown_insertion.py`). The bounded grayscale feature summary
+(`_summarize_gray_pixels`) gained, alongside the existing near-black rule/edge features, a **softer-ink**
+(`_LT_INK`, mid-gray — chosen because downscaled antialiased printed text never reaches the near-black `_VT_DARK`
+threshold, which is precisely why the real tables fell to `unknown`) horizontal **text-band rhythm** and a
+vertical **column-gutter** structure (pure helpers `_profile_runs`, `_runs_regular`, `_count_col_blocks`). A new
+`_looks_like_reconstructable_table(...)` predicate is consulted in `_classify_visual_type_from_features`
+**after** the strong-grid table rule and **before** the diagram rule, via two **dual-signal** paths — each
+deliberately requires more than one independent table cue so a diagram's incidental banding can never qualify:
+(a) **text-grid** — a regular repeated text-band rhythm *and* a multi-column gutter structure (rows arranged in
+columns, no drawn rules needed); (b) **lightly-ruled** — multiple full horizontal rules *without* a strong
+vertical-rule grid, backed by either the row rhythm or the column structure. A genuine diagram (irregular row
+spacing, no clean full-height column gutters, no repeated horizontal rules) satisfies neither and stays
+`diagram_or_figure`.
+
+**Why this shape.** It keeps every Slice 64 hard limit: pixel-only over the already-safe, already-job-dir-
+contained crop; **no OCR, no model/provider/network/cloud, no `llama-server`, no image generation, no OCR-routing
+change**; never base64/serializes/logs image bytes; never records a path or source text; **adds no artifact**; and
+**degrades to `unknown`** (byte-identical fallback to the prior Slice 60/62 quality-only selection) whenever
+Pillow is absent or the crop is unreadable / too small. The diagram-first **ranking**, the two-key gate, the
+**default cap 1 / hard cap 2** (server-side only), the `fitz_local` / `extracted_figure`-only restriction, the
+unsafe-ref / Chandra / Mistral / `page_visual_signal` rejection, the decorative-rejection dominance, the
+default-off byte-identical output, and the export ride-along are all **unchanged** — Slice 66 only sharpens the
+signal that ranking already consumes. **Tables remain allowed when they are the best/only useful visual.**
+
+**Constraints (unchanged and firm):** no expansion beyond cap 2, no arbitrary-N support, no UI count selector, no
+frontend/UI change, no `/api/options`/route change, no extraction/prompt/render/export-behavior change, and no
+Chandra/Mistral/Gemini/model/provider/cloud integration; Chandra stays blocked by its own live-validation gate.
+
+**Validation.** New `test_scripts/test_visual_pilot_light_table_detection.py` (runtime-built tiny PNG fixtures in
+temp dirs, never committed) covers the classifications, ranking outcomes, decorative rejection,
+unknown-preserves-prior, analysis-failure degrade, unsafe-ref / blocked-provider exclusion, determinism, the
+two-key gate, default-off byte-identical, default-1 / hard-cap-2, export ride-along, and a full no-leak sweep.
+Host + **in-container** (Pillow 12, no skips) suites are green and Docker `build`+`up`+`/api/health`+`smoke_release`
+pass. **Optional real operator revalidation was NOT run** (the non-private sample is unavailable this session); the
+desired flip to `selected_visual_type: diagrams_or_figures_present` / `irreplaceable_visual_selected: true` is
+**not assumed** and must be confirmed by re-running the cap-2 operator harness when the sample is available,
+recorded only if true. Only sanitized closed-vocabulary tokens + bounded numeric features were recorded (no real
+PDF path/filename, document/OCR text, image bytes, base64, data URI, full URL, raw argv, token, or
+model/mmproj/executable path), and nothing binary/image/PDF/DOCX/ZIP/runtime was committed.

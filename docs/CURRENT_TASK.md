@@ -5,7 +5,63 @@
 
 ---
 
-## Slice 65 — **Diagram-first real operator validation record**, on `slice65-visual-pilot-diagram-first-operator-validation`. **NOT COMMITTED.**
+## Slice 66 — **Lightly-ruled / text-heavy table detection**, on `slice66-visual-pilot-light-table-detection`. **NOT COMMITTED.**
+
+- **Production-behavior slice (visual-type detection only).** Slice 65's real operator validation proved the
+  Slice 64 diagram-first ranking **did not change the real sample outcome** — the two selected visuals stayed
+  **useful tables only** (`selected_visual_type: tables_only`, `irreplaceable_visual_selected: false`). **Root
+  cause:** the Slice 64 classifier only recognized a **strong full horizontal+vertical rule grid** as a table, so
+  the sample's **lightly-ruled / text-heavy** tables stayed `unknown` and every candidate sat in one visual-type
+  tier — ranking had no signal to act on. Slice 66 improves the **deterministic, local, pixel-only** visual-type
+  detection so a lightly-ruled / reconstructable table is classified as `reconstructable_table` rather than
+  `unknown`, giving diagram-first ranking a real signal. **This is detection work *before* any UI/placement polish,
+  exactly as Slice 65 recommended.**
+- **What changed (one file):** `pipeline/visual_markdown_insertion.py`. Extended the bounded grayscale feature
+  summary (`_summarize_gray_pixels`) with a **softer-ink** (`_LT_INK`) horizontal **text-band rhythm** and a
+  vertical **column-gutter** structure, and added a conservative `_looks_like_reconstructable_table(...)` rule
+  (plus pure helpers `_profile_runs`, `_runs_regular`, `_count_col_blocks`) wired into
+  `_classify_visual_type_from_features` **after** the existing strong-grid table rule and **before** the diagram
+  rule. Two dual-signal table paths: (a) **text-grid** — a regular repeated text-band rhythm *and* a multi-column
+  gutter structure; (b) **lightly-ruled** — multiple full horizontal rules *without* a strong vertical-rule grid,
+  backed by either the row rhythm or the column structure. A genuine diagram (irregular row spacing, no clean
+  full-height column gutters, no repeated horizontal rules) satisfies neither and stays `diagram_or_figure`.
+- **Behavior outcome:** lightly-ruled and text-band (weak/no vertical rule) tables now classify as
+  `reconstructable_table`; the diagram still classifies as `diagram_or_figure`; a diagram **beats** a lightly-ruled
+  table at cap 1, and at cap 2 a diagram is selected **before** a table. **Tables remain allowed when they are the
+  best/only useful visual.** Same hard limits as Slice 64: pixel-only over the already-safe job-dir-contained crop,
+  **no OCR / model / provider / network / cloud / `llama-server` / image-gen**, no bytes/base64/data-URI/path/text
+  retained, **no new artifact**; Pillow-absent / unreadable / too-small ⇒ `unknown` ⇒ **byte-identical fallback**
+  to the prior Slice 60/62 quality-only selection.
+- **Invariants unchanged:** global master flag + per-job opt-in two-key gate, **default cap 1**, **hard cap 2**
+  (server-side only), `fitz_local` / `extracted_figure`-only, unsafe-ref / Chandra / Mistral / `page_visual_signal`
+  still rejected, decorative/low-information rejection still dominates, default-off output **byte-identical**,
+  export ride-along unchanged. **No frontend/UI, no `/api/options`/route change, no cap change, no extraction/
+  OCR-routing/prompt/render/export behavior change.** Chandra remains blocked by its own live-validation gate.
+- **Tests:** new `test_scripts/test_visual_pilot_light_table_detection.py` (runtime-generated tiny PNG fixtures in
+  temp dirs — never committed) covering strong-grid / lightly-ruled / text-band tables → `reconstructable_table`,
+  diagram → `diagram_or_figure`, diagram-beats-light-table at cap 1, cap-2 diagram-first / two-diagrams /
+  only-tables, decorative rejection, unknown-preserves-prior, analysis-failure degrade, unsafe-ref / blocked-provider
+  exclusion, determinism, two-key gate, default-off byte-identical, default-1 / hard-cap-2, export ride-along, and a
+  full no-leak sweep. Existing visual-type ranking / multifigure / quality-gate / insertion / render / export /
+  options / e2e / anki tests and the operator-sample `--self-test` all still pass unchanged.
+- **Validation:** `python -m compileall api pipeline test_scripts` clean; full visual + anki + offline eval suite
+  green on host; **Docker** `build` + `up` + `/api/health` + `smoke_release.py` (29/0) green; the visual tests also
+  re-run **inside the production container** (Pillow 12 present) with **no skips** (light-table 66/0, ranking 64/0,
+  multifigure 78/0, quality-gate 54/0, operator `--self-test` PASS); copied-in test scripts removed from the
+  container afterward; `git diff --check` clean.
+- **Optional real operator revalidation:** **not run in this slice** — the non-private operator sample is not
+  available in this session. The desired outcome (`selected_visual_type: diagrams_or_figures_present` /
+  `irreplaceable_visual_selected: true`) is **not assumed**; whether the strengthened detection actually flips the
+  real sample must be confirmed by re-running the cap-2 operator harness when the sample is available, and recorded
+  only if true after manual inspection.
+- **Safety / no-leak:** only closed-vocab tokens and bounded numeric features in info dicts / tests — no real PDF
+  path/filename, document text, OCR text, image bytes, base64, data URI, full URL, raw argv, token, or
+  model/mmproj/executable path in any doc/test/artifact/log; **nothing binary/image/PDF/DOCX/ZIP/runtime committed**.
+  **Slice 66 is NOT committed.**
+
+---
+
+## Slice 65 — **Diagram-first real operator validation record**, on `slice65-visual-pilot-diagram-first-operator-validation`. **COMMITTED + MERGED to `chrome-renderer-v1`.**
 
 - **Validation/docs slice.** Records a real, sanitized operator validation of the **Slice 64 diagram-first
   ranking** behavior against the same already-supplied non-private operator sample. Slice 64 proved diagram-first
