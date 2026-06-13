@@ -6,13 +6,53 @@
 > stable overview see `PROJECT_CONTEXT.md`; canonical brief is `../CLAUDE.md`.
 
 ## Current position
-- **Working tree:** **Slice 73 (dense-wrapped-table real operator validation) — UNCOMMITTED (per instruction)** on
-  branch `slice73-visual-pilot-dense-wrapped-operator-validation` (branched from fresh trunk after Slice 72 was
-  committed/merged). **Validation/docs slice — no production pipeline/API/frontend code changed; no heuristic tuned;
-  no ranking/cap/default/gate/render/export/extraction-OCR routing change; no model/provider/cloud call.** It reruns
-  the existing operator harness on the real, **non-private** sample now that Slice 72's dense / wrapped-cell
-  two-column table detection is on trunk, then reads Slice 68's sanitized selection trace + manually inspects the
-  rendered PDF/HTML/DOCX. **No harness correction was needed.**
+- **Working tree:** **Slice 74 (visual caption / source-page polish) — UNCOMMITTED (per instruction)** on branch
+  `slice74-visual-pilot-caption-page-polish` (branched from fresh trunk after Slice 73 was committed/merged). **Final
+  in-lab visual-pilot polish slice — NOT a new heuristic/caption micro-loop.** It adds a safe, generic italic caption
+  line **below** each inserted visual; it changes **no** selection, ranking, classification, cap, default, two-key gate,
+  export, renderer, provider/model/cloud, OCR-routing, prompt, or UI behavior. The table-vs-diagram morphology loop is
+  **paused/frozen** after Slice 73's real-sample success. **No separate caption-validation follow-up slice exists.**
+  - **Status flags:** `visual_pilot_morphology_loop_status: paused_after_real_success`,
+    `visual_pilot_polish_scope: final_in_lab_caption_page_polish`,
+    `next_recommended_slice: diverse_visual_pilot_exit_validation`.
+  - **What changed (one file):** `pipeline/visual_markdown_insertion.py` gains `_visual_caption_line(source_page)`
+    (returns exactly `*Source visual, page N.*` for a positive integer page, else `*Source visual.*`) and
+    `build_visual_markdown_block(candidate)` (appends that caption one blank line below the unchanged
+    `build_visual_markdown_image(...)` ref); both insert entry points emit the block. The caption is a fixed closed
+    string + bounded integer page only — no source filename, path, title, raw manifest caption, OCR/document/table text,
+    base64/data URI, provider payload, token, or URL can survive into it. Caption construction degrades-never-fails to
+    the image ref alone.
+  - **Invariants proven:** image refs byte-identical, selected order/count/ranking unchanged, default-off byte-identical,
+    caption only when **both** gates on, cap hard-capped at **2** / default **1**, no UI count selector, export ref-scan
+    + Slice 68 trace unchanged (trace never carries the caption text).
+  - **Tests:** new `test_scripts/test_visual_pilot_caption_page_polish.py` (24 scenarios) — **133 PASS / 0 FAIL / 0 SKIP
+    in the container** (host 1 SKIP: python-docx absent). Full visual-pilot + insertion/render/export/options/anki
+    suites + offline eval pass on host; image rebuilt + recreated, `/api/health` `{"ok":true}`, `smoke_release.py`
+    29/0/0, visual-pilot suite (incl. the new test) re-run inside the container all green. `git diff --check` clean.
+  - **Optional real operator caption validation:** `caption_operator_validation: not_run`; `reason:
+    non_private_operator_sample_not_available`. The non-private sample is not available this session; no real caption
+    rerun, **no sanitized `caption_operator_validation` recorded** (none invented). It may be inspected inside Slice 74
+    when the sample is available (no follow-up slice).
+  - **Next slice is NOT more visual polish/heuristics** — it should be a **diverse validation / exit-decision** slice
+    across multiple document types (math-heavy deck, mostly text-only PDF, low-quality/scan-like PDF if available, mixed
+    diagrams/tables deck, and a no-good-figures deck to verify graceful omission) to decide whether visual markdown stays
+    opt-in, becomes more discoverable, or pauses pending a controlled understanding layer (e.g. Chandra, still blocked by
+    its own live-validation gate).
+  - **Files:** `pipeline/visual_markdown_insertion.py`, new `test_scripts/test_visual_pilot_caption_page_polish.py`, and
+    docs (`CURRENT_TASK.md`, this file, `DECISIONS.md`). No frontend/UI; no extraction/OCR-routing/prompt/render/export
+    change; no Chandra/model/provider/cloud call. Only a fixed caption string + bounded page integer is emitted — no real
+    PDF path/filename, document/OCR/table/source-caption text, image bytes, base64, data URI, full URL, raw argv, token,
+    or model/mmproj/executable path. Every test PNG is runtime-built in a temp dir; nothing binary/image/PDF/DOCX/ZIP/
+    runtime committed. **Slice 74 is NOT committed.**
+
+### Prior position (Slice 73 — committed & merged)
+- **Slice 73 (dense-wrapped-table real operator validation) — COMMITTED `76e837b` + MERGED to `chrome-renderer-v1`
+  (fast-forward)** on branch `slice73-visual-pilot-dense-wrapped-operator-validation` (branched from fresh trunk after
+  Slice 72 was committed/merged). **Validation/docs slice — no production pipeline/API/frontend code changed; no
+  heuristic tuned; no ranking/cap/default/gate/render/export/extraction-OCR routing change; no model/provider/cloud
+  call.** It reran the existing operator harness on the real, **non-private** sample now that Slice 72's dense /
+  wrapped-cell two-column table detection is on trunk, then read Slice 68's sanitized selection trace + manually
+  inspected the rendered PDF/HTML/DOCX. **No harness correction was needed.**
   - **Outcome this session — the long-standing `tables_only` result finally flipped.** Recorded (sanitized, closed
     vocab): `dense_wrapped_table_operator_validation: run`, `status: ok`, `trace_artifact_present: true`,
     `trace_no_leak_sweep: clean`, `effective_max_images: 2`, `inserted_visual_count: 2`, `safe_candidate_count: 11`,
@@ -41,8 +81,8 @@
     provider/cloud call. Only sanitized closed-vocab + bounded-numeric fields recorded — no real PDF path/filename,
     document text, OCR text, source caption/table text, image bytes, base64, data URI, full URL, raw argv, token,
     model/mmproj/executable path, or provider payload. The runtime `visual_markdown_selection_trace.json` was
-    **inspected but not committed**; nothing binary/image/PDF/DOCX/ZIP/runtime committed. **Slice 73 is NOT
-    committed.**
+    **inspected but not committed**; nothing binary/image/PDF/DOCX/ZIP/runtime committed. **Slice 73 commit `76e837b`,
+    fast-forward merged + pushed to trunk `chrome-renderer-v1`.**
 
 ### Prior position (Slice 72 — committed & merged)
 - **Slice 72 (dense ruled / wrapped-cell two-column table detection) — COMMITTED + MERGED to `chrome-renderer-v1`

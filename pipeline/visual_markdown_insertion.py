@@ -101,6 +101,15 @@ _MARKDOWN_IMAGE_PILOT_REF_RE = re.compile(r"!\[[^\]]*\]\((assets/[A-Za-z0-9_]+\.
 _CAPTION_SAFE_RE = re.compile(r"[^A-Za-z0-9 .,:%()\-]")
 _MAX_CAPTION_LEN = 80
 
+# Slice 74: a small, safe italic caption line placed *below* an inserted visual.
+# It carries ONLY a fixed generic phrase plus the (already-bounded, integer)
+# source page number when available — never a source filename, path, title, raw
+# manifest caption, OCR/document/extracted-table text, or any private content.
+# The image alt text (built by :func:`build_visual_markdown_image`) is unchanged;
+# this is an additional readable line for the reader, not a new image ref.
+_VISUAL_CAPTION_WITH_PAGE = "*Source visual, page {page}.*"
+_VISUAL_CAPTION_GENERIC = "*Source visual.*"
+
 # Heading used for the dumb fallback placement when no deterministic source-page
 # anchor marker is present in the guide. The singular heading is preserved for the
 # one-figure case (byte-identical to the pre-Slice-62 pilot); the plural heading is
@@ -1668,6 +1677,47 @@ def build_visual_markdown_image(candidate: Any) -> str:
     return f"![{caption}]({ref})"
 
 
+def _visual_caption_line(source_page: int) -> str:
+    """A safe italic caption line for *below* an inserted visual (Slice 74).
+
+    Carries only a fixed generic phrase plus the bounded integer source page when
+    available; otherwise the page-free generic phrase. It never includes a source
+    filename, path, title, raw manifest caption, OCR/document/extracted-table text,
+    URL, or any other private content — so it cannot leak regardless of input.
+    """
+    if isinstance(source_page, int) and not isinstance(source_page, bool) and source_page > 0:
+        return _VISUAL_CAPTION_WITH_PAGE.format(page=source_page)
+    return _VISUAL_CAPTION_GENERIC
+
+
+def build_visual_markdown_block(candidate: Any) -> str:
+    """Build the readable inserted block: the image ref plus a safe caption line.
+
+    The image reference (``![alt](assets/<slug>.png)``) is built by
+    :func:`build_visual_markdown_image` and is **byte-identical** to the pre-Slice-74
+    output — the ref and its alt text are not altered. A generic, page-derived italic
+    caption line (Slice 74) is appended below it, separated by a blank line::
+
+        ![alt](assets/<slug>.png)
+
+        *Source visual, page N.*
+
+    Caption construction degrades-never-fails: if the caption line cannot be built for
+    any reason, the image ref alone is returned (the pre-Slice-74 behavior). Raises
+    ``ValueError`` only when the image ref itself is invalid (same as
+    :func:`build_visual_markdown_image`).
+    """
+    image_md = build_visual_markdown_image(candidate)
+    try:
+        source_page = _safe_page(candidate.get("source_page")) if isinstance(candidate, dict) else 0
+        caption_line = _visual_caption_line(source_page)
+    except Exception:
+        return image_md
+    if not caption_line:
+        return image_md
+    return f"{image_md}\n\n{caption_line}"
+
+
 def insert_visual_markdown_reference(
     clean_md: Any, candidate: Any
 ) -> tuple[str, dict[str, Any]]:
@@ -1681,7 +1731,7 @@ def insert_visual_markdown_reference(
     """
     text = clean_md if isinstance(clean_md, str) else ""
     try:
-        image_md = build_visual_markdown_image(candidate)
+        image_md = build_visual_markdown_block(candidate)
     except Exception:
         return text, {"status": "skipped", "reason": SKIP_INSERT_FAILED}
 
@@ -1729,7 +1779,7 @@ def insert_visual_markdown_references(
     prepared: list[tuple[dict[str, Any], str, int]] = []
     for candidate in candidates:
         try:
-            image_md = build_visual_markdown_image(candidate)
+            image_md = build_visual_markdown_block(candidate)
         except Exception:
             continue
         page = _safe_page(candidate.get("source_page")) if isinstance(candidate, dict) else 0

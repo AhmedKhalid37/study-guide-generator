@@ -5,7 +5,59 @@
 
 ---
 
-## Slice 73 — **Dense-wrapped-table real operator validation**, on `slice73-visual-pilot-dense-wrapped-operator-validation`. **NOT COMMITTED.**
+## Slice 74 — **Visual caption / source-page polish (final in-lab visual-pilot polish)**, on `slice74-visual-pilot-caption-page-polish`. **NOT COMMITTED.**
+
+- **Small user-visible polish slice — NOT a new heuristic loop.** Slice 73 proved (on the real, non-private operator
+  sample) that the pilot now selects irreplaceable diagrams/figures (`selected_visual_type: diagrams_or_figures_present`,
+  `irreplaceable_visual_selected: true`). Per the operator's adjustment, Slice 74 is the **final in-lab caption/page
+  polish** for the current visual pilot: it adds a safe, generic italic caption line **below** each inserted visual and
+  then the morphology/classification loop stays **paused/frozen**. No selection, ranking, classification, cap, default,
+  two-key gate, export, renderer, provider/model/cloud, OCR-routing, prompt, or UI behavior changed. **No separate
+  caption-validation follow-up slice will be created.**
+- **What changed (one file).** `pipeline/visual_markdown_insertion.py` gains a tiny `_visual_caption_line(source_page)`
+  helper (returns exactly `*Source visual, page N.*` when a positive integer page is known, else the page-free
+  `*Source visual.*`) and a `build_visual_markdown_block(candidate)` wrapper that appends that caption one blank line
+  **below** the unchanged `build_visual_markdown_image(...)` ref. Both insertion entry points
+  (`insert_visual_markdown_reference` / `insert_visual_markdown_references`) now emit the block. The caption is a fixed
+  closed string + bounded integer page only — it can carry **no** source filename, path, title, raw manifest caption,
+  OCR/document/extracted-table text, base64/data URI, provider payload, token, or URL regardless of input. Caption
+  construction **degrades-never-fails**: any error falls back to the image ref alone (pre-Slice-74 output).
+- **Invariants proven unchanged.** Image asset refs are byte-identical (the `![alt](assets/<slug>.png)` line is
+  untouched; the caption is an additional italic line); selected candidate **order**, **count**, and **ranking
+  outcomes** match the unmodified selector; default-off output stays byte-identical; the caption never appears unless
+  **both** the master flag and per-job opt-in are on; cap stays hard-capped at **2**, default stays **1**; no UI count
+  selector; export ref-scan still finds only the safe `assets/<slug>.png` refs; the Slice 68 selection trace is
+  unchanged and never carries the caption text.
+- **Status flags for the next session:**
+  - `visual_pilot_morphology_loop_status: paused_after_real_success`
+  - `visual_pilot_polish_scope: final_in_lab_caption_page_polish`
+  - `next_recommended_slice: diverse_visual_pilot_exit_validation`
+- **Next slice is NOT more visual polish/heuristics.** It should be a **diverse validation / exit-decision** slice across
+  multiple document types (one math-heavy deck, one mostly text-only PDF, one low-quality/scan-like PDF if available, one
+  deck with diagrams/tables mixed, and one deck with no good figures to verify graceful omission), to decide whether
+  visual markdown stays opt-in, becomes more discoverable, or pauses pending a controlled understanding layer (e.g.
+  Chandra, which remains blocked by its own live-validation gate).
+- **Tests.** New `test_scripts/test_visual_pilot_caption_page_polish.py` (24-scenario coverage: caption presence,
+  page label, generic fallback, no filename/path/OCR/table/base64/data-URI/token leak, cap 1 + cap 2, order, refs/count/
+  ranking unchanged, default-off byte-identical, both gates off → no caption, tables-when-best + diagram-beats-table
+  ranking unchanged, sanitized trace, export ride-along, PDF/DOCX render, degrade-never-fail) — **133 PASS / 0 FAIL /
+  0 SKIP in the container** (host shows 1 SKIP: python-docx absent). The full visual-pilot + insertion/render/export/
+  options/anki suites and the offline eval pass on host; the production image was rebuilt + recreated, `/api/health`
+  `{"ok":true}`, `smoke_release.py` 29/0/0, and the visual-pilot suite (incl. the new test) re-run **inside the
+  container** (Pillow + python-docx present, no skips) all green. `git diff --check` clean.
+- **Optional real operator caption validation:** `caption_operator_validation: not_run`; `reason:
+  non_private_operator_sample_not_available`. The non-private operator sample is not available in this session, so no
+  real cap-2 caption rerun was performed and **no sanitized caption-operator result was recorded** (none invented). When
+  the sample is next available, it can be inspected inside Slice 74 (no follow-up slice); record only the sanitized
+  `caption_operator_validation` closed-vocab fields.
+- **Safety / no-leak:** only a fixed caption string + bounded page integer is emitted into the guide; tests build every
+  PNG at runtime in a temp dir — nothing binary/image/PDF/DOCX/ZIP/runtime committed; runtime eval result JSONs stay
+  gitignored. No real PDF path/filename, document/OCR/table/source-caption text, image bytes, base64, data URI, full URL,
+  raw argv, token, or model/mmproj/executable path recorded. **Slice 74 is NOT committed.**
+
+---
+
+## Slice 73 — **Dense-wrapped-table real operator validation**, on `slice73-visual-pilot-dense-wrapped-operator-validation`. **COMMITTED + MERGED to `chrome-renderer-v1` (fast-forward).**
 
 - **Validation/docs slice only.** Reruns the existing operator harness against the real, **non-private** operator
   sample now that **Slice 72's dense / wrapped-cell two-column table detection fix** is on trunk, then reads Slice 68's
@@ -40,7 +92,7 @@
   document text, OCR text, source caption/table text, image bytes, base64, data URI, full URL, raw argv, token,
   model/mmproj/executable path, provider payload, or raw exception. The runtime
   `visual_markdown_selection_trace.json` was **inspected but not committed**; nothing binary/image/PDF/DOCX/ZIP/
-  runtime committed. **Slice 73 is NOT committed.**
+  runtime committed. **Slice 73 commit `76e837b`, fast-forward merged + pushed to trunk `chrome-renderer-v1`.**
 
 ---
 

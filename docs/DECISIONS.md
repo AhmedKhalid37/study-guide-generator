@@ -3397,4 +3397,44 @@ left unedited per this file's append-only rule.
 `NEXT_CHAT_HANDOFF.md`, and this file. Only sanitized closed-vocab + bounded-numeric fields were recorded — no real PDF
 path/filename, document text, OCR text, source caption/table text, image bytes, base64, data URI, full URL, raw argv,
 token, model/mmproj/executable path, or provider payload. The runtime `visual_markdown_selection_trace.json` was
-inspected but not committed; nothing binary/image/PDF/DOCX/ZIP/runtime committed. **Slice 73 is NOT committed.**
+inspected but not committed; nothing binary/image/PDF/DOCX/ZIP/runtime committed. **Slice 73 commit `76e837b`,
+fast-forward merged + pushed to trunk `chrome-renderer-v1`.**
+
+## Slice 74 — visual caption / source-page polish is the final in-lab visual-pilot polish (2026-06-13)
+Slice 73 achieved the desired real-operator outcome after the dense wrapped-table fix:
+`selected_visual_type: diagrams_or_figures_present`, `irreplaceable_visual_selected: true`, and
+`selection_explanation: diagrams_selected_after_dense_table_fix`. That flips the long-running table-vs-diagram
+morphology loop from active investigation to **paused after real success**. Slice 74 therefore intentionally adds only
+one small user-visible polish and does **not** start another classification, caption, or placement heuristic loop.
+
+**Decision.** Add safe generic source-page captions below inserted visuals, then stop in-lab visual-pilot polish for
+now. The status for the next session is `visual_pilot_morphology_loop_status: paused_after_real_success`,
+`visual_pilot_polish_scope: final_in_lab_caption_page_polish`, and
+`next_recommended_slice: diverse_visual_pilot_exit_validation`. There should be **no separate caption-validation
+follow-up slice** and no more table/diagram heuristic work unless diverse validation shows a new regression.
+
+**Implementation.** Inserted visuals now render as the unchanged Markdown image reference followed by a safe italic
+caption line. When a positive source page is available, the caption is exactly `*Source visual, page N.*`; otherwise it
+falls back to `*Source visual.*`. Both insertion paths use the same helper, so the appended visual-reference section and
+source-page-anchor placement behave consistently.
+
+**Safety.** Captions are fixed generic strings plus a bounded page integer only. They never include source
+filename/path/title, raw manifest caption, OCR/document/table text, base64/data URI, provider payload, token, URL,
+image bytes, or private content. Caption construction degrades-never-fails to the image ref alone. Optional real
+operator caption validation was not run: `caption_operator_validation: not_run`, `reason:
+non_private_operator_sample_not_available`; no result was invented and no sample path/filename/source contents/image
+bytes were recorded.
+
+**Invariants.** No selection, ranking, classification, cap, default, two-key gate, export, renderer,
+provider/model/cloud, OCR-routing, prompt, or UI behavior changed. Image refs, selected order/count/ranking, default-off
+output, export ref scanning, and the Slice 68 selection trace schema remain unchanged. Default remains 1; cap remains
+hard-capped at 2. Chandra remains blocked by its own live-validation gate; no model/provider/cloud call was added.
+
+**Validation.** `test_visual_pilot_caption_page_polish.py` passes on host and container; the full
+visual-pilot/insertion/render/export/options/anki/eval checks pass; Docker rebuild/recreate, `/api/health`, and
+`smoke_release.py` pass. The host may skip the DOCX render branch when `python-docx` is unavailable; the container run
+has the dependency and records no skips.
+
+**Next.** No caption micro-loop. Next recommended slice: `diverse_visual_pilot_exit_validation` across multiple
+document types to decide whether visual markdown remains opt-in, becomes more discoverable, or pauses pending a
+controlled understanding layer such as Chandra.
