@@ -2696,3 +2696,65 @@ single-figure path has a clean validation pass — which this slice establishes 
 `manual_operator_pdf_validation: not_run` (reason `non_private_operator_sample_not_supplied`),
 not asserted as done. **Chandra extraction integration remains blocked by Slice 45
 `status:not_run`.**
+
+## Add a manual operator validation harness before expanding visuals (Slice 59)
+Slice 58 validated the stitched single-figure path with **synthetic** temp data. The next
+gate before any visual expansion is a **real** non-private operator sample run through the
+same path — so Slice 59 adds a manual, opt-in harness
+(`test_scripts/validate_visual_pilot_operator_sample.py` + runbook
+`docs/VISUAL_PILOT_OPERATOR_VALIDATION.md`) that drives the **genuine** pipeline
+(`extract_local_figures` `fitz_local` → `write_visual_assets_manifest` →
+`write_visual_asset_scoring_report` → `write_visual_replacement_plan_report` →
+`apply_visual_markdown_pilot` via `save_clean_md` → HTML/PDF/DOCX render →
+`export_bundle`). It adds **no** production code and changes **no** behavior. **Why a
+separate harness rather than folding it into smoke:** a real operator PDF is private by
+default and may be unavailable, so this must be **manual and opt-in** — it refuses to run
+without `--pdf`, and ships a synthetic `--self-test` mode so CI/host can exercise the
+harness (schema + no-leak) without any operator document.
+
+**Why the real sample must be opt-in and non-private only:** the harness reads a real
+user-supplied PDF, which is exactly the kind of material the project's no-leak rules
+protect. It therefore (a) prints a non-private warning on every operator run, (b) **never**
+prints or records the PDF path, basename, filename, document text, OCR text, image bytes,
+base64, data URIs, full URLs, tokens, model/mmproj/executable paths, or raw argv, and
+(c) writes all working files under a temp/output directory so nothing lands in the repo.
+
+**Why the recorded output is sanitized closed-vocabulary:** validation results must be
+safe to paste into a handoff, so the harness emits only a fixed ten-field summary
+(`status`, `pilot_inserted`, `safe_asset_ref_present`, `html_render_ok`, `pdf_render_ok`,
+`docx_render_ok`, `export_zip_ok`, `export_png_included`, `warnings`, `failure_category`)
+plus closed-vocab step markers, with tri-state booleans (`true`/`false`/`null`=skipped).
+**Exceptions are sanitized to closed `failure_category` tokens** — only an exception
+*type name* is surfaced, never a message that could carry a path or private text — and a
+final sweep scans every pipeline-derived string (incl. the summary) for forbidden shapes.
+Missing host deps (PyMuPDF / Chromium / python-docx / FastAPI) **skip calmly** with
+closed-vocab tokens rather than failing.
+
+**Why multi-figure and Chandra stay deferred:** they build on this exact single-figure
+plumbing, so they remain out of scope until a **real** operator validation pass is
+recorded. This slice supplies the tool, and the harness's real extraction→insertion→
+render→export path was first exercised in-container against a **throwaway synthetic** PDF
+(proving the tool works). **Chandra extraction integration remains blocked by Slice 45
+`status:not_run`.**
+
+## Slice 59 real operator validation — RUN, successful (single-figure operator gate cleared)
+The Slice 59 manual harness was subsequently run on **one real, non-private,
+operator-supplied PDF**, and the result is recorded (sanitized) as
+`manual_operator_pdf_validation: run` / `status: ok`, with `pilot_inserted: true`,
+`safe_asset_ref_present: true`, `html_render_ok: true`, `pdf_render_ok: true`,
+`docx_render_ok: true`, `export_zip_ok: true`, `export_png_included: true`,
+`warnings: [multiple_figures_present_one_inserted]`, `failure_category: none`,
+`no_leak_sweep: clean`. **Why this matters:** the `fitz_local` single-figure pilot found
+**one or more** candidate figures in a genuine document and inserted **exactly one**,
+proving the one-figure rule holds on real material; the `multiple_figures_present_one_inserted`
+warning is **expected** and confirms the design rule was obeyed rather than indicating a
+fault. **This clears the current single-figure visual-pilot operator-validation gate.**
+
+**Why only sanitized fields are recorded:** the source was a real user document, so only
+the fixed closed-vocabulary summary is written to the docs — no real PDF path, filename,
+document text, OCR text, image bytes, base64, data URIs, full URLs, raw argv, tokens, or
+raw exceptions. **Why this does NOT open multi-figure or Chandra:** clearing the
+single-figure operator gate authorizes nothing beyond the existing one-figure pilot.
+Multi-figure insertion is still **not** approved and stays out of scope until separately
+designed, and **Chandra extraction integration remains blocked by its own live-validation
+gate (Slice 45 `status:not_run`).**

@@ -5,7 +5,58 @@
 
 ---
 
-## Slice 58 — **Visual-pilot stitched E2E validation harness + record**, on `slice58-visual-pilot-e2e-validation`. **NOT COMMITTED.**
+## Slice 59 — **Visual-pilot manual operator validation harness + runbook**, on `slice59-visual-pilot-operator-validation-harness`. **NOT COMMITTED.**
+
+- **Purpose:** make it safe and repeatable for an operator to validate the **current single-figure visual
+  pilot** against a real, **non-private** sample PDF when one is available. Slice 58 proved the stitched path
+  with synthetic data; Slice 59 adds an opt-in manual harness that drives the **genuine** pipeline over a real
+  PDF. **Validation/harness slice only — adds NO production code and changes NO behavior.**
+- **New harness `test_scripts/validate_visual_pilot_operator_sample.py`** — a manual CLI, NOT part of normal
+  smoke. Two modes:
+  - `--pdf "<non-private-sample.pdf>" [--output-dir <dir>]` — real run. Drives `extract_local_figures`
+    (`fitz_local` only) → `write_visual_assets_manifest` → `write_visual_asset_scoring_report` →
+    `write_visual_replacement_plan_report` → `apply_visual_markdown_pilot` (both gates on, via `save_clean_md`)
+    → HTML/PDF/DOCX render → `export_bundle`. **Refuses to run without `--pdf`** (unless `--self-test`).
+  - `--self-test` — synthetic dry run (runtime stdlib PNG + synthetic manifest, no fitz/provider/model/cloud)
+    that exercises the **same** insertion/render/export + summary code and asserts the summary schema,
+    closed-vocab values, and no-leak behavior. Explicitly **does not** pretend to be real operator validation.
+- **Safety/no-leak (both modes):** never prints the PDF path/basename/text, OCR text, image bytes, base64,
+  data URIs, tokens, headers, model/mmproj/executable paths, raw argv, or full URLs. Emits only a fixed
+  **closed-vocabulary** summary (`status`, `pilot_inserted`, `safe_asset_ref_present`, `html_render_ok`,
+  `pdf_render_ok`, `docx_render_ok`, `export_zip_ok`, `export_png_included`, `warnings`, `failure_category`)
+  plus closed-vocab step markers; exceptions are sanitized to closed `failure_category` tokens (only an
+  exception *type name* is surfaced); a final sweep scans every pipeline-derived string. All working files
+  live under a temp/output dir — nothing committed.
+- **New `docs/VISUAL_PILOT_OPERATOR_VALIDATION.md`** — runbook: why it exists, opt-in/non-private policy, the
+  safe placeholder command template, the closed-vocab field tables, and the recorded status — now
+  `manual_operator_pdf_validation: run` / `status: ok` (see below).
+- **Real operator validation — RUN, successful (sanitized):** the harness was run on **one real, non-private,
+  operator-supplied PDF**. Recorded sanitized result: `status: ok`, `pilot_inserted: true`,
+  `safe_asset_ref_present: true`, `html_render_ok: true`, `pdf_render_ok: true`, `docx_render_ok: true`,
+  `export_zip_ok: true`, `export_png_included: true`, `warnings: [multiple_figures_present_one_inserted]`,
+  `failure_category: none`, `no_leak_sweep: clean`. The `fitz_local` pilot found **one or more** candidates and
+  inserted **exactly one**, preserving the one-figure rule; the warning is **expected** and confirms the design
+  rule was obeyed. **This clears the current single-figure visual-pilot operator-validation gate.** It does
+  **not** clear the Chandra live-validation gate and does **not** approve multi-figure insertion. Only the
+  sanitized closed-vocab summary was recorded — no real path, filename, document/OCR text, image bytes, base64,
+  data URI, full URL, raw argv, token, or raw exception.
+- **Results:** host `--self-test` PASS (HTML/PDF render real; DOCX/export skip calmly w/o python-docx/FastAPI);
+  **in container `--self-test` PASS** (all of pilot_inserted / safe_asset_ref / html / pdf / docx / export_zip /
+  export_png `true`, 0 warnings, no leak). Real `--pdf` operator run recorded successful (sanitized fields
+  above). Refusal + sanitized missing-file paths verified (no path echoed).
+  `compileall api pipeline test_scripts` + `git diff --check` clean; `/api/health` ok.
+- **Scope / hard boundaries:** **no** production-code change, **no** frontend/UI change, **no** renderer /
+  export / extraction / OCR-routing / prompt change, **no** new API route, **no** advisory schema change,
+  **no** generic artifact-list change, **no** multi-figure / Chandra / Mistral / Gemini / cloud, **no**
+  model/provider/llama-server/network call, **no** new image pipeline, **no** committed PDF/image/DOCX/ZIP
+  fixture. **≤1 figure; `fitz_local` only; safe `assets/<slug>.png` only — unchanged.** The real operator
+  validation pass is now **recorded**, clearing the single-figure operator gate; **Chandra extraction
+  integration remains blocked by Slice 45 `status:not_run`; multi-figure stays deferred** (out of scope until
+  separately designed).
+
+---
+
+## Slice 58 — **Visual-pilot stitched E2E validation harness + record**, on `slice58-visual-pilot-e2e-validation`. **COMMITTED `39dc162`, merged to trunk.**
 
 - **Purpose:** prove the already-shipped **single-figure** visual pilot (Slices 52–57) works as **one connected
   chain** before any visual expansion. This is a **validation/harness slice only** — it adds **no** production

@@ -6,13 +6,42 @@
 > stable overview see `PROJECT_CONTEXT.md`; canonical brief is `../CLAUDE.md`.
 
 ## Current position
-- **Working tree:** **Slice 58 (visual-pilot stitched E2E validation harness + record) — UNCOMMITTED
-  (per instruction)** on branch `slice58-visual-pilot-e2e-validation` (branched from trunk after **Slice 57**
-  committed `9c4ccc0` + fast-forward merged + pushed). **Validation/harness slice only — adds NO production
-  code and changes NO behavior.** Proves the already-shipped **single-figure** pilot (Slices 52–57) works as
-  **one connected chain** before any visual expansion: safe job-local `assets/<slug>.png` → manifest /
-  replacement-plan shape → master flag ON → per-job opt-in ON → exactly one markdown image → HTML/PDF/DOCX
-  render → export ZIP carrying the single referenced PNG.
+- **Working tree:** **Slice 59 (visual-pilot manual operator validation harness + runbook) — UNCOMMITTED
+  (per instruction)** on branch `slice59-visual-pilot-operator-validation-harness` (branched from trunk after
+  **Slice 58** committed `39dc162` + fast-forward merged + pushed). **Validation/harness slice only — adds NO
+  production code and changes NO behavior.** Adds an **opt-in manual** harness so an operator can validate the
+  **current single-figure pilot** against a real, **non-private** sample PDF by driving the genuine pipeline
+  (`extract_local_figures` `fitz_local` → manifest/scoring/plan writers → `apply_visual_markdown_pilot` via
+  `save_clean_md` → HTML/PDF/DOCX render → `export_bundle`).
+  - **Files:** new `test_scripts/validate_visual_pilot_operator_sample.py` (manual CLI; `--pdf` real run that
+    **refuses without `--pdf`**, plus a synthetic `--self-test` dry run verifying summary schema + no-leak
+    without an operator PDF); new `docs/VISUAL_PILOT_OPERATOR_VALIDATION.md`; doc updates. **No production/
+    frontend/renderer/export/extraction/OCR-routing/prompt change, no new route, no multi-figure/Chandra/model/
+    cloud call, no committed PDF/image/DOCX/ZIP fixture.**
+  - **Safety/no-leak:** never prints the PDF path/basename/text, OCR text, image bytes, base64, data URIs,
+    tokens, headers, model paths, raw argv, or full URLs; emits only a fixed **closed-vocab** 10-field summary
+    (`status` · `pilot_inserted` · `safe_asset_ref_present` · `html_render_ok` · `pdf_render_ok` ·
+    `docx_render_ok` · `export_zip_ok` · `export_png_included` · `warnings` · `failure_category`) + closed-vocab
+    step markers; exceptions sanitized to closed `failure_category` tokens; final sweep over every
+    pipeline-derived string; all working files under a temp/output dir, nothing committed.
+  - **Results:** host `--self-test` PASS (DOCX/export skip calmly w/o deps); **in-container `--self-test` PASS**
+    (all stage booleans `true`, 0 warnings, no leak). Refusal + sanitized missing-file paths verified.
+    `compileall` + `git diff --check` clean; `/api/health` ok.
+  - **Real operator validation — RUN, successful (sanitized):** ran on **one real, non-private,
+    operator-supplied PDF**. Recorded `manual_operator_pdf_validation: run`, `status: ok`,
+    `pilot_inserted: true`, `safe_asset_ref_present: true`, `html/pdf/docx_render_ok: true`,
+    `export_zip_ok: true`, `export_png_included: true`, `warnings: [multiple_figures_present_one_inserted]`,
+    `failure_category: none`, `no_leak_sweep: clean`. Multiple candidates present, **exactly one** inserted
+    (one-figure rule obeyed; warning expected). **Clears the single-figure visual-pilot operator-validation
+    gate.** Only sanitized closed-vocab fields recorded — no real path/filename/document/OCR text/image bytes/
+    base64/data URI/full URL/raw argv/token/raw exception. **Chandra still blocked by Slice 45 `not_run`;
+    multi-figure insertion NOT yet approved — stays deferred until separately designed.**
+
+### (previous) Slice 58 — visual-pilot stitched E2E validation harness + record — committed `39dc162`, merged to trunk
+- **Validation/harness slice only — adds NO production code and changes NO behavior.** Proves the
+  already-shipped **single-figure** pilot (Slices 52–57) works as **one connected chain** before any visual
+  expansion: safe job-local `assets/<slug>.png` → manifest / replacement-plan shape → master flag ON → per-job
+  opt-in ON → exactly one markdown image → HTML/PDF/DOCX render → export ZIP carrying the single referenced PNG.
   - **Files:** new `test_scripts/test_visual_pilot_e2e_validation.py` (stitches a real `JobManager.Job` +
     `apply_visual_markdown_pilot` + `save_clean_md` + render + `export_bundle`; reuses existing insertion /
     render / export / options test helpers); new `docs/VISUAL_PILOT_E2E_VALIDATION.md`; doc updates
