@@ -817,3 +817,134 @@ next_recommended_slice: continue_table_vs_diagram_classification_precision
   full URL, raw argv, token, model/mmproj/executable path, provider payload, or raw exception. The
   runtime `visual_markdown_selection_trace.json` was **inspected but not committed**; no
   binary/image/PDF/DOCX/ZIP/runtime output was committed.
+
+---
+
+## Slice 73 — dense-wrapped-table real operator validation (post-Slice-72 decision check)
+
+> Validation-record slice. **No production pipeline/API/frontend code changed; no heuristic was
+> tuned.** It reruns the existing manual harness against the same real, **non-private** operator
+> sample now that **Slice 72's dense / wrapped-cell table detection fix** is on trunk, then reads
+> the sanitized selection trace and manually inspects the rendered PDF/HTML/DOCX to record — using
+> closed vocabularies only — whether the pilot now selects at least one irreplaceable
+> diagram/figure instead of only reconstructable tables. **Docs-only — no harness correction was
+> needed.**
+
+### Why this record exists
+
+Slices 63/65/67/69/71 all recorded the same honest real-sample outcome — `selected_visual_type:
+tables_only`, `irreplaceable_visual_selected: false`. Slice 69 localized the cause to
+classification (every safe candidate collapsed to `diagram_or_figure`); Slice 70 split the buckets
+for the first time; Slice 71 showed the residual gap was that the sample's **densely-ruled,
+wrapped-multi-line two-column definition tables** still fell through to `diagram_or_figure` and were
+selected ahead of the genuine diagrams. Slice 72 added a deterministic, pixel-only dense / wrapped
+ruled-table signal so those tables classify as `reconstructable_table`. Slice 73 closes the loop on
+the real sample: same harness, same already-supplied non-private sample, cap 2, both enable gates,
+inside the rebuilt container, then a human inspection of the rendered output **and** the sanitized
+trace, recorded only as the actual result.
+
+### Dense-wrapped-table audit — recorded result (sanitized, closed vocab)
+
+```
+dense_wrapped_table_operator_validation: run
+status: ok
+trace_artifact_present: true
+trace_no_leak_sweep: clean
+effective_max_images: 2
+inserted_visual_count: 2
+safe_candidate_count: 11
+unsafe_candidate_count: 0
+selected_count: 2
+type_counts:
+  diagram_or_figure: 9
+  reconstructable_table: 2
+  unknown: 0
+  decorative_or_low_information: 0
+selected_visual_type: diagrams_or_figures_present
+irreplaceable_visual_selected: true
+selected_figures_quality: all_useful_or_acceptable
+selection_explanation: diagrams_selected_after_dense_table_fix
+pdf_render_ok: true
+pdf_image_visible: true
+docx_render_ok: true
+export_zip_ok: true
+export_png_included: true
+warnings:
+  - multiple_figures_present_one_inserted
+failure_category: none
+no_leak_sweep: clean
+```
+
+The non-private sample was available, so the cap-2 harness **was** run inside the rebuilt
+container (`GUIDEFORGE_ENABLE_VISUAL_MARKDOWN_IMAGE_PILOT=1`,
+`GUIDEFORGE_LOCAL_FIGURE_EXTRACTION=1`, `GUIDEFORGE_VISUAL_MARKDOWN_MAX_IMAGES=2`). The generated
+`visual_markdown_selection_trace.json` plus the rendered PDF/HTML/DOCX were copied to a host
+folder; the trace was inspected for leaks **before** any field was transcribed (it carried only
+closed-vocab tokens, bounded integers/rounded floats, page numbers, and already-safe
+`assets/<slug>.png` refs — clean), and the operator inspected the inserted visuals by hand using
+only the closed vocabularies. The real sample path/filename and the figures' source contents are
+**not** recorded here.
+
+### What the trace + manual inspection revealed (sanitized)
+
+- **The real-sample outcome finally flipped.** For the first time across Slices 63/65/67/69/71,
+  both selected visuals are **diagrams/figures**, not reconstructable tables
+  (`selected_visual_type: diagrams_or_figures_present`, `irreplaceable_visual_selected: true`).
+  The trace records both selected candidates as `classified_diagram_or_figure` with
+  `selection_reason: selected_by_diagram_first_ranking` — diagram-first ranking engaged on real
+  material.
+- **The Slice 72 dense/wrapped-table fix is what unblocked it.** The trace's `type_counts` still
+  reads `diagram_or_figure: 9` and `reconstructable_table: 2`, but the two reconstructable
+  definition tables that Slice 71 *selected* are now **deprioritized** behind the diagram tier
+  (`rejection_reason_counts.deprioritized_reconstructable_table: 2`), so the diagram-first order
+  now reaches the genuine schematic figures instead of stopping at the tables.
+- **Manual ground-truth confirms quality.** Both inserted visuals are legible, content-bearing,
+  non-decorative graphics from distinct source pages (`selected_figures_quality:
+  all_useful_or_acceptable`); they rendered visibly in the PDF, in the DOCX, and rode along in the
+  export ZIP as safe relative `assets/<slug>.png` refs.
+
+```
+selected_visual_type: diagrams_or_figures_present
+irreplaceable_visual_selected: true
+selection_explanation: diagrams_selected_after_dense_table_fix
+decision_gate: irreplaceable_diagram_selected_on_real_sample
+next_recommended_slice: visual_placement_or_citation_polish_may_now_be_considered
+```
+
+> Note on the `multiple_figures_present_one_inserted` warning: it is the existing
+> closed-vocabulary token, emitted whenever the source held more than one figure candidate. Under
+> cap-2 its `_one_inserted` suffix is a known legacy misnomer — two figures were inserted here —
+> but the trigger condition is still literally true and the actual count is recorded unambiguously
+> in `inserted_visual_count: 2`. Renaming a closed-vocab token stays out of scope for a validation
+> slice.
+
+### Interpretation
+
+- Slice 72 improved dense/wrapped-table detection **synthetically and in Docker**; Slice 73
+  validates the result on the **real** non-private sample, and the long-standing `tables_only`
+  outcome has now flipped to **diagrams selected**.
+- **Recorded verdict: `selected_visual_type: diagrams_or_figures_present`,
+  `irreplaceable_visual_selected: true`, `selected_figures_quality: all_useful_or_acceptable`** with
+  **2 figures inserted** — the higher-value goal the visual feature exists to protect (preserving
+  visuals that cannot be reliably recreated from text) is now met on the real sample.
+- Because an irreplaceable diagram/figure is finally selected on the real sample, **future visual
+  work may now consider placement / citation polish** as a separately-designed slice
+  (`next_recommended_slice: visual_placement_or_citation_polish_may_now_be_considered`). This is a
+  *may*, not a mandate; classification precision can still be revisited if other samples regress.
+- Had the output stayed tables-only, the recorded guidance would have been to continue
+  classification precision or introduce a separately-designed, controlled understanding layer; had
+  diagrams been absent from the safe candidates, the guidance would have been to inspect extraction
+  / candidate generation. Neither applies here — diagrams were present, correctly extracted, and
+  now correctly selected.
+- **Do not expand beyond cap 2. Do not add a UI count selector. Do not add
+  Chandra/Mistral/Gemini/model/provider/cloud integration.** The default remains exactly 1 and the
+  cap remains hard-capped at 2. Chandra extraction integration remains blocked by its own
+  live-validation gate; this record does not touch it.
+- All render/export plumbing again worked end-to-end (`pdf_render_ok` / `pdf_image_visible` /
+  `docx_render_ok` / `export_zip_ok` / `export_png_included: true`, `warnings:
+  [multiple_figures_present_one_inserted]`, `failure_category: none`).
+- Only the sanitized closed-vocabulary fields above were recorded — **no** real PDF path,
+  filename, document text, OCR text, source caption/table text, image bytes, base64, data URI,
+  full URL, raw argv, token, model/mmproj/executable path, provider payload, or raw exception. The
+  runtime `visual_markdown_selection_trace.json` was **inspected but not committed**; no
+  binary/image/PDF/DOCX/ZIP/runtime output was committed.

@@ -5,7 +5,46 @@
 
 ---
 
-## Slice 72 — **Dense ruled / wrapped-cell two-column table detection**, on `slice72-visual-pilot-dense-wrapped-table-detection`. **NOT COMMITTED.**
+## Slice 73 — **Dense-wrapped-table real operator validation**, on `slice73-visual-pilot-dense-wrapped-operator-validation`. **NOT COMMITTED.**
+
+- **Validation/docs slice only.** Reruns the existing operator harness against the real, **non-private** operator
+  sample now that **Slice 72's dense / wrapped-cell two-column table detection fix** is on trunk, then reads Slice 68's
+  sanitized selection trace + manually inspects the rendered PDF/HTML/DOCX to record — closed vocabulary only —
+  whether the pilot now selects at least one irreplaceable diagram/figure instead of only reconstructable tables.
+  **No production pipeline/API/frontend code changed; no heuristic tuned; no ranking/cap/default/gate/render/export/
+  extraction-OCR routing change; no model/provider/cloud call.** Docs-only — **no harness correction was needed.**
+- **Outcome this session (the long-standing `tables_only` result finally flipped): `dense_wrapped_table_operator_validation:
+  run` — `status: ok`, `trace_artifact_present: true`, `trace_no_leak_sweep: clean`, `effective_max_images: 2`,
+  `inserted_visual_count: 2`, `safe_candidate_count: 11`, `unsafe_candidate_count: 0`, `selected_count: 2`,
+  `type_counts {diagram_or_figure: 9, reconstructable_table: 2, unknown: 0, decorative_or_low_information: 0}`,
+  `selected_visual_type: diagrams_or_figures_present`, `irreplaceable_visual_selected: true`, `selected_figures_quality:
+  all_useful_or_acceptable`, `selection_explanation: diagrams_selected_after_dense_table_fix`,
+  `pdf_render_ok/pdf_image_visible/docx_render_ok/export_zip_ok/export_png_included: true`,
+  `warnings: [multiple_figures_present_one_inserted]`, `failure_category: none`, `no_leak_sweep: clean`.**
+- **What unblocked it.** The trace's `type_counts` still reads `diagram_or_figure: 9` / `reconstructable_table: 2`,
+  but the two reconstructable two-column definition tables that Slice 71 *selected* are now **deprioritized** behind
+  the diagram tier (`rejection_reason_counts.deprioritized_reconstructable_table: 2`), so diagram-first ranking now
+  reaches the genuine schematic figures. Both selected candidates are `classified_diagram_or_figure` with
+  `selection_reason: selected_by_diagram_first_ranking`; manual ground-truth confirms both are legible,
+  content-bearing, non-decorative graphics from distinct source pages that render visibly in PDF/DOCX and ride along
+  in the export ZIP.
+- **Decision gate / next work (recorded, not started):** `decision_gate: irreplaceable_diagram_selected_on_real_sample`;
+  `next_recommended_slice: visual_placement_or_citation_polish_may_now_be_considered` — because an irreplaceable
+  diagram/figure is finally selected on the real sample, future visual work **may** now consider placement/citation
+  polish as a separately-designed slice (a *may*, not a mandate; classification precision can be revisited if other
+  samples regress).
+- **Hard boundaries honored:** no cap above 2 (default still **1**, cap still hard-capped at **2**), no UI count
+  selector, no Chandra/Mistral/Gemini/cloud OCR, no model/provider/`llama-server` call, no image generation, no
+  OCR-routing/renderer/prompt/export change, no new API route. Chandra remains blocked by its own live-validation gate.
+- **Safety / no-leak:** only sanitized closed-vocab + bounded-numeric fields recorded; **no** real PDF path/filename,
+  document text, OCR text, source caption/table text, image bytes, base64, data URI, full URL, raw argv, token,
+  model/mmproj/executable path, provider payload, or raw exception. The runtime
+  `visual_markdown_selection_trace.json` was **inspected but not committed**; nothing binary/image/PDF/DOCX/ZIP/
+  runtime committed. **Slice 73 is NOT committed.**
+
+---
+
+## Slice 72 — **Dense ruled / wrapped-cell two-column table detection**, on `slice72-visual-pilot-dense-wrapped-table-detection`. **COMMITTED + MERGED to `chrome-renderer-v1` (fast-forward).**
 
 - **Production classification slice (precision only).** Slice 71's real-sample validation showed Slice 70 measurably
   improved table-vs-diagram classification (the trace's type buckets split: `diagram_or_figure: 9`,
@@ -34,13 +73,14 @@
   offline eval all pass on host; the production image was rebuilt + recreated, `/api/health` `{"ok":true}`,
   `smoke_release.py` 29/0/0, and the visual-pilot suite was re-run **inside the container** (Pillow present — no skips:
   multifigure 78, quality_gate 54) all green. `git diff --check` clean.
-- **Optional real operator revalidation: NOT run** — the non-private operator sample is not available in this session,
-  so no real cap-2 rerun was performed and **no sanitized operator result was recorded** (none invented).
+- **Optional real operator revalidation: NOT run in the Slice 72 session** — the non-private operator sample was not
+  available then, so no real cap-2 rerun was performed and no sanitized operator result was recorded (none invented).
+  **Slice 73 has since run that revalidation and recorded the flipped `diagrams_or_figures_present` result above.**
 - **Safety / no-leak:** only bounded numeric pixel summaries and closed-vocab tokens are produced; the classifier never
   OCRs, never calls a model/provider/network, never base64/serializes/logs image bytes, records no path or source text,
   and adds **no** new artifact (the Slice 68 trace is the only one). Tests build every PNG at runtime in a temp dir —
-  nothing binary/image/PDF/DOCX/ZIP/runtime committed; runtime eval result JSONs stay gitignored. **Slice 72 is NOT
-  committed.**
+  nothing binary/image/PDF/DOCX/ZIP/runtime committed; runtime eval result JSONs stay gitignored. **Slice 72 is
+  COMMITTED + MERGED to `chrome-renderer-v1` (fast-forward).**
 
 ---
 

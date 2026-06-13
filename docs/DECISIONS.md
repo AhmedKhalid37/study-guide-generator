@@ -3345,3 +3345,56 @@ binary/image/PDF/DOCX/ZIP/runtime committed; runtime eval result JSONs stay giti
 document text, OCR text, image bytes, base64, data URI, full URL, raw argv, token, model/mmproj/executable path, or
 provider payload appears anywhere. **Slice 72 is NOT committed.** Chandra remains blocked by its own live-validation
 gate.
+
+## Slice 73 — dense-wrapped-table real operator validation flipped the real sample to diagrams (2026-06-13)
+Slices 63/65/67/69/71 each recorded the same honest real-sample outcome — the visual pilot selected only
+`reconstructable_table` visuals (`selected_visual_type: tables_only`, `irreplaceable_visual_selected: false`) — even as
+the synthetic classification work progressed (Slice 69 localized the cause to classification; Slice 70 split the type
+buckets; Slice 71 isolated the residual case to dense, ruled, wrapped-multi-line two-column definition tables). Slice 72
+added the deterministic, pixel-only `dense_wrapped_two_col` signal to fix that case synthetically. **Slice 73 reran the
+existing operator harness on the real, non-private sample with Slice 72 on trunk and recorded — for the first time — a
+flipped result: both selected visuals are diagrams/figures.**
+
+**Why a separate validation/docs slice.** Per the established discipline (no heuristic tuning in a validation slice),
+Slice 73 changed no production pipeline/API/frontend code, no ranking/cap/default/gate/render/export/extraction-OCR
+routing, and added no model/provider/cloud call. It only drove the existing harness (cap 2, both enable gates) inside
+the rebuilt container, read Slice 68's sanitized selection trace, and manually inspected the rendered PDF/HTML/DOCX. No
+harness correction was needed.
+
+**Recorded result (sanitized, closed vocab).** `dense_wrapped_table_operator_validation: run`, `status: ok`,
+`trace_artifact_present: true`, `trace_no_leak_sweep: clean`, `effective_max_images: 2`, `inserted_visual_count: 2`,
+`safe_candidate_count: 11`, `unsafe_candidate_count: 0`, `selected_count: 2`,
+`type_counts {diagram_or_figure: 9, reconstructable_table: 2, unknown: 0, decorative_or_low_information: 0}`,
+`selected_visual_type: diagrams_or_figures_present`, `irreplaceable_visual_selected: true`,
+`selected_figures_quality: all_useful_or_acceptable`, `selection_explanation: diagrams_selected_after_dense_table_fix`,
+all render/export booleans `true`, `warnings: [multiple_figures_present_one_inserted]`, `failure_category: none`,
+`no_leak_sweep: clean`.
+
+**What the trace showed.** `type_counts` still reads `diagram_or_figure: 9` / `reconstructable_table: 2`, but the two
+reconstructable definition tables Slice 71 had *selected* are now deprioritized behind the diagram tier
+(`rejection_reason_counts.deprioritized_reconstructable_table: 2`), so Slice 64's diagram-first ranking reaches the
+genuine schematic figures. Both selected candidates are `classified_diagram_or_figure` with `selection_reason:
+selected_by_diagram_first_ranking`; manual ground-truth confirms both are legible, content-bearing, non-decorative
+graphics from distinct source pages that render visibly in PDF/DOCX and ride along in the export ZIP.
+
+**Decision / next work.** `decision_gate: irreplaceable_diagram_selected_on_real_sample`. Because an irreplaceable
+diagram/figure is finally selected on the real sample, future visual work **may** now consider placement/citation polish
+as a separately-designed slice (`next_recommended_slice: visual_placement_or_citation_polish_may_now_be_considered`) —
+a *may*, not a mandate; classification precision can be revisited if other samples regress. Had the output stayed
+tables-only, the guidance would have been to continue classification precision or design a controlled understanding
+layer; had diagrams been absent from the safe candidates, the guidance would have been to inspect extraction/candidate
+generation. **Do not** expand beyond cap 2 (default stays 1, hard cap stays 2); no UI count selector; no
+Chandra/Mistral/Gemini/model/provider/cloud integration; no OCR-routing/renderer/prompt/export change. Chandra remains
+blocked by its own live-validation gate. The `multiple_figures_present_one_inserted` warning is the existing
+closed-vocab token (fires whenever the source held more than one figure candidate); its `_one_inserted` suffix is a
+known legacy misnomer under cap 2 and renaming it stays out of scope for a validation slice.
+
+**Note on Slice 72 status.** Slice 72 (the entry above, which recorded itself as NOT committed at authoring time) was
+committed `5a23852` and fast-forward merged + pushed to trunk `chrome-renderer-v1` before Slice 73 began; that entry is
+left unedited per this file's append-only rule.
+
+**Scope / no-leak (firm).** Docs only — `VISUAL_PILOT_OPERATOR_VALIDATION.md`, `CURRENT_TASK.md`,
+`NEXT_CHAT_HANDOFF.md`, and this file. Only sanitized closed-vocab + bounded-numeric fields were recorded — no real PDF
+path/filename, document text, OCR text, source caption/table text, image bytes, base64, data URI, full URL, raw argv,
+token, model/mmproj/executable path, or provider payload. The runtime `visual_markdown_selection_trace.json` was
+inspected but not committed; nothing binary/image/PDF/DOCX/ZIP/runtime committed. **Slice 73 is NOT committed.**

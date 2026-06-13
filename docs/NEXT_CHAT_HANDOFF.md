@@ -6,14 +6,53 @@
 > stable overview see `PROJECT_CONTEXT.md`; canonical brief is `../CLAUDE.md`.
 
 ## Current position
-- **Working tree:** **Slice 72 (dense ruled / wrapped-cell two-column table detection) — UNCOMMITTED (per
-  instruction)** on branch `slice72-visual-pilot-dense-wrapped-table-detection` (branched from fresh trunk after Slice
-  71 was committed/merged). **Production classification slice — precision only; cap/default/two-key gate/UI/
-  `/api/options`/render/export/extraction-OCR routing/prompts all unchanged; no model/provider/cloud call.** It acts on
-  Slice 71's real-sample finding that Slice 70 split the type buckets (`diagram_or_figure: 9`,
+- **Working tree:** **Slice 73 (dense-wrapped-table real operator validation) — UNCOMMITTED (per instruction)** on
+  branch `slice73-visual-pilot-dense-wrapped-operator-validation` (branched from fresh trunk after Slice 72 was
+  committed/merged). **Validation/docs slice — no production pipeline/API/frontend code changed; no heuristic tuned;
+  no ranking/cap/default/gate/render/export/extraction-OCR routing change; no model/provider/cloud call.** It reruns
+  the existing operator harness on the real, **non-private** sample now that Slice 72's dense / wrapped-cell
+  two-column table detection is on trunk, then reads Slice 68's sanitized selection trace + manually inspects the
+  rendered PDF/HTML/DOCX. **No harness correction was needed.**
+  - **Outcome this session — the long-standing `tables_only` result finally flipped.** Recorded (sanitized, closed
+    vocab): `dense_wrapped_table_operator_validation: run`, `status: ok`, `trace_artifact_present: true`,
+    `trace_no_leak_sweep: clean`, `effective_max_images: 2`, `inserted_visual_count: 2`, `safe_candidate_count: 11`,
+    `unsafe_candidate_count: 0`, `selected_count: 2`,
+    `type_counts {diagram_or_figure: 9, reconstructable_table: 2, unknown: 0, decorative_or_low_information: 0}`,
+    **`selected_visual_type: diagrams_or_figures_present`**, **`irreplaceable_visual_selected: true`**,
+    `selected_figures_quality: all_useful_or_acceptable`,
+    **`selection_explanation: diagrams_selected_after_dense_table_fix`**,
+    `pdf_render_ok/pdf_image_visible/docx_render_ok/export_zip_ok/export_png_included: true`,
+    `warnings: [multiple_figures_present_one_inserted]`, `failure_category: none`, `no_leak_sweep: clean`.
+  - **What unblocked it.** The trace still reads `diagram_or_figure: 9` / `reconstructable_table: 2`, but the two
+    reconstructable definition tables Slice 71 *selected* are now **deprioritized** behind the diagram tier
+    (`rejection_reason_counts.deprioritized_reconstructable_table: 2`), so diagram-first ranking reaches the genuine
+    schematic figures. Both selected candidates are `classified_diagram_or_figure` with `selection_reason:
+    selected_by_diagram_first_ranking`; manual ground-truth confirms both are legible, content-bearing,
+    non-decorative graphics from distinct source pages that render visibly in PDF/DOCX and ride along in the export
+    ZIP.
+  - **Decision / next work:** `decision_gate: irreplaceable_diagram_selected_on_real_sample`; `next_recommended_slice:
+    visual_placement_or_citation_polish_may_now_be_considered` — because an irreplaceable diagram/figure is finally
+    selected on the real sample, future visual work **may** now consider placement/citation polish as a
+    separately-designed slice (a *may*, not a mandate; classification precision can be revisited if other samples
+    regress). **Do not** expand beyond cap 2; no UI count selector; no Chandra/Mistral/Gemini/model/provider/cloud
+    integration; no OCR-routing/renderer/prompt/export change. Chandra remains blocked by its own live-validation gate.
+  - **Files:** docs only — `docs/VISUAL_PILOT_OPERATOR_VALIDATION.md`, `docs/CURRENT_TASK.md`, this file,
+    `docs/DECISIONS.md`. No frontend/UI; no extraction/OCR-routing/prompt/render/export change; no Chandra/model/
+    provider/cloud call. Only sanitized closed-vocab + bounded-numeric fields recorded — no real PDF path/filename,
+    document text, OCR text, source caption/table text, image bytes, base64, data URI, full URL, raw argv, token,
+    model/mmproj/executable path, or provider payload. The runtime `visual_markdown_selection_trace.json` was
+    **inspected but not committed**; nothing binary/image/PDF/DOCX/ZIP/runtime committed. **Slice 73 is NOT
+    committed.**
+
+### Prior position (Slice 72 — committed & merged)
+- **Slice 72 (dense ruled / wrapped-cell two-column table detection) — COMMITTED + MERGED to `chrome-renderer-v1`
+  (fast-forward)** on branch `slice72-visual-pilot-dense-wrapped-table-detection` (branched from fresh trunk after
+  Slice 71 was committed/merged). **Production classification slice — precision only; cap/default/two-key gate/UI/
+  `/api/options`/render/export/extraction-OCR routing/prompts all unchanged; no model/provider/cloud call.** It acted
+  on Slice 71's real-sample finding that Slice 70 split the type buckets (`diagram_or_figure: 9`,
   `reconstructable_table: 2`) yet the two *selected* visuals were still reconstructable **dense ruled / wrapped-cell**
   two-column definition tables that Slice 70's `two_col_split` per-column band guard missed.
-  - **What changed:** `pipeline/visual_markdown_insertion.py` gains one bounded, deterministic, pixel-only feature —
+  - **What changed:** `pipeline/visual_markdown_insertion.py` gained one bounded, deterministic, pixel-only feature —
     **`dense_wrapped_two_col`** — and a fourth `_looks_like_reconstructable_table` path. It does **not** rely on band
     count (wrapped/antialiased cells legitimately merge bands); instead it requires **exactly two substantial dense
     columns**, a **persistent clean vertical gutter** (`_gutter_consistency` — a diagram's connectors/diagonals break
@@ -26,27 +65,9 @@
     remain selected when best/only; default stays **1**, hard cap stays **2**, two-key gate / default-off
     byte-identical / export ride-along all unchanged. New `test_visual_pilot_dense_wrapped_table_detection.py`
     (81 PASS, cap-1 + cap-2) plus the full visual-pilot + insertion/render/export/options/anki suites and the offline
-    eval pass on host; production image rebuilt + recreated, `/api/health` `{"ok":true}`, `smoke_release.py` 29/0/0,
-    and the visual-pilot suite re-run **inside the container** (Pillow present, no skips) all green. `git diff --check`
-    clean.
-  - **Optional real operator revalidation: NOT run** — the non-private operator sample is not available in this
-    session; no real cap-2 rerun was performed and **no sanitized operator result was recorded** (none invented). When
-    the sample is available next, rerun the cap-2 harness and inspect the trace; the desired outcome (only if true) is
-    `selected_visual_type: diagrams_or_figures_present | mixed_diagram_and_table` with
-    `irreplaceable_visual_selected: true`.
-  - **Decision / next work:** if real revalidation still shows `tables_only`, continue
-    `continue_table_vs_diagram_classification_precision` (or design a controlled understanding layer in its own slice).
-    **Do not** proceed to UI polish or cap expansion until an irreplaceable diagram/figure is actually selected in real
-    validation, or there is a deliberate product decision to accept tables. **Do not** expand beyond cap 2; no UI count
-    selector; no Chandra/Mistral/Gemini/model/provider/cloud integration; no OCR-routing change. Chandra remains
-    blocked by its own live-validation gate.
-  - **Files:** `pipeline/visual_markdown_insertion.py`, new `test_scripts/test_visual_pilot_dense_wrapped_table_detection.py`,
-    and docs (`CURRENT_TASK.md`, this file, `DECISIONS.md`). No frontend/UI; no extraction/OCR-routing/prompt/render/
-    export change; no Chandra/model/provider/cloud call. Only bounded numeric pixel summaries + closed-vocab tokens are
-    produced — no real PDF path/filename, document text, OCR text, source caption/table text, image bytes, base64, data
-    URI, full URL, raw argv, token, model/mmproj/executable path, or provider payload. No new artifact (Slice 68 trace
-    is the only one); every test PNG is runtime-built in a temp dir; nothing binary/image/PDF/DOCX/ZIP/runtime
-    committed. **Slice 72 is NOT committed.**
+    eval passed on host; production image rebuilt + recreated, `/api/health` `{"ok":true}`, `smoke_release.py` 29/0/0,
+    `git diff --check` clean. **Slice 72 commit `5a23852`, fast-forward merged + pushed to trunk
+    `chrome-renderer-v1`.** Its real-sample revalidation is the subject of the Slice 73 current-position record above.
 
 ### Prior position (Slice 71 — committed & merged)
 - **Slice 71 (table-vs-diagram precision operator validation) — COMMITTED + MERGED to `chrome-renderer-v1`
