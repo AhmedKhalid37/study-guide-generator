@@ -3468,5 +3468,34 @@ this file. No production pipeline/API/frontend code changed; no harness was adde
 ranking, cap, caption, export, renderer, OCR-routing, prompt, provider/model/cloud, or UI behavior changed. No
 Chandra/model/provider/cloud call. No committed binary/image/PDF/DOCX/ZIP/runtime output, eval JSON, or selection
 trace. No sample path/filename, document text, OCR text, source caption/table text, image bytes, base64, data URI, full
-URL, provider payload, token, raw argv, model/mmproj/executable path, or raw exception was recorded. **Slice 75 is NOT
-committed.**
+URL, provider payload, token, raw argv, model/mmproj/executable path, or raw exception was recorded. **Slice 75 commit
+`00c3f79`, fast-forward merged + pushed to trunk `chrome-renderer-v1`.**
+
+## Slice 76 — source coverage report starts as a pure no-leak core (2026-06-13)
+Slice 76 adds a source coverage report builder as a Trust-pillar measurement primitive after Slice 75 honestly recorded
+`diverse_visual_pilot_exit_validation: not_run` / `exit_recommendation: insufficient_evidence`. This is deliberately
+not another visual-pilot loop: morphology and caption work remain paused, and Chandra remains blocked by its own
+live-validation gate.
+
+**Decision.** Build the report as a separate pure core first:
+`pipeline.source_coverage_report.build_source_coverage_report(extraction_metadata, *, visual_manifest=None)`. It
+consumes the existing `extraction_metadata.json` shape (`version: 2`, `kind: "extraction_metadata"`, completed/skipped
+status, source records with page counts and sanitized page method/count/anchor fields) plus optional
+`visual_assets_manifest.json`-shaped dictionaries. It emits only `version: 1`, `kind: "source_coverage_report"`,
+summary counts, per-source counts/status, and closed warning tokens.
+
+**Why no filenames/source text.** Coverage is meant to answer whether sources/pages were represented, not what the
+private source was. Existing extraction metadata may contain a filename, and hostile input may contain paths, titles,
+document text, OCR text, table text, captions, image refs, provider payloads, tokens, URLs, raw argv, socket paths, or
+model/mmproj/executable paths. The core never copies those fields. Warnings are closed vocabulary tokens only, and
+malformed input degrades to skipped/partial reports without raw exception messages.
+
+**Why defer artifact writing/UI.** Persisting `source_coverage_report.json`, adding JobDetails display, exports, or API
+routes would widen the behavioral surface. This slice proves the deterministic report shape and no-leak boundary first.
+A future slice may write the artifact after extraction, but this slice changes no job execution, no `clean.md` writes,
+no extraction/OCR routing, no renderer, no export, no frontend/UI, and no prompt/provider/model/cloud behavior.
+
+**Why not visual-pilot continuation.** Optional visual-manifest input is counts-only (`source_page` coverage) and never
+emits asset ids, image refs, captions, bbox values, provider details, or source text. It is included only so the Trust
+report can later summarize whether visual candidates existed; it does not change visual insertion, selection, ranking,
+classification, caps, defaults, two-key gates, captions, rendering, or exports. **Slice 76 is NOT committed.**

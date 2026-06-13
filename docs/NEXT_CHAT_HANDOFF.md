@@ -6,12 +6,38 @@
 > stable overview see `PROJECT_CONTEXT.md`; canonical brief is `../CLAUDE.md`.
 
 ## Current position
-- **Working tree:** **Slice 75 (diverse visual-pilot exit validation) — UNCOMMITTED (per instruction)** on branch
-  `slice75-visual-pilot-diverse-exit-validation` (branched from fresh trunk after Slice 74 was committed/merged). This
-  is a **validation / exit-decision slice only**: not another caption polish slice, not another table/diagram heuristic
-  slice, and not a UI slice. It records whether enough diverse, manually categorized, known non-private operator samples
-  are available to decide whether the default-off visual markdown pilot should remain opt-in, become more discoverable,
-  or pause pending a controlled understanding layer. Chandra remains blocked by its own live-validation gate.
+- **Working tree:** **Slice 76 (source coverage report pure core) — UNCOMMITTED (per instruction)** on branch
+  `slice76-source-coverage-report-core` (branched from fresh trunk after Slice 75 was committed/merged/pushed). This is
+  a **Trust-pillar / measurement slice**, not visual-pilot behavior and not another caption or morphology loop.
+  Visual-pilot morphology and caption loops remain paused; Chandra remains blocked by its own live-validation gate.
+  - **What changed:** new pure stdlib-only `pipeline/source_coverage_report.py` with public API
+    `build_source_coverage_report(extraction_metadata, *, visual_manifest=None)` plus
+    `test_scripts/test_source_coverage_report.py` using synthetic dictionaries only.
+  - **Input/output:** consumes existing `extraction_metadata.json`-shaped dictionaries (`version: 2`,
+    `kind: "extraction_metadata"`, `status`, `sources[*].content_type`, `page_count`, `pages[*].method`,
+    `text_chars`, `word_count`, `has_page_anchor`) and optional `visual_assets_manifest.json`-shaped dictionaries.
+    Emits `version: 1`, `kind: "source_coverage_report"`, status, summary counts, per-source counts/status, and
+    closed warning tokens only.
+  - **Safety:** no filename/path/title/document text/OCR text/table text/source caption/image ref/image bytes/base64/
+    data URI/URL/provider payload/token/raw argv/socket/model/mmproj/executable path/raw exception is copied into
+    output. Visual manifest contribution is counts-only from safe positive integer `source_page` values.
+  - **Scope:** pure/unwired core only. No API route, no job artifact writer, no `clean.md`, no frontend/UI, no export,
+    no extraction/OCR routing, no render/prompt/provider/model/cloud behavior, no Chandra/Mistral/Gemini integration,
+    and no visual insertion/ranking/classification/cap/default/two-key-gate behavior change. A future slice may persist
+    `source_coverage_report.json` after extraction; this slice does not wire it.
+  - **Validation:** `python -m compileall pipeline test_scripts` passes;
+    `python test_scripts/test_source_coverage_report.py` passes 59/59; adjacent
+    `python test_scripts/test_extraction_metadata.py` passes 9/9 with environment skips for fitz/FastAPI-dependent
+    branches; adjacent `python test_scripts/test_visual_assets_manifest.py` passes 65/65. Docker rebuild is not required
+    because the slice is pure/unwired. **Slice 76 is NOT committed.**
+
+### Prior position (Slice 75 — committed & merged)
+- **Slice 75 (diverse visual-pilot exit validation) — COMMITTED `00c3f79` + MERGED to `chrome-renderer-v1`
+  (fast-forward) + PUSHED** on branch `slice75-visual-pilot-diverse-exit-validation`. This was a **validation /
+  exit-decision slice only**: not another caption polish slice, not another table/diagram heuristic slice, and not a UI
+  slice. It recorded whether enough diverse, manually categorized, known non-private operator samples were available to
+  decide whether the default-off visual markdown pilot should remain opt-in, become more discoverable, or pause pending a
+  controlled understanding layer. Chandra remains blocked by its own live-validation gate.
   - **Outcome:** `diverse_visual_pilot_exit_validation: not_run`; `reason:
     non_private_diverse_samples_not_available`. A local operator sample count alone was not enough: no safe manual
     mapping from samples to the requested closed categories was available, and the slice rules forbid guessing categories
@@ -32,7 +58,8 @@
     OCR-routing/prompt/render/export/caption/cap/ranking/classification/selection/provider change; no Chandra/model/
     provider/cloud call. No committed binary/image/PDF/DOCX/ZIP/runtime output, eval JSON, or selection trace. No sample
     path/filename, document text, OCR text, source caption/table text, image bytes, base64, data URI, full URL, raw argv,
-    provider payload, token, model/mmproj/executable path, or raw exception recorded. **Slice 75 is NOT committed.**
+    provider payload, token, model/mmproj/executable path, or raw exception recorded. **Slice 75 commit `00c3f79`,
+    fast-forward merged + pushed to trunk `chrome-renderer-v1`.**
 
 ### Prior position (Slice 74 — committed & merged)
 - **Slice 74 (visual caption / source-page polish) — COMMITTED `9e92e5a` + MERGED to `chrome-renderer-v1`
