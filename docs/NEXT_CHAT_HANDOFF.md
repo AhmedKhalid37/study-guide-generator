@@ -6,11 +6,44 @@
 > stable overview see `PROJECT_CONTEXT.md`; canonical brief is `../CLAUDE.md`.
 
 ## Current position
-- **Working tree:** **Slice 66 (lightly-ruled / text-heavy table detection) — UNCOMMITTED (per instruction)** on
-  branch `slice66-visual-pilot-light-table-detection` (branched from fresh trunk after Slice 65 was committed/
-  merged). **Production-behavior slice — visual-type *detection* only; ranking/cap/gates unchanged.** It acts on
-  Slice 65's recorded `next_recommended_slice: improve_visual_type_detection_before_ui_polish`: strengthen
-  table-vs-diagram detection so diagram-first ranking actually has a signal on real, lightly-ruled tables.
+- **Working tree:** **Slice 67 (improved-light-table real operator validation) — UNCOMMITTED (per instruction)** on
+  branch `slice67-visual-pilot-light-table-operator-validation` (branched from fresh trunk after Slice 66 was
+  committed/merged). **Validation/docs slice — no production pipeline/API/frontend code changed; no new visual
+  behavior.** It closes the one gap Slice 66 left open: rerun the cap-2 operator harness on the **real**
+  non-private sample to see whether the strengthened lightly-ruled-table detector finally lets diagram-first
+  ranking pick a hard-to-reconstruct diagram/figure instead of tables only.
+  - **Outcome this session: `light_table_operator_visual_quality_review: run` — `status: ok`,
+    `inserted_visual_count: 2`, `selected_visual_type: tables_only`, `irreplaceable_visual_selected: false`,
+    `selected_figures_quality: all_useful_or_acceptable`,** all render/export checks `true`,
+    `warnings: [multiple_figures_present_one_inserted]`, `failure_category: none`, `no_leak_sweep: clean`. The
+    non-private operator sample was available again, so the cap-2 operator harness **was** run inside the rebuilt
+    Slice 66 container (`GUIDEFORGE_ENABLE_VISUAL_MARKDOWN_IMAGE_PILOT=1`, `GUIDEFORGE_LOCAL_FIGURE_EXTRACTION=1`,
+    `GUIDEFORGE_VISUAL_MARKDOWN_MAX_IMAGES=2`); rendered PDF/HTML/DOCX copied to a host folder and inspected by hand.
+  - **Honest outcome — improved light-table detection did *not* change the real selection.** Slice 66 improved the
+    synthetic / light-table detection tests, but the real cap-2 run still selected **two useful tables only** —
+    readable and useful, yet **reconstructable from extracted text**. **No irreplaceable diagram/figure was
+    selected, so visual-type selection is still not solved for the real sample.** `decision_gate:
+    light_table_detection_did_not_change_real_outcome` · `next_recommended_slice:
+    add_sanitized_selection_trace_before_more_heuristics`.
+  - **Decision:** **do not proceed to UI polish or cap expansion.** Before further heuristic tuning, add a
+    **sanitized selection trace / candidate audit** (closed-vocab / bounded-numeric only) so future runs can explain
+    *why* diagrams were not selected. **Do not expand beyond cap 2; no UI count selector; no
+    Chandra/Mistral/Gemini/model/provider/cloud integration.** Chandra remains blocked by its own live-validation
+    gate.
+  - **Docs-only:** updated `VISUAL_PILOT_OPERATOR_VALIDATION.md`, `CURRENT_TASK.md`, this file, `DECISIONS.md`. No
+    harness correction needed; no frontend/UI; no extraction/OCR-routing/prompt/render/export change; no
+    Chandra/model/provider/cloud call. `git diff --check` clean. Only the sanitized closed-vocabulary fields
+    recorded — no real PDF path/filename, document/OCR text, image bytes, base64, data URI, full URL, raw argv,
+    token, model/mmproj/executable path, or provider payload; nothing binary/image/PDF/DOCX/ZIP/runtime committed.
+    **Slice 67 is NOT committed.** Chandra remains blocked by its own live-validation gate.
+
+### Prior position (Slice 66 — committed & merged)
+- **Slice 66 (lightly-ruled / text-heavy table detection) — COMMITTED + MERGED to `chrome-renderer-v1`
+  (fast-forward)** on branch `slice66-visual-pilot-light-table-detection` (branched from fresh trunk after Slice 65
+  was committed/merged). **Production-behavior slice — visual-type *detection* only; ranking/cap/gates unchanged.**
+  It acted on Slice 65's recorded `next_recommended_slice: improve_visual_type_detection_before_ui_polish`:
+  strengthen table-vs-diagram detection so diagram-first ranking actually has a signal on real, lightly-ruled
+  tables.
   - **What changed (one file):** `pipeline/visual_markdown_insertion.py`. Extended the bounded grayscale feature
     summary (`_summarize_gray_pixels`) with a **softer-ink** (`_LT_INK`) horizontal **text-band rhythm** and a
     vertical **column-gutter** structure, and added `_looks_like_reconstructable_table(...)` (+ pure helpers
@@ -43,7 +76,8 @@
     **not assumed**; re-run the cap-2 operator harness when the sample is available and record only if true.
   - **No-leak:** closed-vocab tokens + bounded numeric features only; no real PDF path/filename, document/OCR text,
     image bytes, base64, data URI, full URL, raw argv, token, or model/mmproj/executable path; nothing
-    binary/image/PDF/DOCX/ZIP/runtime committed. **Slice 66 is NOT committed.**
+    binary/image/PDF/DOCX/ZIP/runtime committed. **Slice 66 is COMMITTED + MERGED to `chrome-renderer-v1`
+    (fast-forward).** Its optional real operator revalidation is the subject of the Slice 67 record above.
 
 ### Prior position (Slice 65 — committed & merged)
 - **Slice 65 (diagram-first real operator validation record) — COMMITTED + MERGED to `chrome-renderer-v1`

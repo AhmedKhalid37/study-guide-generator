@@ -5,7 +5,45 @@
 
 ---
 
-## Slice 66 — **Lightly-ruled / text-heavy table detection**, on `slice66-visual-pilot-light-table-detection`. **NOT COMMITTED.**
+## Slice 67 — **Improved-light-table real operator validation**, on `slice67-visual-pilot-light-table-operator-validation`. **NOT COMMITTED.**
+
+- **Validation/docs slice only.** Records whether Slice 66's strengthened lightly-ruled / text-heavy table
+  detection lets the **real** non-private operator sample finally select a hard-to-reconstruct diagram/figure
+  instead of tables only. **No production pipeline/API/frontend code changed; no new visual behavior added.**
+  **Docs-only — no harness correction was needed.**
+- **Outcome this session: `light_table_operator_visual_quality_review: run` — `status: ok`,
+  `inserted_visual_count: 2`, `selected_visual_type: tables_only`, `irreplaceable_visual_selected: false`,
+  `selected_figures_quality: all_useful_or_acceptable`.** The non-private operator sample was available again, so
+  the cap-2 operator harness **was** run inside the rebuilt Slice 66 container
+  (`GUIDEFORGE_ENABLE_VISUAL_MARKDOWN_IMAGE_PILOT=1`, `GUIDEFORGE_LOCAL_FIGURE_EXTRACTION=1`,
+  `GUIDEFORGE_VISUAL_MARKDOWN_MAX_IMAGES=2`); the rendered PDF/HTML/DOCX were copied to a host folder and inspected
+  by hand. All render/export checks passed (`pdf_render_ok` / `pdf_image_visible` / `docx_render_ok` /
+  `export_zip_ok` / `export_png_included: true`), `warnings: [multiple_figures_present_one_inserted]`,
+  `failure_category: none`, `no_leak_sweep: clean`. Full record + interpretation in
+  `VISUAL_PILOT_OPERATOR_VALIDATION.md`.
+- **Honest outcome — improved light-table detection did *not* change the real selection.** The two inserted
+  visuals are still **useful/acceptable but reconstructable tables**; the genuinely irreplaceable visual content
+  present elsewhere in the sample was **not** selected. Slice 66 improved the synthetic / light-table detection
+  tests, but the real cap-2 run still lands on **two useful tables only** — readable and useful, yet
+  reconstructable from extracted text. **No irreplaceable diagram/figure was selected, so visual-type selection is
+  still not solved for the real sample.** `decision_gate: light_table_detection_did_not_change_real_outcome` ·
+  `next_recommended_slice: add_sanitized_selection_trace_before_more_heuristics`.
+- **Decision:** **do not proceed to UI polish or cap expansion.** Before further heuristic tuning, add a
+  **sanitized selection trace / candidate audit** so future runs can explain (in closed-vocab / bounded-numeric form
+  only) *why* diagrams were not selected — which candidates existed, their classified visual type, and why the
+  chosen tables outranked them. **Do not expand beyond cap 2. Do not add a UI count selector. Do not add
+  Chandra/Mistral/Gemini/model/provider/cloud integration.** Chandra remains blocked by its own live-validation
+  gate.
+- **Validation:** docs-only; `git diff --check` clean. The harness was **not** touched (no `compileall` /
+  `--self-test` needed beyond Slice 66's already-green run). No production behavior, no frontend/UI, no
+  extraction/OCR-routing/prompt/render/export change, no Chandra/model/provider/cloud call.
+- **Safety / no-leak:** only the sanitized closed-vocabulary fields recorded — no real PDF path/filename, document
+  text, OCR text, image bytes, base64, data URI, full URL, raw argv, token, model/mmproj/executable path, or provider
+  payload; nothing binary/image/PDF/DOCX/ZIP/runtime committed. **Slice 67 is NOT committed.**
+
+---
+
+## Slice 66 — **Lightly-ruled / text-heavy table detection**, on `slice66-visual-pilot-light-table-detection`. **COMMITTED + MERGED to `chrome-renderer-v1` (fast-forward).**
 
 - **Production-behavior slice (visual-type detection only).** Slice 65's real operator validation proved the
   Slice 64 diagram-first ranking **did not change the real sample outcome** — the two selected visuals stayed

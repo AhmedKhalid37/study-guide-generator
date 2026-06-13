@@ -454,3 +454,120 @@ preference never engaged.
   filename, document text, OCR text, image bytes, base64, data URI, full URL, raw argv, token,
   model/mmproj/executable path, or raw exception. No binary/image/PDF/DOCX/ZIP/runtime output was
   committed.
+
+---
+
+## Slice 67 — improved-light-table real operator validation (post-Slice-66 decision check)
+
+> Validation-record slice. **No production pipeline/API/frontend code changed.** It adds NO
+> visual behavior. Its only purpose is to *rerun* the existing manual harness against the same
+> real, **non-private** operator sample now that **Slice 66's improved lightly-ruled /
+> text-heavy table detection is in production**, to answer the one question Slice 66 left open:
+> does the strengthened classifier finally let diagram-first ranking pick a hard-to-reconstruct
+> diagram/figure on the **real** sample, or does it still land on tables only? **Docs-only — no
+> harness correction was needed.**
+
+### Why this record exists
+
+Slice 66 strengthened the deterministic, local, pixel-only visual-type detector so a
+lightly-ruled / text-heavy table classifies as `reconstructable_table` instead of `unknown`,
+giving diagram-first ranking a real signal. It proved this **synthetically and in Docker** but
+explicitly left the **optional real operator revalidation NOT run** — the non-private operator
+sample was unavailable in that session, and the desired flip
+(`selected_visual_type: diagrams_or_figures_present` / `irreplaceable_visual_selected: true`)
+was **not** assumed. Slice 67 exists to close that one gap: same harness, same already-supplied
+non-private sample, run inside the rebuilt Slice 66 container with cap 2, then a human
+inspection of the rendered PDF / HTML / DOCX copied to a host folder — **recorded only if true
+after inspection.**
+
+### Light-table review — recorded result (sanitized, closed vocab)
+
+```
+light_table_operator_visual_quality_review: run
+status: ok
+pilot_inserted: true
+inserted_visual_count: 2
+selected_visual_type: tables_only
+irreplaceable_visual_selected: false
+selected_figures_quality: all_useful_or_acceptable
+pdf_render_ok: true
+pdf_image_visible: true
+docx_render_ok: true
+export_zip_ok: true
+export_png_included: true
+warnings:
+  - multiple_figures_present_one_inserted
+failure_category: none
+no_leak_sweep: clean
+```
+
+The non-private operator sample was available again at the operator-local location, so the
+cap-2 operator harness **was** run inside the rebuilt Slice 66 container
+(`GUIDEFORGE_ENABLE_VISUAL_MARKDOWN_IMAGE_PILOT=1`, `GUIDEFORGE_LOCAL_FIGURE_EXTRACTION=1`,
+`GUIDEFORGE_VISUAL_MARKDOWN_MAX_IMAGES=2`), the rendered PDF / HTML / DOCX were copied to a
+host folder, and the operator inspected the inserted visuals by hand. The operator classified
+the selected visuals using only the closed vocabularies
+`selected_visual_type: diagrams_or_figures_present · tables_only · mixed_diagram_and_table ·
+unclear`, `irreplaceable_visual_selected: true · false · unknown`, and
+`selected_figures_quality: all_useful_or_acceptable · mixed_quality ·
+decorative_or_bad_present · unclear` (the real sample path/filename and the figures' source
+contents are **not** recorded here).
+
+### Why improved light-table detection did not change the real-sample outcome (sanitized)
+
+The honest result is that, on this real sample, Slice 66's strengthened lightly-ruled /
+text-heavy table detection did **not** change the selection from the Slice 65 outcome: the two
+inserted visuals are still **useful/acceptable but reconstructable tables**, and the genuinely
+irreplaceable visual content present elsewhere in the sample was **not** selected. Recorded with
+safe closed-vocabulary tokens:
+
+```
+selected_visual_type: tables_only
+irreplaceable_visual_selected: false
+decision_gate: light_table_detection_did_not_change_real_outcome
+next_recommended_slice: add_sanitized_selection_trace_before_more_heuristics
+```
+
+> Note on the `multiple_figures_present_one_inserted` warning: it is the existing
+> closed-vocabulary token, emitted whenever the source held more than one figure candidate.
+> Under cap-2 its `_one_inserted` suffix is a known legacy misnomer — two figures were inserted
+> here — but the trigger condition is still literally true and the actual count is recorded
+> unambiguously in `inserted_visual_count: 2`. Renaming a closed-vocab token stays out of scope
+> for a validation slice.
+
+### Interpretation
+
+- Slice 66 improved the **synthetic / light-table detection tests**, classifying lightly-ruled /
+  text-heavy tables as `reconstructable_table` so diagram-first ranking has a real signal; it
+  proved this synthetically and in Docker.
+- The **real** post-Slice-66 cap-2 run still selected **two useful tables only**
+  (`selected_visual_type: tables_only`, `inserted_visual_count: 2`) — the plumbing again worked
+  end-to-end (selection → capped multi-insertion → PDF/HTML/DOCX render → export bundle), and
+  both inserted visuals are legible, content-bearing, non-decorative material that rendered
+  visibly and rode along in the export ZIP.
+- These tables are **readable and useful, but reconstructable from extracted text** into clean
+  generated tables.
+- **No irreplaceable diagram/figure was selected.** The higher-value target the visual feature
+  exists to protect — diagrams/flowcharts/labeled figures that cannot be reliably recreated from
+  text — was again missed.
+- **Therefore visual-type selection is still not solved for the real sample.** Per the
+  desired-outcome rule this is recorded honestly as the actual result, not a pass.
+- **Do not proceed to UI polish or cap expansion.** `decision_gate:
+  light_table_detection_did_not_change_real_outcome`.
+- **Before further heuristic tuning, add a sanitized selection trace / candidate audit** so future
+  runs can explain *why* diagrams were not selected (which candidates existed, their classified
+  visual type, and why the chosen tables outranked them) — all in closed-vocab / bounded-numeric
+  form only. `next_recommended_slice: add_sanitized_selection_trace_before_more_heuristics`.
+- **Do not expand beyond cap 2. Do not add a UI count selector. Do not add
+  Chandra/Mistral/Gemini/model/provider/cloud integration.**
+- A `mixed_diagram_and_table` or `diagrams_or_figures_present` /
+  `irreplaceable_visual_selected: true` result would instead have meant the ranking is now working
+  on real material and future work could consider placement/citation polish;
+  `decorative_or_bad_present` or `unclear` would have meant **do not expand visual behavior — keep
+  doing selection-quality work**.
+- **Chandra extraction integration remains blocked by its own live-validation gate**; this
+  record does not touch it.
+- Only the sanitized closed-vocabulary fields above were recorded — **no** real PDF path,
+  filename, document text, OCR text, image bytes, base64, data URI, full URL, raw argv, token,
+  model/mmproj/executable path, provider payload, or raw exception. No binary/image/PDF/DOCX/ZIP/
+  runtime output was committed.

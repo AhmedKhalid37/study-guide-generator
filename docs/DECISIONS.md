@@ -3069,3 +3069,38 @@ desired flip to `selected_visual_type: diagrams_or_figures_present` / `irreplace
 recorded only if true. Only sanitized closed-vocabulary tokens + bounded numeric features were recorded (no real
 PDF path/filename, document/OCR text, image bytes, base64, data URI, full URL, raw argv, token, or
 model/mmproj/executable path), and nothing binary/image/PDF/DOCX/ZIP/runtime was committed.
+
+## Slice 67 — improved-light-table operator validation RAN; real sample still selects tables only, so add a selection trace before more heuristics
+The optional real operator revalidation Slice 66 deferred (does the strengthened lightly-ruled-table detector let
+diagram-first ranking pick a hard-to-reconstruct diagram/figure on the **real** sample?) was completed in Slice 67.
+The non-private operator sample was available again, so the cap-2 operator harness **was** run inside the rebuilt
+Slice 66 container (`GUIDEFORGE_ENABLE_VISUAL_MARKDOWN_IMAGE_PILOT=1`, `GUIDEFORGE_LOCAL_FIGURE_EXTRACTION=1`,
+`GUIDEFORGE_VISUAL_MARKDOWN_MAX_IMAGES=2`); the rendered PDF/HTML/DOCX were copied to a host folder and inspected by
+hand. Recorded result: `light_table_operator_visual_quality_review: run`, `status: ok`, `inserted_visual_count: 2`,
+`selected_visual_type: tables_only`, `irreplaceable_visual_selected: false`, `selected_figures_quality:
+all_useful_or_acceptable`, all render/export checks `true`, `warnings: [multiple_figures_present_one_inserted]`,
+`failure_category: none`, `no_leak_sweep: clean`.
+
+**Why this shape.** Slice 66 improved the synthetic / light-table detection tests, but on the real sample the
+strengthened detection did **not** change the selection: the two inserted visuals are still **useful/acceptable but
+reconstructable tables**, and the genuinely irreplaceable visual content elsewhere in the sample was **not**
+selected. The verdict is recorded honestly as the actual result, not a pass — consistent with the Slice 63/65
+honesty rule. Because `selected_visual_type: tables_only` / `irreplaceable_visual_selected: false`, **visual-type
+selection is still not solved for the real sample.** `decision_gate:
+light_table_detection_did_not_change_real_outcome`.
+
+**Decision — instrument before tuning.** Rather than pile on another detection/ranking heuristic blind, the next
+visual slice should **add a sanitized selection trace / candidate audit** so a run can explain *why* diagrams were
+not selected (which candidates existed, their classified visual type, and why the chosen tables outranked them) — in
+closed-vocab / bounded-numeric form only, no path/text/bytes. `next_recommended_slice:
+add_sanitized_selection_trace_before_more_heuristics`. **Do not proceed to UI polish or cap expansion.** **Do not**
+expand beyond the existing hard cap 2, add a UI count selector, or add
+Chandra/Mistral/Gemini/model/provider/cloud/`llama-server` integration.
+
+**Scope (firm).** Docs-only: `VISUAL_PILOT_OPERATOR_VALIDATION.md`, `CURRENT_TASK.md`, `NEXT_CHAT_HANDOFF.md`, this
+file. No production pipeline/API/frontend code, no harness correction, no new visual behavior, no cap change beyond
+the existing hard cap 2, no UI count selector, no Chandra/Mistral/Gemini/model/provider/cloud/`llama-server` call,
+no extraction/OCR-routing/prompt/render/export change, no new API route. Only the sanitized closed-vocabulary fields
+were recorded — no real PDF path/filename, document text, OCR text, image bytes, base64, data URI, full URL, raw
+argv, token, model/mmproj/executable path, or provider payload — and nothing binary/image/PDF/DOCX/ZIP/runtime was
+committed. **Slice 67 is NOT committed.** Chandra remains blocked by its own live-validation gate.
