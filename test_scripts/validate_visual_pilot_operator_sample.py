@@ -90,10 +90,15 @@ WARNING_VOCAB = frozenset({
 })
 
 SUMMARY_FIELDS = (
-    "status", "pilot_inserted", "safe_asset_ref_present", "html_render_ok",
-    "pdf_render_ok", "pdf_image_visible", "docx_render_ok", "export_zip_ok",
-    "export_png_included", "warnings", "failure_category",
+    "status", "pilot_inserted", "inserted_visual_count", "safe_asset_ref_present",
+    "html_render_ok", "pdf_render_ok", "pdf_image_visible", "docx_render_ok",
+    "export_zip_ok", "export_png_included", "warnings", "failure_category",
 )
+
+# Slice 62: the pilot may now insert up to a small capped number of figures (hard
+# upper bound 2). The harness validates 1..this-many safe refs; the default cap of 1
+# keeps the self-test on the single-figure path.
+_MAX_INSERTED_FIGURES = 2
 
 # --- No-leak sweep (forbidden value shapes) ---------------------------------------
 KEYLIKE = re.compile(r"(sk-|sk_|pk-|rk_)[A-Za-z0-9_\-]{12,}")
@@ -198,6 +203,9 @@ def _new_summary() -> dict:
     return {
         "status": STATUS_SKIPPED,
         "pilot_inserted": False,
+        # Slice 62: how many figures the pilot actually inserted (0 when none; 1 under
+        # the default cap; up to 2 under cap 2). A safe non-negative integer only.
+        "inserted_visual_count": 0,
         "safe_asset_ref_present": False,
         "html_render_ok": None,
         "pdf_render_ok": None,
@@ -359,11 +367,25 @@ def _validate_prepared_job(job, output_dir: Path, summary: dict) -> None:
         summary["failure_category"] = FAILURE_NO_SAFE_FIGURE
         return
 
+    # Slice 62: the count comes from the pilot's own (sanitized) integer when present,
+    # falling back to the number of inserted Markdown images. Capped defensively so a
+    # malformed value can never report more than the hard upper bound.
+    reported = info.get("inserted_visual_count")
+    image_count = produced.count("![")
+    count = reported if isinstance(reported, int) and reported >= 0 else image_count
+    summary["inserted_visual_count"] = min(count, _MAX_INSERTED_FIGURES)
+
     refs = vmi.extract_visual_pilot_asset_refs(produced)
-    one_image = produced.count("![") == 1
-    safe_ref = bool(refs) and len(refs) == 1 and one_image and re.fullmatch(
-        r"assets/[A-Za-z0-9_]+\.png", refs[0]
-    ) is not None
+    # Up to the hard cap of safe job-local refs, one Markdown image per ref, every ref
+    # a safe ``assets/<slug>.png`` (no path/text/url/data-uri).
+    all_safe = bool(refs) and all(
+        re.fullmatch(r"assets/[A-Za-z0-9_]+\.png", ref) is not None for ref in refs
+    )
+    safe_ref = (
+        all_safe
+        and 1 <= len(refs) <= _MAX_INSERTED_FIGURES
+        and len(refs) == image_count
+    )
     summary["safe_asset_ref_present"] = safe_ref
     _emit("safe_asset_ref_present" if safe_ref else "safe_asset_ref_absent")
 
@@ -621,6 +643,11 @@ def run_self_test() -> int:
                  "export_zip_ok", "export_png_included")))
         meta("pilot_inserted_in_self_test", summary["pilot_inserted"] is True)
         meta("safe_asset_ref_present_in_self_test", summary["safe_asset_ref_present"] is True)
+        meta("inserted_visual_count_is_safe_int",
+             isinstance(summary["inserted_visual_count"], int)
+             and 0 <= summary["inserted_visual_count"] <= _MAX_INSERTED_FIGURES)
+        meta("inserted_visual_count_one_under_default_cap",
+             summary["inserted_visual_count"] == 1)
         meta("no_leak_sweep_clean", _final_sweep(text))
 
     print(f"\nself-test: {'PASS' if failures == 0 else 'FAIL'} ({failures} failed)")

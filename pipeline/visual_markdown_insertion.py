@@ -60,6 +60,16 @@ from typing import Any
 
 ENABLE_ENV = "GUIDEFORGE_ENABLE_VISUAL_MARKDOWN_IMAGE_PILOT"
 
+# Slice 62: cautious capped multi-figure pilot. When BOTH gates are on (master env
+# switch AND per-job opt-in) the pilot may now insert a *small* number of high-quality
+# figures instead of strictly one. The cap is a server-side env integer with a hard
+# upper bound of 2 for this slice; the default stays 1 so every existing/un-tuned
+# deployment is byte-identical to the single-figure pilot.
+MAX_IMAGES_ENV = "GUIDEFORGE_VISUAL_MARKDOWN_MAX_IMAGES"
+_DEFAULT_MAX_IMAGES = 1
+# Hard upper bound for Slice 62 — no env value can ever push the pilot above this.
+_HARD_MAX_IMAGES = 2
+
 # Slice 55: per-job opt-in. The global ``ENABLE_ENV`` master switch is necessary
 # but no longer sufficient — a job ALSO has to opt in via this persisted manifest
 # flag for any figure to be inserted. Absent / non-true ⇒ False ⇒ byte-identical
@@ -92,8 +102,11 @@ _CAPTION_SAFE_RE = re.compile(r"[^A-Za-z0-9 .,:%()\-]")
 _MAX_CAPTION_LEN = 80
 
 # Heading used for the dumb fallback placement when no deterministic source-page
-# anchor marker is present in the guide.
+# anchor marker is present in the guide. The singular heading is preserved for the
+# one-figure case (byte-identical to the pre-Slice-62 pilot); the plural heading is
+# used only when the appended section carries more than one figure (Slice 62).
 _VISUAL_REFERENCE_HEADING = "## Visual Reference"
+_VISUAL_REFERENCES_HEADING = "## Visual References"
 
 # Deterministic, safe source-page anchor marker convention. When the guide already
 # carries ``<!-- visual-anchor: source_page_0003 -->`` for the figure's page, the
@@ -186,6 +199,13 @@ _QG_EDGE_FRAC = 0.12          # within this fraction of the top/bottom page edge
 _QG_EDGE_BAND_FRAC = 0.14     # crop height fraction at/below this ⇒ thin strip
 _QG_TINY_PX = 64              # both crop dims at/below this ⇒ logo/icon
 _QG_SELECTION_MARGIN = 0.15   # a rival only displaces priority order if clearly better
+# Slice 62: a SECOND (or later) figure is only added when it is *confidently*
+# content-bearing — its quality score must clear this floor. The base score is 1.0
+# and a content-sized figure earns +_QG_CONTENT_BONUS (=1.2); this floor sits just
+# below that so a genuine content figure qualifies while a merely-neutral
+# (sparse-metadata, 1.0) or penalized (<1.0) candidate never fills the cap and drags
+# output quality down. The FIRST/strongest figure is never subject to this floor.
+_QG_SECONDARY_MIN_SCORE = 1.15
 
 # Score adjustments (higher score = better). Base score is 1.0.
 _QG_TITLE_PENALTY = 0.4
@@ -213,6 +233,31 @@ def is_visual_markdown_pilot_enabled() -> bool:
     set to a truthy token, so the default job is byte-identical to before Slice 54.
     """
     return os.getenv(ENABLE_ENV, "").strip().lower() in {"1", "true", "yes", "on"}
+
+
+def visual_markdown_pilot_max_images() -> int:
+    """Effective cap on inserted visual references (Slice 62), in ``[1, 2]``.
+
+    Reads ``GUIDEFORGE_VISUAL_MARKDOWN_MAX_IMAGES``. Only the explicitly supported
+    in-range integers ``1`` and ``2`` are honoured; everything else — absent, empty,
+    non-integer, ``0``, negative, or larger than the hard upper bound — degrades to the
+    safe default ``1`` rather than clamping upward, so a malformed or over-large env
+    value can never widen the pilot. The hard upper bound is ``2`` for this slice. Total;
+    never raises.
+    """
+    raw = os.getenv(MAX_IMAGES_ENV, "")
+    if not isinstance(raw, str):
+        return _DEFAULT_MAX_IMAGES
+    raw = raw.strip()
+    if not raw:
+        return _DEFAULT_MAX_IMAGES
+    try:
+        value = int(raw)
+    except (TypeError, ValueError):
+        return _DEFAULT_MAX_IMAGES
+    if value < _DEFAULT_MAX_IMAGES or value > _HARD_MAX_IMAGES:
+        return _DEFAULT_MAX_IMAGES
+    return value
 
 
 def is_job_visual_pilot_opt_in(job: Any) -> bool:
@@ -248,21 +293,31 @@ def apply_visual_markdown_pilot(job: Any, clean_md: Any) -> tuple[str, dict[str,
         return text, {"status": "skipped", "reason": SKIP_JOB_OPT_OUT}
 
     try:
-        candidate, reason = _pick_candidate(job)
-        if candidate is None:
+        # Slice 62: select up to the server-configured cap (hard-bounded at 2). With the
+        # default cap of 1 this returns at most one candidate and the output is identical
+        # to the single-figure pilot.
+        max_images = visual_markdown_pilot_max_images()
+        candidates, reason = _pick_candidates(job, max_images=max_images)
+        if not candidates:
             _log(f"Visual markdown pilot: no figure inserted ({reason}).")
             return text, {"status": "skipped", "reason": reason}
-        new_text, info = insert_visual_markdown_reference(text, candidate)
+        new_text, info = insert_visual_markdown_references(text, candidates)
         if info.get("status") != STATUS_INSERTED:
             _log(f"Visual markdown pilot: no figure inserted ({info.get('reason')}).")
             return text, info
-        # Carry the closed-vocabulary quality diagnostics (Slice 60) on the success
-        # info. These are advisory only and contain no path / text / image bytes.
-        if isinstance(candidate, dict):
-            info["quality_score"] = candidate.get("quality_score")
-            info["quality_reasons"] = candidate.get("quality_reasons")
+        # Carry the closed-vocabulary quality diagnostics (Slice 60) of the FIRST
+        # (strongest) figure on the success info for backward compatibility. These are
+        # advisory only and contain no path / text / image bytes.
+        first = candidates[0]
+        if isinstance(first, dict):
+            info["quality_score"] = first.get("quality_score")
+            info["quality_reasons"] = first.get("quality_reasons")
+        # The single-figure path returns no count; normalize it so every successful
+        # insertion advertises a safe integer count (1 or 2).
+        info.setdefault("inserted_visual_count", 1)
+        count = info.get("inserted_visual_count", 1)
         _log(
-            "Visual markdown pilot: inserted one figure "
+            f"Visual markdown pilot: inserted {count} figure(s) "
             f"({info.get('placement')})."
         )
         return new_text, info
@@ -296,34 +351,32 @@ def select_visual_markdown_candidate(
     return candidate
 
 
-def _pick_candidate(
+def _collect_ordered_candidates(
     job: Any,
-    *,
     manifest: Any = None,
     replacement_plan: Any = None,
-) -> tuple[dict[str, Any] | None, str]:
-    """Selection core returning ``(candidate_or_None, closed_reason)``.
+) -> tuple[list[tuple[dict[str, Any], dict[str, Any]]], bool, str | None]:
+    """Build the priority-ordered, de-duplicated list of *safe* figure candidates.
 
-    Slice 60: all hard safety gates are unchanged (``fitz_local`` ``extracted_figure``
+    Returns ``(ordered, saw_unsafe, err)``. ``ordered`` is a list of
+    ``(manifest_asset, built_candidate)`` with replacement-plan preferred items first
+    (in plan order), then manifest order, de-duplicated by sanitized asset id. ``err``
+    is a closed skip reason set only when the manifest itself is unavailable; otherwise
+    ``None`` (an empty ``ordered`` with ``saw_unsafe`` lets the caller distinguish
+    unsafe from unavailable). All hard safety gates (``fitz_local`` ``extracted_figure``
     only, safe ``assets/<slug>.png`` ref, real file inside the job dir, never Chandra/
-    Mistral/page-signal). On top of those, the *safe* candidates are now ranked by a
-    conservative deterministic quality gate so a content figure beats a decorative
-    title/header/footer/logo/banner crop, and a set of only-decorative candidates
-    omits rather than inserts junk. Priority order (replacement-plan first, then
-    manifest order) is preserved on ties / near-ties.
+    Mistral/page-signal) are applied here. Pure w.r.t. inputs; never raises.
     """
     manifest_obj = manifest if isinstance(manifest, dict) else _read_json(_path(job, "visual_assets_manifest_json"))
     if not isinstance(manifest_obj, dict):
-        return None, SKIP_CANDIDATE_UNAVAILABLE
+        return [], False, SKIP_CANDIDATE_UNAVAILABLE
 
     assets_by_id = _safe_figure_assets(manifest_obj)
     if not assets_by_id:
-        return None, SKIP_CANDIDATE_UNAVAILABLE
+        return [], False, SKIP_CANDIDATE_UNAVAILABLE
 
     saw_unsafe = False
     seen_ids: set[str] = set()
-    # Each entry: (manifest_asset, built_candidate). Replacement-plan preferred
-    # items come first (in plan order), then manifest order; de-duplicated by id.
     ordered: list[tuple[dict[str, Any], dict[str, Any]]] = []
 
     plan_obj = replacement_plan if isinstance(replacement_plan, dict) else _read_json(
@@ -354,6 +407,50 @@ def _pick_candidate(
         elif not ok:
             saw_unsafe = True
 
+    return ordered, saw_unsafe, None
+
+
+def _enrich_candidate(candidate: dict[str, Any], quality: dict[str, Any]) -> dict[str, Any]:
+    """Copy ``candidate`` with its closed-vocabulary quality diagnostics attached."""
+    enriched = dict(candidate)
+    enriched["quality_score"] = quality["score"]
+    enriched["quality_reasons"] = list(quality["reasons"])
+    return enriched
+
+
+def _best_within_margin(indices: list[int], scored: list[dict[str, Any]]) -> int:
+    """Earliest-priority index among those within ``_QG_SELECTION_MARGIN`` of the top score.
+
+    This is the established single-figure selection rule: the highest score wins, but
+    priority order (lower index) is preserved on ties and near-ties so a rival only
+    displaces it when *clearly* better. ``indices`` must be non-empty.
+    """
+    top = max(scored[i]["score"] for i in indices)
+    contenders = [i for i in indices if top - scored[i]["score"] <= _QG_SELECTION_MARGIN]
+    return min(contenders)
+
+
+def _pick_candidate(
+    job: Any,
+    *,
+    manifest: Any = None,
+    replacement_plan: Any = None,
+) -> tuple[dict[str, Any] | None, str]:
+    """Selection core returning ``(candidate_or_None, closed_reason)``.
+
+    Slice 60: all hard safety gates are unchanged (``fitz_local`` ``extracted_figure``
+    only, safe ``assets/<slug>.png`` ref, real file inside the job dir, never Chandra/
+    Mistral/page-signal). On top of those, the *safe* candidates are now ranked by a
+    conservative deterministic quality gate so a content figure beats a decorative
+    title/header/footer/logo/banner crop, and a set of only-decorative candidates
+    omits rather than inserts junk. Priority order (replacement-plan first, then
+    manifest order) is preserved on ties / near-ties. (Slice 62 keeps this single-best
+    selector for ``select_visual_markdown_candidate``; the pilot now uses the plural
+    :func:`_pick_candidates`, whose first pick is identical to this one.)
+    """
+    ordered, saw_unsafe, err = _collect_ordered_candidates(job, manifest, replacement_plan)
+    if err is not None:
+        return None, err
     if not ordered:
         return None, (SKIP_CANDIDATE_UNSAFE if saw_unsafe else SKIP_CANDIDATE_UNAVAILABLE)
 
@@ -364,16 +461,138 @@ def _pick_candidate(
     if not accepted:
         return None, SKIP_CANDIDATE_LOW_QUALITY
 
-    top = max(scored[i]["score"] for i in accepted)
-    contenders = [i for i in accepted if top - scored[i]["score"] <= _QG_SELECTION_MARGIN]
-    chosen = min(contenders)  # earliest priority among the near-top candidates
-
+    chosen = _best_within_margin(accepted, scored)
     _asset, candidate = ordered[chosen]
-    quality = scored[chosen]
-    enriched = dict(candidate)
-    enriched["quality_score"] = quality["score"]
-    enriched["quality_reasons"] = list(quality["reasons"])
-    return enriched, STATUS_INSERTED
+    return _enrich_candidate(candidate, scored[chosen]), STATUS_INSERTED
+
+
+def _coerce_max_images(max_images: Any) -> int:
+    """Clamp an arbitrary ``max_images`` into ``[1, _HARD_MAX_IMAGES]`` (default 1)."""
+    if isinstance(max_images, bool) or not isinstance(max_images, int):
+        return _DEFAULT_MAX_IMAGES
+    if max_images < _DEFAULT_MAX_IMAGES:
+        return _DEFAULT_MAX_IMAGES
+    if max_images > _HARD_MAX_IMAGES:
+        return _HARD_MAX_IMAGES
+    return max_images
+
+
+def select_visual_markdown_candidates(
+    job: Any,
+    *,
+    max_images: int = _DEFAULT_MAX_IMAGES,
+    manifest: Any = None,
+    replacement_plan: Any = None,
+) -> list[dict[str, Any]]:
+    """Pick up to ``max_images`` safe figure candidates (Slice 62), strongest first.
+
+    A capped, cautious generalization of :func:`select_visual_markdown_candidate`. The
+    cap is clamped into ``[1, 2]``. Returns a list (possibly empty) of safe candidate
+    dicts; the first is the single-best pick (identical to the singular selector). Pure
+    w.r.t. inputs; never raises.
+    """
+    candidates, _reason = _pick_candidates(
+        job, max_images=max_images, manifest=manifest, replacement_plan=replacement_plan
+    )
+    return candidates
+
+
+def _pick_candidates(
+    job: Any,
+    *,
+    max_images: int = _DEFAULT_MAX_IMAGES,
+    manifest: Any = None,
+    replacement_plan: Any = None,
+) -> tuple[list[dict[str, Any]], str]:
+    """Capped multi-figure selection core returning ``(candidates, closed_reason)``.
+
+    The first pick is byte-for-byte the same decision as :func:`_pick_candidate`. When
+    the clamped cap is ``> 1``, additional figures are appended subject to the Slice 62
+    caution rules: each must be non-decorative AND clear the secondary quality floor,
+    must not duplicate an already-selected asset id or ref, and a *different* source
+    page is preferred (two figures from the same page only when no better alternative
+    exists). The strongest figure stays first. Never raises.
+    """
+    cap = _coerce_max_images(max_images)
+    ordered, saw_unsafe, err = _collect_ordered_candidates(job, manifest, replacement_plan)
+    if err is not None:
+        return [], err
+    if not ordered:
+        return [], (SKIP_CANDIDATE_UNSAFE if saw_unsafe else SKIP_CANDIDATE_UNAVAILABLE)
+
+    scored = [score_visual_markdown_candidate_for_pilot(asset) for asset, _ in ordered]
+    accepted = [i for i, q in enumerate(scored) if not q["decorative"]]
+    if not accepted:
+        return [], SKIP_CANDIDATE_LOW_QUALITY
+
+    chosen_indices = _select_multi(ordered, scored, accepted, cap)
+    return [_enrich_candidate(ordered[i][1], scored[i]) for i in chosen_indices], STATUS_INSERTED
+
+
+def _select_multi(
+    ordered: list[tuple[dict[str, Any], dict[str, Any]]],
+    scored: list[dict[str, Any]],
+    accepted: list[int],
+    cap: int,
+) -> list[int]:
+    """Choose up to ``cap`` candidate indices, strongest first, with Slice 62 rules.
+
+    The first index is the established single-best pick (priority preserved on near
+    ties). Each subsequent index must clear the secondary quality floor and avoid
+    duplicate asset ids / refs; a distinct source page is preferred, falling back to a
+    same-page figure only when no distinct-page candidate qualifies. ``accepted`` is
+    non-empty; the returned list preserves selection order (strongest first).
+    """
+    selected: list[int] = []
+    selected_pages: set[int] = set()
+    selected_refs: set[str] = set()
+    selected_ids: set[str] = set()
+
+    def _take(index: int) -> None:
+        candidate = ordered[index][1]
+        selected.append(index)
+        ref = candidate.get("asset_ref")
+        asset_id = candidate.get("asset_id")
+        if isinstance(ref, str):
+            selected_refs.add(ref)
+        if isinstance(asset_id, str):
+            selected_ids.add(asset_id)
+        page = candidate.get("source_page")
+        if isinstance(page, int) and page > 0:
+            selected_pages.add(page)
+
+    def _eligible(index: int, *, prefer_distinct: bool) -> bool:
+        if index in selected:
+            return False
+        if scored[index]["score"] < _QG_SECONDARY_MIN_SCORE:
+            return False
+        candidate = ordered[index][1]
+        ref = candidate.get("asset_ref")
+        asset_id = candidate.get("asset_id")
+        if isinstance(ref, str) and ref in selected_refs:
+            return False
+        if isinstance(asset_id, str) and asset_id in selected_ids:
+            return False
+        page = candidate.get("source_page")
+        if prefer_distinct and isinstance(page, int) and page > 0 and page in selected_pages:
+            return False
+        return True
+
+    # First figure: the single-best pick (no secondary floor — the strongest stands
+    # on its own even if it is only neutral quality).
+    _take(_best_within_margin(accepted, scored))
+
+    # Subsequent figures, up to the cap: prefer a distinct page; only fall back to a
+    # same-page figure when no distinct-page candidate qualifies.
+    while len(selected) < cap:
+        pool = [i for i in accepted if _eligible(i, prefer_distinct=True)]
+        if not pool:
+            pool = [i for i in accepted if _eligible(i, prefer_distinct=False)]
+        if not pool:
+            break
+        _take(_best_within_margin(pool, scored))
+
+    return selected
 
 
 # --- Slice 60: deterministic quality scoring (metadata-only, never raises) ----
@@ -694,25 +913,37 @@ def extract_visual_pilot_asset_refs(markdown_text: Any) -> list[str]:
     return refs
 
 
-def find_exportable_visual_pilot_asset(job: Any) -> str | None:
-    """The single safe job-local pilot PNG ref to ride along in an export bundle.
+def find_exportable_visual_pilot_assets(job: Any) -> list[str]:
+    """The safe job-local pilot PNG refs to ride along in an export bundle (Slice 62).
 
-    Reads this job's ``clean.md`` (read-only), finds the FIRST Markdown image whose
-    target is a safe ``assets/<slug>.png`` ref, and returns that relative ref only
-    if the file really exists *inside* the job directory (realpath containment, a
-    regular file — symlink escapes are rejected). Returns ``None`` when there is no
-    clean.md, no safe reference, or the referenced file is missing / unsafe.
-    Mirrors the pilot's one-figure rule: at most one ref is ever returned. Never
-    raises and never opens / reads / logs image bytes — it only confirms the file's
-    existence and containment.
+    Reads this job's ``clean.md`` (read-only), collects every Markdown image whose
+    target is a safe ``assets/<slug>.png`` ref that really exists *inside* the job
+    directory (realpath containment, a regular file — symlink escapes are rejected),
+    de-duplicated and order-preserving, and capped at ``_HARD_MAX_IMAGES`` (2) as an
+    absolute safety bound. Returns ``[]`` when there is no clean.md, no safe reference,
+    or every referenced file is missing / unsafe. Never raises and never opens / reads
+    / logs image bytes — it only confirms each file's existence and containment.
     """
     text = _read_text(getattr(job, "clean_md", None))
     if text is None:
-        return None
+        return []
+    out: list[str] = []
     for ref in extract_visual_pilot_asset_refs(text):
         if _asset_file_ok(job, ref):
-            return ref
-    return None
+            out.append(ref)
+            if len(out) >= _HARD_MAX_IMAGES:
+                break
+    return out
+
+
+def find_exportable_visual_pilot_asset(job: Any) -> str | None:
+    """The single safe job-local pilot PNG ref to ride along in an export bundle.
+
+    Backward-compatible singular wrapper over :func:`find_exportable_visual_pilot_assets`
+    — returns the FIRST safe, present, contained ref or ``None``. Never raises.
+    """
+    refs = find_exportable_visual_pilot_assets(job)
+    return refs[0] if refs else None
 
 
 # --- Markdown building / insertion -------------------------------------------
@@ -772,6 +1003,96 @@ def insert_visual_markdown_reference(
     }
 
 
+def insert_visual_markdown_references(
+    clean_md: Any, candidates: Any
+) -> tuple[str, dict[str, Any]]:
+    """Insert up to a handful of Markdown images into ``clean_md`` (Slice 62).
+
+    With exactly one candidate this delegates to :func:`insert_visual_markdown_reference`
+    so the single-figure output is byte-identical to the pre-Slice-62 pilot. With more
+    than one, each figure with a deterministic ``<!-- visual-anchor: source_page_NNNN -->``
+    marker present in the guide is placed at that anchor (in selection order); the rest
+    are appended together under a single trailing ``## Visual References`` section. The
+    strongest figure stays first. Returns ``(markdown, info)``; on total failure it
+    returns the original text with a closed-vocabulary skip reason. Never raises.
+    """
+    text = clean_md if isinstance(clean_md, str) else ""
+    if not isinstance(candidates, list) or not candidates:
+        return text, {"status": "skipped", "reason": SKIP_CANDIDATE_UNAVAILABLE}
+    if len(candidates) == 1:
+        return insert_visual_markdown_reference(text, candidates[0])
+
+    # Build a validated image-markdown for each candidate up front (defence in depth:
+    # a candidate whose ref/caption cannot be rebuilt safely is dropped here).
+    prepared: list[tuple[dict[str, Any], str, int]] = []
+    for candidate in candidates:
+        try:
+            image_md = build_visual_markdown_image(candidate)
+        except Exception:
+            continue
+        page = _safe_page(candidate.get("source_page")) if isinstance(candidate, dict) else 0
+        prepared.append((candidate, image_md, page))
+
+    if not prepared:
+        return text, {"status": "skipped", "reason": SKIP_INSERT_FAILED}
+    if len(prepared) == 1:
+        return insert_visual_markdown_reference(text, prepared[0][0])
+
+    try:
+        new_text = text
+        inserted_assets: list[dict[str, Any]] = []
+        deferred: list[tuple[dict[str, Any], str]] = []
+        for candidate, image_md, page in prepared:
+            anchor = _ANCHOR_MARKER_TEMPLATE.format(page=page) if page > 0 else None
+            if anchor and _has_anchor_line(new_text, anchor):
+                new_text = _insert_after_marker(new_text, anchor, image_md)
+                inserted_assets.append(_asset_info(candidate, PLACEMENT_SOURCE_PAGE_ANCHOR))
+            else:
+                deferred.append((candidate, image_md))
+        if deferred:
+            new_text = _append_visual_references_section(
+                new_text, [image_md for _c, image_md in deferred]
+            )
+            for candidate, _image_md in deferred:
+                inserted_assets.append(_asset_info(candidate, PLACEMENT_VISUAL_REFERENCE_SECTION))
+    except Exception:
+        return text, {"status": "skipped", "reason": SKIP_INSERT_FAILED}
+
+    if not inserted_assets:
+        return text, {"status": "skipped", "reason": SKIP_INSERT_FAILED}
+
+    first = inserted_assets[0]
+    return new_text, {
+        "status": STATUS_INSERTED,
+        "asset_id": first.get("asset_id"),
+        "asset_ref": first.get("asset_ref"),
+        "placement": first.get("placement"),
+        "inserted_visual_count": len(inserted_assets),
+        "inserted_assets": inserted_assets,
+    }
+
+
+def _asset_info(candidate: Any, placement: str) -> dict[str, Any]:
+    """A small, safe per-figure diagnostic record (no path / text / image bytes)."""
+    if not isinstance(candidate, dict):
+        return {"asset_id": None, "asset_ref": None, "source_page": 0, "placement": placement,
+                "quality_score": None, "quality_reasons": None}
+    reasons = candidate.get("quality_reasons")
+    return {
+        "asset_id": candidate.get("asset_id"),
+        "asset_ref": candidate.get("asset_ref"),
+        "source_page": _safe_page(candidate.get("source_page")),
+        "placement": placement,
+        "quality_score": candidate.get("quality_score"),
+        "quality_reasons": list(reasons) if isinstance(reasons, list) else None,
+    }
+
+
+def _has_anchor_line(text: str, marker: str) -> bool:
+    """True iff some line of ``text`` is exactly ``marker`` (a full-line anchor comment)."""
+    return any(line.strip() == marker for line in text.splitlines())
+
+
 def _insert_after_marker(text: str, marker: str, image_md: str) -> str:
     lines = text.splitlines()
     out: list[str] = []
@@ -790,6 +1111,23 @@ def _insert_after_marker(text: str, marker: str, image_md: str) -> str:
 def _append_visual_reference_section(text: str, image_md: str) -> str:
     body = text.rstrip("\n")
     section = f"{_VISUAL_REFERENCE_HEADING}\n\n{image_md}\n"
+    if not body:
+        return section
+    return f"{body}\n\n{section}"
+
+
+def _append_visual_references_section(text: str, images: list[str]) -> str:
+    """Append one or more images under a single trailing visual-references section.
+
+    Uses the singular ``## Visual Reference`` heading for one image (byte-identical to
+    the legacy single-figure section) and the plural ``## Visual References`` heading
+    for more than one. Images are separated by a blank line, in the given order.
+    """
+    if len(images) == 1:
+        return _append_visual_reference_section(text, images[0])
+    body = text.rstrip("\n")
+    block = "\n\n".join(images)
+    section = f"{_VISUAL_REFERENCES_HEADING}\n\n{block}\n"
     if not body:
         return section
     return f"{body}\n\n{section}"

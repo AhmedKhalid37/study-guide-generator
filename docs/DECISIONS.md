@@ -2860,3 +2860,41 @@ selection quality before any multi-figure work**. The recorded verdict is
 sanitized closed-vocabulary fields were recorded — no real PDF path/filename, document text,
 OCR text, image bytes, base64, data URI, full URL, raw argv, token, model/mmproj/executable
 path, or raw exception. **Slice 61 is not committed.**
+
+## Capped multi-figure visual pilot stops at two, default one (Slice 62)
+The visual markdown image pilot can now insert **up to a small server-configured cap of
+figures, with a hard upper bound of 2** — but the default stays **exactly one** and the
+single-figure output is byte-identical to the pre-Slice-62 pilot. The cap is a server-side
+env integer (`GUIDEFORGE_VISUAL_MARKDOWN_MAX_IMAGES`): default `1`, min `1`, hard max `2`;
+any absent/empty/non-integer/`0`/negative/over-`2`/huge value **degrades to `1`** rather than
+clamping upward. **Why a hard cap of 2 and degrade-down semantics:** Slice 61's post-fix
+operator verdict (`useful_diagram_or_table`) cleared the decision gate to *cautiously* go
+beyond one figure, but multi-figure selection is exactly where decorative/duplicate/same-page
+junk can creep back in. Capping at 2 keeps the blast radius tiny and auditable; making a
+malformed or over-large env value fail *closed* (to 1) means a fat-fingered or hostile config
+can never widen the pilot. There is deliberately **no arbitrary N-figure support and no UI
+count selector** — the cap is an operator-only server knob.
+
+**Why the extra figures face a stricter bar than the first.** The first/strongest pick is the
+unchanged single-best decision (it stands on its own even if only neutral quality). Every
+*additional* figure must clear a **secondary quality floor** (`score ≥ 1.15`, i.e. genuinely
+content-bearing under the reused Slice 60 gate), must not duplicate an already-selected
+`asset_id` or `asset_ref`, and a **distinct source page is preferred** (a second figure from
+the same page is taken only when no better alternative qualifies). So a lone good figure +
+a decorative/low-quality runner-up still yields **one** figure, and an all-decorative set
+yields **none** with a closed skip reason — the cap is never filled with junk. The strongest
+figure always stays first.
+
+**Insertion and export follow the same restraint.** One figure ⇒ the legacy singular
+`## Visual Reference` placement, unchanged. More than one ⇒ each figure with a deterministic
+`<!-- visual-anchor: source_page_NNNN -->` marker is placed at its anchor, and the rest are
+appended together under a single trailing plural `## Visual References` section; captions stay
+generic page-only (`Extracted figure from source page N`) — never source captions, OCR text,
+document text, or image content. The export bundle rides along **all and only** the referenced
+pilot PNGs (capped at 2, each resolved inside the job dir), never the whole `assets/` dir or an
+unreferenced crop, and the PNGs **still do not** count toward the requested-artifact gate (a
+pilot-PNG-only job with no requested artifact still 404s). The bundle index keeps the original
+`visual_pilot_asset` (first ref or null) for backward compatibility and adds
+`visual_pilot_assets` (the capped safe list). No Chandra/Mistral/Gemini/model/provider/cloud
+call, no OCR-routing/extraction/prompt/renderer change, and no new API route were added.
+**Chandra remains blocked by its own live-validation gate.**

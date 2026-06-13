@@ -6,8 +6,40 @@
 > stable overview see `PROJECT_CONTEXT.md`; canonical brief is `../CLAUDE.md`.
 
 ## Current position
-- **Working tree:** **Slice 61 (post-fix visual-quality operator review record) — UNCOMMITTED (per instruction)**
-  on branch `slice61-visual-pilot-postfix-quality-review` (branched from fresh trunk). **Docs / validation-record
+- **Working tree:** **Slice 62 (capped multi-figure visual pilot) — UNCOMMITTED (per instruction)** on branch
+  `slice62-visual-pilot-capped-multifigure` (branched from fresh trunk after Slice 61 was committed/merged).
+  **Cautiously extends the off-by-default visual pilot from one figure to up to a small server-configured cap
+  (hard upper bound 2); default behavior stays exactly one figure.** Slices 59/60/61 cleared the single-figure
+  plumbing + Slice 60 quality gate on a real non-private sample; Slice 62 is the first step beyond one figure.
+  - **Gate (unchanged) + cap:** the existing two-key gate (global master env + per-job opt-in) is untouched. New
+    server-side env integer `GUIDEFORGE_VISUAL_MARKDOWN_MAX_IMAGES`: default `1`, min `1`, **hard max `2`**;
+    absent/empty/non-integer/`0`/negative/`>2`/huge all degrade to `1` (never clamp upward). Relevant only when
+    both gates are on AND local figure extraction produced safe candidates.
+  - **Selection reuses the Slice 60 quality gate:** `fitz_local` + `extracted_figure` + safe contained
+    `assets/<slug>.png` only (never Chandra/Mistral/page-signal/unsafe). First/strongest pick is byte-for-byte
+    the existing single-best decision; each extra figure must clear a secondary quality floor (`score ≥ 1.15`),
+    not duplicate an `asset_id`/`asset_ref`, and prefer a distinct source page. Only-decorative ⇒ none; weak
+    second ⇒ one. The cap is never filled with junk.
+  - **Insertion:** one figure ⇒ byte-identical to the legacy pilot (singular `## Visual Reference`). More than
+    one ⇒ anchored placements where markers exist, else one trailing plural `## Visual References` section.
+    Captions stay generic page-only (`Extracted figure from source page N`).
+  - **Export:** rides along all and only referenced pilot PNGs, capped at 2, contained; never the whole
+    `assets/` dir / unreferenced crops. PNG ride-alongs still don't count toward `files_included`, so a
+    pilot-PNG-only job with no requested artifact still 404s. Index keeps `visual_pilot_asset` (first/`null`) and
+    adds `visual_pilot_assets` (capped list).
+  - **Out of scope (unchanged):** no Chandra/Mistral/Gemini/model/provider/cloud call, no OCR-routing/extraction/
+    prompt/renderer change, no new route, no arbitrary N-figure support, no UI count selector. `/api/options` and
+    frontend untouched. Chandra remains blocked by its own live-validation gate.
+  - **Files:** `pipeline/visual_markdown_insertion.py`, `api/server.py`; new
+    `test_scripts/test_visual_pilot_multifigure.py` (63/0/3); operator harness gained a safe
+    `inserted_visual_count` field + accepts 1..2 safe refs. **Slice 62 is NOT committed.**
+  - **No-leak:** only sanitized closed-vocab fields + safe relative refs; no real PDF path/filename, document/OCR
+    text, image bytes, base64, data URI, full URL, raw argv, token, model/mmproj/executable path, or raw
+    exception; no committed binary/image/PDF/DOCX/ZIP/runtime fixture.
+
+### Prior position (Slice 61 — committed & merged)
+- **Working tree:** **Slice 61 (post-fix visual-quality operator review record)** on branch
+  `slice61-visual-pilot-postfix-quality-review` (branched from fresh trunk). **Docs / validation-record
   only — adds NO production code and changes NO behavior** (no frontend/UI, export, extraction/OCR-routing,
   prompt, render, route, multi-figure, or Chandra/model/provider/cloud change; no committed binary/image/PDF/
   DOCX/ZIP/runtime output).

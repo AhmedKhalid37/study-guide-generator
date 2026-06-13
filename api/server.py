@@ -1473,7 +1473,7 @@ def export_bundle(request: BundleRequest) -> Response:
     selectors = _normalize_export_selectors(request.artifacts)
     # Slice 56: detect the single safe visual-pilot PNG referenced by a job's clean
     # Markdown so it can ride along in the bundle (see the per-job loop below).
-    from pipeline.visual_markdown_insertion import find_exportable_visual_pilot_asset
+    from pipeline.visual_markdown_insertion import find_exportable_visual_pilot_assets
 
     buffer = io.BytesIO()
     manifest_jobs: list[dict[str, Any]] = []
@@ -1521,28 +1521,30 @@ def export_bundle(request: BundleRequest) -> Response:
                 if path.exists() and path.is_file():
                     archive.write(path, f"{base_dir}/{artifact_name}")
                     visual_advisory_included.append(artifact_name)
-            # Slice 56: the single visual-pilot PNG referenced by this job's clean
-            # Markdown rides along so exported Markdown/HTML stays portable. At most
-            # one (the pilot inserts at most one figure), and only when clean.md
-            # actually references a safe job-local assets/<slug>.png whose file
-            # resolves INSIDE the job dir (realpath containment, regular file).
-            # Read-only; never the whole assets/ dir, never an unreferenced or
-            # cropped extra, never image bytes/paths in logs. Like the advisory
-            # ride-alongs it does NOT count toward total_included, so it can never by
-            # itself satisfy the "at least one requested artifact" gate. Any problem
-            # is skipped calmly and export continues. The recorded value is the safe
-            # relative ref only — no absolute/local filesystem path.
-            visual_pilot_asset_included: str | None = None
+            # Slice 56/62: the visual-pilot PNG(s) referenced by this job's clean
+            # Markdown ride along so exported Markdown/HTML stays portable. Slice 62
+            # raised the pilot from one figure to a capped few (hard upper bound 2), so
+            # ALL referenced pilot PNGs ride along — but only those the pilot actually
+            # referenced, each a safe job-local assets/<slug>.png whose file resolves
+            # INSIDE the job dir (realpath containment, regular file). Read-only; never
+            # the whole assets/ dir, never an unreferenced or cropped extra, never image
+            # bytes/paths in logs. Like the advisory ride-alongs they do NOT count toward
+            # total_included, so they can never by themselves satisfy the "at least one
+            # requested artifact" gate. Any problem is skipped calmly and export
+            # continues. The recorded values are safe relative refs only — no
+            # absolute/local filesystem path.
+            visual_pilot_assets_included: list[str] = []
             try:
-                asset_ref = find_exportable_visual_pilot_asset(job)
-                if asset_ref:
-                    job_dir = job.dir.resolve()
+                job_dir = job.dir.resolve()
+                for asset_ref in find_exportable_visual_pilot_assets(job):
+                    if len(visual_pilot_assets_included) >= 2:
+                        break
                     asset_path = (job.dir / asset_ref).resolve()
                     if asset_path.is_relative_to(job_dir) and asset_path.is_file():
                         archive.write(asset_path, f"{base_dir}/{asset_ref}")
-                        visual_pilot_asset_included = asset_ref
+                        visual_pilot_assets_included.append(asset_ref)
             except Exception:
-                visual_pilot_asset_included = None
+                visual_pilot_assets_included = []
             manifest_jobs.append(
                 {
                     "job_id": job.id,
@@ -1551,7 +1553,12 @@ def export_bundle(request: BundleRequest) -> Response:
                     "included": included,
                     "skipped": skipped,
                     "visual_advisory_included": visual_advisory_included,
-                    "visual_pilot_asset": visual_pilot_asset_included,
+                    # Backward-compatible: the first referenced PNG (or None) under the
+                    # original key, plus the full capped list under a new key.
+                    "visual_pilot_asset": visual_pilot_assets_included[0]
+                    if visual_pilot_assets_included
+                    else None,
+                    "visual_pilot_assets": visual_pilot_assets_included,
                 }
             )
 
