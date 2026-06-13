@@ -5,7 +5,46 @@
 
 ---
 
-## Slice 71 — **Table-vs-diagram precision operator validation**, on `slice71-visual-pilot-table-diagram-operator-validation`. **NOT COMMITTED.**
+## Slice 72 — **Dense ruled / wrapped-cell two-column table detection**, on `slice72-visual-pilot-dense-wrapped-table-detection`. **NOT COMMITTED.**
+
+- **Production classification slice (precision only).** Slice 71's real-sample validation showed Slice 70 measurably
+  improved table-vs-diagram classification (the trace's type buckets split: `diagram_or_figure: 9`,
+  `reconstructable_table: 2`, where Slice 69 read 11 / 0) but the two *selected* visuals were **still** reconstructable
+  two-column definition tables. Root cause: those tables are **densely ruled with wrapped multi-line cells**, so each
+  column's antialiased wrapped lines merge into too FEW separated horizontal text bands for Slice 70's `two_col_split`
+  per-column band guard (≥ 3 bands) to fire — they fall through to `diagram_or_figure` and lead the diagram tier.
+- **What changed:** one more bounded, deterministic, **pixel-only** signal — `dense_wrapped_two_col` — added to the
+  existing `extracted_figure` crop analyzer (`pipeline/visual_markdown_insertion.py`). It does **not** rely on band
+  count; it pairs the two-column structure with two guards a diagram cannot fake: a **persistent clean vertical gutter**
+  (`_gutter_consistency` — a diagram's connectors/diagonals break it) and per-column **text richness**
+  (`_column_text_richness` — avg ink-runs per inked row: several words per row, not a continuous shape outline). It
+  fires only when there are exactly two substantial dense columns, a real persistent gutter, and both columns are
+  text-rich. Wired as a fourth path inside `_looks_like_reconstructable_table`, so the public classification token and
+  the Slice 68 trace schema are unchanged.
+- **Effect (verified by tests):** dense / wrapped-cell / ruled / lightly-ruled two-column definition tables now
+  classify as `reconstructable_table` (incl. the *merged-band* case where Slice 70's `two_col_split` cannot fire);
+  labeled diagrams, flowcharts, and irregular diagrams stay `diagram_or_figure` (text presence alone never flips a
+  diagram); a diagram/figure still beats a reconstructable table at cap 1 and ranks first at cap 2; tables are still
+  selected when best/only. Default remains **1**; hard cap remains **2**; two-key gate, render, export ride-along,
+  extraction/OCR routing, prompts, and `/api/options` all unchanged. No Chandra/Mistral/Gemini/model/provider/cloud
+  call; no UI/frontend change. Chandra remains blocked by its own live-validation gate.
+- **Validation:** `python -m compileall api pipeline test_scripts` clean; the new
+  `test_visual_pilot_dense_wrapped_table_detection.py` (81 PASS / 0 FAIL, cap-1 and cap-2) plus the full visual-pilot
+  suite, `validate_visual_pilot_operator_sample.py --self-test`, the insertion/render/export/options/anki tests, and the
+  offline eval all pass on host; the production image was rebuilt + recreated, `/api/health` `{"ok":true}`,
+  `smoke_release.py` 29/0/0, and the visual-pilot suite was re-run **inside the container** (Pillow present — no skips:
+  multifigure 78, quality_gate 54) all green. `git diff --check` clean.
+- **Optional real operator revalidation: NOT run** — the non-private operator sample is not available in this session,
+  so no real cap-2 rerun was performed and **no sanitized operator result was recorded** (none invented).
+- **Safety / no-leak:** only bounded numeric pixel summaries and closed-vocab tokens are produced; the classifier never
+  OCRs, never calls a model/provider/network, never base64/serializes/logs image bytes, records no path or source text,
+  and adds **no** new artifact (the Slice 68 trace is the only one). Tests build every PNG at runtime in a temp dir —
+  nothing binary/image/PDF/DOCX/ZIP/runtime committed; runtime eval result JSONs stay gitignored. **Slice 72 is NOT
+  committed.**
+
+---
+
+## Slice 71 — **Table-vs-diagram precision operator validation**, on `slice71-visual-pilot-table-diagram-operator-validation`. **COMMITTED + MERGED to `chrome-renderer-v1` (fast-forward).**
 
 - **Validation/docs slice only.** Reruns the existing operator harness against the real, **non-private** operator
   sample now that **Slice 70's table-vs-diagram classifier precision fix** is on trunk, then reads Slice 68's

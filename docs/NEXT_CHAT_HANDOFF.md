@@ -6,37 +6,56 @@
 > stable overview see `PROJECT_CONTEXT.md`; canonical brief is `../CLAUDE.md`.
 
 ## Current position
-- **Working tree:** **Slice 71 (table-vs-diagram precision operator validation) — UNCOMMITTED (per instruction)** on
-  branch `slice71-visual-pilot-table-diagram-operator-validation` (branched from fresh trunk after Slice 70 was
-  committed/merged). **Validation/docs slice — no production pipeline/API/frontend code changed; no heuristic tuned;
-  no ranking/cap/default/gate/render/export/extraction-OCR routing change; no model/provider/cloud call.** It reruns
-  the operator harness on the real, **non-private** sample now that Slice 70's classifier precision fix is on trunk,
-  then reads the sanitized trace + manually inspects the rendered PDF/HTML/DOCX.
-  - **Outcome (honest): `table_diagram_precision_operator_validation: run` — `status: ok`, `trace_artifact_present:
-    true`, `trace_no_leak_sweep: clean`, `effective_max_images: 2`, `inserted_visual_count: 2`,
-    `safe_candidate_count: 11`, `unsafe_candidate_count: 0`, `selected_count: 2`, `type_counts {diagram_or_figure: 9,
-    reconstructable_table: 2, unknown: 0, decorative_or_low_information: 0}`, `selected_visual_type: tables_only`,
-    `irreplaceable_visual_selected: false`, `selected_figures_quality: all_useful_or_acceptable`,
-    `selection_explanation: tables_still_misclassified_as_diagram_or_figure`, render/export all ok,
-    `warnings: [multiple_figures_present_one_inserted]`, `failure_category: none`, `no_leak_sweep: clean`.**
-  - **Slice 70 measurably improved classification but did not yet generalize.** `type_counts` is no longer collapsed
-    (9 diagram + 2 table vs Slice 69's 11 + 0), and the 2 typed tables were correctly deprioritized. **But the two
-    *selected* visuals are still reconstructable two-column definition tables** (densely ruled, wrapped-text cells, so
-    the two-column-split guard does not fire and they still type as `diagram_or_figure`). **Genuine irreplaceable
-    diagrams/figures were present + correctly extracted among the safe candidates but were not selected** — still a
-    classification-precision gap, not extraction and not pure ranking.
-  - **Decision / next work:** `continue_table_vs_diagram_classification_precision` (or a separately-designed
-    controlled understanding layer). **Do not** proceed to UI polish or cap expansion until an irreplaceable
-    diagram/figure is selected in real validation, or there is a deliberate product decision to accept tables. **Do
-    not** expand beyond cap 2; no UI count selector; no Chandra/Mistral/Gemini/model/provider/cloud integration.
-    Chandra remains blocked by its own live-validation gate.
-  - **Docs-only:** updated `VISUAL_PILOT_OPERATOR_VALIDATION.md`, `CURRENT_TASK.md`, this file, `DECISIONS.md`. No
-    harness correction needed; no frontend/UI; no extraction/OCR-routing/prompt/render/export change; no
-    Chandra/model/provider/cloud call. `git diff --check` clean. Only sanitized closed-vocab + bounded-numeric fields
-    recorded — no real PDF path/filename, document text, OCR text, source caption/table text, image bytes, base64,
-    data URI, full URL, raw argv, token, model/mmproj/executable path, or provider payload. The runtime
-    `visual_markdown_selection_trace.json` was **inspected but not committed**; nothing binary/image/PDF/DOCX/ZIP/
-    runtime committed. **Slice 71 is NOT committed.**
+- **Working tree:** **Slice 72 (dense ruled / wrapped-cell two-column table detection) — UNCOMMITTED (per
+  instruction)** on branch `slice72-visual-pilot-dense-wrapped-table-detection` (branched from fresh trunk after Slice
+  71 was committed/merged). **Production classification slice — precision only; cap/default/two-key gate/UI/
+  `/api/options`/render/export/extraction-OCR routing/prompts all unchanged; no model/provider/cloud call.** It acts on
+  Slice 71's real-sample finding that Slice 70 split the type buckets (`diagram_or_figure: 9`,
+  `reconstructable_table: 2`) yet the two *selected* visuals were still reconstructable **dense ruled / wrapped-cell**
+  two-column definition tables that Slice 70's `two_col_split` per-column band guard missed.
+  - **What changed:** `pipeline/visual_markdown_insertion.py` gains one bounded, deterministic, pixel-only feature —
+    **`dense_wrapped_two_col`** — and a fourth `_looks_like_reconstructable_table` path. It does **not** rely on band
+    count (wrapped/antialiased cells legitimately merge bands); instead it requires **exactly two substantial dense
+    columns**, a **persistent clean vertical gutter** (`_gutter_consistency` — a diagram's connectors/diagonals break
+    it), and **both columns text-rich** (`_column_text_richness` — several ink-runs per row, i.e. text, not a
+    continuous shape outline). So dense / wrapped / ruled / lightly-ruled two-column definition tables — including the
+    *merged-band* case Slice 70 cannot catch — now type as `reconstructable_table`, while labeled diagrams /
+    flowcharts / irregular diagrams stay `diagram_or_figure`. The public classification token and the Slice 68 trace
+    schema are unchanged.
+  - **Effect (tests):** diagrams/figures still beat reconstructable tables at cap 1 and rank first at cap 2; tables
+    remain selected when best/only; default stays **1**, hard cap stays **2**, two-key gate / default-off
+    byte-identical / export ride-along all unchanged. New `test_visual_pilot_dense_wrapped_table_detection.py`
+    (81 PASS, cap-1 + cap-2) plus the full visual-pilot + insertion/render/export/options/anki suites and the offline
+    eval pass on host; production image rebuilt + recreated, `/api/health` `{"ok":true}`, `smoke_release.py` 29/0/0,
+    and the visual-pilot suite re-run **inside the container** (Pillow present, no skips) all green. `git diff --check`
+    clean.
+  - **Optional real operator revalidation: NOT run** — the non-private operator sample is not available in this
+    session; no real cap-2 rerun was performed and **no sanitized operator result was recorded** (none invented). When
+    the sample is available next, rerun the cap-2 harness and inspect the trace; the desired outcome (only if true) is
+    `selected_visual_type: diagrams_or_figures_present | mixed_diagram_and_table` with
+    `irreplaceable_visual_selected: true`.
+  - **Decision / next work:** if real revalidation still shows `tables_only`, continue
+    `continue_table_vs_diagram_classification_precision` (or design a controlled understanding layer in its own slice).
+    **Do not** proceed to UI polish or cap expansion until an irreplaceable diagram/figure is actually selected in real
+    validation, or there is a deliberate product decision to accept tables. **Do not** expand beyond cap 2; no UI count
+    selector; no Chandra/Mistral/Gemini/model/provider/cloud integration; no OCR-routing change. Chandra remains
+    blocked by its own live-validation gate.
+  - **Files:** `pipeline/visual_markdown_insertion.py`, new `test_scripts/test_visual_pilot_dense_wrapped_table_detection.py`,
+    and docs (`CURRENT_TASK.md`, this file, `DECISIONS.md`). No frontend/UI; no extraction/OCR-routing/prompt/render/
+    export change; no Chandra/model/provider/cloud call. Only bounded numeric pixel summaries + closed-vocab tokens are
+    produced — no real PDF path/filename, document text, OCR text, source caption/table text, image bytes, base64, data
+    URI, full URL, raw argv, token, model/mmproj/executable path, or provider payload. No new artifact (Slice 68 trace
+    is the only one); every test PNG is runtime-built in a temp dir; nothing binary/image/PDF/DOCX/ZIP/runtime
+    committed. **Slice 72 is NOT committed.**
+
+### Prior position (Slice 71 — committed & merged)
+- **Slice 71 (table-vs-diagram precision operator validation) — COMMITTED + MERGED to `chrome-renderer-v1`
+  (fast-forward)** on branch `slice71-visual-pilot-table-diagram-operator-validation`. Validation/docs slice: the
+  real-sample rerun showed Slice 70 split the type buckets (`diagram_or_figure: 9`, `reconstructable_table: 2`) but the
+  two *selected* visuals were still dense wrapped two-column definition tables
+  (`selected_visual_type: tables_only`, `irreplaceable_visual_selected: false`,
+  `selection_explanation: tables_still_misclassified_as_diagram_or_figure`) — localizing the residual case that Slice
+  72 targets. Only sanitized closed-vocab fields were recorded; no real path/text/image bytes.
 
 ### Prior position (Slice 70 — committed & merged)
 - **Slice 70 (table-vs-diagram visual-classification precision) — COMMITTED + MERGED to `chrome-renderer-v1`

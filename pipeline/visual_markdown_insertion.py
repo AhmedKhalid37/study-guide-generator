@@ -336,6 +336,37 @@ _TT_BLOCK_INK_MIN = 0.02   # each column's mean text-ink fraction must be ≥ th
 _TT_MIN_COL_ROWS = 3       # each column must contain ≥ this many separated horizontal text bands
 
 
+# --- Slice 72: dense ruled / wrapped-cell two-column definition-table precision ------
+#
+# Slice 71's real operator validation showed Slice 70 measurably improved classification
+# (the trace's type buckets split: 9 diagram + 2 table where Slice 69 read 11 + 0), but the
+# two *selected* visuals were STILL reconstructable two-column definition tables. The residual
+# mechanism: those specific tables are densely ruled with WRAPPED multi-line description cells,
+# so each column's wrapped lines merge into too FEW separated horizontal text bands. Slice 70's
+# ``two_col_split`` requires ≥ ``_TT_MIN_COL_ROWS`` (3) separated bands *per column*; a dense
+# wrapped definition column collapses to one or two bands and the guard never fires, so the
+# table falls through to ``diagram_or_figure`` and leads the diagram tier.
+#
+# Slice 72 adds one more bounded, deterministic, pixel-only signal: ``dense_wrapped_two_col``.
+# It relaxes the per-column band count (wrapped cells legitimately merge bands) but COMPENSATES
+# with a much stronger structural guard — a *persistent* vertical gutter that stays clear of ink
+# down most of the crop height. A genuine diagram (whose connectors / diagonals / shapes smear
+# ink across the middle) cannot fake a clean full-height gutter, so the relaxation does not
+# weaken the diagram guard. The signal fires only when ALL hold: exactly two substantial content
+# columns, both carrying DENSE ink (real wrapped definition text — not a sparse diagram label),
+# separated by a real gutter that is clear of ink for most rows, with at least a couple of
+# stacked text bands per column (so two side-by-side solid blobs never qualify). Row-spacing
+# regularity is intentionally NOT required, which is exactly what lets variable-height wrapped
+# definition rows qualify. Same hard limits as Slice 64/66/70: pixel-only over the already-safe,
+# already-job-dir-contained crop; never OCRs, never calls a model/provider/network, never
+# base64/serializes/logs image bytes, never records a path or source text, adds no artifact, and
+# degrades to ``unknown`` whenever the crop cannot be analyzed.
+_DW_DENSE_INK_MIN = 0.06       # each column's mean text-ink fraction must be ≥ this (DENSE text)
+_DW_GUTTER_ROW_INK_MAX = 0.10  # a row's gutter ink fraction at/below this ⇒ that row's gutter clear
+_DW_GUTTER_CONSISTENCY_MIN = 0.75  # ≥ this fraction of rows must have a clear gutter (persistent)
+_DW_MIN_COL_RICHNESS = 2.5     # each column's avg ink-runs per inked row must be ≥ this (TEXT, not a shape)
+
+
 # --- Flag --------------------------------------------------------------------
 
 
@@ -1049,6 +1080,9 @@ def _summarize_gray_pixels(
     # Slice 70: strong two-column split (glossary/definition table), regularity NOT required.
     two_col_split = _two_column_split(pixels, w, h, col_text)
 
+    # Slice 72: dense ruled / wrapped-cell two-column table (bands merge; gutter persists).
+    dense_wrapped_two_col = _dense_wrapped_two_column(pixels, w, h, col_text)
+
     return {
         "blank_ratio": round(blank_ratio, 4),
         "edge_density": round(edge_density, 4),
@@ -1061,6 +1095,7 @@ def _summarize_gray_pixels(
         "row_band_regular": float(row_band_regular),
         "n_col_blocks": float(n_col_blocks),
         "two_col_split": float(two_col_split),
+        "dense_wrapped_two_col": float(dense_wrapped_two_col),
     }
 
 
@@ -1210,6 +1245,108 @@ def _two_column_split(pixels: list[int], w: int, h: int, col_text: list[float]) 
     return 1.0
 
 
+def _gutter_consistency(pixels: list[int], w: int, h: int, x0: int, x1: int) -> float:
+    """Fraction of rows whose gutter band ``[x0, x1)`` is clear of ink (Slice 72).
+
+    A wrapped two-column table keeps a vertical whitespace channel between its columns down
+    almost the whole height (a thin drawn divider is tolerated — only a small fraction of the
+    gutter is then inked). A diagram's connectors / diagonals / shapes cross the middle, so its
+    "gutter" is repeatedly broken. Returns the fraction of rows whose ink fraction inside the
+    band is at/below ``_DW_GUTTER_ROW_INK_MAX``. Bounded; pure; never raises.
+    """
+    span = x1 - x0
+    if span <= 0 or h <= 0:
+        return 0.0
+    clear_rows = 0
+    for r in range(h):
+        base = r * w
+        ink = 0
+        for c in range(x0, x1):
+            if pixels[base + c] <= _LT_INK:
+                ink += 1
+        if (ink / span) <= _DW_GUTTER_ROW_INK_MAX:
+            clear_rows += 1
+    return clear_rows / h
+
+
+def _column_text_richness(pixels: list[int], w: int, h: int, x0: int, x1: int) -> float:
+    """Average number of separated ink runs per *inked* row within column ``[x0, x1)`` (Slice 72).
+
+    The text-vs-shape discriminator: a column of real text has several short ink runs per row
+    (words / glyph clusters), while a diagram's continuous shape outline contributes only one or
+    two long runs per row. Counts horizontal ink runs (transitions into softer-ink ``_LT_INK``)
+    on each row that carries any ink, and averages over the inked rows. A column that is a single
+    solid block scores ~1.0 (one run/row); dense wrapped text scores well above. Bounded
+    (≤ ``_VT_MAX_DIM`` per side); pure; never raises.
+    """
+    if x1 - x0 <= 0 or h <= 0:
+        return 0.0
+    total_runs = 0
+    inked_rows = 0
+    for r in range(h):
+        base = r * w
+        runs = 0
+        prev_ink = False
+        any_ink = False
+        for c in range(x0, x1):
+            ink = pixels[base + c] <= _LT_INK
+            if ink and not prev_ink:
+                runs += 1
+            if ink:
+                any_ink = True
+            prev_ink = ink
+        if any_ink:
+            total_runs += runs
+            inked_rows += 1
+    return (total_runs / inked_rows) if inked_rows else 0.0
+
+
+def _dense_wrapped_two_column(pixels: list[int], w: int, h: int, col_text: list[float]) -> float:
+    """1.0 iff the crop is a dense, wrapped-cell two-column table, else 0.0 (Slice 72).
+
+    The Slice 70 companion to :func:`_two_column_split` for the residual failure shape Slice 71
+    localized on the real sample: dense ruled / wrapped-cell two-column definition tables whose
+    wrapped lines merge into too FEW separated bands per column for the ≥ ``_TT_MIN_COL_ROWS``
+    band guard to fire (antialiased wrapped text leaves no clean blank separator rows, so a whole
+    column collapses to one band). It therefore does NOT rely on band count at all; instead it
+    pairs the two-column structure with two strong guards a diagram cannot fake — a *persistent*
+    clean vertical gutter and per-column *text richness*. Fires only when ALL hold:
+
+    * exactly **two** substantial content columns (each ≥ ``_TT_SIDE_MIN_FRAC`` of the width),
+    * separated by a real gutter (≥ ``_TT_GUTTER_MIN_FRAC`` of the width),
+    * both columns carry **dense** ink (mean text fraction ≥ ``_DW_DENSE_INK_MIN`` — real wrapped
+      definition text, not a sparse diagram label),
+    * the gutter is a **persistent** vertical separator (clear of ink for ≥
+      ``_DW_GUTTER_CONSISTENCY_MIN`` of rows — a diagram's connectors / diagonals break it), and
+    * **both** columns are **text-rich** (avg ink-runs per inked row ≥ ``_DW_MIN_COL_RICHNESS`` —
+      several words per row, not a continuous shape outline; this is the guard that keeps a
+      labeled diagram a diagram even when it happens to have two side-by-side regions).
+
+    Row-spacing regularity is intentionally NOT required, so variable-height wrapped rows qualify.
+    Pure; bounded (≤ ``_VT_MAX_DIM`` per side); never raises.
+    """
+    if w <= 0 or h <= 0:
+        return 0.0
+    spans = _content_column_spans(col_text, _LT_COL_GUTTER_MAX)
+    substantial = [(s, e) for (s, e) in spans if (e - s) / w >= _TT_SIDE_MIN_FRAC]
+    if len(substantial) != 2:
+        return 0.0
+    (ls, le), (rs, re) = substantial
+    if (rs - le) / w < _TT_GUTTER_MIN_FRAC:
+        return 0.0
+    left_ink = sum(col_text[ls:le]) / (le - ls) if le > ls else 0.0
+    right_ink = sum(col_text[rs:re]) / (re - rs) if re > rs else 0.0
+    if left_ink < _DW_DENSE_INK_MIN or right_ink < _DW_DENSE_INK_MIN:
+        return 0.0
+    if _gutter_consistency(pixels, w, h, le, rs) < _DW_GUTTER_CONSISTENCY_MIN:
+        return 0.0
+    if _column_text_richness(pixels, w, h, ls, le) < _DW_MIN_COL_RICHNESS:
+        return 0.0
+    if _column_text_richness(pixels, w, h, rs, re) < _DW_MIN_COL_RICHNESS:
+        return 0.0
+    return 1.0
+
+
 def _looks_like_reconstructable_table(features: dict[str, float]) -> bool:
     """True iff the bounded features describe a lightly ruled / text-heavy table (Slice 66).
 
@@ -1224,7 +1361,11 @@ def _looks_like_reconstructable_table(features: dict[str, float]) -> bool:
     A genuine diagram (irregular row spacing, no clean full-height column gutters, no repeated
     horizontal rules) satisfies neither. Slice 70 adds a third path — a strong two-column
     split — so glossary/definition tables with *variable-height* (irregular) rows still
-    qualify without weakening the diagram guard. Pure; never raises.
+    qualify without weakening the diagram guard. Slice 72 adds a fourth — a dense, wrapped-cell
+    two-column split with a *persistent* gutter — so densely ruled / wrapped definition tables
+    whose merged bands defeat the Slice 70 per-column band guard still qualify, again without
+    weakening the diagram guard (the persistent gutter is what a diagram cannot fake). Pure;
+    never raises.
     """
     n_text_bands = features.get("n_text_bands", 0.0)
     row_band_regular = features.get("row_band_regular", 0.0)
@@ -1232,6 +1373,7 @@ def _looks_like_reconstructable_table(features: dict[str, float]) -> bool:
     n_line_rows = features.get("n_line_rows", 0.0)
     n_line_cols = features.get("n_line_cols", 0.0)
     two_col_split = features.get("two_col_split", 0.0)
+    dense_wrapped_two_col = features.get("dense_wrapped_two_col", 0.0)
 
     has_row_rhythm = n_text_bands >= _LT_MIN_TEXT_BANDS and row_band_regular >= 1.0
     has_columns = n_col_blocks >= _LT_MIN_COL_BLOCKS
@@ -1240,6 +1382,9 @@ def _looks_like_reconstructable_table(features: dict[str, float]) -> bool:
 
     # Slice 70 two-column split: two text columns of stacked rows (regularity not required).
     if two_col_split >= 1.0:
+        return True
+    # Slice 72 dense wrapped two-column split: merged bands but a persistent vertical gutter.
+    if dense_wrapped_two_col >= 1.0:
         return True
     # Text-grid: regular rows arranged in clear columns.
     if has_row_rhythm and has_columns:

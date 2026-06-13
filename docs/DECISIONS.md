@@ -3293,3 +3293,55 @@ URI, full URL, raw argv, token, model/mmproj/executable path, or provider payloa
 `visual_markdown_selection_trace.json` was inspected but **not committed**, and nothing
 binary/image/PDF/DOCX/ZIP/runtime was committed. **Slice 71 is NOT committed.** Chandra remains blocked by its own
 live-validation gate.
+
+## Slice 72 — dense ruled / wrapped-cell two-column tables: gutter-persistence + text-richness, not band count
+Slice 71's real-sample validation localized the residual failure precisely: Slice 70's `two_col_split` classifier
+split the type buckets (`diagram_or_figure: 9`, `reconstructable_table: 2`) but the two *selected* visuals were still
+reconstructable **dense ruled / wrapped-cell** two-column definition tables. The mechanism: `two_col_split` requires
+≥ `_TT_MIN_COL_ROWS` (3) *separated* horizontal text bands **per column**, and a densely-ruled column of wrapped,
+antialiased definition text leaves no clean blank separator rows — its bands merge into one or two, so the guard never
+fires and the table falls through to `diagram_or_figure` and leads the diagram tier.
+
+**Decision: add a band-count-independent signal, guarded by structure a diagram cannot fake.** Slice 72 adds one more
+bounded, deterministic, pixel-only feature — `dense_wrapped_two_col` — and a fourth `_looks_like_reconstructable_table`
+path. Rather than counting bands (the very thing wrapping destroys), it pairs the two-column layout with two strong
+discriminators: (1) a **persistent clean vertical gutter** (`_gutter_consistency`: the gutter band must be clear of ink
+for ≥ `_DW_GUTTER_CONSISTENCY_MIN` = 0.75 of rows — a diagram's connectors / diagonals / shapes cross the middle and
+break it; a thin drawn divider or a few full-width rules are tolerated), and (2) per-column **text richness**
+(`_column_text_richness`: average ink-runs per inked row ≥ `_DW_MIN_COL_RICHNESS` = 2.5 — real text has several
+short runs (words) per row, while a continuous diagram shape outline contributes only one or two long runs). It fires
+only when there are exactly two substantial content columns, both carrying dense ink, separated by a real gutter, with
+both columns text-rich. Row-spacing regularity is intentionally not required, so variable-height wrapped rows qualify.
+
+**Why richness rather than the relaxed band count.** An earlier attempt relaxed the per-column band requirement from 3
+to 2; that misclassified a *labeled diagram* (two shape clusters either side of a gap, each ~2 bands) as a table. Text
+richness is the correct text-vs-shape discriminator and was measured to separate the two cleanly on representative
+fixtures (text columns ≈ 3–8 runs/row; diagram-shape columns ≈ 1.0–1.7), so the relaxation does not weaken the diagram
+guard. The signal is wired *inside* `_looks_like_reconstructable_table`, so the public closed-vocabulary classification
+token and the Slice 68 selection-trace schema are unchanged; the trace reflects the improved classification
+automatically.
+
+**Invariants preserved.** Diagrams/figures still outrank reconstructable tables (a diagram wins at cap 1 and ranks
+first at cap 2); tables are still selected when best/only; default cap stays 1, hard cap stays 2; the two-key gate,
+default-off byte-identical output, render pipeline, export ride-along, extraction/OCR routing, prompts, and
+`/api/options` are all unchanged; no model/provider/cloud/`llama-server` call; no UI/frontend change. The classifier
+still degrades to `unknown` (prior behavior) whenever the crop cannot be analyzed (no Pillow, unsafe ref, unreadable or
+too-small image), and never raises.
+
+**Validation.** `compileall api pipeline test_scripts` clean; new
+`test_visual_pilot_dense_wrapped_table_detection.py` (81 PASS, cap-1 + cap-2) plus the full visual-pilot suite,
+`validate_visual_pilot_operator_sample.py --self-test`, insertion/render/export/options/anki tests, and the offline
+eval all pass on host; the production image was rebuilt + recreated, `/api/health` `{"ok":true}`, `smoke_release.py`
+29/0/0, and the visual-pilot suite re-run **inside the container** (Pillow present, no skips) all green;
+`git diff --check` clean. **Optional real operator revalidation was NOT run** — the non-private sample is unavailable
+this session, so no sanitized operator result was recorded (none invented).
+
+**Scope / no-leak (firm).** Code + test + docs only — `pipeline/visual_markdown_insertion.py`, new
+`test_scripts/test_visual_pilot_dense_wrapped_table_detection.py`, and `CURRENT_TASK.md` / `NEXT_CHAT_HANDOFF.md` /
+this file. The feature produces only bounded numeric pixel summaries and closed-vocabulary tokens; it never OCRs, never
+calls a model/provider/network, never base64/serializes/logs image bytes, records no path or source text, and adds no
+new artifact (the Slice 68 trace is the only one). Every test PNG is built at runtime in a temp dir — nothing
+binary/image/PDF/DOCX/ZIP/runtime committed; runtime eval result JSONs stay gitignored; no real PDF path/filename,
+document text, OCR text, image bytes, base64, data URI, full URL, raw argv, token, model/mmproj/executable path, or
+provider payload appears anywhere. **Slice 72 is NOT committed.** Chandra remains blocked by its own live-validation
+gate.
