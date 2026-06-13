@@ -2898,3 +2898,52 @@ pilot-PNG-only job with no requested artifact still 404s). The bundle index keep
 `visual_pilot_assets` (the capped safe list). No Chandra/Mistral/Gemini/model/provider/cloud
 call, no OCR-routing/extraction/prompt/renderer change, and no new API route were added.
 **Chandra remains blocked by its own live-validation gate.**
+
+## Cap-2 real operator validation confirms the cap-2 output is useful (Slice 63)
+Slice 62 shipped the capped multi-figure pilot but validated cap-2 only **synthetically and in
+Docker**; the optional **real** operator revalidation was not run there. Slice 63 ran the
+existing manual harness against the same already-supplied **non-private** operator sample with
+`GUIDEFORGE_VISUAL_MARKDOWN_MAX_IMAGES=2` inside the rebuilt container, then a human inspected
+the rendered PDF/HTML/DOCX. **Recorded verdict: `selected_figures_quality:
+all_useful_or_acceptable` with `inserted_visual_count: 2`** — both inserted figures were genuine
+content-bearing material from **distinct source pages**, both rendered visibly and rode along in
+the export bundle (closed-vocab record only; no path/filename/text/bytes recorded). **Why this
+matters:** it closes the last gate Slice 62 left open and confirms the cap-2 *real* output is
+worth showing, so future visual work **may cautiously** consider placement/UI polish or cap-2
+documentation as a separately-designed slice — still **no arbitrary N-figure support and no UI
+count selector**, and the default stays exactly one. A `mixed_quality` verdict would have meant
+improve ranking/placement first; `decorative_or_bad_present`/`unclear` would have meant keep
+doing selection-quality work before any expansion.
+
+**Why one tiny harness correction was acceptable in a validation slice.** The operator harness
+(`validate_visual_pilot_operator_sample.py`) hard-coded the export check to exactly one bundled
+PNG (`len(png_entries) == 1`) — correct for the single-figure pilot, but it falsely reported
+`export_png_included: false` once cap-2 legitimately bundled two referenced PNGs. The check now
+ties the bundled-PNG count to the sanitized `inserted_visual_count` (within `1..2`), each still a
+safe relative `assets/<slug>.png` ref. This touches **only the test harness** — no production
+pipeline/API/frontend code, no schema, and no closed-vocabulary token changed; `--self-test`
+(default cap, one figure) stays green and still records `export_png_included: true`. The
+pre-existing `multiple_figures_present_one_inserted` warning token was **deliberately not
+renamed**: its trigger (the source held more than one figure candidate) is still literally true,
+the actual inserted count is recorded unambiguously in `inserted_visual_count`, and churning a
+closed-vocab token is out of scope for a validation slice. **Chandra remains blocked by its own
+live-validation gate.**
+
+**The cap-2 pass cleared the *plumbing* but not visual-*type* priority — next slice ranks
+diagrams over reconstructable tables (Slice 63 operator-review nuance).** The cap-2 result was
+`all_useful_or_acceptable`, but the operator review recorded a load-bearing nuance with safe
+closed-vocab tokens: `selected_visual_type: tables_only`, `irreplaceable_visual_selected: false`,
+`decision_gate: cap2_plumbing_passed_but_visual_type_priority_incomplete`,
+`next_recommended_slice: prefer_diagrams_over_reconstructable_tables`. Both selected visuals were
+**important tables**, not diagrams/figures. **Why this matters:** the visual/OCR feature exists
+not merely to embed *any* useful crop but **especially to preserve visuals an LLM cannot reliably
+recreate from extracted text**. Tables are frequently reconstructable from extracted text into
+clean generated tables, so a table-only cap-2 result is genuinely useful yet leaves the
+higher-value goal — preserving irreplaceable visuals (diagrams, flowcharts, screenshots, labeled
+figures, network maps) — only partially met. **Decision:** the next visual slice is **not
+placement/UI polish yet**; it should **improve visual-type ranking** so the pilot prefers
+diagrams/figures over reconstructable tables when both are available, while still allowing tables
+when they are the best/only useful visual. The constraints stay firm: **do not expand beyond cap
+2, no UI count selector, and no Chandra/Mistral/Gemini/model/provider/cloud integration.** The
+default remains exactly one figure. This refines (does not reverse) the "cap-2 output is useful"
+conclusion above: the plumbing is proven; selection *quality by type* is the remaining work.

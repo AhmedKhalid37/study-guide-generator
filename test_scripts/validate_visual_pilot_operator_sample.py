@@ -523,8 +523,13 @@ def _validate_export(job, summary: dict) -> None:
             manifest_text = _record(zf.read("manifest.json").decode("utf-8"))
         png_entries = [n for n in names if n.lower().endswith(".png")]
         summary["export_zip_ok"] = True
+        # Slice 63: the bundle must carry exactly the inserted pilot PNG(s) — one under
+        # the default cap, up to the hard upper bound of _MAX_INSERTED_FIGURES (2) when
+        # the cap-2 path inserted two. Each entry stays a safe relative assets/ ref.
+        expected_png = summary.get("inserted_visual_count") or 0
         summary["export_png_included"] = (
-            len(png_entries) == 1
+            1 <= len(png_entries) <= _MAX_INSERTED_FIGURES
+            and len(png_entries) == expected_png
             and all("/assets/" in p and not p.startswith("/") and ".." not in p
                     for p in png_entries)
         )

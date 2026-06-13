@@ -224,3 +224,119 @@ no_leak_sweep: clean
 - Only the sanitized closed-vocabulary fields above were recorded — **no** real PDF path,
   filename, document text, OCR text, image bytes, base64, data URI, full URL, raw argv,
   token, model/mmproj/executable path, or raw exception.
+
+---
+
+## Slice 63 — cap-2 real operator validation (post-Slice-62 decision check)
+
+> Validation-record slice. **No production pipeline/API/frontend code changed.** It adds
+> NO visual behavior. It only *reran* the existing manual harness against the same real,
+> **non-private** operator sample with the Slice 62 cap raised to `2`, to answer the one
+> question Slice 62 left open: is the **cap-2 output actually useful**, or does the second
+> figure drag quality down? One tiny safe harness correction was needed (below).
+
+### Why this record exists
+
+Slice 62 made the visual pilot able to insert **up to 2** figures (hard upper bound 2;
+default still exactly 1), and validated that path **synthetically and in Docker**. What it
+did **not** do was an optional **real** operator revalidation of the cap-2 output. Slice 63
+closes that: same harness, same already-supplied non-private sample, run inside the rebuilt
+container with `GUIDEFORGE_VISUAL_MARKDOWN_MAX_IMAGES=2`, then a human inspection of the
+rendered PDF / HTML / DOCX copied to a host folder.
+
+### Tiny safe harness correction (the only code touched)
+
+`test_scripts/validate_visual_pilot_operator_sample.py` previously hard-coded the export
+check to **exactly one** bundled PNG (`len(png_entries) == 1`), which was correct for the
+single-figure pilot but reported `export_png_included: false` whenever the cap-2 path
+legitimately bundled two referenced PNGs. The check now requires the bundled-PNG count to
+equal the sanitized `inserted_visual_count` and stay within `1..2`, each still a safe
+relative `assets/<slug>.png` ref. No production code, schema, or vocabulary changed; the
+`--self-test` (default cap, one figure) stays green and still records `export_png_included:
+true`.
+
+### Cap-2 review — recorded result (sanitized, closed vocab)
+
+```
+cap2_operator_visual_quality_review: run
+status: ok
+pilot_inserted: true
+inserted_visual_count: 2
+selected_figures_quality: all_useful_or_acceptable
+pdf_render_ok: true
+pdf_image_visible: true
+docx_render_ok: true
+export_zip_ok: true
+export_png_included: true
+warnings:
+  - multiple_figures_present_one_inserted
+failure_category: none
+no_leak_sweep: clean
+```
+
+The operator classified the cap-2 selected figures using only the closed vocabulary
+`all_useful_or_acceptable` · `mixed_quality` · `decorative_or_bad_present` · `unclear`,
+after inspecting the rendered PDF / HTML / DOCX from a host output folder (the real sample
+path/filename and the figures' source contents are **not** recorded here).
+
+### Operator-review nuance — visual *type* priority (sanitized, closed vocab)
+
+The cap-2 plumbing passed, but the operator review surfaced one important nuance about the
+**kind** of visual selected. Recorded with safe closed-vocabulary tokens:
+
+```
+selected_figures_quality: all_useful_or_acceptable
+selected_visual_type: tables_only
+irreplaceable_visual_selected: false
+decision_gate: cap2_plumbing_passed_but_visual_type_priority_incomplete
+next_recommended_slice: prefer_diagrams_over_reconstructable_tables
+```
+
+Both selected visuals were **important tables**, not diagrams/figures that are hard to
+reconstruct. The point of the visual/OCR feature is not merely to embed *any* useful crop;
+it is especially to preserve visuals an LLM **cannot reliably recreate** from extracted
+text. Tables are frequently reconstructable from extracted text into clean generated tables,
+so a table-only cap-2 result clears the pipeline gate but leaves the higher-value goal —
+preserving truly irreplaceable visuals — only partially met.
+
+> Note on the `multiple_figures_present_one_inserted` warning: it is the existing
+> closed-vocabulary token, emitted whenever **the source held more than one figure
+> candidate**. Under cap-2 its `_one_inserted` suffix is a slight legacy misnomer — two
+> figures were inserted here — but the token's trigger condition is still literally true and
+> the actual count is recorded unambiguously in `inserted_visual_count: 2`. Renaming a
+> closed-vocab token is deliberately out of scope for a validation slice.
+
+### Interpretation
+
+- Slice 62 made **cap 2 available**, but the **default remains exactly 1**.
+- This Slice 63 record checks whether the **cap-2 real output is actually useful**.
+- **Slice 63 proves the cap-2 pipeline works on a real, non-private sample** —
+  selection → capped multi-insertion → PDF/HTML/DOCX render → export bundle all functioned.
+- **Recorded verdict: `all_useful_or_acceptable`** with **2 figures inserted** — both
+  inserted figures were genuine content-bearing material from distinct source pages, not
+  decorative title/header/footer/logo/banner crops, and both rendered visibly in the PDF and
+  rode along in the export bundle.
+- **However, both selected visuals were useful/acceptable *tables*** (`selected_visual_type:
+  tables_only`, `irreplaceable_visual_selected: false`). Tables are often **reconstructable**
+  from extracted text into clean generated tables, so a table is rarely the irreplaceable
+  case the visual feature exists to protect.
+- **The higher-value target for visual embedding** is diagrams, flowcharts, screenshots,
+  labeled figures, network maps, and other visuals that **cannot be reliably recreated from
+  text alone**.
+- **Therefore the next visual slice should not be placement/UI polish yet.** The decision
+  gate is `cap2_plumbing_passed_but_visual_type_priority_incomplete`: the plumbing is proven,
+  but visual-*type* prioritization is not.
+- **The next visual slice should improve visual-type ranking**
+  (`next_recommended_slice: prefer_diagrams_over_reconstructable_tables`): prefer
+  diagrams/figures over reconstructable tables when both are available, while still allowing
+  tables when they are the best/only useful visual. **Do not expand beyond cap 2.** **Do not
+  add Chandra/Mistral/Gemini/model/provider/cloud integration.**
+- A `mixed_quality` verdict would instead have meant **improve ranking/placement before
+  expanding further**; `decorative_or_bad_present` or `unclear` would have meant **do not
+  expand visuals — keep doing selection-quality work**.
+- **Chandra extraction integration remains blocked by its own live-validation gate**; this
+  record does not touch it.
+- Only the sanitized closed-vocabulary fields above were recorded — **no** real PDF path,
+  filename, document text, OCR text, image bytes, base64, data URI, full URL, raw argv,
+  token, model/mmproj/executable path, or raw exception. No binary/image/PDF/DOCX/ZIP/runtime
+  output was committed.

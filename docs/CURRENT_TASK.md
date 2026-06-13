@@ -5,7 +5,58 @@
 
 ---
 
-## Slice 62 — **Capped multi-figure visual pilot**, on `slice62-visual-pilot-capped-multifigure`. **NOT COMMITTED.**
+## Slice 63 — **Cap-2 real operator validation record**, on `slice63-visual-pilot-cap2-operator-validation`. **NOT COMMITTED.**
+
+- **Validation/docs slice.** Records a real, sanitized operator validation of the **Slice 62 cap-2 path**
+  against the same already-supplied non-private operator sample. Slice 62 validated the capped multi-figure
+  pilot **synthetically and in Docker** but did not run the optional **real** cap-2 revalidation; Slice 63
+  closes that one gap. **No production pipeline/API/frontend code changed; no new visual behavior added.**
+- **What was done:** rebuilt/used the Slice 62 container, ran the existing operator harness
+  (`validate_visual_pilot_operator_sample.py`) with `GUIDEFORGE_ENABLE_VISUAL_MARKDOWN_IMAGE_PILOT=1`,
+  `GUIDEFORGE_LOCAL_FIGURE_EXTRACTION=1`, `GUIDEFORGE_VISUAL_MARKDOWN_MAX_IMAGES=2`, copied the rendered
+  PDF/HTML/DOCX to a host folder, and inspected the inserted figures by hand.
+- **One tiny safe harness correction (the only code touched):** the harness export check previously hard-coded
+  **exactly one** bundled PNG (`len(png_entries) == 1`), which falsely reported `export_png_included: false`
+  when the cap-2 path legitimately bundled **two** referenced PNGs. It now requires the bundled-PNG count to
+  equal the sanitized `inserted_visual_count` and stay within `1..2`, each still a safe relative
+  `assets/<slug>.png` ref. No production code/schema/vocabulary changed; `--self-test` (default cap, one
+  figure) stays green with `export_png_included: true`.
+- **Recorded result (sanitized, closed vocab):** `cap2_operator_visual_quality_review: run` · `status: ok` ·
+  `pilot_inserted: true` · **`inserted_visual_count: 2`** · **`selected_figures_quality:
+  all_useful_or_acceptable`** · `pdf_render_ok: true` · `pdf_image_visible: true` · `docx_render_ok: true` ·
+  `export_zip_ok: true` · `export_png_included: true` · `warnings: [multiple_figures_present_one_inserted]` ·
+  `failure_category: none` · `no_leak_sweep: clean`. The two inserted figures were genuine content-bearing
+  material from **distinct source pages**, not decorative chrome; both rendered visibly and rode along in the
+  export bundle.
+- **Operator-review nuance (sanitized, closed vocab):** `selected_visual_type: tables_only` ·
+  `irreplaceable_visual_selected: false` · `decision_gate:
+  cap2_plumbing_passed_but_visual_type_priority_incomplete` · `next_recommended_slice:
+  prefer_diagrams_over_reconstructable_tables`. Both selected visuals were **important tables**, not
+  diagrams/figures that are hard to reconstruct.
+- **Interpretation / decision gate:** Slice 63 **proves the cap-2 pipeline works on a real, non-private sample**
+  (selection → capped multi-insertion → render → export). Slice 62 made cap 2 *available*, default stays 1; this
+  record confirms the cap-2 **real** output is useful (`all_useful_or_acceptable`). **But** both inserted visuals
+  were useful/acceptable **tables**, and tables are often reconstructable from extracted text into clean
+  generated tables — so the irreplaceable-visual goal is only partially met. The visual/OCR feature exists
+  especially to preserve visuals an LLM **cannot** recreate from text (diagrams, flowcharts, screenshots,
+  labeled figures, network maps). **Therefore the next visual slice should NOT be placement/UI polish yet;** it
+  should **improve visual-type ranking** — prefer diagrams/figures over reconstructable tables when both are
+  available, while still allowing tables when they are the best/only useful visual. **Do not expand beyond cap
+  2; do not add Chandra/Mistral/Gemini/model/provider/cloud integration.** A `mixed_quality` verdict would have
+  meant improve ranking/placement first; `decorative_or_bad_present`/`unclear` would have meant keep doing
+  selection-quality work. Chandra remains blocked by its own live-validation gate.
+- **Files:** `docs/VISUAL_PILOT_OPERATOR_VALIDATION.md` (cap-2 record + interpretation), `docs/CURRENT_TASK.md`,
+  `docs/NEXT_CHAT_HANDOFF.md`, `docs/DECISIONS.md`; tiny correction in
+  `test_scripts/validate_visual_pilot_operator_sample.py`. No frontend/UI, extraction/OCR-routing, prompt,
+  render, export, or route change. No Chandra/model/provider/cloud call.
+- **Safety / no-leak:** only sanitized closed-vocab fields + safe relative refs; no real PDF path/filename,
+  document text, OCR text, image bytes, base64, data URI, full URL, raw argv, token, model/mmproj/executable
+  path, or raw exception in any doc/test/artifact/log. No committed binary/image/PDF/DOCX/ZIP/runtime output.
+  **Slice 63 is NOT committed.**
+
+---
+
+## Slice 62 — **Capped multi-figure visual pilot**, on `slice62-visual-pilot-capped-multifigure`. **COMMITTED + MERGED to `chrome-renderer-v1`.**
 
 - **Cautiously extends the off-by-default visual markdown image pilot from "at most one figure" to "up to a
   small server-configured cap" (hard upper bound `2`).** Default behavior is **unchanged: exactly one figure**.

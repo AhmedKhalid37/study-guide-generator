@@ -6,8 +6,46 @@
 > stable overview see `PROJECT_CONTEXT.md`; canonical brief is `../CLAUDE.md`.
 
 ## Current position
-- **Working tree:** **Slice 62 (capped multi-figure visual pilot) — UNCOMMITTED (per instruction)** on branch
-  `slice62-visual-pilot-capped-multifigure` (branched from fresh trunk after Slice 61 was committed/merged).
+- **Working tree:** **Slice 63 (cap-2 real operator validation record) — UNCOMMITTED (per instruction)** on
+  branch `slice63-visual-pilot-cap2-operator-validation` (branched from fresh trunk after Slice 62 was
+  committed/merged). **Validation/docs slice — no production pipeline/API/frontend code changed and no new
+  visual behavior added.** It records a real, sanitized operator validation of the Slice 62 **cap-2** path
+  (Slice 62 had validated cap-2 only synthetically + in Docker; this closes the optional **real** revalidation).
+  - **What was done:** ran the existing operator harness inside the Slice 62 container with
+    `GUIDEFORGE_VISUAL_MARKDOWN_MAX_IMAGES=2` (plus the two enable gates) against the already-supplied
+    non-private sample, copied the rendered PDF/HTML/DOCX to a host folder, and inspected the inserted figures.
+  - **One tiny safe harness correction (only code touched):** the export check previously hard-coded exactly one
+    bundled PNG (`len(png_entries) == 1`), which falsely reported `export_png_included: false` when cap-2
+    legitimately bundled two referenced PNGs. It now requires the bundled-PNG count to equal the sanitized
+    `inserted_visual_count` (within `1..2`), each still a safe `assets/<slug>.png` ref. `--self-test` stays green.
+  - **Recorded (sanitized):** `cap2_operator_visual_quality_review: run` · `status: ok` · `pilot_inserted: true` ·
+    **`inserted_visual_count: 2`** · **`selected_figures_quality: all_useful_or_acceptable`** ·
+    `pdf_render_ok/pdf_image_visible/docx_render_ok/export_zip_ok/export_png_included: true` ·
+    `warnings: [multiple_figures_present_one_inserted]` · `failure_category: none` · `no_leak_sweep: clean`.
+  - **Operator-review nuance (sanitized, closed vocab):** `selected_visual_type: tables_only` ·
+    `irreplaceable_visual_selected: false` · `decision_gate:
+    cap2_plumbing_passed_but_visual_type_priority_incomplete` · `next_recommended_slice:
+    prefer_diagrams_over_reconstructable_tables`. Both selected visuals were useful/acceptable **tables**, not
+    diagrams/figures that are hard to reconstruct.
+  - **Decision gate:** Slice 63 **proves the cap-2 pipeline works on a real, non-private sample**, and the output
+    is useful (`all_useful_or_acceptable`). **But** both visuals were **tables**, which are often reconstructable
+    from extracted text into clean generated tables; the visual feature exists especially to preserve visuals an
+    LLM **cannot** recreate from text (diagrams, flowcharts, screenshots, labeled figures, network maps).
+    **Therefore the next visual slice is NOT placement/UI polish yet** — it should **improve visual-type ranking**
+    (prefer diagrams/figures over reconstructable tables when both are available, still allowing tables when they
+    are the best/only useful visual). **Do not expand beyond cap 2; no Chandra/Mistral/Gemini/model/provider/cloud
+    integration.** Default stays exactly 1. Chandra remains blocked by its own gate.
+  - **Files:** `docs/VISUAL_PILOT_OPERATOR_VALIDATION.md`, `docs/CURRENT_TASK.md`, `docs/NEXT_CHAT_HANDOFF.md`,
+    `docs/DECISIONS.md`; tiny correction in `test_scripts/validate_visual_pilot_operator_sample.py`. **Slice 63
+    is NOT committed.**
+  - **No-leak:** only sanitized closed-vocab fields + safe relative refs; no real PDF path/filename, document/OCR
+    text, image bytes, base64, data URI, full URL, raw argv, token, model/mmproj/executable path, or raw
+    exception; no committed binary/image/PDF/DOCX/ZIP/runtime output.
+
+### Prior position (Slice 62 — committed & merged)
+- **Working tree:** **Slice 62 (capped multi-figure visual pilot) — COMMITTED + MERGED to `chrome-renderer-v1`
+  (fast-forward)** on branch `slice62-visual-pilot-capped-multifigure` (branched from fresh trunk after Slice 61
+  was committed/merged).
   **Cautiously extends the off-by-default visual pilot from one figure to up to a small server-configured cap
   (hard upper bound 2); default behavior stays exactly one figure.** Slices 59/60/61 cleared the single-figure
   plumbing + Slice 60 quality gate on a real non-private sample; Slice 62 is the first step beyond one figure.
