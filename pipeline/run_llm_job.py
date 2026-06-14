@@ -231,6 +231,12 @@ def _attach_sources(
     # extraction_metadata_sources so the gated local figure extractor can re-open the
     # exact same PDFs/pages. Only used when extraction is enabled (off by default).
     pdf_extraction_inputs: list[dict[str, Any]] = []
+    # Slice 82: per-metadata-source visual-manifest page filter, kept in lockstep
+    # with extraction_metadata_sources. Each entry is the EFFECTIVE post-material
+    # allowed page set when a material selection was APPLIED for that attachment, or
+    # None (no active material filter ⇒ existing visual-manifest behaviour). Passed
+    # to write_visual_assets_manifest so excluded pages contribute no visual records.
+    visual_page_filters: list[set[int] | None] = []
     pdf_metadata_unavailable = False
     total_chars = 0
 
@@ -269,6 +275,10 @@ def _attach_sources(
         # Degrade-never-fail: an unresolvable selection (exclude/all with no known
         # universe) leaves extraction unchanged and records a closed warning.
         is_pdf = saved_path.suffix.lower() == ".pdf"
+        # Slice 82: the effective post-material allowed page set when a material
+        # selection is APPLIED to this PDF, else None (no active visual-manifest
+        # filter for this source — existing behaviour preserved).
+        material_visual_filter: set[int] | None = None
         material_selection = _resolve_material_selection(
             f"attachment_{index - 1}", material_page_selections, material_page_selection
         )
@@ -285,6 +295,10 @@ def _attach_sources(
                 )
                 if outcome["resolved"]:
                     selected_pages = set(outcome["included_pages"])
+                    # Same effective set drives extraction (above) and the visual
+                    # manifest (below), so a visual record can never survive on a
+                    # page extraction already excluded.
+                    material_visual_filter = set(selected_pages)
                     entry["material_selection"] = {
                         "status": "applied",
                         "warnings": [*outcome["warnings"], "material_selection_applied"],
@@ -318,6 +332,9 @@ def _attach_sources(
                                 "pages": set(selected_pages) if selected_pages else None,
                             }
                         )
+                        # Slice 82: keep the visual-manifest page filter in lockstep
+                        # with the metadata source just appended.
+                        visual_page_filters.append(material_visual_filter)
                 except Exception as exc:
                     pdf_metadata_unavailable = True
                     print(
@@ -385,7 +402,16 @@ def _attach_sources(
         # into the manifest as `extracted_figure` assets. Off by default → this
         # branch is skipped and the manifest is byte-identical to Slice 38.
         extracted_assets = _extract_local_figures(job, pdf_extraction_inputs)
-        write_visual_assets_manifest(job, extraction_metadata_sources, extracted_assets)
+        # Slice 82: apply the same Full Material Coverage page selection to the
+        # visual manifest. `visual_page_filters` is aligned by index with
+        # `extraction_metadata_sources`; excluded pages contribute no visual
+        # candidates. None entries (no active material selection) preserve behaviour.
+        write_visual_assets_manifest(
+            job,
+            extraction_metadata_sources,
+            extracted_assets,
+            page_filters=visual_page_filters,
+        )
         # Slice 47: persist the advisory visual-asset SCORING report derived from
         # the manifest we just wrote. Reads only the persisted (sanitized) manifest
         # object, never mutates it, and is degrade-not-fail — it never gates or

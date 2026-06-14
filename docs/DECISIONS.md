@@ -3704,3 +3704,48 @@ is upstream of and independent from the visual pilot's heuristic asset selection
 per-attachment summary persisted on each attachment entry is counts/closed-tokens only — no page lists, filenames, or
 paths — keeping the no-leak boundary intact. Chandra remains blocked by its own live-validation gate. **Slice 81 is NOT
 committed.**
+
+## Slice 82 — apply material selections to the visual manifest, after extraction, bounded by `page_selections` (2026-06-14)
+Slice 81 was committed `7ca109d`, fast-forward merged, and pushed to trunk `chrome-renderer-v1`; it applied material
+selections to attachment text extraction. Slice 82 applies the *same* effective page selection to visual-assets manifest
+planning: `_attach_sources` keeps a `visual_page_filters` list in lockstep with `extraction_metadata_sources` (each entry
+the effective post-material allowed page set when a selection was applied, else `None`), and passes it as a new
+`page_filters=` kwarg to `write_visual_assets_manifest`, which drops `page_visual_signal` candidates whose `source_page`
+is not in their source's allowed set.
+
+**Why material selections are applied to visual manifests after content extraction (and reuse the extraction set).**
+The visual-assets manifest derives from the same sanitized extraction metadata as the model-facing text; in fact
+`extract_file(pages=...)` already skips unselected pages, so the manifest *already* only sees selected pages as a Slice 81
+side effect. Slice 82 makes that an explicit, independent, testable manifest-level contract (defense-in-depth) by reusing
+the very set Slice 81 computed for extraction. Reusing one effective set — rather than recomputing intent at the visual
+layer — guarantees text and visuals agree about which pages are in scope and removes any chance of the two drifting.
+
+**Why existing `page_selections` remains the maximum allowed universe.** Identical reasoning to Slice 81:
+`page_selections` is load-bearing and already bounds PDF extraction. Because the visual filter is exactly Slice 81's
+intersection(`page_selections` universe, material selection), a material selection can never keep a visual record on a page
+`page_selections` already excluded, and can never expand visuals to a page outside that universe — strict subtraction at
+the visual layer too.
+
+**Why missing/unknown visual source pages degrade by dropping conservatively.** A material selection is an explicit "use
+only/not these pages" instruction with coverage and privacy intent. If a manifest record's `source_page` cannot be
+verified (≤ 0) while a filter is active, *keeping* it could surface a visual from a page the user excluded, whereas
+dropping it only risks omitting one unverifiable candidate. The safer choice for honoring exclusion is therefore to drop
+(with a closed `material_selection_visual_page_unknown` token). On the live path page candidates always carry a real
+physical page number, so this rule only bites hostile/synthetic input; with no active filter the record is kept unchanged.
+
+**Why table reconstruction / a table manifest is deferred.** There is no separate table manifest or table-extraction
+artifact today — the only visual artifact is `visual_assets_manifest.json`. Inventing one here would be a large,
+behavior-defining surface (extraction, reconstruction, rendering) unrelated to page filtering. So Slice 82 applies the
+page filter to the existing visual manifest only and reserves a closed `material_selection_table_manifest_not_present`
+token; when a real table manifest lands (Slice 85), the same per-source page filter applies to it. Likewise, gated local
+figure extraction already receives the material-filtered `pages` upstream, so the explicit manifest filter targets the
+live page-signal path without touching the gated extractor's identity.
+
+**Why this remains Full Material Coverage foundation work, not a visual-pilot heuristic loop.** Slice 82 still only
+honors explicit user page/slide intent (persist → apply to extraction → apply to the visual manifest). It changes none of
+the visual pilot's selection, ranking, classification, cap, default, two-key-gate, or caption behavior — the pilot simply
+sees fewer (or no) candidates when a selection excludes pages, and the cap is unchanged. The new
+`summary.pages_filtered_by_material_selection` is a count and the warnings are closed tokens, so the manifest's no-leak
+boundary (no page lists, filenames, paths, captions, image refs, text, base64, data URIs, tokens, or URLs) is preserved.
+No render/export/prompt/provider change, no Chandra/Mistral/Gemini/model/provider/cloud call, no direct `clean.md` write.
+Chandra remains blocked by its own live-validation gate. **Slice 82 is NOT committed.**

@@ -28,7 +28,9 @@ Purity & safety
 ---------------
 :func:`build_visual_assets_manifest` is a pure function of already-sanitized
 extraction-metadata source records. It imports **nothing** from PyMuPDF (``fitz``),
-Tesseract, Mistral, Gemini, Chandra, or any VLM/provider SDK — only stdlib typing.
+Tesseract, Mistral, Gemini, Chandra, or any VLM/provider SDK — only stdlib typing
+and the pure, stdlib-only ``pipeline.page_selection_model`` (Slice 82's material
+page-filter decision; no provider/network/fitz import comes with it).
 Every emitted field is a fixed token from a closed vocabulary, an int/float,
 ``None``, an empty dict, or a deterministic ``asset_id``. Inputs are coerced
 field-by-field and never echoed, so no raw path, absolute host path, image byte,
@@ -41,6 +43,12 @@ import json
 import re
 import sys
 from typing import Any
+
+from pipeline.page_selection_model import (
+    VISUAL_FILTER_NO_MATCHING_PAGES,
+    VISUAL_FILTER_TOKENS,
+    page_is_in_material_selection,
+)
 
 ARTIFACT_NAME = "visual_assets_manifest.json"
 MANIFEST_VERSION = 1
@@ -103,13 +111,17 @@ _OCR_ROUTE_ACTIONS = {
     "unknown",
 }
 
-# Fixed manifest-level warning tokens (safe, closed). None are emitted today.
-WARNINGS = {"source_unavailable", "no_visual_signals"}
+# Fixed manifest-level warning tokens (safe, closed). The base two are reserved
+# (not emitted today). Slice 82 adds the material page-filter tokens, emitted when
+# an active material selection drops visual candidates from excluded pages.
+WARNINGS = {"source_unavailable", "no_visual_signals", *VISUAL_FILTER_TOKENS}
 
 
 def build_visual_assets_manifest(
     sources: Any,
     extracted_assets: Any = None,
+    *,
+    page_filters: Any = None,
 ) -> dict[str, Any]:
     """Pure builder: sanitized extraction-metadata ``sources`` → manifest dict.
 
@@ -128,34 +140,66 @@ def build_visual_assets_manifest(
     boundary and cannot be poisoned. When ``None``/empty the output is
     byte-identical to Slice 38.
 
+    ``page_filters`` (Slice 82, optional) applies the Full Material Coverage page
+    selection to the page-level visual candidates. It is a list aligned by index
+    with ``sources``; each entry is either ``None`` (no active material filter for
+    that source — existing behaviour) or a collection of positive 1-based page ints
+    (the *effective* post-material allowed set Slice 81 already computed for that
+    attachment, which is itself a subset of any ``page_selections`` universe). A
+    page candidate whose ``source_page`` is not in its source's allowed set is
+    dropped before it becomes a manifest record; closed filter tokens record that a
+    drop happened. ``None`` / absent ⇒ output is byte-identical to before Slice 82.
+
     Pure and total: never raises, never inspects a PDF, never crops, never calls a
     provider, never opens an image file. On any unexpected input it degrades to an
     empty-but-valid manifest.
     """
     try:
-        return _build_inner(sources, extracted_assets)
+        return _build_inner(sources, extracted_assets, page_filters)
     except Exception:
         return _empty_manifest()
 
 
-def _build_inner(sources: Any, extracted_assets: Any) -> dict[str, Any]:
+def _build_inner(
+    sources: Any, extracted_assets: Any, page_filters: Any = None
+) -> dict[str, Any]:
     assets: list[dict[str, Any]] = []
     pages_with_signals = 0
+    filter_warnings: set[str] = set()
+    filtered_count = 0
 
     if isinstance(sources, list):
-        for source in sources:
+        for source_index, source in enumerate(sources):
             if not isinstance(source, dict):
                 continue
             pages = source.get("pages")
             if not isinstance(pages, list):
                 continue
+            allowed = _resolve_page_filter(page_filters, source_index)
+            source_candidates = 0
+            source_kept = 0
             for page in pages:
                 if not isinstance(page, dict):
                     continue
                 asset = _page_candidate(page)
-                if asset is not None:
-                    pages_with_signals += 1
-                    assets.append(asset)
+                if asset is None:
+                    continue
+                source_candidates += 1
+                # Slice 82: drop candidates from material-excluded pages. With no
+                # active filter (`allowed is None`) every candidate is kept.
+                decision = page_is_in_material_selection(asset["source_page"], allowed)
+                if not decision["kept"]:
+                    filtered_count += 1
+                    if decision["status"]:
+                        filter_warnings.add(decision["status"])
+                    continue
+                source_kept += 1
+                pages_with_signals += 1
+                assets.append(asset)
+            # An active filter that removed every candidate from a source records a
+            # closed "no matching pages" token (not a failure).
+            if allowed is not None and source_candidates > 0 and source_kept == 0:
+                filter_warnings.add(VISUAL_FILTER_NO_MATCHING_PAGES)
 
     extracted_count = 0
     if isinstance(extracted_assets, list):
@@ -166,6 +210,7 @@ def _build_inner(sources: Any, extracted_assets: Any) -> dict[str, Any]:
                 assets.append(asset)
 
     providers = sorted({asset["source_provider"] for asset in assets}) if assets else []
+    warnings = [token for token in VISUAL_FILTER_TOKENS if token in filter_warnings]
     return {
         "version": MANIFEST_VERSION,
         "kind": "visual_assets_manifest",
@@ -177,9 +222,38 @@ def _build_inner(sources: Any, extracted_assets: Any) -> dict[str, Any]:
             "pages_with_visual_signals": pages_with_signals,
             "extracted_figure_count": extracted_count,
             "source_providers": providers,
+            "pages_filtered_by_material_selection": filtered_count,
         },
-        "warnings": [],
+        "warnings": warnings,
     }
+
+
+def _resolve_page_filter(page_filters: Any, source_index: int) -> set[int] | None:
+    """Return the effective allowed page set for one source, or None (no filter).
+
+    ``page_filters`` is the optional list aligned with ``sources``. A missing /
+    out-of-range / ``None`` entry ⇒ ``None`` (no active material filter for that
+    source). A collection entry ⇒ a set of positive 1-based ints (possibly empty,
+    meaning the material selection left no pages, so every candidate is dropped).
+    """
+    if not isinstance(page_filters, (list, tuple)):
+        return None
+    if source_index < 0 or source_index >= len(page_filters):
+        return None
+    entry = page_filters[source_index]
+    if entry is None:
+        return None
+    if not isinstance(entry, (list, tuple, set, frozenset)):
+        return None
+    allowed: set[int] = set()
+    for value in entry:
+        try:
+            page = int(value)
+        except (TypeError, ValueError):
+            continue
+        if page > 0:
+            allowed.add(page)
+    return allowed
 
 
 def _page_candidate(page: dict[str, Any]) -> dict[str, Any] | None:
@@ -230,6 +304,8 @@ def write_visual_assets_manifest(
     job: Any,
     sources: Any,
     extracted_assets: Any = None,
+    *,
+    page_filters: Any = None,
 ) -> None:
     """Persist the manifest from sanitized extraction-metadata ``sources``.
 
@@ -250,7 +326,9 @@ def write_visual_assets_manifest(
     with an empty ``assets`` list (we looked and found no candidates).
     """
     try:
-        manifest = build_visual_assets_manifest(sources, extracted_assets)
+        manifest = build_visual_assets_manifest(
+            sources, extracted_assets, page_filters=page_filters
+        )
         job.save_text(
             job.visual_assets_manifest_json,
             json.dumps(manifest, indent=2) + "\n",
@@ -303,6 +381,7 @@ def _empty_manifest() -> dict[str, Any]:
             "pages_with_visual_signals": 0,
             "extracted_figure_count": 0,
             "source_providers": [],
+            "pages_filtered_by_material_selection": 0,
         },
         "warnings": [],
     }

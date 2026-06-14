@@ -372,3 +372,57 @@ def apply_material_selection_to_page_universe(
         "warnings": [w for w in _APPLY_WARNING_ORDER if w in set(warnings)],
         "resolved": resolved,
     }
+
+
+# ── Slice 82: apply a material selection to visual/table manifest records ──
+#
+# Closed-vocabulary visual/table manifest filter tokens, kept SEPARATE from the
+# selection-model and extraction-apply tokens above. They report HOW a material
+# selection mapped onto a manifest record's source page; they carry no page
+# lists, filenames, paths, captions, image refs, or text.
+VISUAL_FILTER_DROPPED = "material_selection_visual_filtered"
+VISUAL_FILTER_PAGE_UNKNOWN = "material_selection_visual_page_unknown"
+VISUAL_FILTER_NO_MATCHING_PAGES = "material_selection_visual_no_matching_pages"
+VISUAL_FILTER_TABLE_NOT_PRESENT = "material_selection_table_manifest_not_present"
+VISUAL_FILTER_TOKENS = [
+    VISUAL_FILTER_DROPPED,
+    VISUAL_FILTER_PAGE_UNKNOWN,
+    VISUAL_FILTER_NO_MATCHING_PAGES,
+    VISUAL_FILTER_TABLE_NOT_PRESENT,
+]
+_VISUAL_FILTER_SET = set(VISUAL_FILTER_TOKENS)
+
+
+def page_is_in_material_selection(source_page: Any, allowed_pages: Any) -> dict:
+    """Decide whether a visual/table manifest record survives a material filter (Slice 82).
+
+    ``allowed_pages`` is the EFFECTIVE post-material allowed page set for the
+    record's source — a collection of positive 1-based ints — or ``None`` when no
+    material selection is active for that source (keep everything; existing
+    behaviour). It is the *same* effective set Slice 81 computed for extraction
+    (``apply_material_selection_to_page_universe`` ∩ the load-bearing
+    ``page_selections`` universe), so a material selection can never keep a visual
+    record on a page that ``page_selections`` already excluded, nor expand beyond it.
+
+    Returns ``{"kept": bool, "status": <closed token or None>}``:
+
+    * ``allowed_pages`` is ``None`` ⇒ ``kept=True, status=None`` (no active filter).
+    * ``source_page`` missing/invalid (≤ 0) under an active filter ⇒ ``kept=False,
+      status=material_selection_visual_page_unknown`` — a record whose page cannot
+      be verified is dropped conservatively so a user-excluded page can never
+      surface a visual.
+    * ``source_page`` in ``allowed_pages`` ⇒ ``kept=True, status=None``.
+    * ``source_page`` not in ``allowed_pages`` ⇒ ``kept=False,
+      status=material_selection_visual_filtered``.
+
+    Pure, stdlib-only, total — never raises.
+    """
+    if allowed_pages is None:
+        return {"kept": True, "status": None}
+    allowed = {p for p in (_positive_int(x) for x in allowed_pages) if p is not None}
+    page = _positive_int(source_page)
+    if page is None:
+        return {"kept": False, "status": VISUAL_FILTER_PAGE_UNKNOWN}
+    if page in allowed:
+        return {"kept": True, "status": None}
+    return {"kept": False, "status": VISUAL_FILTER_DROPPED}

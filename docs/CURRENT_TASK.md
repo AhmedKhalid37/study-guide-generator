@@ -5,11 +5,62 @@
 
 ---
 
-## Slice 81 — **Apply material page selections to extraction/content planning**, on `slice81-apply-material-page-selection-to-extraction`. **NOT COMMITTED.**
+## Slice 82 — **Apply material page selections to visual/table manifests**, on `slice82-apply-material-page-selection-to-visuals`. **NOT COMMITTED.**
 
-- **Next Full Material Coverage foundation slice.** Slice 80 was committed `55eb243`, fast-forward merged, and pushed to
-  trunk on `chrome-renderer-v1` (it added per-attachment `material_page_selections`). Slice 81 is the first slice that
-  **applies** the persisted material selection — to attachment **text extraction / content planning only**.
+- **Full Material Coverage foundation slice (visual side).** Slice 81 was committed `7ca109d`, fast-forward merged, and
+  pushed to trunk on `chrome-renderer-v1` (it applied material selections to attachment **text extraction / content
+  planning**). Slice 82 applies the **same** effective page selection to **visual-assets manifest planning**, so visual
+  candidates from material-excluded PDF pages never enter the manifest.
+- **What it does.** In `_attach_sources` (`pipeline/run_llm_job.py`), the slice now keeps a per-metadata-source list
+  `visual_page_filters` in lockstep with `extraction_metadata_sources`. Each entry is the **effective post-material
+  allowed page set** (the *same* set Slice 81 computed for extraction) when a material selection was **applied** for that
+  attachment, or `None` (no active filter ⇒ existing visual-manifest behaviour). It is passed as the new
+  `page_filters=` kwarg to `write_visual_assets_manifest`.
+- **Manifest-level filter.** `build_visual_assets_manifest(sources, extracted_assets, *, page_filters=None)` drops a
+  page-level `page_visual_signal` candidate whose `source_page` is not in its source's allowed set, BEFORE it becomes a
+  manifest record. `page_filters=None` / absent ⇒ output byte-identical to before Slice 82.
+- **Missing/invalid `source_page`.** Under an active filter, a candidate whose `source_page` cannot be verified (≤ 0)
+  is **dropped conservatively** (`material_selection_visual_page_unknown`) so a user-excluded page can never surface a
+  visual. With no active filter the candidate is kept (unchanged). On the live path page candidates always carry a valid
+  physical page number, so this only affects hostile/synthetic input.
+- **Interaction with the load-bearing `page_selections`.** The effective allowed set is Slice 81's
+  intersection(`page_selections` universe, material selection), so a material selection can never keep a visual record on
+  a page `page_selections` already excluded, nor expand visuals beyond it. `exclude`/`all` with no known universe defers
+  (no filter; existing behaviour) exactly as extraction does.
+- **Precedence per attachment:** per-attachment `material_page_selections.attachments.attachment_<i>` → global
+  `material_page_selection` → default-all — identical to Slice 81 (the filter reuses the same resolution).
+- **New pure helper** `page_is_in_material_selection(source_page, allowed_pages)` in `pipeline/page_selection_model.py`
+  returns `{kept, status}` (closed token or `None`); stdlib-only, never raises.
+- **Warning/status tokens (closed):** `material_selection_visual_filtered`, `material_selection_visual_page_unknown`,
+  `material_selection_visual_no_matching_pages` (a source whose every candidate was filtered out → still a `completed`
+  manifest, never a failure), plus `material_selection_table_manifest_not_present` reserved for the future table layer.
+  A new `summary.pages_filtered_by_material_selection` int records how many candidates were dropped. No page lists,
+  filenames, paths, captions, image refs, or text appear in any warning.
+- **Table manifests.** There is **no separate table manifest / table-extraction artifact today** — the only visual
+  artifact is `visual_assets_manifest.json`. Table-manifest page filtering is therefore **deferred** to a future table
+  extraction/reconstruction layer (the reserved token documents it honestly); Slice 82 invents no table artifact.
+- **Extracted figures (gated, off by default)** already receive the material-filtered `pages` at extraction time
+  (Slice 40 path), so they are restricted upstream; the explicit manifest filter targets the live `page_visual_signal`
+  path. Documented in DECISIONS.
+- **What changed:** `pipeline/page_selection_model.py` (new pure helper + closed tokens), `pipeline/visual_assets_manifest.py`
+  (`page_filters` kwarg + per-source filter + summary count + closed warnings), `pipeline/run_llm_job.py` (build
+  `visual_page_filters`, pass to the manifest writer), and new
+  `test_scripts/test_page_selection_visual_manifest_planning.py`. `api/server.py` unchanged (Slice 80 wired the request
+  fields).
+- **Scope boundaries.** No Builder UI. No all-figures planner. No table reconstruction. No visual-pilot
+  selection/ranking/classification/cap/default/two-key-gate/caption change (the pilot may simply see fewer candidates
+  when a selection excludes pages — the cap is unchanged). No extraction/OCR routing change beyond the intended visual
+  manifest page filtering. No render/export/prompt/provider behavior change. No Chandra/Mistral/Gemini/model/provider/cloud
+  call. No direct `clean.md` write (still via `JobManager.save_clean_md`). Chandra remains blocked by its own
+  live-validation gate. **Slice 82 is NOT committed.**
+
+### Prior position (Slice 81 — committed & merged)
+
+- **Apply material page selections to extraction/content planning**, on
+  `slice81-apply-material-page-selection-to-extraction`. **COMMITTED `7ca109d` + MERGED to `chrome-renderer-v1`
+  (fast-forward) + PUSHED.**
+- Slice 81 is the first slice that **applied** the persisted material selection — to attachment **text extraction /
+  content planning only**.
 - **What it does.** In `_attach_sources` (`pipeline/run_llm_job.py`), for each PDF attachment it resolves the active
   material selection and filters which pages `extract_file(path, pages=...)` reads, so only selected pages reach the
   model-facing source text. Nothing else changes.
@@ -46,8 +97,7 @@
   render/export/prompt/provider behavior change (generated guide text differs only as a consequence of less source text
   when a selection is explicitly active). No Chandra/Mistral/Gemini/model/provider/cloud call. No direct `clean.md`
   write (still via `JobManager.save_clean_md`). Existing `page_selections` page-range extraction unchanged (regression:
-  `test_page_selections.py` 24/24). Chandra remains blocked by its own live-validation gate. **Slice 81 is NOT
-  committed.**
+  `test_page_selections.py` 24/24). Chandra remains blocked by its own live-validation gate.
 
 ### Prior position (Slice 80 — committed & merged)
 
@@ -210,11 +260,11 @@
 - Slice 76 changed no API route, no job artifact writer, no `clean.md`, no frontend/UI, no export, no extraction/OCR
   routing, no render/prompt/provider/model/cloud behavior, and no visual-pilot behavior.
 
-### Likely next slices after Slice 81 (documentation only)
-- Slice 82 — Builder UI for per-attachment page/slide exclusions (save/load `material_page_selections`)
-- Slice 83 — Apply exclusions to visual/table manifests
+### Likely next slices after Slice 82 (documentation only)
+- Slice 83 — Builder UI for per-attachment page/slide exclusions (save/load `material_page_selections`)
 - Slice 84 — Full non-table figure inclusion planner
-- Slice 85 — Table reconstruction/simplification policy core
+- Slice 85 — Table reconstruction/simplification policy core (introduces a real table manifest; then apply the
+  Slice 82 page filter to it via `material_selection_table_manifest_not_present` → real filtering)
 - Slice 86 — Table reconstruction prompt integration or E2E material coverage validation
 
 ---
