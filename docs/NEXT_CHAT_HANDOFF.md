@@ -6,33 +6,46 @@
 > stable overview see `PROJECT_CONTEXT.md`; canonical brief is `../CLAUDE.md`.
 
 ## Current position
-- **Working tree:** **Slice 78 (page/slide inclusion-exclusion pure model) — UNCOMMITTED (per instruction)** on branch
-  `slice78-page-slide-selection-model` (branched from fresh trunk after Slice 77 was committed/merged/pushed). Slice 77
-  is now trunk commit `3ebfe54`.
-  - **Purpose:** add the pure, deterministic model for representing user-controlled page/slide inclusion and exclusion
-    per attachment. This is the next Full Material Coverage foundation slice after Slice 77 persisted
-    `source_coverage_report.json`.
-  - **What changed:** new stdlib-only `pipeline/page_selection_model.py` plus synthetic tests
-    `test_scripts/test_page_selection_model.py`. No production wiring.
-  - **Public API:** `normalize_page_selection(selection, *, page_count=None)` → `{version, mode, include_pages,
-    exclude_pages, warnings}`; `apply_page_selection(page_numbers, selection)` → `{included_pages, excluded_pages,
-    effective_mode, warnings}`; `summarize_page_selection(selection, *, page_count=None)` → counts only.
-  - **Model rules:** `mode ∈ {all, include, exclude}`; pages are positive 1-based integers, deduplicated and sorted;
-    invalid/out-of-range pages drop with closed warnings; unknown mode degrades to `all`; empty include in `include`
-    mode yields an empty included set. Warning tokens: `selection_missing`, `selection_malformed`, `mode_unknown`,
-    `page_invalid`, `page_out_of_range`, `page_count_invalid`, `include_empty`, `exclude_overlaps_include`.
-  - **Safety:** stdlib-only, deterministic, degrade-never-fail; never raises and copies no filenames, paths, titles,
-    document/OCR/table text, captions, image refs, image bytes, base64/data URI, provider payloads, tokens, raw argv,
-    sockets, model/mmproj/executable paths, URLs, or raw exception messages.
-  - **Scope (pure core only):** no API route, no request/job-manifest wiring, no job execution wiring, no
-    extraction/OCR routing change, no visual manifest behavior change, no render/export change, no frontend/UI, no
-    prompt change, no provider/model/cloud call, no Chandra/Mistral/Gemini integration, no `clean.md` write, and no
-    visual-pilot selection/ranking/classification/cap/default/two-key-gate/caption behavior change.
-  - **Next likely slices (do not implement in Slice 78):** Slice 79 persist page/slide inclusion-exclusion with job
-    requests; Slice 80 Builder UI; Slice 81 apply exclusions to extraction/content planning; Slice 82 apply exclusions
-    to visual/table manifests; Slice 83 full non-table figure inclusion planner; Slice 84 table
-    reconstruction/simplification policy core; Slice 85 table reconstruction prompt integration or E2E material coverage
-    validation.
+- **Working tree:** **Slice 79 (persist page/slide selection with job requests) — UNCOMMITTED (per instruction)** on
+  branch `slice79-page-selection-request-persistence` (branched from fresh trunk after Slice 78 was
+  committed/merged/pushed). Slice 78 is now trunk commit `ee04f55`.
+  - **Purpose:** persist the Slice 78 normalized page/slide inclusion-exclusion model with job requests/manifests so
+    later slices can apply it to extraction/content planning, visual/table manifests, and Builder UI. It is NOT applied
+    to anything yet.
+  - **Persisted field:** new top-level `material_page_selection` on `LLMJobRequest`, holding the Slice 78 normalized
+    shape `{version, mode, include_pages, exclude_pages, warnings}`. **Separate** from the existing load-bearing,
+    filename-keyed `page_selections` PDF page-range field (which still drives extraction and is unchanged). Single
+    top-level model chosen for the smallest safe change; per-attachment `material_page_selections` mapping (using safe
+    indices/IDs, never filenames) is the documented next step.
+  - **What changed:** `api/server.py` (field + `_normalize_material_page_selection`/`_safe_material_page_selection`
+    helpers; wired into the JSON handler, the multipart `_parse_llm_request` branch, the retry path, and both
+    `job_response`/ask-context echoes; imports `normalize_page_selection`) and `pipeline/run_llm_job.py` (new param
+    persisted in the `Job.create` manifest). New `test_scripts/test_page_selection_request_persistence.py`.
+  - **Both request paths wired + tested** (JSON body and multipart-with-attachments), per the permanent "wire new
+    `LLMJobRequest` fields into both paths" rule.
+  - **Behaviour:** absent ⇒ default `mode: "all"`, no warnings, job output byte-identical (only an extra safe manifest
+    key). Degrade-never-fail — malformed *content* never 400s (unlike `page_selections`): unknown mode → `all` +
+    `mode_unknown`; bad pages dropped + `selection_malformed`/`page_invalid`. Retry re-normalizes and preserves it.
+    Existing `page_selections` behaviour preserved (verified by unchanged `test_page_selections.py`).
+  - **Safety:** persisted/echoed model carries only version, mode, sorted/deduped positive 1-based ints, and closed
+    warnings — no filenames, paths, document/OCR/table text, captions, image refs/bytes, base64/data URI, provider
+    payloads, tokens, raw argv, sockets, model/mmproj/executable paths, URLs, or raw exception messages (hostile-canary
+    tested over manifest + response).
+  - **Scope:** no frontend/UI; model applied to nothing (no extraction/OCR routing, content/guide, visual manifest,
+    render, export, prompt change); no visual-pilot behaviour change; no Chandra/Mistral/Gemini/model/provider/cloud
+    call; no direct `clean.md` write (still via `JobManager.save_clean_md`).
+  - **Next likely slices (do not implement in Slice 79):** per-attachment `material_page_selections` mapping; Slice 80
+    Builder UI; Slice 81 apply exclusions to extraction/content planning; Slice 82 apply exclusions to visual/table
+    manifests; Slice 83 full non-table figure inclusion planner; Slice 84 table reconstruction/simplification policy
+    core; Slice 85 table reconstruction prompt integration or E2E material coverage validation.
+
+### Prior position (Slice 78 — committed & merged)
+- **Slice 78 (page/slide inclusion-exclusion pure model) — COMMITTED `ee04f55` + MERGED to `chrome-renderer-v1`
+  (fast-forward) + PUSHED** on branch `slice78-page-slide-selection-model`. It added stdlib-only
+  `pipeline/page_selection_model.py` (`normalize_page_selection`, `apply_page_selection`, `summarize_page_selection`)
+  plus synthetic tests `test_scripts/test_page_selection_model.py`. Pure/unwired: no API route, no request/job-manifest
+  wiring, no extraction/OCR, no visual manifest, no render/export, no frontend/UI, no prompt, no provider/model/cloud
+  call, no `clean.md`, and no visual-pilot behavior changed.
 
 ### Prior position (Slice 77 — committed & merged)
 - **Slice 77 (source coverage report artifact writer) — COMMITTED `3ebfe54` + MERGED to `chrome-renderer-v1`

@@ -62,6 +62,7 @@ def run_llm_job(
     config: LLMConfig | None = None,
     attachments: list[AttachmentSource] | None = None,
     page_selections: dict[str, list[list[int]]] | None = None,
+    material_page_selection: dict[str, Any] | None = None,
     enable_visual_references: bool = False,
 ) -> Job:
     resolved_config = config or LLMConfig.from_env()
@@ -84,6 +85,14 @@ def run_llm_job(
             # matching PDF attachments are restricted to the selected original
             # pages. Empty / absent => all pages => unchanged behaviour.
             "page_selections": page_selections or {},
+            # Slice 79 (Full Material Coverage): normalized page/slide
+            # inclusion-exclusion model (Slice 78 page_selection_model shape),
+            # already normalized at the API handler. Persisted so a future
+            # retry/rerender and later application slices preserve it. SEPARATE from
+            # the page_selections PDF page-range field above and consumed by NOTHING
+            # yet — no extraction/content/visual/render/export/prompt change. Absent
+            # => {} => default "all" resolved by the safe reader on read.
+            "material_page_selection": material_page_selection or {},
             # Slice 55: per-job opt-in for the off-by-default visual markdown image
             # pilot. Persisted so the pilot (apply_visual_markdown_pilot, read in
             # run_raw_markdown_pipeline) can AND it with the global env master

@@ -5,11 +5,49 @@
 
 ---
 
-## Slice 78 — **Page/slide inclusion-exclusion pure model**, on `slice78-page-slide-selection-model`. **NOT COMMITTED.**
+## Slice 79 — **Persist page/slide selection with job requests**, on `slice79-page-selection-request-persistence`. **NOT COMMITTED.**
 
-- **Next Full Material Coverage foundation slice.** Slice 77 was committed `3ebfe54`, fast-forward merged, and pushed to
-  trunk on `chrome-renderer-v1` (it persisted `source_coverage_report.json` as a safe exact-name artifact). Slice 78
-  adds the pure, deterministic model for representing user-controlled page/slide inclusion and exclusion per attachment.
+- **Next Full Material Coverage foundation slice.** Slice 78 was committed `ee04f55`, fast-forward merged, and pushed to
+  trunk on `chrome-renderer-v1` (it added the pure page/slide inclusion-exclusion model). Slice 79 persists that
+  normalized model with job requests/manifests so later slices can apply it to extraction/content planning, visual/table
+  manifests, and Builder UI. It is still NOT applied to anything yet.
+- **Persisted field:** new top-level `material_page_selection` on `LLMJobRequest` — the Slice 78 normalized shape
+  `{version, mode, include_pages, exclude_pages, warnings}`. This is a **new, future-facing** field, deliberately
+  SEPARATE from the existing load-bearing, filename-keyed `page_selections` PDF page-range field (which still drives
+  extraction and is unchanged). A single top-level model was chosen for the smallest safe change; per-attachment mapping
+  (`material_page_selections`) is documented as the next step.
+- **What changed:** `api/server.py` (new `LLMJobRequest.material_page_selection` field; `_normalize_material_page_selection`
+  + `_safe_material_page_selection` helpers; wired into the JSON handler, the multipart `_parse_llm_request` branch, the
+  retry path, and both `job_response`/ask-context echoes; imports `normalize_page_selection`) and `pipeline/run_llm_job.py`
+  (new `material_page_selection` param persisted in the `Job.create({...})` manifest). New test
+  `test_scripts/test_page_selection_request_persistence.py`.
+- **Both request-construction paths wired + tested.** Per the permanent rule, the field is parsed on BOTH the JSON body
+  path and the multipart-with-attachments path (`_parse_llm_request`), and both are exercised in the test.
+- **Absent field ⇒ byte-identical output.** Absent/None normalizes to a clean default `mode: "all"` with no warnings;
+  job artifacts are unchanged (only an extra safe manifest key is stored). Existing `page_selections` behaviour
+  (normalization, 400 on bad shapes, manifest persistence, retry round-trip) is preserved — covered by the unchanged
+  `test_scripts/test_page_selections.py` (24/24).
+- **Degrade-never-fail.** Unlike `_normalize_page_selections` (which 400s), `material_page_selection` never raises a 400
+  on malformed *content*: unknown mode → `all` + `mode_unknown`; bad page lists → dropped + `selection_malformed`/
+  `page_invalid`. Multipart bad-JSON falls back to the default.
+- **Safety.** The persisted/echoed model carries only `version`, `mode ∈ {all, include, exclude}`, sorted/deduped
+  positive 1-based page integers, and closed-vocabulary warnings. No filenames, paths, document text, OCR text,
+  captions, table text, image refs/bytes, base64/data URI, provider payloads, tokens, raw argv, sockets,
+  model/mmproj/executable paths, URLs, or raw exception messages — verified with hostile-canary tests over the manifest
+  and the response.
+- **Scope boundaries.** No frontend/UI. The model is NOT applied to extraction/OCR routing, content/guide generation,
+  visual manifest, render, export, or prompts. No visual-pilot selection/ranking/classification/cap/default/
+  two-key-gate/caption change. No Chandra/Mistral/Gemini/model/provider/cloud call. No direct `clean.md` write
+  (all `clean.md` writes still go through `JobManager.save_clean_md`). Page exclusion application, all-figures planner,
+  and table reconstruction remain documented future direction only. Chandra remains blocked by its own
+  live-validation gate. **Slice 79 is NOT committed.**
+
+### Prior position (Slice 78 — committed & merged)
+
+- **Page/slide inclusion-exclusion pure model**, on `slice78-page-slide-selection-model`. **COMMITTED `ee04f55` +
+  MERGED to `chrome-renderer-v1` (fast-forward) + PUSHED.**
+- Slice 78 added the pure, deterministic model for representing user-controlled page/slide inclusion and exclusion per
+  attachment.
 - **What changed:** new stdlib-only module `pipeline/page_selection_model.py` plus synthetic tests
   `test_scripts/test_page_selection_model.py`. No production wiring.
 - **Public API:** `normalize_page_selection(selection, *, page_count=None)`,
@@ -34,10 +72,9 @@
   extraction/OCR routing change, no visual manifest behavior change, no render/export change, no frontend/UI, no prompt
   change, no provider/model/cloud call, no Chandra/Mistral/Gemini integration, and no `clean.md` write. No visual-pilot
   selection/ranking/classification/cap/default/two-key-gate/caption behavior change.
-- **Future slices may** persist this model with job requests, expose Builder UI controls, apply it to
-  extraction/content planning, apply it to visual/table manifests, and later plan all useful non-table figures plus
-  table reconstruction/simplification. Chandra remains blocked by its own live-validation gate. **Slice 78 is NOT
-  committed.**
+- **Future slices may** persist this model with job requests (now done — Slice 79), expose Builder UI controls, apply
+  it to extraction/content planning, apply it to visual/table manifests, and later plan all useful non-table figures
+  plus table reconstruction/simplification. Chandra remains blocked by its own live-validation gate.
 
 ### Prior position (Slice 77 — committed & merged)
 
@@ -83,8 +120,8 @@
 - Slice 76 changed no API route, no job artifact writer, no `clean.md`, no frontend/UI, no export, no extraction/OCR
   routing, no render/prompt/provider/model/cloud behavior, and no visual-pilot behavior.
 
-### Likely next slices after Slice 78 (documentation only)
-- Slice 79 — Persist page/slide inclusion-exclusion with job requests
+### Likely next slices after Slice 79 (documentation only)
+- Slice 79b/80 — Per-attachment `material_page_selections` mapping (safe indices/IDs, not filenames)
 - Slice 80 — Builder UI for per-attachment page/slide exclusions
 - Slice 81 — Apply exclusions to extraction/content planning
 - Slice 82 — Apply exclusions to visual/table manifests

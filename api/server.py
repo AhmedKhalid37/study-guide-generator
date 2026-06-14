@@ -65,6 +65,7 @@ from pipeline.orchestrator import (
     OUTPUT_DEPTH_VALUES,
     generate_study_guide,
 )
+from pipeline.page_selection_model import normalize_page_selection
 from pipeline import provider_settings_store
 from pipeline.provider_config import (
     build_provider_config,
@@ -243,6 +244,15 @@ class LLMJobRequest(BaseModel):
     # error, mirroring how include_sections is handled on the multipart path).
     # PERSISTED ONLY this slice — _extract_pdf still ignores it (no page filtering).
     page_selections: dict[str, Any] = {}
+    # Slice 79 (Full Material Coverage foundation): optional normalized page/slide
+    # inclusion-exclusion model (Slice 78 page_selection_model shape:
+    # {version, mode, include_pages, exclude_pages, warnings}). This is a NEW,
+    # future-facing field — deliberately SEPARATE from the load-bearing,
+    # filename-keyed page_selections PDF page-range field above, which still drives
+    # extraction. Normalized + persisted on the job this slice; NOT yet applied to
+    # extraction, content, visuals/tables, render, export, or prompts. Absent/None
+    # ⇒ default normalized "all" ⇒ output byte-identical to current behaviour.
+    material_page_selection: dict[str, Any] | None = None
     # Slice 55: per-job opt-in for the off-by-default visual markdown image pilot.
     # This is ONLY the per-job half of the gate — the global
     # GUIDEFORGE_ENABLE_VISUAL_MARKDOWN_IMAGE_PILOT master switch must ALSO be on for
@@ -1066,6 +1076,9 @@ def get_ask_job_context(job_id: str) -> dict[str, Any]:
         "attachments": _safe_attachment_metadata(manifest.get("attachments", [])),
         "attachment_summary": _attachment_summary(manifest),
         "page_selections": _safe_page_selections(manifest.get("page_selections")),
+        "material_page_selection": _safe_material_page_selection(
+            manifest.get("material_page_selection")
+        ),
         "readiness": {
             "status": "ready" if ready else "not_ready",
             "ready": ready,
@@ -1945,6 +1958,11 @@ async def create_llm_job(request: Request) -> dict[str, Any]:
     # Normalize the optional PDF page selection up front (raises 400 on bad shapes).
     # Persisted on the job for future rerender/retry; extraction ignores it (Slice 3).
     page_selections = _normalize_page_selections(llm_request.page_selections)
+    # Slice 79: normalize + persist the Full Material Coverage page/slide selection.
+    # Degrade-never-fail (never 400s); persisted only, not yet applied anywhere.
+    material_page_selection = _normalize_material_page_selection(
+        llm_request.material_page_selection
+    )
     folder_target = _resolve_folder_target(llm_request.folder_id)
     # Prepend a "Required Outline" directive into the source so it works with any
     # style (the {source} slot is the one injection point every template shares).
@@ -1997,6 +2015,7 @@ async def create_llm_job(request: Request) -> dict[str, Any]:
             config=config,
             attachments=attachments,
             page_selections=page_selections,
+            material_page_selection=material_page_selection,
             enable_visual_references=llm_request.enable_visual_references,
         )
     except MissingLLMConfigError as exc:
@@ -2404,6 +2423,13 @@ def retry_failed_job(job_id: str) -> dict[str, Any]:
         # request reproducible for the future page-filtering slice.
         page_selections = _normalize_page_selections(manifest.get("page_selections"))
         job.update(page_selections=page_selections)
+        # Slice 79: preserve the Full Material Coverage selection across a retry.
+        # Re-normalize the stored value and write it back so the manifest stays
+        # canonical even if it predates this field. Still consumed by nothing.
+        material_page_selection = _safe_material_page_selection(
+            manifest.get("material_page_selection")
+        )
+        job.update(material_page_selection=material_page_selection)
         # Reproduce the generator preset the job was created with, so a retry rebuilds
         # through the same preset system prompt + tuned sampling params (not the default
         # prompt path). If the stored preset id no longer exists (e.g. removed since the
@@ -3100,6 +3126,11 @@ def job_response(job: Job) -> dict[str, Any]:
         # Echo the stored PDF page selection (Slice 3). Already normalized + bounded
         # on write; default {} (= all pages). Lets the UI/tests confirm persistence.
         "page_selections": _safe_page_selections(manifest.get("page_selections")),
+        # Echo the stored Full Material Coverage selection (Slice 79). Normalized on
+        # write; default mode "all". Persisted only — not applied to extraction yet.
+        "material_page_selection": _safe_material_page_selection(
+            manifest.get("material_page_selection")
+        ),
         **_outline_summary(manifest),
     }
     if manifest.get("error"):
@@ -3426,6 +3457,20 @@ async def _parse_llm_request(request: Request) -> tuple[LLMJobRequest, list[Atta
                 parsed_selections = None
             if isinstance(parsed_selections, dict):
                 data["page_selections"] = parsed_selections
+        # Slice 79: the Full Material Coverage page/slide selection rides as a JSON
+        # string in multipart, exactly like page_selections above (this is the path
+        # the Builder uses once it has attachments). Bad JSON / non-dict falls back
+        # to the default; the value is normalized by _normalize_material_page_selection
+        # (degrade-never-fail) at the handler. Wired here so the field is NOT silently
+        # dropped on the attachments path (DECISIONS.md "both request paths" rule).
+        material_selection_raw = _form_text(form, "material_page_selection")
+        if material_selection_raw:
+            try:
+                parsed_material = json.loads(material_selection_raw)
+            except json.JSONDecodeError:
+                parsed_material = None
+            if isinstance(parsed_material, dict):
+                data["material_page_selection"] = parsed_material
         uploads = [
             value
             for key, value in form.multi_items()
@@ -3782,6 +3827,35 @@ def _safe_page_selections(raw: Any) -> dict[str, list[list[int]]]:
         if pairs:
             safe[filename] = pairs
     return safe
+
+
+def _normalize_material_page_selection(raw: Any) -> dict[str, Any]:
+    """Normalize the optional Full Material Coverage page/slide selection (Slice 79).
+
+    Degrade-never-fail via the pure Slice 78 ``page_selection_model``: malformed
+    input returns a safe normalized model with closed-vocabulary warning tokens
+    instead of raising (unlike :func:`_normalize_page_selections`). Absent /
+    ``None`` ⇒ a clean default ``mode: "all"`` with no warnings, so an unset field
+    surfaces nothing extra. The result is the persisted shape ``{version, mode,
+    include_pages, exclude_pages, warnings}``.
+
+    Slice 79 NOTE: this is stored on the job and round-tripped through retry, but
+    NOTHING consumes it yet — no extraction/content/visual/render/export change.
+    """
+    if raw is None:
+        return normalize_page_selection({"mode": "all"})
+    return normalize_page_selection(raw)
+
+
+def _safe_material_page_selection(raw: Any) -> dict[str, Any]:
+    """Defensive read of the stored material page selection for API responses.
+
+    Re-runs the stored value through the pure Slice 78 model so the echoed shape is
+    always safe and closed-vocabulary regardless of how the manifest value was
+    produced. Absent / malformed ⇒ default normalized ``"all"``."""
+    if not isinstance(raw, dict):
+        return normalize_page_selection({"mode": "all"})
+    return normalize_page_selection(raw)
 
 
 def _validate_provider_model(provider: str, model: str) -> None:

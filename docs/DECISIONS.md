@@ -3573,3 +3573,45 @@ feed both generated content and extracted visuals/tables — it is upstream of, 
 selection/ranking/classification/caps/defaults/two-key gating/captions. It deliberately does not touch any of that
 behavior; it is a coverage-control primitive, not a change to how the existing visual pilot picks or inserts assets.
 Chandra remains blocked by its own live-validation gate. **Slice 78 is NOT committed.**
+
+## Slice 79 — persist the page/slide selection with job requests before applying it (2026-06-14)
+Slice 78 was committed `ee04f55`, fast-forward merged, and pushed to trunk `chrome-renderer-v1`; it added the pure
+page/slide inclusion-exclusion model. Slice 79 persists that normalized model with job requests/manifests via a new
+top-level `material_page_selection` field on `LLMJobRequest`, normalized through `normalize_page_selection` and stored in
+the job manifest (and round-tripped through retry). It is applied to nothing yet.
+
+**Why persistence comes before applying page exclusions.** Applying exclusions touches extraction, content planning, and
+visual/table manifests — each a behavioral and privacy decision. Persisting the normalized intent first gives later
+slices (Builder UI load/save, extraction/content application, visual/table application) a stable, tested contract to
+build on, while keeping job output byte-identical today. It also lets the Builder round-trip and retry/rerender preserve
+user intent before any of that intent changes a guide.
+
+**Why a new field separate from `page_selections`.** There is already a load-bearing, filename-keyed `page_selections`
+field (`{filename: [[start, end], ...]}`) that drives PDF page-range extraction, is validated by
+`_normalize_page_selections` (which 400s on bad shapes), and is wired through both request paths and retry. Reusing or
+re-normalizing it would risk changing current extraction behavior. Slice 79 therefore adds a clearly named,
+future-facing `material_page_selection` carrying the Slice 78 normalized shape, leaving `page_selections` entirely
+unchanged (verified by the unchanged `test_page_selections.py`). A single top-level model is the smallest safe shape
+that can persist include/exclude intent now; a per-attachment `material_page_selections` mapping is deferred and, when
+added, will key on safe indices/internal IDs — never filenames or paths.
+
+**Why both JSON and multipart request paths must be wired.** `POST /api/jobs/llm` has two request-construction paths
+that do NOT share parsing: a JSON body path and a multipart/form-data path used when the request carries attachments.
+Per the standing rule (and prior page_selections experience), a field added to only the JSON path is silently dropped
+whenever a generation has an attachment. `material_page_selection` is parsed in the multipart `_parse_llm_request`
+branch (as a JSON string, like `page_selections`/`include_sections`) as well as the JSON path, and both are exercised in
+`test_page_selection_request_persistence.py`.
+
+**Why the persisted schema avoids filenames/paths and uses normalized safe page integers.** Coverage intent only needs a
+mode plus sorted/deduped positive 1-based page integers. The persisted/echoed model is the Slice 78 closed-vocabulary
+shape and never carries filenames, paths, document/OCR/table text, captions, image refs/bytes, base64/data URI, provider
+payloads, tokens, raw argv, sockets, model/mmproj/executable paths, URLs, or raw exception strings — proven with
+hostile-canary tests over both the manifest and the API response. Unlike `_normalize_page_selections`, the material
+field degrades-never-fails on malformed *content* (no 400) so an advisory coverage knob can never block job creation.
+
+**Why UI/application is deferred.** Surfacing controls in the Builder and actually applying exclusions to
+extraction/content/visuals/tables are separate product decisions with their own validation needs. Slice 79 keeps the
+surface minimal: it stores and echoes the normalized model and preserves it across retry, and changes no extraction/OCR
+routing, content/guide generation, visual manifest, render, export, prompt, provider/model/cloud behavior, or
+visual-pilot selection/ranking/classification/cap/default/two-key-gate/caption behavior, and writes no `clean.md`
+directly. Chandra remains blocked by its own live-validation gate. **Slice 79 is NOT committed.**
