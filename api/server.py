@@ -1497,9 +1497,15 @@ def export_bundle(request: BundleRequest) -> Response:
     if len(request.job_ids) > MAX_BUNDLE_JOBS:
         raise HTTPException(status_code=400, detail=f"At most {MAX_BUNDLE_JOBS} guides per bundle.")
     selectors = _normalize_export_selectors(request.artifacts)
-    # Slice 56: detect the single safe visual-pilot PNG referenced by a job's clean
-    # Markdown so it can ride along in the bundle (see the per-job loop below).
-    from pipeline.visual_markdown_insertion import find_exportable_visual_pilot_assets
+    # Slice 56/91: detect the safe visual PNGs referenced by a job's clean Markdown so
+    # they can ride along in the bundle (see the per-job loop below). Slice 91 switches
+    # this to the uncapped (only ceiling-bounded) discovery so a guide produced by the
+    # Slice 90 full non-table figure insertion path carries ALL its referenced figures,
+    # not just the legacy top two.
+    from pipeline.visual_markdown_insertion import (
+        _FULL_INSERTION_HARD_CEILING,
+        find_all_exportable_visual_assets,
+    )
 
     buffer = io.BytesIO()
     manifest_jobs: list[dict[str, Any]] = []
@@ -1547,23 +1553,24 @@ def export_bundle(request: BundleRequest) -> Response:
                 if path.exists() and path.is_file():
                     archive.write(path, f"{base_dir}/{artifact_name}")
                     visual_advisory_included.append(artifact_name)
-            # Slice 56/62: the visual-pilot PNG(s) referenced by this job's clean
-            # Markdown ride along so exported Markdown/HTML stays portable. Slice 62
-            # raised the pilot from one figure to a capped few (hard upper bound 2), so
-            # ALL referenced pilot PNGs ride along — but only those the pilot actually
-            # referenced, each a safe job-local assets/<slug>.png whose file resolves
-            # INSIDE the job dir (realpath containment, regular file). Read-only; never
-            # the whole assets/ dir, never an unreferenced or cropped extra, never image
-            # bytes/paths in logs. Like the advisory ride-alongs they do NOT count toward
-            # total_included, so they can never by themselves satisfy the "at least one
-            # requested artifact" gate. Any problem is skipped calmly and export
-            # continues. The recorded values are safe relative refs only — no
-            # absolute/local filesystem path.
+            # Slice 56/62/91: the visual PNG(s) referenced by this job's clean Markdown
+            # ride along so exported Markdown/HTML/DOCX stays portable. Slice 91 drops
+            # the old cap-2 ride-along: the bundle now carries EVERY referenced figure
+            # (Slice 90 full insertion can place many), bounded only by the same
+            # _FULL_INSERTION_HARD_CEILING that guards a pathological manifest. Still
+            # only those the guide actually referenced, each a safe job-local
+            # assets/<slug>.png whose file resolves INSIDE the job dir (realpath
+            # containment, regular file). Read-only; never the whole assets/ dir, never
+            # an unreferenced or cropped extra, never image bytes/paths in logs. Like the
+            # advisory ride-alongs they do NOT count toward total_included, so they can
+            # never by themselves satisfy the "at least one requested artifact" gate. Any
+            # problem is skipped calmly and export continues. The recorded values are
+            # safe relative refs only — no absolute/local filesystem path.
             visual_pilot_assets_included: list[str] = []
             try:
                 job_dir = job.dir.resolve()
-                for asset_ref in find_exportable_visual_pilot_assets(job):
-                    if len(visual_pilot_assets_included) >= 2:
+                for asset_ref in find_all_exportable_visual_assets(job):
+                    if len(visual_pilot_assets_included) >= _FULL_INSERTION_HARD_CEILING:
                         break
                     asset_path = (job.dir / asset_ref).resolve()
                     if asset_path.is_relative_to(job_dir) and asset_path.is_file():

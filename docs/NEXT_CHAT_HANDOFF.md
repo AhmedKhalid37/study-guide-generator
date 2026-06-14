@@ -6,9 +6,32 @@
 > stable overview see `PROJECT_CONTEXT.md`; canonical brief is `../CLAUDE.md`.
 
 ## Current position
-- **Working tree:** **Slice 90 (Full non-table figure insertion v2) — UNCOMMITTED (per instruction)** on branch
-  `slice90-full-non-table-figure-insertion-v2` (branched from fresh trunk after Slice 89 was committed/merged/pushed).
-  Slice 89 is now trunk commit `b879590`.
+- **Working tree:** **Slice 91 (Full figure insertion export/render validation) — UNCOMMITTED (per instruction)** on branch
+  `slice91-full-figure-render-export-validation` (branched from fresh trunk after Slice 90 was committed/merged/pushed).
+  **Slice 90 is now trunk commit `096148f`** (full non-table figure insertion v2).
+  - **Purpose:** validate + harden the render/export asset path now that Slice 90 can place *many* safe
+    `assets/<slug>.png` figure refs into a guide. Proves Markdown → HTML → PDF → DOCX → export-ZIP all carry many inserted
+    figures, and removes the one load-bearing cap-2.
+  - **The one load-bearing cap-2 was the export bundle ride-along.** HTML/PDF/DOCX renderers were already uncapped (they
+    render/embed every referenced `assets/<slug>.png` from the job dir; DOCX leaves a safe `[image missing: …]` marker for
+    an absent file) — no renderer change needed. Fix: added `find_all_exportable_visual_assets(job, *, limit=…)` (uncapped,
+    only `_FULL_INSERTION_HARD_CEILING`-bounded, driven purely by what `clean.md` references, same hard safety checks); the
+    legacy `find_exportable_visual_pilot_assets` now delegates with `limit=_HARD_MAX_IMAGES` (byte-identical legacy
+    behavior); `api/server.py` export bundle uses the uncapped helper and the `>= 2` break is replaced by the ceiling guard.
+    Manifest keeps `visual_pilot_asset` (first) + `visual_pilot_assets` (full list); figures never inflate `files_included`.
+  - **No change to:** figure selection/planning semantics, material page-selection, visual-manifest filtering,
+    prompt/provider/model/cloud, UI, table policy (still deferred), or direct `clean.md` writes.
+  - **Files:** `pipeline/visual_markdown_insertion.py`, `api/server.py`,
+    `test_scripts/test_full_visual_render_export_validation.py` (new), three docs.
+  - **Validation:** new test 22/0 host (DOCX+bundle skip), **41/0 in Docker**; legacy export asset 9/0 host / 28/0 Docker;
+    full insertion v2 81/0; planner 179/0, plan artifact 64/0, manifest 65/0, coverage E2E 79/0, caption polish 132/0,
+    multifigure 63/0, quality gate 50/0; `compileall` clean; `git diff --check` clean; Docker build + health +
+    `smoke_release.py` 29/0. **NOT committed.**
+  - **Next:** table reconstruction is the next phase (still deferred); broad multi-figure export was this slice.
+
+### Prior position (Slice 90 — committed & merged)
+- **Slice 90 (Full non-table figure insertion v2)** is trunk commit `096148f` (ff-merged + pushed). Branched from fresh
+  trunk after Slice 89 (`b879590`).
   - **Purpose:** turn *planned* non-table visuals into *inserted* guide content. When visuals are enabled it inserts **all
     useful planned non-table figures from included pages** (deterministic Slice 83 safety filtering), not the legacy
     top-1/top-2 cap. **Not** "insert every crop": table-like, decorative/logo/header/background, tiny, blank, unsafe, and
@@ -34,8 +57,9 @@
   - **Validation:** `test_full_visual_insertion_v2.py` 81/0; reran inclusion planner 179/0, plan artifact 64/0, manifest
     65/0, manifest-planning 47/0, coverage E2E 79/0, pilot trace 56/0, caption polish 132/0, multifigure 63/0, quality gate
     50/0, export asset 9/0, table policy 145/0, legacy insertion 53/0; `compileall api pipeline test_scripts` clean; Docker
-    build + health + `smoke_release.py` 29/0 (default output unchanged). **NOT committed.**
-  - **Next:** Slice 91 — validate PDF/DOCX/HTML/export behavior with many figures (incl. the still-capped export ride-along).
+    build + health + `smoke_release.py` 29/0 (default output unchanged). **Committed `096148f` + ff-merged + pushed.**
+  - **Followed by:** Slice 91 (above) — validated PDF/DOCX/HTML/export with many figures and removed the export ride-along
+    cap-2.
 
 ### Prior position (Slice 89 — committed & merged)
 - **Working tree:** **Slice 89 (Full Material Coverage controls and warnings) — COMMITTED `b879590` + MERGED (ff) + PUSHED**

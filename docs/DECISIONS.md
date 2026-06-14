@@ -4110,3 +4110,35 @@ or multi-job ZIP export with many figures — and the export ride-along helper i
 guide with N>2 figures would currently under-include assets. Rather than widen export/render code casually (load-bearing,
 tuned), that whole surface — many-figure render fidelity, DOCX image embedding, and the export asset cap — is reserved for
 Slice 91. Chandra remains blocked by its own live-validation gate.
+
+## Slice 91 — full figure insertion export/render validation (and removing the export cap-2)
+
+**Why render/export validation follows full insertion.** Slice 90 made full non-table figure insertion *possible* (a guide
+can now reference many `assets/<slug>.png` figures) but deliberately did not touch the render/export surface, which is
+load-bearing and tuned. Validating that surface as its own slice keeps the behavior change (insertion) and the fidelity
+change (export/render carrying many figures) separately reviewable, and means the insertion slice could not silently
+regress PDF/DOCX/HTML/ZIP output. The validation found exactly one load-bearing gap — the export bundle ride-along cap —
+and proved the renderers were already safe, rather than rewriting them speculatively.
+
+**Why all safe referenced assets must ride along, not the old top-2 pilot cap.** The export ride-along exists so exported
+Markdown/HTML/DOCX stays portable — every image the guide *references* must travel with it. The legacy cap of 2
+(`_HARD_MAX_IMAGES`) matched the legacy pilot, which only ever inserted ≤2 figures, so the cap was invisible. Once full
+insertion can place many figures, a cap-2 ride-along would ship a guide whose later figures resolve to nothing. The fix
+drives discovery purely from what `clean.md` actually references (`find_all_exportable_visual_assets`, bounded only by the
+defensive `_FULL_INSERTION_HARD_CEILING`), which is correct for **both** paths: a legacy guide referencing ≤2 still yields
+≤2, a full-insertion guide yields all of them. The legacy helper now just delegates with `limit=_HARD_MAX_IMAGES`, so its
+behavior — and every test pinned to it — is byte-identical. The HTML/PDF/DOCX renderers needed no change: they already
+render/embed every referenced asset from the job dir and leave a safe `[image missing: assets/<slug>.png]` marker for an
+absent one.
+
+**Why only safe relative `assets/<slug>.png` refs are allowed.** The same no-leak invariant as the insertion path: an
+export must never copy or echo an absolute host path, a `..` traversal, a URL, a `data:`/base64 blob, a non-PNG, or a
+nested path. Ride-along keeps the existing fixed-shape ref validation plus realpath containment inside the job dir (symlink
+escapes rejected), and the bundle index records only the safe relative ref (never image bytes or a filesystem path). This
+makes the "carry many figures" change incapable of widening the leak surface.
+
+**Why table reconstruction remains deferred to the next phase.** Slice 91 is strictly figure render/export fidelity. Table
+reconstruction is a separate, higher-risk capability (it rebuilds source table structure rather than embedding a safe
+cropped figure ref) and stays governed by the Slice 85 table-reconstruction *policy* — extracted tables are still treated
+as non-reconstructed visuals. Bundling it into a render/export validation slice would conflate two unrelated risk profiles.
+Chandra remains blocked by its own live-validation gate.

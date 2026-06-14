@@ -1801,6 +1801,43 @@ def extract_visual_pilot_asset_refs(markdown_text: Any) -> list[str]:
     return refs
 
 
+def find_all_exportable_visual_assets(job: Any, *, limit: int = _FULL_INSERTION_HARD_CEILING) -> list[str]:
+    """Every safe job-local PNG ref this job's guide references, to ride along on export.
+
+    Slice 91: the *uncapped* (only ceiling-bounded) discovery used by the export
+    bundle so a guide produced by the Slice 90 full non-table figure insertion path
+    carries **all** its referenced figures, not just the legacy top two. It reads the
+    job's ``clean.md`` (read-only), collects every Markdown image whose target is a
+    safe ``assets/<slug>.png`` ref that really exists *inside* the job directory
+    (realpath containment, a regular file — symlink escapes are rejected),
+    de-duplicated and order-preserving. The discovery is driven purely by what the
+    guide *actually references*, so it is correct for both the legacy capped pilot (a
+    guide that references ≤2 assets still yields ≤2) and full insertion (many),
+    without ever bundling an unreferenced or cropped extra. ``limit`` is an absolute
+    defensive bound (default :data:`_FULL_INSERTION_HARD_CEILING`, 200) that only
+    guards a pathological manifest. Returns ``[]`` when there is no clean.md, no safe
+    reference, or every referenced file is missing / unsafe. Never raises and never
+    opens / reads / logs image bytes — it only confirms each file's existence and
+    containment.
+    """
+    text = _read_text(getattr(job, "clean_md", None))
+    if text is None:
+        return []
+    try:
+        bound = int(limit)
+    except (TypeError, ValueError):
+        bound = _FULL_INSERTION_HARD_CEILING
+    if bound < 0:
+        bound = 0
+    out: list[str] = []
+    for ref in extract_visual_pilot_asset_refs(text):
+        if len(out) >= bound:
+            break
+        if _asset_file_ok(job, ref):
+            out.append(ref)
+    return out
+
+
 def find_exportable_visual_pilot_assets(job: Any) -> list[str]:
     """The safe job-local pilot PNG refs to ride along in an export bundle (Slice 62).
 
@@ -1811,17 +1848,12 @@ def find_exportable_visual_pilot_assets(job: Any) -> list[str]:
     absolute safety bound. Returns ``[]`` when there is no clean.md, no safe reference,
     or every referenced file is missing / unsafe. Never raises and never opens / reads
     / logs image bytes — it only confirms each file's existence and containment.
+
+    Slice 91: this remains the *legacy capped* discovery (the export bundle now uses
+    :func:`find_all_exportable_visual_assets`); it delegates with ``limit`` pinned to
+    ``_HARD_MAX_IMAGES`` so its behavior stays byte-identical for legacy callers.
     """
-    text = _read_text(getattr(job, "clean_md", None))
-    if text is None:
-        return []
-    out: list[str] = []
-    for ref in extract_visual_pilot_asset_refs(text):
-        if _asset_file_ok(job, ref):
-            out.append(ref)
-            if len(out) >= _HARD_MAX_IMAGES:
-                break
-    return out
+    return find_all_exportable_visual_assets(job, limit=_HARD_MAX_IMAGES)
 
 
 def find_exportable_visual_pilot_asset(job: Any) -> str | None:

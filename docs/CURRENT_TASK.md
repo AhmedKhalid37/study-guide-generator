@@ -5,7 +5,51 @@
 
 ---
 
-## Slice 90 — **Full non-table figure insertion v2**, on `slice90-full-non-table-figure-insertion-v2`. **NOT COMMITTED.**
+## Slice 91 — **Full figure insertion export/render validation**, on `slice91-full-figure-render-export-validation`. **NOT COMMITTED.**
+
+- **Validates and hardens the render/export asset path for the Slice 90 full insertion mode.** Slice 90 was committed
+  `096148f`, fast-forward merged, and pushed to trunk on `chrome-renderer-v1`; it can now place *many* safe
+  `assets/<slug>.png` figure refs into a guide's `clean.md`, but broad PDF/DOCX/HTML/export fidelity was explicitly
+  deferred. Slice 91 proves a guide with many inserted figures rides through Markdown → HTML → PDF → DOCX → export-ZIP
+  safely, and fixes the one load-bearing cap.
+- **The one load-bearing cap-2 was the export bundle ride-along** (`/api/exports/bundle` in `api/server.py`, fed by
+  `find_exportable_visual_pilot_assets`, itself capped at `_HARD_MAX_IMAGES` (2), plus a redundant `>= 2` break in the
+  server loop). With full insertion enabled this would have silently dropped every referenced figure past the first two.
+  **The HTML/PDF/DOCX renderers were already uncapped** — they render/embed every referenced `assets/<slug>.png` from the
+  job dir (HTML emits one `<img>` per ref; Chromium PDF consumes that HTML; DOCX embeds each present figure and leaves a
+  safe `[image missing: assets/<slug>.png]` marker for an absent one) — so no renderer change was needed; this slice
+  proves that with focused synthetic checks.
+- **Fix (smallest safe change).** Added `find_all_exportable_visual_assets(job, *, limit=_FULL_INSERTION_HARD_CEILING)` —
+  the uncapped (only ceiling-bounded) twin of the legacy helper. Discovery is driven purely by what `clean.md` actually
+  references, so it is correct for **both** the legacy capped pilot (a guide referencing ≤2 still yields ≤2) and full
+  insertion (many), and still only rides along safe job-local `assets/<slug>.png` refs whose real file resolves *inside*
+  the job dir (realpath containment; symlink escape, absolute, `..`, URL, `data:`/base64, non-PNG, nested all rejected).
+  The legacy `find_exportable_visual_pilot_assets` now simply delegates with `limit=_HARD_MAX_IMAGES`, so legacy behavior
+  is byte-identical. The export bundle loop switched to the uncapped helper and the redundant `>= 2` break is replaced by
+  the same defensive `_FULL_INSERTION_HARD_CEILING` (200) guard. Bundle manifest keeps both the backward-compatible first-
+  ref field (`visual_pilot_asset`) and the full list (`visual_pilot_assets`); ride-along figures still never count toward
+  the requested-artifact gate (`files_included`).
+- **Files changed:** `pipeline/visual_markdown_insertion.py` (new `find_all_exportable_visual_assets`; legacy helper
+  delegates), `api/server.py` (bundle ride-along uses the uncapped helper; cap-2 removed), and
+  `test_scripts/test_full_visual_render_export_validation.py` (new), plus the three docs. **No figure selection/planning
+  semantics, material page-selection, visual-manifest filtering, prompt/provider/model/cloud, UI, table policy, or direct
+  `clean.md` write changed.**
+- **New test** `test_scripts/test_full_visual_render_export_validation.py` (synthetic temp dirs + a few fake-PNG bytes;
+  a tiny *valid* 1×1 PNG is generated at runtime for the DOCX embed check — nothing committed). Part A (pure, always runs):
+  discovers all 5 referenced figures (not 2), legacy helper still stops at 2, dedupe + deterministic order, missing
+  skipped, all-unsafe rejected, defensive ceiling holds, `limit` honoured. Part B (HTML): all 5 refs survive, one `<img>`
+  each, no leak. Part C (DOCX, skips when python-docx absent on host): embeds all 5 present, safe marker for the missing
+  one, no path leak. Part D (bundle, skips when FastAPI absent on host): all 5 ride along (not 2), missing skipped, unsafe
+  never bundled, manifest records safe relative refs only and leaks no bytes/path/url/base64.
+- **Validation:** host `test_full_visual_render_export_validation.py` 22/0 (DOCX+bundle skipped), full **41/0 in Docker**;
+  legacy export asset 9/0 host / 28/0 Docker; full insertion v2 81/0; inclusion planner 179/0, plan artifact 64/0, manifest
+  65/0, coverage E2E 79/0, caption polish 132/0, multifigure 63/0, quality gate 50/0; `compileall api pipeline test_scripts`
+  clean; `git diff --check` clean; Docker build + health + `smoke_release.py` 29/0. Chandra remains blocked by its own
+  live-validation gate. **Slice 91 is NOT committed.**
+
+---
+
+## Slice 90 — **Full non-table figure insertion v2**, on `slice90-full-non-table-figure-insertion-v2`. **COMMITTED `096148f` + MERGED (ff) + PUSHED to `chrome-renderer-v1`.**
 
 - **Moves from coverage/control into actual guide-generation behavior.** Slices 82–89 built and exposed the Full Material
   Coverage foundation (planner core, plan artifact, table-policy core, coverage E2E, Builder exclusion UI, JobDetails
@@ -45,8 +89,9 @@
   sanitized public plan, mode-off legacy, import hygiene). Reran inclusion planner 179/0, plan artifact 64/0, manifest 65/0,
   manifest-planning 47/0, coverage E2E 79/0, pilot trace 56/0, caption polish 132/0, multifigure 63/0, quality gate 50/0,
   export asset 9/0, table policy 145/0, legacy insertion 53/0. `compileall api pipeline test_scripts` clean. Docker build +
-  health + `smoke_release.py` 29/0 (default output unchanged). **Slice 91 will validate PDF/DOCX/HTML/export with many
-  figures.** Chandra remains blocked by its own live-validation gate. **Slice 90 is NOT committed.**
+  health + `smoke_release.py` 29/0 (default output unchanged). Chandra remains blocked by its own live-validation gate.
+  **Slice 90 was committed `096148f`, fast-forward merged, and pushed to `chrome-renderer-v1`. Slice 91 (above) validates
+  PDF/DOCX/HTML/export with many figures.**
 
 ---
 
