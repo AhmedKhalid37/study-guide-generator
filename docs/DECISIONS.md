@@ -4179,3 +4179,39 @@ cropped screenshot would defeat the product goal (study-friendly, reconstructed/
 headers, exam terms, units, and numeric values) and would also reintroduce the very leak/portability risks the figure path
 spent Slices 90–91 containing. Reconstruction stays a separate, higher-risk slice. Chandra remains blocked by its own
 live-validation gate.
+
+## Slice 93 — table reconstruction prompt-context integration v1 (safe guidance, not extraction)
+
+**Why prompt context follows the candidate/policy artifacts.** Slice 92 landed the deterministic, side-effect-free bridge
+(`visual_assets_manifest.json` → `table_candidates_manifest.json` → `table_reconstruction_policy.json`). Slice 93 reads
+only those two already-reviewed, already-sanitized artifacts to build a prompt context — it never re-derives table signals
+from raw extraction, never inspects a PDF/image, never OCRs, and never extracts table text. Layering prompt guidance on top
+of the stable artifacts (rather than on raw signals) keeps the detection rules, the policy decision, and the prompt surface
+in separate, independently reviewable slices, and means the prompt layer can only ever see closed tokens/ints — it is
+structurally incapable of widening the leak surface.
+
+**Why no-hallucination table guidance is required.** A table is high-value exam material but also high-risk: if the model
+is told "there is a table on page N" without a guarantee that the table's contents are in the source text, it will tend to
+invent plausible rows/columns/values. The appended block therefore states the rule explicitly and in closed language:
+reconstruct or simplify a table **only** from content already present in the provided source text, preserve the closed
+`preserve` tokens when available, and never invent rows/columns/labels/values. For `defer`/`skip_unreadable` decisions the
+guidance instead asks for an honest "table-like material was detected on page N but its contents were not readable" note,
+so the guide is truthful about what it could not recover instead of fabricating it.
+
+**Why source text remains the only allowed table content source.** The pipeline already places the normal extracted source
+text (and, where enabled, attachment text) into the prompt. That text is the only sanctioned carrier of real table content.
+The prompt context carries decisions (action, page, preserve tokens) but **no** table content, captions, OCR text, or
+filenames — so the model's only material to reconstruct from is the legitimately-extracted source already in the prompt.
+This keeps the no-leak invariant intact: the guidance block is built purely from closed tokens, page ints, and fixed
+instruction strings, and `skip_unsafe` items are excluded so an unsafe record is never even named.
+
+**Why image-only table reconstruction is still deferred.** Slice 93 deliberately stops at telling the model how to handle
+tables whose contents are in the text. Reconstructing a table that exists only as pixels (image-only / no text layer)
+requires real visual understanding (OCR or a vision model), which is a separate, higher-risk capability gated behind its
+own live validation (Chandra remains blocked by its own gate). Slice 93 explicitly instructs the model NOT to attempt this
+and to emit an honest unreadable note instead.
+
+**Why UI/display is deferred.** The guidance is an internal prompt augmentation, not a user-facing artifact. Surfacing it
+in the UI (or persisting it as a downloadable artifact) would broaden scope and add a display/serialization surface for no
+current product need; the context is built in-memory at generation time and appended to the prompt only. A later slice can
+choose to surface it if a need appears.

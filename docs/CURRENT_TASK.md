@@ -5,7 +5,50 @@
 
 ---
 
-## Slice 92 — **Table candidate manifest + reconstruction-policy artifacts**, on `slice92-table-candidate-manifest-policy-artifacts`. **NOT COMMITTED.**
+## Slice 93 — **Table reconstruction prompt-context integration v1**, on `slice93-table-reconstruction-prompt-context`. **NOT COMMITTED.**
+
+- **Uses the Slice 92 sanitized table artifacts to add safe, honest table reconstruction guidance to the guide
+  generation prompt.** Slice 92 was committed `ea3f321`, fast-forward merged, and pushed to trunk on
+  `chrome-renderer-v1` (table candidate manifest + reconstruction policy artifacts). Slice 93 turns those two
+  already-sanitized artifacts (`table_candidates_manifest.json` + `table_reconstruction_policy.json`) into a short,
+  deterministic, leak-free **prompt context** appended to the normal generation source — telling the LLM how to handle
+  table-like material safely.
+- **It does NOT** reconstruct tables from images, inspect PDFs/images, OCR, read image bytes, extract table text, call
+  any provider/model/cloud, change material page-selection or visual filtering, change render/export, change figure
+  insertion semantics, or add UI. Tables are still never treated as screenshots.
+- **No-hallucination product rule.** The appended guidance is honest and closed: reconstruct/simplify a table **only**
+  when its contents are present in the provided source text; preserve `headers`/`column_labels`/`row_labels`/
+  `exam_terms`/`numeric_values`/`units` when available; never invent rows/columns/labels/values for image-only or
+  unreadable tables; for `defer`/`skip_unreadable` tables emit an honest "table-like material was detected on page N but
+  its contents were not readable" note. `skip_unsafe` items are excluded entirely (never surfaced).
+- **New pure module:** `pipeline/table_reconstruction_prompt_context.py` — `build_table_reconstruction_prompt_context(
+  table_candidates_manifest, table_reconstruction_policy, *, max_items=None)` returns a sanitized context dict
+  (`version`, `kind`, `status`, `summary`, `prompt_block`, `items`, `warnings`). Each actionable policy item becomes a
+  prompt item with a closed `action`, positive-int `source_page` (or `None`), closed `preserve` tokens, a safe generated
+  `candidate_id` (`table_candidate_NNNN`, recovered from the manifest or synthesized), and a fixed-shape `instruction`.
+  Missing/`None`/malformed/skipped artifacts → safe `skipped` context with an empty `prompt_block`; a defensive ceiling /
+  `max_items` marks `partial`. stdlib-only; imports nothing from providers/models/OCR/renderers/FastAPI/frontend.
+- **Integration point:** `pipeline/run_llm_job.py::_attach_sources`. After the Slice 92 candidate manifest + policy are
+  written, `_build_table_prompt_block_safely(...)` builds the context and returns its `prompt_block` only when the
+  context is `completed`/`partial` **and** `prompt_item_count > 0`; the block is appended to the attached source under a
+  `## Table Reconstruction Guidance` heading. Absent/skipped/empty context ⇒ the prompt is byte-identical to before. The
+  policy writer helper now returns the policy dict so the builder reuses it (no artifact re-read). Degrade-never-fail —
+  prompt-context failure never gates generation.
+- **Files changed:** `pipeline/table_reconstruction_prompt_context.py` (new), `pipeline/run_llm_job.py` (import + one
+  variable + builder helper + safe append), `test_scripts/test_table_reconstruction_prompt_context.py` (new), plus the
+  three docs. **No table reconstruction, no OCR/PDF/image inspection, no provider/model/cloud, no render/export, no
+  figure insertion semantics, no material selection / visual filtering, no UI, and no direct `clean.md` write changed.**
+- **Validation (host):** `test_table_reconstruction_prompt_context` 108/0, `test_table_candidate_manifest` 105/0,
+  `test_table_reconstruction_policy_artifact` 39/0, `test_table_reconstruction_policy` 145/0,
+  `test_material_coverage_e2e_validation` 79/0, `test_source_coverage_report` 59/0, `test_full_visual_insertion_v2` 81/0,
+  `test_full_visual_render_export_validation` 22/0 (DOCX+bundle skip on host). `compileall` clean; `git diff --check`
+  clean. **Docker:** build + health + `smoke_release.py`. No-leak sweep clean.
+- **Next:** Slice 94 — missing diagram/table explainer core, consuming the visual inclusion plan + table artifacts.
+  Chandra remains blocked by its own live-validation gate.
+
+---
+
+## Slice 92 — **Table candidate manifest + reconstruction-policy artifacts**, on `slice92-table-candidate-manifest-policy-artifacts`. **Committed `ea3f321`, fast-forward merged + pushed to trunk `chrome-renderer-v1`.**
 
 - **Builds the missing sanitized table-candidate bridge so table reconstruction prompt integration (Slice 93/94) can
   start safely.** Slice 91 was committed `ff7bc70`, fast-forward merged, and pushed to trunk on `chrome-renderer-v1`

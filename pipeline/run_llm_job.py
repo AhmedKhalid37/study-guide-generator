@@ -31,6 +31,9 @@ from pipeline.table_candidate_manifest import write_table_candidates_manifest
 from pipeline.table_reconstruction_policy_artifact import (
     write_table_reconstruction_policy,
 )
+from pipeline.table_reconstruction_prompt_context import (
+    build_table_reconstruction_prompt_context,
+)
 from pipeline.visual_asset_extractor import (
     MAX_FIGURES_PER_JOB,
     extract_local_figures,
@@ -244,6 +247,10 @@ def _attach_sources(
     visual_page_filters: list[set[int] | None] = []
     pdf_metadata_unavailable = False
     total_chars = 0
+    # Slice 93: safe table reconstruction guidance appended to the generation source
+    # when the sanitized candidate/policy artifacts yield actionable table items.
+    # Empty by default ⇒ prompt byte-identical to prior behaviour.
+    table_prompt_block = ""
 
     for index, attachment in enumerate(attachments, start=1):
         safe_name = _safe_filename(attachment.filename, fallback=f"attachment-{index}{attachment.path.suffix}")
@@ -464,7 +471,18 @@ def _attach_sources(
         table_candidates_obj = _write_table_candidates_manifest_safely(
             job, visual_manifest_obj
         )
-        _write_table_reconstruction_policy_safely(job, table_candidates_obj)
+        table_policy_obj = _write_table_reconstruction_policy_safely(
+            job, table_candidates_obj
+        )
+        # Slice 93: build the sanitized table reconstruction prompt context from the
+        # two artifacts we just wrote and capture its safe prompt_block. Pure /
+        # degrade-not-fail; it reconstructs no table, inspects no PDF/image, and
+        # calls no provider. The block is appended to the generation source only
+        # when the context is completed/partial AND has actionable items, so an
+        # absent/skipped/empty context leaves the prompt byte-identical.
+        table_prompt_block = _build_table_prompt_block_safely(
+            table_candidates_obj, table_policy_obj
+        )
 
     if not sections:
         return source_text, {
@@ -474,7 +492,16 @@ def _attach_sources(
         }
 
     attached_text = "\n\n## Attached Sources\n\n" + "\n\n".join(sections)
-    return source_text.rstrip() + attached_text, {
+    # Slice 93: append the safe table reconstruction guidance (closed tokens / page
+    # ints / fixed instruction text only — no source/table content) after the
+    # attached sources. Empty unless the sanitized artifacts yielded actionable
+    # table items, so non-table jobs keep the prior prompt byte-for-byte.
+    table_guidance = (
+        f"\n\n## Table Reconstruction Guidance\n\n{table_prompt_block}"
+        if table_prompt_block
+        else ""
+    )
+    return source_text.rstrip() + attached_text + table_guidance, {
         "files": files,
         "warnings": _dedupe(warnings),
         "total_extracted_chars": total_chars,
@@ -609,10 +636,14 @@ def _write_table_candidates_manifest_safely(
 def _write_table_reconstruction_policy_safely(
     job: Job,
     table_candidates_manifest: Any = None,
-) -> None:
-    """Best-effort table reconstruction policy write; never gates generation."""
+) -> dict[str, Any] | None:
+    """Best-effort table reconstruction policy write; never gates generation.
+
+    Returns the built policy dict (so the Slice 93 prompt-context builder can reuse
+    it without re-reading the artifact), or ``None`` on any unexpected failure.
+    """
     try:
-        write_table_reconstruction_policy(
+        return write_table_reconstruction_policy(
             job, table_candidates_manifest=table_candidates_manifest
         )
     except Exception as exc:
@@ -620,6 +651,42 @@ def _write_table_reconstruction_policy_safely(
             f"Table reconstruction policy skipped ({type(exc).__name__}); job continues.",
             file=sys.stderr,
         )
+        return None
+
+
+def _build_table_prompt_block_safely(
+    table_candidates_manifest: Any = None,
+    table_reconstruction_policy: Any = None,
+) -> str:
+    """Best-effort safe table reconstruction prompt block; never gates generation.
+
+    Returns the sanitized ``prompt_block`` string only when the pure context builder
+    reports a ``completed``/``partial`` context with at least one actionable item;
+    otherwise returns ``""`` so the generation prompt stays byte-identical. Never
+    raises and never reconstructs a table / inspects a PDF / calls a provider.
+    """
+    try:
+        context = build_table_reconstruction_prompt_context(
+            table_candidates_manifest, table_reconstruction_policy
+        )
+        if not isinstance(context, dict):
+            return ""
+        if context.get("status") not in ("completed", "partial"):
+            return ""
+        summary = context.get("summary")
+        prompt_item_count = (
+            summary.get("prompt_item_count") if isinstance(summary, dict) else 0
+        )
+        if not isinstance(prompt_item_count, int) or prompt_item_count <= 0:
+            return ""
+        block = context.get("prompt_block")
+        return block if isinstance(block, str) else ""
+    except Exception as exc:
+        print(
+            f"Table reconstruction prompt context skipped ({type(exc).__name__}); job continues.",
+            file=sys.stderr,
+        )
+        return ""
 
 
 def _extract_local_figures(

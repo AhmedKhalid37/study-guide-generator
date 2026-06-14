@@ -6,40 +6,45 @@
 > stable overview see `PROJECT_CONTEXT.md`; canonical brief is `../CLAUDE.md`.
 
 ## Current position
-- **Working tree:** **Slice 92 (Table candidate manifest + reconstruction-policy artifacts) — UNCOMMITTED (per
-  instruction)** on branch `slice92-table-candidate-manifest-policy-artifacts` (branched from fresh trunk after Slice 91
-  was committed/merged/pushed). **Slice 91 is now trunk commit `ff7bc70`** (full figure render/export validation).
-  - **Purpose:** build the missing sanitized table-candidate bridge before any table reconstruction prompt integration.
-    Slice 85's table *policy core* only ever consumed synthetic candidates; Slice 92 derives real, **sanitized**
-    candidates from the already-safe `visual_assets_manifest.json` (Slice 82 page-filtered) and persists two exact-name
-    artifacts so Slice 93/94 can do reconstruction prompt integration/validation.
-  - **It does NOT** reconstruct tables, call an LLM, change prompts, insert tables into Markdown/PDF/DOCX, add UI, OCR,
-    inspect PDFs/images, or call any provider/model/cloud. A table is a **decision record, never a screenshot**
-    (`screenshot_insert_count` is always `0`).
-  - **New artifacts (exact-name download only, not in `ARTIFACTS`/generic UI/export selectors):**
-    - `table_candidates_manifest.json` (`pipeline/table_candidate_manifest.py`) — table-like records (closed tokens
-      `table`/`table_like`/`grid_table`/`dense_table`/`table_region`/`tabular`/`table_image`) → sanitized candidates with
-      a safe generated `candidate_id` (`table_candidate_0001`…), `source_index`, positive-int `source_page`, closed
-      `table_kind`, closed `confidence`, and a count-only `signals` block. Non-table / unsafe / page-less records are
-      skipped and counted. Missing/malformed/skipped → safe `skipped`; defensive ceiling → `partial`.
-    - `table_reconstruction_policy.json` (`pipeline/table_reconstruction_policy_artifact.py`) — sanitized candidates fed
-      into the **unchanged Slice 85** `build_table_reconstruction_policy(...)`; skipped candidate manifest → `skipped`
-      policy, else per-candidate `reconstruct_with_original`/`simplify_only`/`defer`/`skip_unreadable`/`skip_unsafe`.
-  - **Bridge:** `table_policy_candidates(manifest)` flattens candidates to the policy's input shape (closed `kind` token +
-    flat count signals + `has_text_layer` + `confidence`); only closed tokens/ints/bools/None cross — no source field echoed.
-  - **No change to:** table reconstruction (none implemented), prompts/providers/models/cloud, render/export code, figure
-    insertion semantics, material page-selection, visual-manifest filtering, UI, or direct `clean.md` writes. **Slice 85
-    policy core unchanged (145-test suite passes byte-identical).**
-  - **Files:** `pipeline/table_candidate_manifest.py` (new), `pipeline/table_reconstruction_policy_artifact.py` (new),
-    `pipeline/job_manager.py` (two `Job` path props), `pipeline/run_llm_job.py` (two degrade-never-fail writer calls),
-    `api/server.py` (two exact-name `_artifact_path` branches), `test_scripts/test_table_candidate_manifest.py` (new),
-    `test_scripts/test_table_reconstruction_policy_artifact.py` (new), three docs.
-  - **Validation:** new candidate-manifest test 105/0, policy-artifact test 39/0 (host + Docker in-image); Slice 85 policy
-    145/0; visual manifest 65/0, coverage E2E 79/0, source coverage 59/0 + artifact 45/0, full insertion v2 81/0, render/
-    export validation 22/0 host; `compileall` clean; `git diff --check` clean; Docker build + health + `smoke_release.py`
-    29/0; exact-name download of both artifacts → **HTTP 200 + `application/json`**. **NOT committed.**
-  - **Next:** Slice 93/94 — table reconstruction prompt integration/validation over these artifacts. Chandra still blocked
-    by its own live-validation gate.
+- **Working tree:** **Slice 93 (Table reconstruction prompt-context integration v1) — UNCOMMITTED (per instruction)** on
+  branch `slice93-table-reconstruction-prompt-context` (branched from fresh trunk after Slice 92 was committed/merged/
+  pushed). **Slice 92 is now trunk commit `ea3f321`** (table candidate manifest + reconstruction policy artifacts).
+  - **Purpose:** consume the Slice 92 sanitized table artifacts (`table_candidates_manifest.json` +
+    `table_reconstruction_policy.json`) to append safe, honest table reconstruction guidance to the guide generation
+    prompt. Prompt-context integration, **not** image/table extraction.
+  - **It does NOT** reconstruct tables from images, inspect PDFs/images, OCR, read image bytes, extract table text, call
+    any provider/model/cloud, change material page-selection or visual filtering, change render/export, change figure
+    insertion semantics, or add UI. Tables are still never treated as screenshots.
+  - **No-hallucination rule:** reconstruct/simplify a table only when its contents are present in the provided source
+    text; preserve `headers`/`column_labels`/`row_labels`/`exam_terms`/`numeric_values`/`units` when available; never
+    invent rows/columns/labels/values; `defer`/`skip_unreadable` → honest "detected on page N but not readable" note;
+    `skip_unsafe` excluded entirely.
+  - **New pure module:** `pipeline/table_reconstruction_prompt_context.py` —
+    `build_table_reconstruction_prompt_context(table_candidates_manifest, table_reconstruction_policy, *, max_items=None)`
+    → sanitized context dict (`version`/`kind`/`status`/`summary`/`prompt_block`/`items`/`warnings`). Each actionable
+    policy item → prompt item with closed `action`, positive-int `source_page` (or `None`), closed `preserve` tokens,
+    safe `candidate_id` (`table_candidate_NNNN`), fixed-shape `instruction`. Missing/malformed/skipped → safe `skipped` +
+    empty `prompt_block`; defensive ceiling / `max_items` → `partial`. stdlib-only.
+  - **Integration:** `pipeline/run_llm_job.py::_attach_sources` — after the Slice 92 candidate manifest + policy are
+    written, `_build_table_prompt_block_safely(...)` returns the `prompt_block` only when `status` is completed/partial
+    AND `prompt_item_count > 0`; appended under a `## Table Reconstruction Guidance` heading. Absent/skipped/empty ⇒
+    prompt byte-identical. The policy writer helper now returns the policy dict (no artifact re-read). Degrade-never-fail.
+  - **No change to:** table reconstruction (none), OCR/PDF/image inspection, providers/models/cloud, render/export,
+    figure insertion semantics, material page-selection, visual-manifest filtering, UI, or direct `clean.md` writes.
+  - **Files:** `pipeline/table_reconstruction_prompt_context.py` (new), `pipeline/run_llm_job.py` (import + one local +
+    builder helper + safe append), `test_scripts/test_table_reconstruction_prompt_context.py` (new), three docs.
+  - **Validation:** prompt-context test 108/0; candidate manifest 105/0, policy artifact 39/0, policy core 145/0, coverage
+    E2E 79/0, source coverage 59/0, full insertion v2 81/0, render/export 22/0 host; `compileall` clean; `git diff
+    --check` clean; Docker build + health + `smoke_release.py`. **NOT committed.**
+  - **Next:** Slice 94 — missing diagram/table explainer core. Chandra still blocked by its own live-validation gate.
+
+### Prior position (Slice 92 — committed & merged)
+- **Slice 92 (Table candidate manifest + reconstruction-policy artifacts)** is trunk commit `ea3f321` (ff-merged +
+  pushed). It added `pipeline/table_candidate_manifest.py` + `pipeline/table_reconstruction_policy_artifact.py`, two
+  `Job` path props, two exact-name `_artifact_path` branches (NOT in `ARTIFACTS`/UI/export), and persists
+  `table_candidates_manifest.json` + `table_reconstruction_policy.json` derived only from the sanitized visual manifest —
+  no table reconstruction, prompt/provider/model, render/export, figure insertion, material selection, UI, or `clean.md`
+  change. `screenshot_insert_count` always `0`.
 
 ### Prior position (Slice 91 — committed & merged)
 - **Slice 91 (Full figure insertion export/render validation)** is trunk commit `ff7bc70` (ff-merged + pushed). It added
