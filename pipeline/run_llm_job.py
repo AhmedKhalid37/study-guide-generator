@@ -27,6 +27,10 @@ from pipeline.visual_assets_manifest import write_visual_assets_manifest
 from pipeline.visual_asset_scoring import write_visual_asset_scoring_report
 from pipeline.visual_replacement_planner import write_visual_replacement_plan_report
 from pipeline.visual_inclusion_plan_artifact import write_visual_inclusion_plan
+from pipeline.table_candidate_manifest import write_table_candidates_manifest
+from pipeline.table_reconstruction_policy_artifact import (
+    write_table_reconstruction_policy,
+)
 from pipeline.visual_asset_extractor import (
     MAX_FIGURES_PER_JOB,
     extract_local_figures,
@@ -447,6 +451,20 @@ def _attach_sources(
         # skipped plan via the pure planner. No Markdown insertion / render / export /
         # provider wiring this slice — exact-name download only.
         _write_visual_inclusion_plan_safely(job, visual_manifest_obj)
+        # Slice 92: persist the sanitized TABLE CANDIDATE manifest and the table
+        # RECONSTRUCTION POLICY artifact, both derived only from the sanitized
+        # manifest we just read. The candidate manifest converts table-like records
+        # (which the non-table inclusion planner deliberately skips) into sanitized
+        # counts/tokens; the policy decides what should LATER happen to each table
+        # (never a screenshot — screenshot_insert_count is always 0). Both are
+        # degrade-not-fail, reconstruct no table, change no prompt/provider/model,
+        # and are exact-name download only (no Markdown insertion / render / export /
+        # UI this slice). A missing/skipped/malformed manifest yields safe
+        # skipped/empty artifacts via the pure cores.
+        table_candidates_obj = _write_table_candidates_manifest_safely(
+            job, visual_manifest_obj
+        )
+        _write_table_reconstruction_policy_safely(job, table_candidates_obj)
 
     if not sections:
         return source_text, {
@@ -565,6 +583,41 @@ def _write_visual_inclusion_plan_safely(
     except Exception as exc:
         print(
             f"Visual inclusion plan skipped ({type(exc).__name__}); job continues.",
+            file=sys.stderr,
+        )
+
+
+def _write_table_candidates_manifest_safely(
+    job: Job,
+    visual_manifest: Any = None,
+) -> dict[str, Any] | None:
+    """Best-effort table candidate manifest write; never gates generation.
+
+    Returns the built manifest dict (so the policy writer can reuse it without
+    re-reading the artifact), or ``None`` on any unexpected failure.
+    """
+    try:
+        return write_table_candidates_manifest(job, visual_manifest=visual_manifest)
+    except Exception as exc:
+        print(
+            f"Table candidates manifest skipped ({type(exc).__name__}); job continues.",
+            file=sys.stderr,
+        )
+        return None
+
+
+def _write_table_reconstruction_policy_safely(
+    job: Job,
+    table_candidates_manifest: Any = None,
+) -> None:
+    """Best-effort table reconstruction policy write; never gates generation."""
+    try:
+        write_table_reconstruction_policy(
+            job, table_candidates_manifest=table_candidates_manifest
+        )
+    except Exception as exc:
+        print(
+            f"Table reconstruction policy skipped ({type(exc).__name__}); job continues.",
             file=sys.stderr,
         )
 

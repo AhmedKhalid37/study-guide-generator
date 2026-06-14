@@ -4104,6 +4104,19 @@ def _artifact_path(job: Job, artifact_name: str) -> tuple[Path, str]:
         # download only; deliberately NOT in ARTIFACTS, generic UI rows, or export
         # selectors (no Markdown insertion / render / export wiring this slice).
         return job.visual_inclusion_plan_json, "application/json"
+    if artifact_name == "table_candidates_manifest.json":
+        # Slice 92: Full Material Coverage foundation table-candidate manifest
+        # derived only from the sanitized visual_assets_manifest.json (Slice 92
+        # candidate core). Sanitized counts/tokens only; reconstructs no table.
+        # Exact-name download only; deliberately NOT in ARTIFACTS, generic UI rows,
+        # or export selectors.
+        return job.table_candidates_manifest_json, "application/json"
+    if artifact_name == "table_reconstruction_policy.json":
+        # Slice 92: table reconstruction POLICY artifact (Slice 85 policy core)
+        # decided over the sanitized table candidates. screenshot_insert_count is
+        # always 0 — a table is never inserted as a screenshot. Exact-name download
+        # only; deliberately NOT in ARTIFACTS, generic UI rows, or export selectors.
+        return job.table_reconstruction_policy_json, "application/json"
 
     artifact = ARTIFACTS.get(artifact_name)
     if artifact is None:

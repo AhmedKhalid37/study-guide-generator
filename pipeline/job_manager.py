@@ -186,6 +186,33 @@ class Job:
         return self.dir / "visual_inclusion_plan.json"
 
     @property
+    def table_candidates_manifest_json(self) -> Path:
+        # Slice 92: sibling Full Material Coverage foundation artifact holding the
+        # deterministic sanitized TABLE CANDIDATE manifest
+        # (pipeline/table_candidate_manifest.py), derived only from the already-
+        # sanitized visual_assets_manifest.json table-like records. Like the other
+        # advisory siblings it never changes job status, never mutates the source
+        # manifest, reconstructs no table, makes no insert/render decision (no
+        # Markdown insertion / render / export this slice), is kept SEPARATE from
+        # validation.json, and is reached only by its exact filename (not added to
+        # the generic ARTIFACTS list / generic UI rows / export selectors). It never
+        # gates generation.
+        return self.dir / "table_candidates_manifest.json"
+
+    @property
+    def table_reconstruction_policy_json(self) -> Path:
+        # Slice 92: sibling Full Material Coverage foundation artifact holding the
+        # deterministic TABLE RECONSTRUCTION POLICY
+        # (pipeline/table_reconstruction_policy.py, Slice 85 core), decided over the
+        # sanitized table candidates above. screenshot_insert_count is always 0 — a
+        # table is never inserted as a screenshot. Like the other advisory siblings
+        # it never changes job status, reconstructs no table, makes no production
+        # insert/render decision, is kept SEPARATE from validation.json, and is
+        # reached only by its exact filename (not added to the generic ARTIFACTS list
+        # / generic UI rows / export selectors). It never gates generation.
+        return self.dir / "table_reconstruction_policy.json"
+
+    @property
     def assets_dir(self) -> Path:
         # Slice 40: holds locally-cropped figure images (PNG) referenced by the
         # visual-assets manifest's `extracted_figure` records via safe RELATIVE

@@ -4142,3 +4142,40 @@ reconstruction is a separate, higher-risk capability (it rebuilds source table s
 cropped figure ref) and stays governed by the Slice 85 table-reconstruction *policy* — extracted tables are still treated
 as non-reconstructed visuals. Bundling it into a render/export validation slice would conflate two unrelated risk profiles.
 Chandra remains blocked by its own live-validation gate.
+
+## Slice 92 — table candidate manifest + reconstruction-policy artifacts (the bridge before prompt integration)
+
+**Why table-candidate artifacts must exist before any reconstruction prompt integration.** Slice 85 built a pure table
+*reconstruction policy* decision core, but it could only ever be exercised against synthetic, hand-written candidate dicts
+— there has never been a real table manifest in the pipeline. Wiring a reconstruction prompt straight onto the raw visual
+signals would mean the prompt layer, the candidate-detection rules, and the policy decision all land in one slice, each
+with a different risk profile (prompt/provider exposure vs. detection correctness vs. leak surface). Slice 92 instead lands
+only the deterministic, side-effect-free *bridge*: detect table-like records from the already-sanitized
+`visual_assets_manifest.json`, persist them as `table_candidates_manifest.json`, and run the unchanged Slice 85 policy over
+them into `table_reconstruction_policy.json`. Slice 93/94 can then integrate/validate a reconstruction prompt against a
+stable, reviewed, sanitized input — never against raw extraction.
+
+**Why candidates are sanitized counts/tokens only (never source content).** A table candidate exists to drive a *decision*,
+not to carry the table. Every emitted field is a closed token (`table_kind`, `confidence`), a non-negative int
+(`rows`/`columns`/cell counts), a bool (`has_text_layer`), a verified positive-int `source_page`, or a safe generated
+`candidate_id` derived purely from emission order. No field of the source manifest record is ever echoed — no filename,
+path, source title, caption, document/OCR/table text, image/asset ref, asset id, image bytes, base64/data URI, provider
+payload, token, URL, argv, socket, model path, or raw exception string can survive into either artifact. This keeps the
+bridge incapable of widening the leak surface even though it now reads "real" signals, and the `table_policy_candidates`
+flattener that hands candidates to the Slice 85 policy carries only those same closed values.
+
+**Why exact-name artifacts (not generic `ARTIFACTS` / UI rows / export selectors).** These are foundation/measurement
+artifacts for a future capability, not user-facing deliverables. Following the established `visual_inclusion_plan.json` /
+`source_coverage_report.json` convention, they are reachable only by their exact fixed filename through the existing
+per-file route (`_artifact_path`), which introduces no path traversal and adds no row to `_artifact_urls` /
+`_artifact_details` / generic UI lists and no entry to export bundles. That keeps the surface minimal and reversible: a
+later slice can choose to surface them, but nothing depends on them yet.
+
+**Why table reconstruction remains deferred (and tables are never inserted as screenshots).** Slice 92 deliberately stops
+at *deciding* what should later happen to each table. It reconstructs nothing, calls no LLM/provider/model, changes no
+prompt, and inserts nothing into Markdown/PDF/DOCX. Critically, a table is treated as a decision record, never an image to
+embed: the policy never emits a screenshot action and `screenshot_insert_count` is always `0`. Inserting a table as a
+cropped screenshot would defeat the product goal (study-friendly, reconstructed/simplified table content that preserves
+headers, exam terms, units, and numeric values) and would also reintroduce the very leak/portability risks the figure path
+spent Slices 90–91 containing. Reconstruction stays a separate, higher-risk slice. Chandra remains blocked by its own
+live-validation gate.

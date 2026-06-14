@@ -6,28 +6,46 @@
 > stable overview see `PROJECT_CONTEXT.md`; canonical brief is `../CLAUDE.md`.
 
 ## Current position
-- **Working tree:** **Slice 91 (Full figure insertion export/render validation) — UNCOMMITTED (per instruction)** on branch
-  `slice91-full-figure-render-export-validation` (branched from fresh trunk after Slice 90 was committed/merged/pushed).
-  **Slice 90 is now trunk commit `096148f`** (full non-table figure insertion v2).
-  - **Purpose:** validate + harden the render/export asset path now that Slice 90 can place *many* safe
-    `assets/<slug>.png` figure refs into a guide. Proves Markdown → HTML → PDF → DOCX → export-ZIP all carry many inserted
-    figures, and removes the one load-bearing cap-2.
-  - **The one load-bearing cap-2 was the export bundle ride-along.** HTML/PDF/DOCX renderers were already uncapped (they
-    render/embed every referenced `assets/<slug>.png` from the job dir; DOCX leaves a safe `[image missing: …]` marker for
-    an absent file) — no renderer change needed. Fix: added `find_all_exportable_visual_assets(job, *, limit=…)` (uncapped,
-    only `_FULL_INSERTION_HARD_CEILING`-bounded, driven purely by what `clean.md` references, same hard safety checks); the
-    legacy `find_exportable_visual_pilot_assets` now delegates with `limit=_HARD_MAX_IMAGES` (byte-identical legacy
-    behavior); `api/server.py` export bundle uses the uncapped helper and the `>= 2` break is replaced by the ceiling guard.
-    Manifest keeps `visual_pilot_asset` (first) + `visual_pilot_assets` (full list); figures never inflate `files_included`.
-  - **No change to:** figure selection/planning semantics, material page-selection, visual-manifest filtering,
-    prompt/provider/model/cloud, UI, table policy (still deferred), or direct `clean.md` writes.
-  - **Files:** `pipeline/visual_markdown_insertion.py`, `api/server.py`,
-    `test_scripts/test_full_visual_render_export_validation.py` (new), three docs.
-  - **Validation:** new test 22/0 host (DOCX+bundle skip), **41/0 in Docker**; legacy export asset 9/0 host / 28/0 Docker;
-    full insertion v2 81/0; planner 179/0, plan artifact 64/0, manifest 65/0, coverage E2E 79/0, caption polish 132/0,
-    multifigure 63/0, quality gate 50/0; `compileall` clean; `git diff --check` clean; Docker build + health +
-    `smoke_release.py` 29/0. **NOT committed.**
-  - **Next:** table reconstruction is the next phase (still deferred); broad multi-figure export was this slice.
+- **Working tree:** **Slice 92 (Table candidate manifest + reconstruction-policy artifacts) — UNCOMMITTED (per
+  instruction)** on branch `slice92-table-candidate-manifest-policy-artifacts` (branched from fresh trunk after Slice 91
+  was committed/merged/pushed). **Slice 91 is now trunk commit `ff7bc70`** (full figure render/export validation).
+  - **Purpose:** build the missing sanitized table-candidate bridge before any table reconstruction prompt integration.
+    Slice 85's table *policy core* only ever consumed synthetic candidates; Slice 92 derives real, **sanitized**
+    candidates from the already-safe `visual_assets_manifest.json` (Slice 82 page-filtered) and persists two exact-name
+    artifacts so Slice 93/94 can do reconstruction prompt integration/validation.
+  - **It does NOT** reconstruct tables, call an LLM, change prompts, insert tables into Markdown/PDF/DOCX, add UI, OCR,
+    inspect PDFs/images, or call any provider/model/cloud. A table is a **decision record, never a screenshot**
+    (`screenshot_insert_count` is always `0`).
+  - **New artifacts (exact-name download only, not in `ARTIFACTS`/generic UI/export selectors):**
+    - `table_candidates_manifest.json` (`pipeline/table_candidate_manifest.py`) — table-like records (closed tokens
+      `table`/`table_like`/`grid_table`/`dense_table`/`table_region`/`tabular`/`table_image`) → sanitized candidates with
+      a safe generated `candidate_id` (`table_candidate_0001`…), `source_index`, positive-int `source_page`, closed
+      `table_kind`, closed `confidence`, and a count-only `signals` block. Non-table / unsafe / page-less records are
+      skipped and counted. Missing/malformed/skipped → safe `skipped`; defensive ceiling → `partial`.
+    - `table_reconstruction_policy.json` (`pipeline/table_reconstruction_policy_artifact.py`) — sanitized candidates fed
+      into the **unchanged Slice 85** `build_table_reconstruction_policy(...)`; skipped candidate manifest → `skipped`
+      policy, else per-candidate `reconstruct_with_original`/`simplify_only`/`defer`/`skip_unreadable`/`skip_unsafe`.
+  - **Bridge:** `table_policy_candidates(manifest)` flattens candidates to the policy's input shape (closed `kind` token +
+    flat count signals + `has_text_layer` + `confidence`); only closed tokens/ints/bools/None cross — no source field echoed.
+  - **No change to:** table reconstruction (none implemented), prompts/providers/models/cloud, render/export code, figure
+    insertion semantics, material page-selection, visual-manifest filtering, UI, or direct `clean.md` writes. **Slice 85
+    policy core unchanged (145-test suite passes byte-identical).**
+  - **Files:** `pipeline/table_candidate_manifest.py` (new), `pipeline/table_reconstruction_policy_artifact.py` (new),
+    `pipeline/job_manager.py` (two `Job` path props), `pipeline/run_llm_job.py` (two degrade-never-fail writer calls),
+    `api/server.py` (two exact-name `_artifact_path` branches), `test_scripts/test_table_candidate_manifest.py` (new),
+    `test_scripts/test_table_reconstruction_policy_artifact.py` (new), three docs.
+  - **Validation:** new candidate-manifest test 105/0, policy-artifact test 39/0 (host + Docker in-image); Slice 85 policy
+    145/0; visual manifest 65/0, coverage E2E 79/0, source coverage 59/0 + artifact 45/0, full insertion v2 81/0, render/
+    export validation 22/0 host; `compileall` clean; `git diff --check` clean; Docker build + health + `smoke_release.py`
+    29/0; exact-name download of both artifacts → **HTTP 200 + `application/json`**. **NOT committed.**
+  - **Next:** Slice 93/94 — table reconstruction prompt integration/validation over these artifacts. Chandra still blocked
+    by its own live-validation gate.
+
+### Prior position (Slice 91 — committed & merged)
+- **Slice 91 (Full figure insertion export/render validation)** is trunk commit `ff7bc70` (ff-merged + pushed). It added
+  `find_all_exportable_visual_assets` (uncapped, ceiling-bounded), removed the export bundle cap-2 ride-along, and proved
+  the HTML/PDF/DOCX renderers were already uncapped — no figure selection/planning, material selection, prompt/provider/
+  model, UI, or `clean.md` change.
 
 ### Prior position (Slice 90 — committed & merged)
 - **Slice 90 (Full non-table figure insertion v2)** is trunk commit `096148f` (ff-merged + pushed). Branched from fresh

@@ -5,7 +5,51 @@
 
 ---
 
-## Slice 91 — **Full figure insertion export/render validation**, on `slice91-full-figure-render-export-validation`. **NOT COMMITTED.**
+## Slice 92 — **Table candidate manifest + reconstruction-policy artifacts**, on `slice92-table-candidate-manifest-policy-artifacts`. **NOT COMMITTED.**
+
+- **Builds the missing sanitized table-candidate bridge so table reconstruction prompt integration (Slice 93/94) can
+  start safely.** Slice 91 was committed `ff7bc70`, fast-forward merged, and pushed to trunk on `chrome-renderer-v1`
+  (full figure render/export validated). Slice 85 added a pure table *policy core*, but it had only ever consumed
+  **synthetic** candidates because there is still no real table manifest. Slice 92 derives sanitized table candidates
+  from the already-safe `visual_assets_manifest.json` (Slice 82 page-filtered) and persists two exact-name artifacts.
+- **It does NOT** reconstruct tables, call an LLM, change prompts, insert tables into Markdown/PDF/DOCX, add UI, OCR,
+  inspect PDFs/images, or call any provider/model/cloud. It also treats a table as a **decision record, never a
+  screenshot** — `screenshot_insert_count` is always `0`.
+- **New artifacts (exact-name download only).**
+  - `table_candidates_manifest.json` (`pipeline/table_candidate_manifest.py`, new) — recognizes table-like manifest
+    records by closed tokens (`table`, `table_like`, `grid_table`, `dense_table`, `table_region`, `tabular`,
+    `table_image`), skips non-table records (counted), skips unsafe/malformed/page-less records (counted), and emits
+    sanitized candidates: a safe generated `candidate_id` (`table_candidate_0001`…), `source_index`, positive-int
+    `source_page`, closed `table_kind`, closed `confidence` token, and a count-only `signals` block (bool
+    `has_text_layer` + non-negative int `rows`/`columns`/`cell_text_count`/`numeric_cell_count`/`header_cell_count`).
+    Missing/malformed/skipped input → safe `skipped` manifest; a defensive ceiling marks `partial`.
+  - `table_reconstruction_policy.json` (`pipeline/table_reconstruction_policy_artifact.py`, new) — feeds the sanitized
+    candidates into the **unchanged Slice 85** `build_table_reconstruction_policy(...)` and persists the result. A
+    genuinely skipped candidate manifest → `skipped` policy; otherwise the policy decides each candidate
+    (`reconstruct_with_original` / `simplify_only` / `defer` / `skip_unreadable` / `skip_unsafe`) and never a screenshot.
+- **Bridge.** `table_policy_candidates(manifest)` flattens each manifest candidate into the shape the Slice 85 policy
+  reads (closed `kind` token + flat count signals + `has_text_layer` + `confidence`); only closed tokens/ints/bools/None
+  cross the bridge — no field of the source record is ever echoed.
+- **Files changed:** `pipeline/table_candidate_manifest.py` (new), `pipeline/table_reconstruction_policy_artifact.py`
+  (new), `pipeline/job_manager.py` (two exact-name `Job` path properties), `pipeline/run_llm_job.py` (two degrade-never-
+  fail writer calls wired after the visual manifest is written), `api/server.py` (two exact-name `_artifact_path`
+  branches — NOT added to `ARTIFACTS`, generic UI rows, or export selectors), `test_scripts/test_table_candidate_manifest.py`
+  (new), `test_scripts/test_table_reconstruction_policy_artifact.py` (new), plus the three docs. **No table reconstruction,
+  no prompt/provider/model/cloud, no render/export code, no figure insertion semantics, no material selection / visual
+  filtering, no UI, and no direct `clean.md` write changed. The Slice 85 policy core is unchanged (its 145-test suite
+  still passes byte-identical).**
+- **Validation (host):** `test_table_candidate_manifest` 105/0, `test_table_reconstruction_policy_artifact` 39/0,
+  `test_table_reconstruction_policy` 145/0, `test_visual_assets_manifest` 65/0, `test_material_coverage_e2e_validation`
+  79/0, `test_source_coverage_report` 59/0, `test_source_coverage_artifact` 45/0, `test_full_visual_insertion_v2` 81/0,
+  `test_full_visual_render_export_validation` 22/0 (DOCX+bundle skip on host). `compileall` clean; `git diff --check`
+  clean. **Docker:** build + health + `smoke_release.py` 29/0; both new focused tests 105/0 and 39/0 in-image; exact-name
+  download of both artifacts returns **HTTP 200 + `application/json`**. **NOT committed.**
+- **Next:** Slice 93/94 — table reconstruction prompt integration/validation, consuming these sanitized artifacts.
+  Chandra remains blocked by its own live-validation gate.
+
+---
+
+## Slice 91 — **Full figure insertion export/render validation**, on `slice91-full-figure-render-export-validation`. **Committed `ff7bc70`, fast-forward merged + pushed to trunk `chrome-renderer-v1`.**
 
 - **Validates and hardens the render/export asset path for the Slice 90 full insertion mode.** Slice 90 was committed
   `096148f`, fast-forward merged, and pushed to trunk on `chrome-renderer-v1`; it can now place *many* safe
