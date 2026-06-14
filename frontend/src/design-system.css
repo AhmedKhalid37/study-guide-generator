@@ -3155,6 +3155,8 @@ details.sg-mdl-helper > summary::-webkit-details-marker { display: none; }
 .sg-tag-amber  { border-color: var(--amber-soft);  background: var(--amber-soft);  color: #F4C76B; }
 .sg-tag-red    { border-color: var(--red-soft);    background: var(--red-soft);    color: #FCA5A5; }
 .sg-tag-indigo { border-color: var(--indigo-soft); background: var(--indigo-soft); color: #A5A8F8; }
+/* Neutral slate tag for calm "not available / inactive / deferred" states (Slice 88). */
+.sg-tag-slate  { border-color: var(--card-border); background: var(--card); color: var(--muted); }
 
 /* responsive metric/field grids (replace inert grid-cols-* utilities) */
 .sg-grid-2 { display: grid; gap: 10px; }

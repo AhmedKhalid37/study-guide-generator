@@ -3988,3 +3988,39 @@ designed once there is real selected-vs-covered data to render. Splitting input 
 small and independently verifiable. No table reconstruction, no all-visual insertion/rendering, and no render/export/
 prompt/provider/visual-pilot change ride along. Chandra remains blocked by its own live-validation gate. **Slice 87 is NOT
 committed.**
+
+## Slice 88 — JobDetails material coverage display (2026-06-14)
+Slice 87 was committed `844e394`, fast-forward merged, and pushed to trunk. Slice 88 adds a **read-only** "Material
+Coverage" tab in Job Details (`MaterialCoveragePanel` + pure helper `materialCoverageDisplay.js` + verify script), wired
+into `RecentJobsPanel`. It consumes only already-safe job-response fields (`material_page_selection(s)`) and the
+**exact-name** artifacts `source_coverage_report.json` / `visual_inclusion_plan.json`, displaying counts and closed-vocab
+status. No backend code, no client.js helper, and no new route were needed.
+
+**Why coverage display comes after backend E2E validation and Builder exclusion UI.** The order is deliberate:
+Slices 76–86 built and *proved* the backend coverage chain end-to-end, then Slice 87 gave operators a way to *set*
+per-attachment exclusions, and only now does Slice 88 surface the *result* back. **Why:** building the read-side before the
+data path was validated would have meant rendering a model that might still change shape; doing it before the input UI
+would have shown coverage with nothing for the operator to influence. Surfacing it last means the display reflects a stable
+artifact contract and a real selected-vs-covered story, and each slice stays small and independently verifiable.
+
+**Why JobDetails shows safe counts/status instead of raw source details.** The panel emits only page/visual **counts**,
+closed-vocabulary status tokens, and active/inactive booleans — never filenames, paths, source titles, page text,
+captions, OCR text, table text, image/asset refs, or any artifact warning payload that could carry free-form text. **Why:**
+the no-leak invariants forbid private document content in any served frontend state, and the coverage artifacts are derived
+from source documents. The helper re-guards everything it reads (status through an allowlist, counts clamped to
+non-negative integers, attachment keys restricted to the positional `attachment_<index>` shape) so a hostile or malformed
+artifact cannot smuggle text into the display model — verified by canary tests.
+
+**Why missing artifacts are neutral, not errors.** `source_coverage_report.json` / `visual_inclusion_plan.json` only exist
+for jobs that produced them (e.g. PDF jobs with extractable signals); older or text-only jobs legitimately have neither. A
+404 (or a null/unfetched report) renders a calm "Coverage artifact not available for this job yet." **Why:** treating an
+expected absence as an error would make ordinary jobs look broken and train operators to ignore the panel. Each artifact
+fetch is independent so one missing report never blocks the other.
+
+**Why table reconstruction and all-visual rendering remain deferred.** Slice 85 added only the table-policy *core*; no
+table artifact is emitted and reconstruction is not enabled, so the panel shows a static "Policy core available; table
+reconstruction not yet enabled." note rather than per-job table output. Likewise no visuals are inserted/rendered. **Why:**
+both are large, separately-designed slices with their own correctness and no-leak constraints; a display slice must not
+quietly start producing content. Slice 88 changes nothing about extraction, visual filtering/planning, table policy,
+render/export/prompt/provider behavior, or visual-pilot behavior. Chandra remains blocked by its own live-validation gate.
+**Slice 88 is NOT committed.**

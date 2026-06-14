@@ -5,7 +5,45 @@
 
 ---
 
-## Slice 87 — **Builder UI for per-attachment page/slide exclusions**, on `slice87-builder-page-slide-exclusions-ui`. **NOT COMMITTED.**
+## Slice 88 — **JobDetails material coverage display**, on `slice88-jobdetails-material-coverage-display`. **NOT COMMITTED.**
+
+- **First read-only surface for the Full Material Coverage signals.** Slice 87 was committed `844e394`, fast-forward
+  merged, and pushed to trunk on `chrome-renderer-v1` (it added the Builder UI for per-attachment page/slide exclusions).
+  Slices 76–86 built + validated the backend that produces those signals; Slice 87 let users *set* exclusions. Slice 88
+  adds a **read-only** "Material Coverage" tab in Job Details so a user can *see*, after a job finishes, safe coverage
+  information: whether material page selections were present, page coverage counts (covered / embedded-text / OCR /
+  unreadable) from `source_coverage_report.json`, how many useful non-table visuals were planned and how many table-like /
+  unsafe candidates were skipped from `visual_inclusion_plan.json`, plus a static deferred table-policy note.
+- **UI display only.** No backend change at all. Extraction/OCR routing, material page-selection application,
+  visual-manifest filtering, visual inclusion planning, table policy, render/export/prompt/provider behavior, and
+  visual-pilot ranking/classification/cap/default/two-key-gate/caption are all untouched. No table reconstruction; no
+  all-visual insertion/rendering. It consumes only already-safe job-response fields and **exact-name** artifact fetches.
+- **New pure helper** `frontend/src/materialCoverageDisplay.js` (React-free, node-testable):
+  - `summarizeMaterialSelections(job)` — counts attachments carrying an explicit include/exclude page set (positional
+    `attachment_<index>` keys only) + the global selection; reports `active`/`inactive`. Never reads a key/filename/page.
+  - `summarizeSourceCoverage(report)` — closed-vocab status + non-negative page counts from the report `summary`.
+  - `summarizeVisualInclusionPlan(plan)` — closed-vocab status + planned / table-like-skipped / unsafe-skipped counts.
+  - `buildMaterialCoverageDisplayModel({ job, sourceCoverageReport, visualInclusionPlan })` — composite safe model; null
+    reports degrade to a neutral `unavailable` section (never an error); table policy note is a static deferred string.
+  - All summarizers tolerate missing/malformed input, never throw, emit only counts/booleans/closed status tokens, and
+    pass status through an allowlist so no free-form text rides out.
+- **New panel** `frontend/src/components/MaterialCoveragePanel.jsx`: fetches `source_coverage_report.json` and
+  `visual_inclusion_plan.json` by **exact name** via the existing `getJobArtifact` / `artifactUrl` helpers (404 ⇒ calm
+  "not available", never an error), reads `material_page_selection(s)` from the already-safe job response, and renders
+  count tiles + status tags. Exact-name artifact links use the existing safe URL only. Wired into `RecentJobsPanel.jsx`
+  as a new "Material Coverage" drawer tab (icon `Gauge`); new neutral `.sg-tag-slate` tag added to `design-system.css`.
+- **No backend / client.js change.** The artifact route already serves both exact names (`api/server.py` `_artifact_path`)
+  and `getJobArtifact` already does exact-name JSON fetch — so no new route and no client helper were needed.
+- **Validation:** new node harness `frontend/scripts/verify-material-coverage-display.mjs` (added to `npm run test` +
+  `test:material-coverage-display`) covers missing/malformed degradation, count summaries, safe-key-only active counting,
+  hostile canary no-leak over the display model, and determinism. `npm run build` + full frontend suite pass. Python
+  regressions green on host (material coverage E2E 79/0, source coverage report 59/0, source coverage artifact 45/0,
+  inclusion planner 178/0, plan artifact 62/0, table policy 145/0). Docker build + health + `smoke_release.py` 29/0.
+  **Slice 88 is NOT committed.**
+
+---
+
+## Slice 87 — **Builder UI for per-attachment page/slide exclusions**, on `slice87-builder-page-slide-exclusions-ui`. **COMMITTED `844e394` + MERGED (ff) + PUSHED to `chrome-renderer-v1`.**
 
 - **First UI slice on top of the Full Material Coverage backend.** Slice 86 was committed `3db8572`, fast-forward merged,
   and pushed to trunk on `chrome-renderer-v1` (it added the deterministic synthetic Material Coverage **E2E validation

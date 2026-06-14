@@ -6,9 +6,32 @@
 > stable overview see `PROJECT_CONTEXT.md`; canonical brief is `../CLAUDE.md`.
 
 ## Current position
-- **Working tree:** **Slice 87 (Builder UI for per-attachment page/slide exclusions) — UNCOMMITTED (per instruction)** on
-  branch `slice87-builder-page-slide-exclusions-ui` (branched from fresh trunk after Slice 86 was committed/merged/pushed).
-  Slice 86 is now trunk commit `3db8572`.
+- **Working tree:** **Slice 88 (JobDetails material coverage display) — UNCOMMITTED (per instruction)** on branch
+  `slice88-jobdetails-material-coverage-display` (branched from fresh trunk after Slice 87 was committed/merged/pushed).
+  Slice 87 is now trunk commit `844e394`.
+  - **Purpose:** add the **first read-only surface** for the Full Material Coverage signals — a "Material Coverage" tab in
+    Job Details that shows safe counts/status after a job finishes. **Display only:** no backend/extraction/OCR/visual/
+    table/render/export/prompt/provider/visual-pilot change; no table reconstruction; no all-visual insertion.
+  - **Data sources (already-safe only):** the `material_page_selection(s)` envelopes echoed by the job response, plus the
+    **exact-name** artifacts `source_coverage_report.json` (Slice 77) and `visual_inclusion_plan.json` (Slice 84), fetched
+    through the existing `getJobArtifact` / `artifactUrl` helpers. **No new backend route, no client.js change** — the
+    artifact route already serves both names by exact filename and 404 ⇒ neutral "not available".
+  - **New pure helper** `frontend/src/materialCoverageDisplay.js`: `summarizeMaterialSelections` (active/inactive +
+    safe positional-key-only attachment count), `summarizeSourceCoverage` (closed-vocab status + page counts),
+    `summarizeVisualInclusionPlan` (status + planned/table-like-skipped/unsafe-skipped counts),
+    `buildMaterialCoverageDisplayModel` (composite; null reports ⇒ neutral `unavailable`, never an error). All
+    degrade-never-throw, counts/booleans/closed tokens only, no filenames/paths/captions/source text leak.
+  - **New panel** `frontend/src/components/MaterialCoveragePanel.jsx` wired into `RecentJobsPanel.jsx` as a `Gauge`-icon
+    drawer tab; new neutral `.sg-tag-slate` class in `design-system.css`.
+  - **Validation:** `frontend/scripts/verify-material-coverage-display.mjs` (in `npm run test`) green; `npm run build`
+    green; full frontend suite green; Python regressions green on host (E2E 79/0, source coverage report 59/0, source
+    coverage artifact 45/0, inclusion planner 178/0, plan artifact 62/0, table policy 145/0); Docker build + health +
+    `smoke_release.py` 29/0. **NOT committed.**
+
+### Prior position (Slice 87 — committed & merged)
+- **Working tree:** **Slice 87 (Builder UI for per-attachment page/slide exclusions) — COMMITTED `844e394` + MERGED (ff) +
+  PUSHED** to `chrome-renderer-v1` (branched from fresh trunk after Slice 86 was committed/merged/pushed). Slice 86 is
+  trunk commit `3db8572`.
   - **Purpose:** add the **first Builder UI control** on top of the Slices 78–86 Full Material Coverage backend, so a user
     can set per-attachment page/slide **exclusions** and submit them through the already-merged `material_page_selections`
     field. UI-wiring only — no backend/extraction/visual/table/render/export/prompt/provider/visual-pilot change.
@@ -21,9 +44,6 @@
     envelope and threaded `buildBuilderPayload → buildLlmPayload`, which adds `material_page_selections` only when active.
   - **Request** (`api/client.js`): `material_page_selections` added to the multipart object-stringify whitelist; absent
     when no exclusion is active. **`page_selections` (filename-keyed extraction ranges) preserved exactly — separate.**
-  - **Validation:** `frontend/scripts/verify-material-page-selections-ui.mjs` (in `npm run test`) green; `npm run build`
-    green; full frontend suite green; Python suite green on host; FastAPI-gated `test_page_selection_request_persistence`
-    182/0 + `test_page_selections` 24/0 in Docker; Docker build + health + `smoke_release.py` 29/0. **NOT committed.**
 
 ### Prior position (Slice 86 — committed & merged)
 - **Working tree:** **Slice 86 (Material Coverage E2E validation harness) — COMMITTED `3db8572` + MERGED (ff) + PUSHED** to
