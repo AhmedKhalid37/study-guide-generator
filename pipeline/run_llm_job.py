@@ -19,6 +19,10 @@ from pipeline.extraction_metadata import (
     write_skipped_extraction_metadata,
 )
 from pipeline.source_coverage_artifact import write_source_coverage_report
+from pipeline.page_selection_model import (
+    apply_material_selection_to_page_universe,
+    normalize_page_selection,
+)
 from pipeline.visual_assets_manifest import write_visual_assets_manifest
 from pipeline.visual_asset_scoring import write_visual_asset_scoring_report
 from pipeline.visual_replacement_planner import write_visual_replacement_plan_report
@@ -137,6 +141,8 @@ def run_llm_job(
                 attachments,
                 generator_preset=generator_preset,
                 page_selections=page_selections,
+                material_page_selection=material_page_selection,
+                material_page_selections=material_page_selections,
             )
 
         source_path = job.input_dir / "source.txt"
@@ -200,6 +206,8 @@ def _attach_sources(
     *,
     generator_preset: str | None = None,
     page_selections: dict[str, list[list[int]]] | None = None,
+    material_page_selection: dict[str, Any] | None = None,
+    material_page_selections: dict[str, Any] | None = None,
 ) -> tuple[str, dict[str, Any]]:
     attachment_dir = job.input_dir / "attachments"
     attachment_dir.mkdir(parents=True, exist_ok=True)
@@ -251,6 +259,41 @@ def _attach_sources(
             ranges = page_selections.get(attachment.filename)
             if ranges:
                 selected_pages = _expand_page_ranges(ranges)
+
+        # Slice 81: apply the Full Material Coverage page/slide selection to which
+        # pages are extracted. Precedence per attachment: per-attachment
+        # material_page_selections[attachment_<i>] > global material_page_selection >
+        # default-all. A material selection can only FURTHER FILTER the existing
+        # page_selections universe (above); it never expands extraction beyond it.
+        # Non-PDF attachments are ignored (page semantics not implemented).
+        # Degrade-never-fail: an unresolvable selection (exclude/all with no known
+        # universe) leaves extraction unchanged and records a closed warning.
+        is_pdf = saved_path.suffix.lower() == ".pdf"
+        material_selection = _resolve_material_selection(
+            f"attachment_{index - 1}", material_page_selections, material_page_selection
+        )
+        if material_selection is not None:
+            if not is_pdf:
+                entry["material_selection"] = {
+                    "status": "not_applicable",
+                    "warnings": ["material_selection_non_pdf_ignored"],
+                }
+            else:
+                existing_universe = sorted(selected_pages) if selected_pages else None
+                outcome = apply_material_selection_to_page_universe(
+                    material_selection, existing_allowed_pages=existing_universe
+                )
+                if outcome["resolved"]:
+                    selected_pages = set(outcome["included_pages"])
+                    entry["material_selection"] = {
+                        "status": "applied",
+                        "warnings": [*outcome["warnings"], "material_selection_applied"],
+                    }
+                else:
+                    entry["material_selection"] = {
+                        "status": "deferred",
+                        "warnings": outcome["warnings"],
+                    }
 
         try:
             result = extract_file(saved_path, pages=selected_pages)
@@ -383,6 +426,49 @@ def _attach_sources(
         "warnings": _dedupe(warnings),
         "total_extracted_chars": total_chars,
     }
+
+
+def _resolve_material_selection(
+    attachment_key: str,
+    per_attachment: dict[str, Any] | None,
+    global_selection: dict[str, Any] | None,
+) -> dict[str, Any] | None:
+    """Resolve the ACTIVE material page selection for one attachment (Slice 81).
+
+    Precedence: a per-attachment entry (``material_page_selections.attachments
+    [attachment_<i>]``) wins outright when present — even if it is default-all, in
+    which case the global selection is intentionally NOT consulted. Otherwise the
+    global ``material_page_selection`` is the fallback. Returns the normalized model
+    only when it would actually filter pages (an "active" selection); a default-all
+    / absent selection returns ``None`` so extraction stays byte-identical.
+    """
+    selection: Any = None
+    used_per_attachment = False
+    if isinstance(per_attachment, dict):
+        attachments = per_attachment.get("attachments")
+        if isinstance(attachments, dict) and attachment_key in attachments:
+            selection = attachments[attachment_key]
+            used_per_attachment = True
+    if not used_per_attachment and isinstance(global_selection, dict) and global_selection:
+        selection = global_selection
+    if not isinstance(selection, dict):
+        return None
+    normalized = normalize_page_selection(selection)
+    if not _is_active_material_selection(normalized):
+        return None
+    return normalized
+
+
+def _is_active_material_selection(normalized: dict[str, Any]) -> bool:
+    """True when a normalized selection would change the extracted page set.
+
+    ``include`` always restricts (even an empty include => no pages). ``all`` /
+    ``exclude`` only restrict when there is at least one excluded page; a bare
+    ``all`` with no exclusions is a no-op and is treated as absent.
+    """
+    if normalized.get("mode") == "include":
+        return True
+    return bool(normalized.get("exclude_pages"))
 
 
 def _expand_page_ranges(ranges: list[list[int]]) -> set[int]:

@@ -6,41 +6,48 @@
 > stable overview see `PROJECT_CONTEXT.md`; canonical brief is `../CLAUDE.md`.
 
 ## Current position
-- **Working tree:** **Slice 80 (per-attachment material page-selection persistence) — UNCOMMITTED (per instruction)**
-  on branch `slice80-per-attachment-material-page-selections` (branched from fresh trunk after Slice 79 was
-  committed/merged/pushed). Slice 79 is now trunk commit `d4d2513`.
-  - **Purpose:** add a future-facing per-attachment persistence shape so the next Builder UI slice has a correct backend
-    model to save into. It is NOT applied to anything yet.
-  - **Persisted field:** new top-level `material_page_selections` on `LLMJobRequest`, persisted as the deterministic
-    envelope `{"version":1, "attachments": {"attachment_<index>": <Slice 78 normalized model>}, "warnings": []}`.
-    Keys are SAFE internal attachment indices only (`attachment_0`, `attachment_1`, … in request attachment order) —
-    never filenames/paths/titles. The envelope (vs. a flat map) gives the "ignored unsafe key" closed warning a home
-    without ever copying the rejected key. The normalizer accepts both a flat client map and the persisted envelope on
-    input, so retry round-trips.
-  - **Precedence (documented, not applied):** `material_page_selections` is the preferred per-attachment intent; the
-    Slice 79 top-level `material_page_selection` remains the global fallback/default. Both persist when supplied.
-  - **What changed:** `api/server.py` (field + `_MATERIAL_ATTACHMENT_KEY_RE`; `_normalize_material_page_selections` /
-    `_material_selections_envelope` / `_safe_material_page_selections` helpers; wired into the JSON handler, the
-    multipart `_parse_llm_request` branch, the retry path, and both `job_response`/ask-context echoes) and
-    `pipeline/run_llm_job.py` (new param persisted in the `Job.create` manifest). Extended
-    `test_scripts/test_page_selection_request_persistence.py` with per-attachment helper + endpoint coverage.
-  - **Both request paths wired + tested** (JSON body and multipart-with-attachments), per the permanent rule.
-  - **Behaviour:** absent ⇒ empty envelope, job output byte-identical. Malformed top-level ⇒ empty envelope +
-    `selections_malformed`. Unsafe/filename/path/title keys ⇒ dropped + `attachment_key_invalid` (key never persisted).
-    Bad entry / unknown mode / invalid pages ⇒ degrade via the pure model's per-entry warnings. Multipart bad-JSON ⇒
-    empty envelope. Never 400s. Retry re-normalizes and preserves it. Existing `page_selections` and Slice 79
-    `material_page_selection` behaviour unchanged.
-  - **Safety:** envelope carries only version, safe `attachment_<index>` keys, normalized models, and closed warnings —
-    no filenames, paths, document/OCR/table text, captions, image refs/bytes, base64/data URI, provider payloads,
-    tokens, raw argv, sockets, model/mmproj/executable paths, URLs, or raw exception messages (hostile-canary tested
-    over manifest + response).
-  - **Scope:** no frontend/UI; model applied to nothing (no extraction/OCR routing, content/guide, visual manifest,
-    render, export, prompt change); no visual-pilot behaviour change; no Chandra/Mistral/Gemini/model/provider/cloud
-    call; no direct `clean.md` write (still via `JobManager.save_clean_md`).
-  - **Next likely slices (do not implement in Slice 80):** Slice 81 Builder UI (save/load `material_page_selections`);
-    Slice 82 apply exclusions to extraction/content planning; Slice 83 apply exclusions to visual/table manifests;
-    Slice 84 full non-table figure inclusion planner; Slice 85 table reconstruction/simplification policy core; Slice 86
-    table reconstruction prompt integration or E2E material coverage validation.
+- **Working tree:** **Slice 81 (apply material page selections to extraction/content planning) — UNCOMMITTED (per
+  instruction)** on branch `slice81-apply-material-page-selection-to-extraction` (branched from fresh trunk after Slice
+  80 was committed/merged/pushed). Slice 80 is now trunk commit `55eb243`.
+  - **Purpose:** first slice that **applies** the persisted material selection — to attachment text extraction / content
+    planning only. Determines which PDF pages `extract_file(path, pages=...)` reads so only selected pages reach the
+    model-facing source text.
+  - **Precedence per attachment:** per-attachment `material_page_selections.attachments.attachment_<i>` (request order,
+    0-based) → global `material_page_selection` → default-all. A per-attachment entry wins outright when present (even
+    default-all, which suppresses the global fallback).
+  - **Interaction with `page_selections`:** the load-bearing, filename-keyed `page_selections` page-range field still
+    defines the MAXIMUM page universe; a material selection can only further filter it, never expand it (`include`
+    intersects; `exclude`/`all` subtract). `exclude`/`all` with no known universe ⇒ filtering **deferred** (extraction
+    unchanged) + `material_selection_universe_unknown`; pages are never guessed. `include` always applies (explicit set).
+  - **What changed:** `pipeline/page_selection_model.py` (new pure
+    `apply_material_selection_to_page_universe(...)` → `{included_pages, excluded_pages, warnings, resolved}`),
+    `pipeline/run_llm_job.py` (apply in `_attach_sources`; `_resolve_material_selection` /
+    `_is_active_material_selection`; threaded the two material params from `run_llm_job`), new
+    `test_scripts/test_page_selection_extraction_planning.py`. `api/server.py` unchanged (Slice 80 wired the fields).
+  - **Per-attachment summary:** when active, `entry["material_selection"] = {status: applied|deferred|not_applicable,
+    warnings:[closed tokens]}` is added to the attachment manifest entry (tokens/counts only, no page lists/filenames/
+    paths). Absent/default-all ⇒ no field, extraction byte-identical. Non-PDF ⇒ ignored
+    (`material_selection_non_pdf_ignored`).
+  - **Warning tokens:** `material_selection_applied`, `material_selection_no_matching_pages`,
+    `material_selection_non_pdf_ignored`, `material_selection_universe_unknown`,
+    `material_selection_filtered_by_existing_page_selection`.
+  - **Scope:** no Builder UI; not applied to visual/table manifests; no all-figures planner; no table reconstruction; no
+    visual-pilot behaviour change; no render/export/prompt/provider behaviour change (guide text differs only as a
+    consequence of less source text when a selection is explicitly active); no Chandra/Mistral/Gemini/model/provider/
+    cloud call; no direct `clean.md` write. Existing `page_selections` page-range extraction unchanged
+    (`test_page_selections.py` 24/24).
+  - **Next likely slices (do not implement in Slice 81):** Slice 82 Builder UI (save/load `material_page_selections`);
+    Slice 83 apply exclusions to visual/table manifests; Slice 84 full non-table figure inclusion planner; Slice 85
+    table reconstruction/simplification policy core; Slice 86 table reconstruction prompt integration or E2E material
+    coverage validation.
+
+### Prior position (Slice 80 — committed & merged)
+- **Slice 80 (per-attachment material page-selection persistence) — COMMITTED `55eb243` + MERGED to
+  `chrome-renderer-v1` (fast-forward) + PUSHED** on branch `slice80-per-attachment-material-page-selections`. It added
+  the top-level `material_page_selections` field, persisted as the envelope `{version, attachments:{attachment_<i>:
+  <model>}, warnings}` with SAFE `attachment_<index>` keys only (never filenames/paths), wired into both request paths,
+  the retry path, and the response echoes; the global `material_page_selection` (Slice 79) remained the fallback.
+  Degrade-never-fail; applied to nothing.
 
 ### Prior position (Slice 79 — committed & merged)
 - **Slice 79 (persist page/slide selection with job requests) — COMMITTED `d4d2513` + MERGED to `chrome-renderer-v1`

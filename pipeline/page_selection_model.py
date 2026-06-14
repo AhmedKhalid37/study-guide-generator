@@ -282,3 +282,93 @@ def _positive_int(value: Any) -> int | None:
 def _merge_warnings(*groups: list[str]) -> list[str]:
     present = {warning for group in groups for warning in group if warning in _WARNING_SET}
     return [warning for warning in _WARNING_ORDER if warning in present]
+
+
+# ── Slice 81: apply a material selection to a concrete extraction page universe ──
+#
+# Closed-vocabulary extraction-application warnings, kept SEPARATE from the
+# selection-model warnings above. These describe how a material selection mapped
+# onto an attachment's extractable page universe; they carry no page lists,
+# filenames, or paths.
+APPLY_WARNING_NO_MATCHING_PAGES = "material_selection_no_matching_pages"
+APPLY_WARNING_UNIVERSE_UNKNOWN = "material_selection_universe_unknown"
+APPLY_WARNING_FILTERED_BY_EXISTING = "material_selection_filtered_by_existing_page_selection"
+_APPLY_WARNING_ORDER = [
+    APPLY_WARNING_FILTERED_BY_EXISTING,
+    APPLY_WARNING_NO_MATCHING_PAGES,
+    APPLY_WARNING_UNIVERSE_UNKNOWN,
+]
+_APPLY_WARNING_SET = set(_APPLY_WARNING_ORDER)
+
+
+def apply_material_selection_to_page_universe(
+    material_selection: dict | None,
+    *,
+    existing_allowed_pages: list[int] | None = None,
+    natural_pages: list[int] | None = None,
+) -> dict:
+    """Compute the effective extraction page set for one attachment (Slice 81).
+
+    ``existing_allowed_pages`` is the maximum page universe (e.g. the load-bearing
+    ``page_selections`` page-range set); when present a material selection can only
+    further filter it, never expand it. ``natural_pages`` is the attachment's full
+    page universe when known. Either may be ``None``.
+
+    Returns::
+
+        {
+            "included_pages": [sorted 1-based ints],   # explicit set to extract
+            "excluded_pages": [sorted 1-based ints],   # removed from the universe
+            "warnings": [closed apply-tokens],
+            "resolved": bool,   # True => included_pages is an explicit set to pass
+        }
+
+    ``resolved`` is ``False`` only when the selection cannot be represented as an
+    explicit page set (an ``exclude``/``all`` selection with no known universe);
+    the caller should then leave extraction unchanged and surface
+    ``material_selection_universe_unknown``. Never raises. ``include`` selections
+    are always resolvable because the include list IS an explicit page set.
+    """
+    norm = normalize_page_selection(material_selection)
+    mode = norm["mode"]
+    include = {p for p in (_positive_int(x) for x in norm["include_pages"]) if p is not None}
+    exclude = {p for p in (_positive_int(x) for x in norm["exclude_pages"]) if p is not None}
+
+    universe: set[int] | None = None
+    if existing_allowed_pages is not None:
+        universe = {p for p in (_positive_int(x) for x in existing_allowed_pages) if p is not None}
+    elif natural_pages is not None:
+        universe = {p for p in (_positive_int(x) for x in natural_pages) if p is not None}
+
+    warnings: list[str] = []
+
+    if mode == MODE_INCLUDE:
+        result = set(include)
+        if universe is not None:
+            result &= universe
+        result -= exclude
+        excluded = sorted((universe - result) if universe is not None else (include - result))
+        resolved = True
+    else:  # all / exclude — needs a known universe to enumerate
+        if universe is None:
+            return {
+                "included_pages": [],
+                "excluded_pages": [],
+                "warnings": [APPLY_WARNING_UNIVERSE_UNKNOWN],
+                "resolved": False,
+            }
+        result = universe - exclude
+        excluded = sorted(universe - result)
+        resolved = True
+
+    if existing_allowed_pages is not None:
+        warnings.append(APPLY_WARNING_FILTERED_BY_EXISTING)
+    if not result:
+        warnings.append(APPLY_WARNING_NO_MATCHING_PAGES)
+
+    return {
+        "included_pages": sorted(result),
+        "excluded_pages": excluded,
+        "warnings": [w for w in _APPLY_WARNING_ORDER if w in set(warnings)],
+        "resolved": resolved,
+    }

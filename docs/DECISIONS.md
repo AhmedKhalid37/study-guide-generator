@@ -3658,3 +3658,49 @@ planning, and visual/table manifests are separate product and privacy decisions 
 content/guide generation, visual manifest, render, export, prompt, provider/model/cloud behavior, or visual-pilot
 selection/ranking/classification/cap/default/two-key-gate/caption behavior, and writes no `clean.md` directly. Chandra
 remains blocked by its own live-validation gate. **Slice 80 is NOT committed.**
+
+## Slice 81 — apply material selections to text extraction first, bounded by `page_selections` (2026-06-14)
+Slice 80 was committed `55eb243`, fast-forward merged, and pushed to trunk `chrome-renderer-v1`; it persisted
+per-attachment `material_page_selections`. Slice 81 is the first slice that *applies* the persisted material selection —
+to attachment text extraction / content planning only — by filtering the page set passed to the existing
+`extract_file(path, pages=...)` in `_attach_sources`.
+
+**Why material selections are applied to content extraction before UI.** Extraction is where page selection actually
+changes what the model sees, and it can be implemented and tested deterministically behind the already-stable persisted
+model and the existing `extract_file(pages=...)` mechanism — no UI, prompt, render, or provider change required. Proving
+the apply path first (with monkeypatched extraction capturing the effective `pages`) gives the later Builder UI slice a
+working backend to drive, and keeps the risky, user-facing UI work decoupled from the extraction semantics.
+
+**Why existing `page_selections` remains the maximum allowed universe.** `page_selections` is load-bearing and already
+drives PDF page-range extraction; users (and a future Builder) may use it to bound a large deck before anything else
+runs. Letting a material selection expand beyond it would silently re-introduce pages the user already excluded and
+could blow past large-PDF guards. So the rule is strict subtraction: `include` intersects the existing universe,
+`exclude`/`all` subtract from it, and the effective set is always a subset of `page_selections` when that field is
+present. The new pure helper `apply_material_selection_to_page_universe` enforces this and never raises.
+
+**Why per-attachment selection overrides global fallback.** Different attachments need different page intent (e.g.
+"only slides 10–20 of deck A, all of handout B"). A per-attachment entry, when present, is therefore authoritative for
+that attachment — even a per-attachment default-all, which intentionally suppresses the global selection so a user can
+say "this one attachment: everything" while a global exclusion applies elsewhere. Absent a per-attachment entry, the
+global `material_page_selection` is the fallback; absent both, default-all (no filtering).
+
+**Why an unknown universe defers instead of guessing.** An `exclude`/`all` selection needs a concrete page universe to
+enumerate "everything except N". Before extraction the natural page count is not known without re-reading the PDF (which
+this slice deliberately avoids), and re-reading/guessing risks both correctness and large-PDF cost. When there is no
+`page_selections` universe to bound an `exclude`/`all` selection, filtering is deferred (extraction unchanged) and
+`material_selection_universe_unknown` is recorded — degrade-never-fail. `include` needs no universe because the include
+list is itself the explicit page set, so it always applies (then `extract_file` validates it against the real count).
+
+**Why visual/table manifest application is deferred to the next slice.** The visual-assets manifest, scoring, and
+replacement-plan writers consume extraction metadata and have their own sanitization and advisory-only contracts.
+Applying selections there is a separate behavioral surface (and must not perturb visual-pilot selection/ranking/caps),
+so it is its own slice. Slice 81 touches only which pages are extracted into model-facing text; it makes no
+visual-manifest, visual-pilot, render, export, prompt, or provider change, adds no Chandra/Mistral/Gemini/model/provider/
+cloud call, and writes no `clean.md` directly.
+
+**Why this is Full Material Coverage foundation work, not a visual-pilot heuristic loop.** This slice is about honoring
+explicit user page/slide intent end-to-end (persist → apply to extraction), the backbone of the coverage direction. It
+is upstream of and independent from the visual pilot's heuristic asset selection; it changes none of that behavior. The
+per-attachment summary persisted on each attachment entry is counts/closed-tokens only — no page lists, filenames, or
+paths — keeping the no-leak boundary intact. Chandra remains blocked by its own live-validation gate. **Slice 81 is NOT
+committed.**

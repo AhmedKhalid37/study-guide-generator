@@ -5,11 +5,56 @@
 
 ---
 
-## Slice 80 — **Per-attachment material page-selection persistence**, on `slice80-per-attachment-material-page-selections`. **NOT COMMITTED.**
+## Slice 81 — **Apply material page selections to extraction/content planning**, on `slice81-apply-material-page-selection-to-extraction`. **NOT COMMITTED.**
 
-- **Next Full Material Coverage foundation slice.** Slice 79 was committed `d4d2513`, fast-forward merged, and pushed to
-  trunk on `chrome-renderer-v1` (it persisted the top-level `material_page_selection`). Slice 80 adds a future-facing
-  **per-attachment** persistence shape so the next Builder UI slice has a correct backend model to save into. It is
+- **Next Full Material Coverage foundation slice.** Slice 80 was committed `55eb243`, fast-forward merged, and pushed to
+  trunk on `chrome-renderer-v1` (it added per-attachment `material_page_selections`). Slice 81 is the first slice that
+  **applies** the persisted material selection — to attachment **text extraction / content planning only**.
+- **What it does.** In `_attach_sources` (`pipeline/run_llm_job.py`), for each PDF attachment it resolves the active
+  material selection and filters which pages `extract_file(path, pages=...)` reads, so only selected pages reach the
+  model-facing source text. Nothing else changes.
+- **Precedence per attachment:** per-attachment `material_page_selections.attachments.attachment_<i>` (by request
+  attachment order, 0-based) → global `material_page_selection` → default-all. A per-attachment entry wins outright when
+  present (even default-all, which then suppresses the global fallback).
+- **Interaction with the load-bearing `page_selections`.** The existing filename-keyed `page_selections` page-range
+  field still defines the **maximum** page universe. A material selection can only **further filter** that universe; it
+  never expands extraction beyond it (`include` intersects the universe; `exclude`/`all` subtract from it). When there is
+  no `page_selections` universe and the selection is `exclude`/`all` (which need a known universe to enumerate),
+  filtering is **deferred** (extraction unchanged) with a closed warning — pages are never guessed. `include` selections
+  are always applied because the include list is itself an explicit page set.
+- **New pure helper** `apply_material_selection_to_page_universe(material_selection, *, existing_allowed_pages=None,
+  natural_pages=None)` in `pipeline/page_selection_model.py` returns `{included_pages, excluded_pages, warnings,
+  resolved}` — deterministic, never raises, page-ints only.
+- **Resolution helpers** `_resolve_material_selection` / `_is_active_material_selection` in `run_llm_job.py` pick the
+  active selection and treat a default-all selection as a no-op (extraction byte-identical when absent/default-all).
+- **Per-attachment summary.** When a material selection is active for an attachment, a safe
+  `entry["material_selection"] = {"status": "applied"|"deferred"|"not_applicable", "warnings": [closed tokens]}` is
+  recorded in the attachment manifest entry (counts/tokens only — no page lists, filenames, or paths). Absent/default-all
+  ⇒ no field added.
+- **Non-PDF attachments** are ignored safely (`material_selection_non_pdf_ignored`); current non-PDF extraction is
+  unchanged.
+- **Warning tokens (closed vocabulary):** `material_selection_applied`, `material_selection_no_matching_pages`,
+  `material_selection_non_pdf_ignored`, `material_selection_universe_unknown`,
+  `material_selection_filtered_by_existing_page_selection` (plus `material_selection_invalid_attachment_key` reserved at
+  the Slice 80 normalization layer).
+- **What changed:** `pipeline/page_selection_model.py` (new pure helper), `pipeline/run_llm_job.py` (apply in
+  `_attach_sources`; new resolution helpers; threaded the two material params from `run_llm_job`), and new
+  `test_scripts/test_page_selection_extraction_planning.py`. `api/server.py` unchanged (Slice 80 already wired the
+  request fields).
+- **Scope boundaries.** No Builder UI. No application to visual/table manifests, no all-figures planner, no table
+  reconstruction. No visual-pilot selection/ranking/classification/cap/default/two-key-gate/caption change. No
+  render/export/prompt/provider behavior change (generated guide text differs only as a consequence of less source text
+  when a selection is explicitly active). No Chandra/Mistral/Gemini/model/provider/cloud call. No direct `clean.md`
+  write (still via `JobManager.save_clean_md`). Existing `page_selections` page-range extraction unchanged (regression:
+  `test_page_selections.py` 24/24). Chandra remains blocked by its own live-validation gate. **Slice 81 is NOT
+  committed.**
+
+### Prior position (Slice 80 — committed & merged)
+
+- **Per-attachment material page-selection persistence**, on `slice80-per-attachment-material-page-selections`.
+  **COMMITTED `55eb243` + MERGED to `chrome-renderer-v1` (fast-forward) + PUSHED.**
+- Slice 80 added the future-facing per-attachment `material_page_selections`
+  persistence shape so the next Builder UI slice has a correct backend model to save into. It is
   still applied to nothing.
 - **Persisted field:** new top-level `material_page_selections` on `LLMJobRequest`, persisted as a deterministic
   **envelope**: `{"version": 1, "attachments": {"attachment_0": <Slice 78 normalized model>, ...}, "warnings": []}`.
@@ -47,7 +92,7 @@
   default/two-key-gate/caption change. No Chandra/Mistral/Gemini/model/provider/cloud call. No direct `clean.md` write
   (all `clean.md` writes still via `JobManager.save_clean_md`). Page-exclusion application, all-figures planner, and
   table reconstruction remain documented future direction only. Chandra remains blocked by its own live-validation
-  gate. **Slice 80 is NOT committed.**
+  gate.
 
 ### Prior position (Slice 79 — committed & merged)
 
@@ -165,9 +210,8 @@
 - Slice 76 changed no API route, no job artifact writer, no `clean.md`, no frontend/UI, no export, no extraction/OCR
   routing, no render/prompt/provider/model/cloud behavior, and no visual-pilot behavior.
 
-### Likely next slices after Slice 80 (documentation only)
-- Slice 81 — Builder UI for per-attachment page/slide exclusions (save/load `material_page_selections`)
-- Slice 82 — Apply exclusions to extraction/content planning
+### Likely next slices after Slice 81 (documentation only)
+- Slice 82 — Builder UI for per-attachment page/slide exclusions (save/load `material_page_selections`)
 - Slice 83 — Apply exclusions to visual/table manifests
 - Slice 84 — Full non-table figure inclusion planner
 - Slice 85 — Table reconstruction/simplification policy core
