@@ -6,7 +6,41 @@
 > stable overview see `PROJECT_CONTEXT.md`; canonical brief is `../CLAUDE.md`.
 
 ## Current position
-- **Working tree:** **Slice 83 (full non-table visual inclusion planner core) — UNCOMMITTED (per instruction)** on branch
+- **Working tree:** **Slice 84 (persist visual inclusion plan artifact) — UNCOMMITTED (per instruction)** on branch
+  `slice84-visual-inclusion-plan-artifact` (branched from fresh trunk after Slice 83 was committed/merged/pushed). Slice
+  83 is now trunk commit `72e1f87`.
+  - **Purpose:** persist the Slice 83 planner output as the safe exact-name job artifact `visual_inclusion_plan.json`,
+    derived **only** from the already-sanitized `visual_assets_manifest.json`. Sanitized, deterministic, degrade-never-fail.
+  - **New writer:** `pipeline/visual_inclusion_plan_artifact.py` → `write_visual_inclusion_plan(job, visual_manifest=None)`
+    builds the Slice 83 plan and writes deterministic JSON via `job.save_text(...)`. Disk-write failure prints a safe
+    message (exc type only) and returns the in-memory plan; generation never fails.
+  - **New `Job.visual_inclusion_plan_json`** = `<job>/visual_inclusion_plan.json`. **Exact-name download only** via
+    `api/server.py` `_artifact_path` (`application/json`), modeled on `source_coverage_report.json`. NOT in `ARTIFACTS`,
+    generic `_artifact_urls`/`_artifact_details` rows, `EXPORT_ARTIFACTS`, `EXPORT_ARTIFACT_ALIASES`, or
+    `VISUAL_ADVISORY_EXPORT_ARTIFACTS`. No UI.
+  - **Integration:** `run_llm_job._attach_sources`, right after the visual manifest is written + read back, alongside the
+    scoring/replacement-plan writers, via `_write_visual_inclusion_plan_safely(...)`. Written when the manifest is written;
+    missing/skipped/malformed manifest → safe **skipped** plan; non-PDF / no-extraction jobs omit it.
+  - **Behavior inherited from Slice 83:** plans **ALL eligible useful non-table visuals by default (not top-1/2)**, skips
+    **table-like** records (counted; table reconstruction is Slice 85), skips decorative/logo/header/footer/background/
+    watermark/tiny/blank/low-information/unsafe/unknown records.
+  - **Candidate mapping deferred:** Slice 84 keeps the Slice 83 plan schema **as-is** (smallest safe option). No
+    `candidate_id` added. If a future insertion slice needs one it must be a **generated internal id**
+    (e.g. `visual_candidate_0001`), never a filename/path/raw image-ref/caption/OCR/source text.
+  - **What changed:** new `pipeline/visual_inclusion_plan_artifact.py`, new `Job.visual_inclusion_plan_json`, exact-name
+    `_artifact_path` mapping, `run_llm_job` wiring, new `test_scripts/test_visual_inclusion_plan_artifact.py` (**62/0** on
+    host; `api.server` section SKIPs without FastAPI, covered in Docker). `visual_markdown_insertion.py`, visual-pilot
+    files, renderers, exporters, prompts, providers, frontend all unchanged.
+  - **Scope:** persistence only — no Markdown insertion, no table policy (Slice 85), no PDF/DOCX render change, no export
+    bundle change, no API beyond exact-name download, no UI, no extraction/OCR routing change, no visual-pilot
+    ranking/classification/cap/default/two-key-gate/caption change, no Chandra/Mistral/Gemini/model/provider/cloud call, no
+    direct `clean.md` write. Closed warning tokens only; no leaks (hostile-canary tested). Chandra remains blocked by its
+    own live-validation gate.
+  - **Slice 84 is NOT committed.**
+
+### Prior position (Slice 83 — committed & merged)
+- **Working tree:** **Slice 83 (full non-table visual inclusion planner core) — COMMITTED `72e1f87` + MERGED (ff) +
+  PUSHED to `chrome-renderer-v1`** on branch
   `slice83-full-visual-inclusion-planner-core` (branched from fresh trunk after Slice 82 was committed/merged/pushed).
   Slice 82 is now trunk commit `fd3fb97`.
   - **Purpose:** add a pure, deterministic planner that decides **which non-table visuals from the already
@@ -40,7 +74,7 @@
     refs/filenames/text) · **85** table reconstruction/simplification policy core · **86** material-coverage E2E. **No
     UI** until the backend chain proves selections apply consistently to extraction, visual candidates, table policy, and
     coverage reporting.
-  - **Slice 83 is NOT committed.**
+  - **Slice 83 is COMMITTED `72e1f87`, fast-forward merged, and pushed to `chrome-renderer-v1`.**
 
 ### Prior position (Slice 82 — committed & merged)
 - **Slice 82 (apply material page selections to visual/table manifests) — COMMITTED `fd3fb97` + MERGED to

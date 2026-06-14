@@ -5,7 +5,52 @@
 
 ---
 
-## Slice 83 — **Full non-table visual inclusion planner core**, on `slice83-full-visual-inclusion-planner-core`. **NOT COMMITTED.**
+## Slice 84 — **Persist visual inclusion plan artifact**, on `slice84-visual-inclusion-plan-artifact`. **NOT COMMITTED.**
+
+- **Full Material Coverage foundation slice (persistence side).** Slice 83 was committed `72e1f87`, fast-forward merged,
+  and pushed to trunk on `chrome-renderer-v1` (it added the pure, stdlib-only **full non-table visual inclusion planner
+  core** — `build_visual_inclusion_plan(...)`). Slice 84 wires that planner output into backend job artifacts as the safe
+  exact-name artifact `visual_inclusion_plan.json`, derived **only** from the already-sanitized
+  `visual_assets_manifest.json`. No Markdown insertion / render / export / UI / provider wiring yet.
+- **New writer** `pipeline/visual_inclusion_plan_artifact.py`: `write_visual_inclusion_plan(job, visual_manifest=None)`.
+  Builds the Slice 83 plan, serializes deterministic JSON (`indent=2, sort_keys=True`) through `job.save_text(...)`, and
+  is **degrade-never-fail** — any disk-write failure prints a safe message (`type(exc).__name__` only, no raw exception)
+  and returns the in-memory plan; generation continues.
+- **New `Job.visual_inclusion_plan_json`** (`<job>/visual_inclusion_plan.json`), modeled on the other advisory siblings:
+  exact-name download only, never in `ARTIFACTS` / generic UI rows / export selectors / `VISUAL_ADVISORY_EXPORT_ARTIFACTS`,
+  never gates job status.
+- **Exact-name download** added to `api/server.py` `_artifact_path` (`application/json`), mirroring
+  `source_coverage_report.json`. **Deliberately NOT** added to `ARTIFACTS`, `_artifact_urls`, `_artifact_details`,
+  `EXPORT_ARTIFACTS`, `EXPORT_ARTIFACT_ALIASES`, or the export ride-along tuple. No generic JobDetails/export surfacing.
+- **Integration point:** `run_llm_job._attach_sources`, immediately after the visual-assets manifest is written and read
+  back (`visual_manifest_obj`), alongside the existing manifest-derived scoring/replacement-plan writers, via the wrapped
+  `_write_visual_inclusion_plan_safely(...)`. Written exactly when the manifest is written; non-PDF / no-extraction jobs
+  omit it (no call). A missing/skipped/malformed manifest yields a safe **skipped** plan via the pure planner.
+- **Default = plan ALL eligible non-table visuals** (not top-1/2): the artifact inherits the Slice 83 contract verbatim.
+  **Table-like records are skipped and counted** (`table_like_skipped_count`); decorative/logo/header/footer/background/
+  watermark/tiny/blank/low-information/unsafe/unknown records are skipped per Slice 83 signals.
+- **Candidate mapping deferred.** Slice 84 keeps the Slice 83 plan schema **as-is** (smallest safe option). Items expose
+  only safe closed tokens / ints / `None` (`plan_index, source_index, source_page, visual_kind, inclusion_role, reason,
+  warnings`). No `candidate_id` was added; if a future insertion slice needs one it must be a **generated internal id**
+  (e.g. `visual_candidate_0001`) — never a filename/path/raw image-ref/caption/OCR/source text.
+- **No-leak.** The artifact emits only closed tokens, ints, `None`, fixed strings — verified by hostile-canary record
+  fields (filename/title/path/text/ocr/caption/table/image-ref/asset-ref/url/argv/socket/model-path/base64/key) that the
+  planner reads for decisions and never echoes.
+- **Tests:** new `test_scripts/test_visual_inclusion_plan_artifact.py` — **62 passed, 0 failed** on host (the
+  `api.server` exact-name section SKIPs on host where FastAPI is absent; covered in Docker). Covers writes-from-manifest,
+  default-plans-all (5 of 5, not top-2), table-skip+count, decorative/tiny/blank/unsafe skip, missing/skipped/malformed
+  manifest → safe skipped plan, write-failure degrade-never-fail, determinism, exact-name route + no generic/export
+  exposure, `_attach_sources` wiring + writer-failure-does-not-fail-generation, schema whitelist, hostile-canary no-leak,
+  no `clean.md` write. Slice 83 planner tests still **178/0**.
+- **Scope boundaries.** Persistence only: no Markdown insertion (`visual_markdown_insertion.py` untouched), no table
+  reconstruction (Slice 85), no PDF/DOCX render change, no export-bundle change, no prompts/providers, no frontend/UI, no
+  extraction/OCR routing change, no visual-pilot ranking/classification/cap/default/two-key-gate/caption change, no
+  Chandra/Mistral/Gemini/model/provider/cloud call, no direct `clean.md` write. Chandra remains blocked by its own
+  live-validation gate. **Slice 84 is NOT committed.**
+
+---
+
+## Slice 83 — **Full non-table visual inclusion planner core**, on `slice83-full-visual-inclusion-planner-core`. **COMMITTED `72e1f87` + MERGED (ff) + PUSHED to `chrome-renderer-v1`.**
 
 - **Full Material Coverage foundation slice (planner side).** Slice 82 was committed `fd3fb97`, fast-forward merged, and
   pushed to trunk on `chrome-renderer-v1` (it applied material page selections to **visual-assets manifest planning**, so

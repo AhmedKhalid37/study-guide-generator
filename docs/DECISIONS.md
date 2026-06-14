@@ -3804,4 +3804,57 @@ selection/ranking/classification/cap/default/two-key-gate/caption behavior. The 
 bytes, base64/data URI, provider payload, token, URL, argv, socket path, model path, or raw exception (input fields are
 read for decisions only and never echoed; the manifest's internal `asset_id` is used for dedupe only and never emitted),
 verified by hostile-canary tests. No Chandra/Mistral/Gemini/model/provider/cloud call; no direct `clean.md` write. Chandra
-remains blocked by its own live-validation gate. **Slice 83 is NOT committed.**
+remains blocked by its own live-validation gate. **Slice 83 is COMMITTED `72e1f87`, fast-forward merged, and pushed to
+`chrome-renderer-v1`.**
+
+---
+
+## Slice 84 — Persist the visual inclusion plan as a safe exact-name artifact
+
+**Decision.** Persist the Slice 83 planner output as the deterministic, sanitized exact-name job artifact
+`visual_inclusion_plan.json` (new `pipeline/visual_inclusion_plan_artifact.write_visual_inclusion_plan`, new
+`Job.visual_inclusion_plan_json`, an exact-name `_artifact_path` mapping, and a `_attach_sources` wiring call after the
+visual-assets manifest is written and read back). It is exact-name download only — deliberately kept out of `ARTIFACTS`,
+generic `_artifact_urls`/`_artifact_details` rows, `EXPORT_ARTIFACTS`, `EXPORT_ARTIFACT_ALIASES`, the export ride-along
+tuple, and the frontend. No Markdown insertion, render, export, prompt, provider, or UI wiring.
+
+**Why planner persistence comes before rendering/insertion.** Persisting the plan is the small, reviewable next step that
+makes the Slice 83 decisions observable (downloadable, diffable, testable) without touching the load-bearing
+Markdown-insertion / Chromium-render / DOCX / export pipeline. Insertion is a separate, higher-risk concern that must not
+ride along with a freshly-wired artifact: landing persistence first yields a stable, sanitized contract that a later
+insertion slice can consume, and current rendering/export output stays byte-unchanged.
+
+**Why the artifact is exact-name and sanitized (mirrors `source_coverage_report.json`).** The repo already has a proven
+convention for advisory/foundation JSON siblings: reachable only by a fixed filename through `_artifact_path`, never added
+to the generic artifact list / UI rows / export selectors, and never gating job status. Following it verbatim means no new
+path-traversal surface, no new generic UI row, and no export-bundle change — and it inherits the same no-leak posture. The
+artifact re-emits only the Slice 83 plan (closed tokens, ints, `None`, fixed strings); hostile manifest fields
+(filename/title/path/text/OCR/caption/table-text/image-ref/asset-ref/url/argv/socket/model-path/base64/key) are read for
+decisions and never echoed.
+
+**Why all useful non-table visuals are planned by default instead of top-2.** The artifact inherits the Slice 83 contract
+verbatim — Full Material Coverage means *include all useful non-table figures after deterministic safety filtering*, the
+deliberate opposite of the parked visual-pilot "best 1–2 crops" cap. Re-introducing a default cap at the persistence layer
+would re-create exactly the behavior this roadmap moves away from, so the writer plans every eligible record.
+
+**Why table-like visuals are skipped and deferred to table policy.** A persisted plan of figure screenshots must not
+silently absorb tables: a table screenshot is rarely an acceptable study-guide artifact, and reconstructing/simplifying
+tables is the job of the later **Slice 85** table reconstruction/simplification policy. The writer inherits the planner's
+table skip (counted in `table_like_skipped_count`) rather than inventing a table artifact here.
+
+**Why candidate mapping must use safe generated IDs if/when needed — and why it is deferred now.** A future insertion
+slice will need to map plan items back to manifest visual candidates. Doing that safely requires a **generated internal
+id** (e.g. `visual_candidate_0001`) keyed off manifest order — never a filename, path, raw `image_ref`/`asset_ref`,
+original caption, OCR text, or source text, all of which would breach the no-leak boundary. Slice 84 takes the smallest
+safe option: keep the Slice 83 plan schema **as-is** (items already carry `source_index` + `source_page` for coarse
+mapping) and defer adding any `candidate_id` to the slice that actually consumes it, so no new field ships before it is
+needed or test-covered.
+
+**Why UI / export / rendering are deferred.** Same discipline as Slice 83: no UI should be built until the backend chain
+proves page selections apply consistently across content extraction, visual candidates, table candidates/policy, and
+coverage reporting (Slice 86); and export/render changes touch load-bearing code and must not piggyback on an artifact
+slice. The writer is **degrade-never-fail** (any build/write error prints a safe message — exception type only, no raw
+string — and generation continues), so the artifact can never gate or fail a job. It changes none of the visual pilot's
+selection/ranking/classification/cap/default/two-key-gate/caption behavior, no extraction/OCR routing, and no render/
+export/prompt/provider behavior. No Chandra/Mistral/Gemini/model/provider/cloud call; no direct `clean.md` write. Chandra
+remains blocked by its own live-validation gate. **Slice 84 is NOT committed.**

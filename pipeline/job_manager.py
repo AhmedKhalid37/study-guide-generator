@@ -173,6 +173,19 @@ class Job:
         return self.dir / "source_coverage_report.json"
 
     @property
+    def visual_inclusion_plan_json(self) -> Path:
+        # Slice 84: sibling Full Material Coverage foundation artifact holding the
+        # deterministic full non-table visual INCLUSION PLAN
+        # (pipeline/visual_inclusion_planner.py), derived only from the already-
+        # sanitized visual_assets_manifest.json. Like the other advisory siblings it
+        # never changes job status, never mutates the source manifest, makes no
+        # production insert/render decision (no Markdown insertion / render / export
+        # this slice), is kept SEPARATE from validation.json, and is reached only by
+        # its exact filename (not added to the generic ARTIFACTS list / generic UI
+        # rows / export selectors). It never gates generation.
+        return self.dir / "visual_inclusion_plan.json"
+
+    @property
     def assets_dir(self) -> Path:
         # Slice 40: holds locally-cropped figure images (PNG) referenced by the
         # visual-assets manifest's `extracted_figure` records via safe RELATIVE

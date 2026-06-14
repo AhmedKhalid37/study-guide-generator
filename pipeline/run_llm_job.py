@@ -26,6 +26,7 @@ from pipeline.page_selection_model import (
 from pipeline.visual_assets_manifest import write_visual_assets_manifest
 from pipeline.visual_asset_scoring import write_visual_asset_scoring_report
 from pipeline.visual_replacement_planner import write_visual_replacement_plan_report
+from pipeline.visual_inclusion_plan_artifact import write_visual_inclusion_plan
 from pipeline.visual_asset_extractor import (
     MAX_FIGURES_PER_JOB,
     extract_local_figures,
@@ -438,6 +439,14 @@ def _attach_sources(
         write_visual_replacement_plan_report(
             job, scoring_report, manifest=visual_manifest_obj
         )
+        # Slice 84: persist the Full Material Coverage visual INCLUSION PLAN derived
+        # only from the sanitized manifest we just read (Slice 83 planner core). It
+        # plans ALL eligible useful non-table visuals by default (not the visual-
+        # pilot top-1/2 cap), skips table-like records (deferred to table policy),
+        # and is degrade-not-fail. A missing/skipped/malformed manifest yields a safe
+        # skipped plan via the pure planner. No Markdown insertion / render / export /
+        # provider wiring this slice — exact-name download only.
+        _write_visual_inclusion_plan_safely(job, visual_manifest_obj)
 
     if not sections:
         return source_text, {
@@ -542,6 +551,20 @@ def _write_source_coverage_report_safely(
     except Exception as exc:
         print(
             f"Source coverage report skipped ({type(exc).__name__}); job continues.",
+            file=sys.stderr,
+        )
+
+
+def _write_visual_inclusion_plan_safely(
+    job: Job,
+    visual_manifest: Any = None,
+) -> None:
+    """Best-effort visual inclusion plan artifact write; never gates generation."""
+    try:
+        write_visual_inclusion_plan(job, visual_manifest=visual_manifest)
+    except Exception as exc:
+        print(
+            f"Visual inclusion plan skipped ({type(exc).__name__}); job continues.",
             file=sys.stderr,
         )
 

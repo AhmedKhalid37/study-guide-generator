@@ -4091,6 +4091,12 @@ def _artifact_path(job: Job, artifact_name: str) -> tuple[Path, str]:
         # download only; deliberately NOT in ARTIFACTS, generic UI rows, or export
         # selectors.
         return job.source_coverage_report_json, "application/json"
+    if artifact_name == "visual_inclusion_plan.json":
+        # Slice 84: Full Material Coverage foundation plan derived only from the
+        # sanitized visual_assets_manifest.json (Slice 83 planner core). Exact-name
+        # download only; deliberately NOT in ARTIFACTS, generic UI rows, or export
+        # selectors (no Markdown insertion / render / export wiring this slice).
+        return job.visual_inclusion_plan_json, "application/json"
 
     artifact = ARTIFACTS.get(artifact_name)
     if artifact is None:
