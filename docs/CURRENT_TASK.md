@@ -5,7 +5,56 @@
 
 ---
 
-## Slice 84 — **Persist visual inclusion plan artifact**, on `slice84-visual-inclusion-plan-artifact`. **NOT COMMITTED.**
+## Slice 85 — **Table reconstruction/simplification policy core**, on `slice85-table-reconstruction-policy-core`. **NOT COMMITTED.**
+
+- **Full Material Coverage foundation slice (table decision side).** Slice 84 was committed `7cc9d6f`, fast-forward
+  merged, and pushed to trunk on `chrome-renderer-v1` (it persisted the Slice 83 non-table plan as the exact-name artifact
+  `visual_inclusion_plan.json`). The non-table planner deliberately **skips table-like material** — tables must not be
+  treated as ordinary screenshot visuals. Slice 85 adds the next, still-pure step: a deterministic **policy core** that
+  decides what should later happen to a table-like candidate. **No actual table reconstruction happens yet.**
+- **Policy-core only.** No table content is reconstructed, no LLM/prompt is touched, no table is inserted into
+  Markdown/PDF/DOCX, **no table artifact writer is added**, no UI, no OCR, no PDF/image inspection, no provider/model call.
+  There is **no table manifest today and this slice invents none** — the module evaluates synthetic / sanitized
+  *table-candidate-shaped* dicts only and returns a sanitized policy dict.
+- **New pure module** `pipeline/table_reconstruction_policy.py` (stdlib-only, unwired):
+  - `classify_table_candidate(candidate)` → sanitized per-candidate item dict;
+  - `build_table_reconstruction_policy(candidates, *, max_items=None)` → sanitized policy dict
+    (`version, kind, status, summary, items, warnings`).
+- **Product rule encoded:** a table should generally **not** be inserted as a screenshot. Future modes (not implemented
+  here) are **`reconstruct_with_original`** (original table text + a simpler/clearer version) and **`simplify_only`** (the
+  simpler/clearer version only), plus **`defer`**, **`skip_unreadable`**, **`skip_unsafe`**. `screenshot_insert_count` is
+  **always 0** — screenshot insertion is never the default table behavior.
+- **Deterministic classification rules:** table-likeness is recognized from closed tokens
+  (`table, table_like, grid_table, dense_table, table_region, table_image, tabular`) across
+  `candidate_kind/visual_kind/visual_type/table_signal/kind/type/asset_type`; non-table records are **never** treated as
+  table screenshots (warned `not_table_like`, no item). For a table-like record: unsafe → `skip_unsafe`; missing/invalid
+  `source_page` → `defer` (closed warning); insufficient structure → `skip_unreadable`; low confidence → `defer`;
+  otherwise text-layer present → `reconstruct_with_original`, text-layer absent/unknown (with structure) → `simplify_only`.
+- **Preserve list (closed/deterministic):** `headers, column_labels, row_labels, exam_terms, numeric_values, units` —
+  `exam_terms` always kept; header/numeric signals add the rest in fixed order. Skip/defer items carry an empty preserve.
+- **Default = handle ALL candidates** (not top-1/2). `max_items` is a defensive ceiling only, default `None`; when passed
+  it truncates in input order, sets `status: partial`, and records `max_items_applied`.
+- **No-leak / safety:** emits only closed tokens, ints, `None`, fixed strings — verified by hostile-canary fields
+  (path/title/caption/ocr/table-text/image-ref/asset-id/url/token/argv/socket/model-path/base64/data-uri) the policy reads
+  for decisions and never echoes. Total/pure: never raises; malformed input → safe skipped policy.
+- **Tests:** new `test_scripts/test_table_reconstruction_policy.py` — **145 passed, 0 failed** on host. Covers
+  missing/malformed → skipped, non-table-not-a-screenshot, reconstruct-with-text+structure, simplify-without-text,
+  dense/generic table recognition, missing/invalid `source_page` defer, insufficient-structure skip, unsafe skip, low-conf
+  defer, screenshot_insert==0, closed/deterministic preserve, default-handles-all (7 of 7), `max_items` ceiling +
+  reindex, determinism, schema whitelist, hostile-canary no-leak, and stdlib-only/unwired import hygiene. Slice 83 planner
+  (178/0), Slice 84 artifact (62/0), visual-assets-manifest (65/0), page-selection-manifest-planning (47/0) all still
+  green.
+- **Scope boundaries.** Pure policy core only: `api/server.py`, `pipeline/run_llm_job.py`,
+  `pipeline/visual_inclusion_planner.py`, `pipeline/visual_inclusion_plan_artifact.py`,
+  `pipeline/visual_markdown_insertion.py`, renderers, exporters, prompts, providers, frontend all untouched. No API route
+  change, no job-execution wiring, no extraction/OCR routing change, no render/export/prompt/provider behavior change, no
+  visual-pilot ranking/classification/cap/default/two-key-gate/caption change, no Chandra/Mistral/Gemini/model/provider/
+  cloud call, no direct `clean.md` write, no table manifest invented. Chandra remains blocked by its own live-validation
+  gate. **Slice 85 is NOT committed.**
+
+---
+
+## Slice 84 — **Persist visual inclusion plan artifact**, on `slice84-visual-inclusion-plan-artifact`. **COMMITTED `7cc9d6f` + MERGED (ff) + PUSHED to `chrome-renderer-v1`.**
 
 - **Full Material Coverage foundation slice (persistence side).** Slice 83 was committed `72e1f87`, fast-forward merged,
   and pushed to trunk on `chrome-renderer-v1` (it added the pure, stdlib-only **full non-table visual inclusion planner

@@ -3857,4 +3857,46 @@ slice. The writer is **degrade-never-fail** (any build/write error prints a safe
 string — and generation continues), so the artifact can never gate or fail a job. It changes none of the visual pilot's
 selection/ranking/classification/cap/default/two-key-gate/caption behavior, no extraction/OCR routing, and no render/
 export/prompt/provider behavior. No Chandra/Mistral/Gemini/model/provider/cloud call; no direct `clean.md` write. Chandra
-remains blocked by its own live-validation gate. **Slice 84 is NOT committed.**
+remains blocked by its own live-validation gate. (Slice 84 was subsequently committed `7cc9d6f`, merged ff, and pushed.)
+
+---
+
+## Slice 85 — Table reconstruction/simplification policy starts as a pure, unwired core
+The non-table visual inclusion planner (Slice 83) and its persisted plan (Slice 84) deliberately **skip table-like
+material**. Slice 85 fills that gap with `pipeline/table_reconstruction_policy.py` — a pure, deterministic, stdlib-only
+decision layer (`classify_table_candidate`, `build_table_reconstruction_policy`) that decides what should *later* happen
+to a table-like candidate, while reconstructing nothing yet.
+
+**Why the table policy starts as a pure core (no wiring).** Reconstruction/simplification of tables is the highest-risk
+visual behavior (it must preserve exam-load-bearing keywords, headers, units, labels, and numbers without leaking source
+text), so the decision layer is settled and test-locked *before* any consumer touches it — the same staged discipline as
+Slices 83→84 (planner → artifact → consumer). A pure core can be exhaustively unit-tested with synthetic candidates,
+stays trivially safe (no PDF/image/OCR/provider access), and cannot regress generation because nothing calls it. Wiring,
+an artifact writer, prompt integration, and rendering are each a later, separately-scoped slice.
+
+**Why screenshot insertion is not the default table behavior.** A table pasted as a screenshot is rarely an acceptable
+study-guide artifact: it is unsearchable, unstyled, often unreadable at PDF scale, and carries the source verbatim. The
+product rule is that tables should be **reconstructed into study-friendly content** instead. The policy therefore never
+emits a screenshot action and pins `screenshot_insert_count` to `0`; non-table records are explicitly *not* coerced into
+table screenshots (they are warned `not_table_like` and produce no item, left to the non-table planner).
+
+**Why `reconstruct_with_original` and `simplify_only` are future modes, not implemented now.** The two target modes —
+keep the original table text *plus* a simpler/clearer version, or emit the simpler version only — both require an LLM
+pass over real table content, which is exactly what this slice must not do. So Slice 85 only *decides which mode applies*
+(from deterministic structural/text-layer/confidence/safety signals) and records what a later pass must `preserve`
+(`headers, column_labels, row_labels, exam_terms, numeric_values, units`). The reconstruction itself is deferred until a
+slice that can safely run the model and persist/insert the result.
+
+**Why no table manifest is invented in this slice.** There is no table-candidate manifest in the pipeline today, and
+inventing/persisting one here would (a) couple the policy to a not-yet-designed extraction schema and (b) risk persisting
+real table text/refs before the no-leak boundary for tables is settled. The policy instead consumes *synthetic /
+sanitized table-candidate-shaped dicts* and emits only closed tokens/ints/`None`, so the decision contract is fixed
+independently of however a real table manifest is later shaped. The future extraction/manifest slice can adapt to this
+stable policy rather than the reverse.
+
+**Why LLM prompt integration / rendering / UI are deferred.** Same discipline as Slices 83–84: no prompt, render, export,
+or UI change rides along on a policy-core slice. The module imports no API/FastAPI/fitz/OCR/renderer/provider/LMM/
+job-manager/visual-insertion/visual-pilot/visual-inclusion/manifest module (import-hygiene tested), changes no API route,
+no job-execution wiring, no extraction/OCR routing, and no render/export/prompt/provider or visual-pilot
+ranking/classification/cap/default/two-key-gate/caption behavior. No Chandra/Mistral/Gemini/model/provider/cloud call; no
+direct `clean.md` write. Chandra remains blocked by its own live-validation gate. **Slice 85 is NOT committed.**

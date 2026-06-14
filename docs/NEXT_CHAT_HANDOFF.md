@@ -6,9 +6,38 @@
 > stable overview see `PROJECT_CONTEXT.md`; canonical brief is `../CLAUDE.md`.
 
 ## Current position
-- **Working tree:** **Slice 84 (persist visual inclusion plan artifact) — UNCOMMITTED (per instruction)** on branch
-  `slice84-visual-inclusion-plan-artifact` (branched from fresh trunk after Slice 83 was committed/merged/pushed). Slice
-  83 is now trunk commit `72e1f87`.
+- **Working tree:** **Slice 85 (table reconstruction/simplification policy core) — UNCOMMITTED (per instruction)** on
+  branch `slice85-table-reconstruction-policy-core` (branched from fresh trunk after Slice 84 was committed/merged/pushed).
+  Slice 84 is now trunk commit `7cc9d6f`.
+  - **Purpose:** add a pure, deterministic **policy core** that decides what should later happen to a table-like candidate.
+    The Slice 83/84 non-table planner+artifact deliberately **skip table-like material**; tables must not be treated as
+    ordinary screenshot visuals. This slice defines that decision layer only — **no actual table reconstruction yet.**
+  - **New pure module:** `pipeline/table_reconstruction_policy.py` (stdlib-only, unwired) →
+    `classify_table_candidate(candidate)` and `build_table_reconstruction_policy(candidates, *, max_items=None)`.
+    Consumes synthetic / sanitized *table-candidate-shaped* dicts; returns a sanitized policy dict
+    (`version, kind, status, summary, items, warnings`). **No table manifest exists today and this slice invents none.**
+  - **Product rule:** a table should generally **not** be inserted as a screenshot. Future modes (not implemented here)
+    are `reconstruct_with_original` (original table text + simpler/clearer version) and `simplify_only` (simpler version
+    only), plus `defer`, `skip_unreadable`, `skip_unsafe`. `screenshot_insert_count` is **always 0**.
+  - **Rules:** table-likeness from closed tokens; non-table → `not_table_like` (no item, never a screenshot); unsafe →
+    `skip_unsafe`; missing/invalid `source_page` → `defer`; insufficient structure → `skip_unreadable`; low confidence →
+    `defer`; text-layer present → `reconstruct_with_original`; text-layer absent/unknown (with structure) → `simplify_only`.
+    Closed/deterministic `preserve` list (`headers, column_labels, row_labels, exam_terms, numeric_values, units`).
+    Default handles **ALL** candidates; `max_items` is a defensive ceiling only.
+  - **What changed:** new `pipeline/table_reconstruction_policy.py`, new
+    `test_scripts/test_table_reconstruction_policy.py` (**145/0** on host), docs. **No production wiring** —
+    `api/server.py`, `run_llm_job.py`, the visual-inclusion planner/artifact, `visual_markdown_insertion.py`, renderers,
+    exporters, prompts, providers, frontend all unchanged.
+  - **Scope:** pure policy core only — no API route, no job execution wiring, no extraction/OCR routing, no render/export/
+    prompt/provider behavior change, no visual-pilot ranking/classification/cap/default/two-key-gate/caption change, no
+    Chandra/Mistral/Gemini/model/provider/cloud call, no direct `clean.md` write, no table manifest invented. Closed
+    warning tokens only; no leaks (hostile-canary tested). Chandra remains blocked by its own live-validation gate. Docker
+    rebuild **not required** (pure/unwired). **Slice 85 is NOT committed.**
+
+### Prior position (Slice 84 — committed & merged)
+- **Working tree:** **Slice 84 (persist visual inclusion plan artifact) — COMMITTED `7cc9d6f` + MERGED (ff) + PUSHED to
+  `chrome-renderer-v1`** on branch `slice84-visual-inclusion-plan-artifact` (branched from fresh trunk after Slice 83 was
+  committed/merged/pushed). Slice 83 is now trunk commit `72e1f87`.
   - **Purpose:** persist the Slice 83 planner output as the safe exact-name job artifact `visual_inclusion_plan.json`,
     derived **only** from the already-sanitized `visual_assets_manifest.json`. Sanitized, deterministic, degrade-never-fail.
   - **New writer:** `pipeline/visual_inclusion_plan_artifact.py` → `write_visual_inclusion_plan(job, visual_manifest=None)`
@@ -36,7 +65,7 @@
     ranking/classification/cap/default/two-key-gate/caption change, no Chandra/Mistral/Gemini/model/provider/cloud call, no
     direct `clean.md` write. Closed warning tokens only; no leaks (hostile-canary tested). Chandra remains blocked by its
     own live-validation gate.
-  - **Slice 84 is NOT committed.**
+  - **Slice 84 was committed `7cc9d6f`, merged (ff), and pushed to `chrome-renderer-v1`.**
 
 ### Prior position (Slice 83 — committed & merged)
 - **Working tree:** **Slice 83 (full non-table visual inclusion planner core) — COMMITTED `72e1f87` + MERGED (ff) +
