@@ -5,7 +5,68 @@
 
 ---
 
-## Slice 82 — **Apply material page selections to visual/table manifests**, on `slice82-apply-material-page-selection-to-visuals`. **NOT COMMITTED.**
+## Slice 83 — **Full non-table visual inclusion planner core**, on `slice83-full-visual-inclusion-planner-core`. **NOT COMMITTED.**
+
+- **Full Material Coverage foundation slice (planner side).** Slice 82 was committed `fd3fb97`, fast-forward merged, and
+  pushed to trunk on `chrome-renderer-v1` (it applied material page selections to **visual-assets manifest planning**, so
+  visual candidates from material-excluded PDF pages never enter `visual_assets_manifest.json`). Slice 83 adds the next,
+  still-pure step: a planner that decides **which non-table visuals from the already-page-filtered manifest** should be
+  planned for future guide inclusion. This is the deliberate move **away from "top 1–2 visuals forever."**
+- **Product goal (not "insert every crop").** Include **all useful non-table figures/diagrams/graphs/charts/instructional
+  visuals from included pages, after deterministic safety filtering** — explicitly NOT every crop, logo, decorative
+  header, background, tiny/blank/low-information crop, or table-as-screenshot.
+- **New pure module** `pipeline/visual_inclusion_planner.py`, stdlib-only, unwired. Public API:
+  `build_visual_inclusion_plan(visual_manifest: dict | None, *, max_items: int | None = None) -> dict`.
+- **Plan shape:** `{version, kind:"visual_inclusion_plan", status: completed|partial|skipped, summary{...}, items[], warnings[]}`.
+  Each item: `{plan_index, source_index (int|None), source_page, visual_kind (diagram|figure|graph|chart|image|unknown),
+  inclusion_role (primary_visual|supporting_visual), reason:"non_table_visual_from_included_page", warnings[]}`.
+  `summary` carries `source_count, candidate_count, planned_count, non_table_planned_count, table_like_skipped_count,
+  unsafe_or_incomplete_skipped_count, page_count_with_planned_visuals`.
+- **Default = plan ALL eligible non-table visuals.** No hard cap at 1 or 2. `max_items` is an optional **defensive
+  ceiling only** (default `None`); when passed as a non-negative int and it truncates the plan, `status` becomes
+  `partial` and `max_items_applied` is recorded. Any other `max_items` value is ignored.
+- **Eligibility (deterministic).** A record is planned iff: it has a strictly-positive **int** `source_page`; it is not
+  table-like; it is not decorative/logo/header/footer/background/watermark; it is not marked unsafe; it is not a
+  low-information page (`signals.classification == "blank_or_low_text"`); it is not a tiny crop (`crop_*_px < 24`); and it
+  carries a recognized non-table type. Today's manifest types `page_visual_signal` (→ supporting, kind derived from
+  `has_drawings`/`has_images`) and `extracted_figure` (→ primary, kind `figure`) are non-table; explicit future kind
+  tokens (diagram/figure/graph/chart/image/plot/illustration) are honored, with `plot→graph`, `illustration→figure`.
+- **Table-like skip.** Records typed `table`/`table_like`/`grid_table`/`dense_table`/`table_region`/`tabular`/`table_image`
+  are **skipped** and counted in `table_like_skipped_count`. Table belongs to the later table reconstruction/simplification
+  policy slice — **never** screenshot insertion here. Table wins over any co-present figure token (conservative).
+- **Unknown visual type rule (documented).** A record with no recognized type token at all is **skipped** with
+  `visual_type_unknown` (the safer choice; today's real manifests only ever emit `page_visual_signal`/`extracted_figure`,
+  so this only affects future/hostile records and never reduces real coverage).
+- **Ordering.** Deterministic by `source_index` (when present), then `source_page`, then original manifest position — a
+  stable sort that reproduces the manifest's existing source-then-page order. Exact-duplicate records (same internal
+  `asset_id`) are collapsed; that id is used for dedupe **only** and is never emitted.
+- **Closed warning/status tokens:** `manifest_missing`, `manifest_malformed`, `manifest_skipped`, `record_malformed`,
+  `source_page_missing`, `source_page_invalid`, `visual_type_table_skipped`, `visual_type_unknown`,
+  `visual_record_unsafe`, `visual_record_decorative`, `visual_record_low_information`, `visual_record_tiny`,
+  `max_items_applied`. No raw exception strings.
+- **No-leak.** The plan emits only closed tokens, ints, `None`, and fixed strings. No filename/path, document/OCR/caption/
+  table text, image ref, asset ref/asset id, image bytes, base64/data URI, provider payload, token, URL, argv, socket
+  path, model path, or raw exception can survive — input fields are read for decisions only and never echoed. Verified by
+  hostile-canary tests.
+- **Tests:** new `test_scripts/test_visual_inclusion_planner.py` — **178 passed, 0 failed** on host. Covers missing/
+  malformed/skipped/empty manifests, non-table planning, table/decorative/low-info/tiny/unsafe skips, unknown-type rule,
+  missing/invalid `source_page`, manifest-order preservation, default-plans-all (7 of 7, not top-2), `max_items` ceiling,
+  dedupe, determinism, schema whitelist, hostile-canary no-leak, and stdlib-only import hygiene.
+- **Scope boundaries.** Planner-core only and **unwired**: not imported by generation, Markdown insertion, renderers,
+  exporters, prompts, `api/server.py`, or the frontend. No artifact persisted yet (that is Slice 84). No table
+  reconstruction (Slice 85). No visual-pilot ranking/classification/cap/default/two-key-gate/caption change. No
+  extraction/OCR routing change. No render/export/prompt/provider change. No Chandra/Mistral/Gemini/model/provider/cloud
+  call. No direct `clean.md` write. Chandra remains blocked by its own live-validation gate. **Slice 83 is NOT committed.**
+- **Roadmap framing (Slices 83–86 = Full Material Coverage backend foundation):** **Slice 83** full non-table visual
+  inclusion planner core (this) · **Slice 84** persist `visual_inclusion_plan.json` (safe exact-name artifact; may carry
+  stable safe candidate IDs + source page numbers, never raw image refs/filenames/text) · **Slice 85** table
+  reconstruction/simplification policy core · **Slice 86** material-coverage E2E validation. **No UI** until the backend
+  chain proves page selections apply consistently to content extraction, visual candidates, table candidates/policy, and
+  coverage reporting.
+
+### Prior position (Slice 82 — committed & merged)
+
+## Slice 82 — **Apply material page selections to visual/table manifests**, on `slice82-apply-material-page-selection-to-visuals`. **COMMITTED `fd3fb97` + MERGED to `chrome-renderer-v1` (fast-forward) + PUSHED.**
 
 - **Full Material Coverage foundation slice (visual side).** Slice 81 was committed `7ca109d`, fast-forward merged, and
   pushed to trunk on `chrome-renderer-v1` (it applied material selections to attachment **text extraction / content
@@ -52,7 +113,9 @@
   when a selection excludes pages — the cap is unchanged). No extraction/OCR routing change beyond the intended visual
   manifest page filtering. No render/export/prompt/provider behavior change. No Chandra/Mistral/Gemini/model/provider/cloud
   call. No direct `clean.md` write (still via `JobManager.save_clean_md`). Chandra remains blocked by its own
-  live-validation gate. **Slice 82 is NOT committed.**
+  live-validation gate. **Slice 82 committed `fd3fb97`, fast-forward merged to `chrome-renderer-v1`, and pushed.**
+  Validated: host suite green; Docker `test_page_selection_request_persistence.py` 182/0 and `test_page_selections.py`
+  24/24; Docker rebuild + `/api/health` + `smoke_release.py` 29/0/0.
 
 ### Prior position (Slice 81 — committed & merged)
 

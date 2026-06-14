@@ -6,43 +6,54 @@
 > stable overview see `PROJECT_CONTEXT.md`; canonical brief is `../CLAUDE.md`.
 
 ## Current position
-- **Working tree:** **Slice 82 (apply material page selections to visual/table manifests) — UNCOMMITTED (per
-  instruction)** on branch `slice82-apply-material-page-selection-to-visuals` (branched from fresh trunk after Slice 81
-  was committed/merged/pushed). Slice 81 is now trunk commit `7ca109d`.
-  - **Purpose:** apply the **same** effective material page selection Slice 81 used for text extraction to **visual-assets
-    manifest planning**, so visual candidates from material-excluded PDF pages never enter `visual_assets_manifest.json`.
-  - **How:** `_attach_sources` keeps `visual_page_filters` in lockstep with `extraction_metadata_sources` — each entry is
-    the effective post-material allowed page set when a selection was **applied**, else `None` (no active filter). Passed
-    as the new `page_filters=` kwarg to `write_visual_assets_manifest`; the builder drops page-level
-    `page_visual_signal` candidates whose `source_page` is not in their source's allowed set.
-  - **Precedence per attachment** (reuses Slice 81): per-attachment
-    `material_page_selections.attachments.attachment_<i>` → global `material_page_selection` → default-all.
-  - **Interaction with `page_selections`:** the effective set is Slice 81's intersection(`page_selections` universe,
-    material selection), so a visual record can never survive on a page `page_selections` excluded, nor expand beyond it.
-    `exclude`/`all` with no known universe defers (no filter; existing behaviour). `page_filters=None`/absent ⇒ manifest
-    byte-identical to before Slice 82.
-  - **Missing/invalid `source_page`:** under an active filter, dropped conservatively
-    (`material_selection_visual_page_unknown`) so an unverifiable page can never surface a visual; kept when no filter is
-    active. Live page candidates always carry a valid physical page number, so this only affects hostile/synthetic input.
-  - **Table manifests:** none exists yet (the only visual artifact is `visual_assets_manifest.json`); table-manifest
-    filtering is **deferred** to a future table extraction/reconstruction layer (reserved token
-    `material_selection_table_manifest_not_present`). Extracted figures (gated, off by default) already receive the
-    material-filtered `pages` upstream, so the explicit manifest filter targets the live `page_visual_signal` path.
-  - **What changed:** `pipeline/page_selection_model.py` (new pure `page_is_in_material_selection(...)` + closed tokens),
-    `pipeline/visual_assets_manifest.py` (`page_filters` kwarg, per-source filter, `summary.pages_filtered_by_material_selection`,
-    closed warnings), `pipeline/run_llm_job.py` (build `visual_page_filters`, pass to the writer), new
-    `test_scripts/test_page_selection_visual_manifest_planning.py`. `api/server.py` unchanged.
-  - **Warning/status tokens:** `material_selection_visual_filtered`, `material_selection_visual_page_unknown`,
-    `material_selection_visual_no_matching_pages` (all candidates dropped → still a `completed` manifest, not a failure),
-    `material_selection_table_manifest_not_present` (reserved).
-  - **Scope:** no Builder UI; no all-figures planner; no table reconstruction; no visual-pilot
-    selection/ranking/classification/cap/default/two-key-gate/caption change (the pilot just sees fewer candidates when a
-    selection excludes pages); no extraction/OCR routing change beyond the intended visual manifest page filtering; no
-    render/export/prompt/provider change; no Chandra/Mistral/Gemini/model/provider/cloud call; no direct `clean.md` write.
-  - **Next likely slices (do not implement in Slice 82):** Slice 83 Builder UI (save/load `material_page_selections`);
-    Slice 84 full non-table figure inclusion planner; Slice 85 table reconstruction/simplification policy core (adds a
-    real table manifest, then applies this slice's page filter to it); Slice 86 table reconstruction prompt integration
-    or E2E material coverage validation.
+- **Working tree:** **Slice 83 (full non-table visual inclusion planner core) — UNCOMMITTED (per instruction)** on branch
+  `slice83-full-visual-inclusion-planner-core` (branched from fresh trunk after Slice 82 was committed/merged/pushed).
+  Slice 82 is now trunk commit `fd3fb97`.
+  - **Purpose:** add a pure, deterministic planner that decides **which non-table visuals from the already
+    material-page-filtered visual manifest** to plan for future guide inclusion. Deliberate move **away from "top 1–2
+    visuals forever"** toward Full Material Coverage.
+  - **Product goal:** include **all useful non-table figures/diagrams/graphs/charts/instructional visuals from included
+    pages, after deterministic safety filtering** — NOT every crop/logo/decorative header/background/tiny/blank/low-info
+    crop, and NOT tables-as-screenshots.
+  - **New module:** `pipeline/visual_inclusion_planner.py`, stdlib-only, **unwired**. API
+    `build_visual_inclusion_plan(visual_manifest: dict | None, *, max_items: int | None = None) -> dict`.
+  - **Default plans ALL eligible non-table visuals** (no hard cap at 1/2). `max_items` is a defensive ceiling only
+    (default `None`); when it truncates → `status:"partial"` + `max_items_applied`.
+  - **Eligibility:** positive-int `source_page`; not table-like; not decorative/logo/header/footer/background/watermark;
+    not unsafe; not low-information (`blank_or_low_text`); not tiny (`crop_*_px < 24`); recognized non-table type
+    (`page_visual_signal`→supporting, `extracted_figure`→primary figure, explicit kind tokens honored with `plot→graph`,
+    `illustration→figure`). **Table-like records skipped** (counted) — table reconstruction is Slice 85, never screenshot
+    insertion. **Unknown type → skipped** (`visual_type_unknown`, the safer choice; documented). Manifest order preserved
+    (stable sort source→page→position); internal `asset_id` used for dedupe only, never emitted.
+  - **Plan shape:** `{version, kind:"visual_inclusion_plan", status, summary{source_count, candidate_count, planned_count,
+    non_table_planned_count, table_like_skipped_count, unsafe_or_incomplete_skipped_count, page_count_with_planned_visuals},
+    items[], warnings[]}`. Item: `{plan_index, source_index, source_page, visual_kind, inclusion_role, reason, warnings}`.
+  - **What changed:** new `pipeline/visual_inclusion_planner.py` + new `test_scripts/test_visual_inclusion_planner.py`
+    (**178/0** on host). No other file touched — `run_llm_job.py`, `visual_markdown_insertion.py`, visual-pilot files,
+    renderers, exporters, prompts, `api/server.py`, frontend all unchanged.
+  - **Scope:** planner-core only and unwired — no artifact persisted (Slice 84), no table policy (Slice 85), no
+    Markdown/PDF/DOCX insertion, no API/UI, no extraction/OCR routing change, no render/export/prompt/provider change, no
+    visual-pilot ranking/classification/cap/default/two-key-gate/caption change, no Chandra/Mistral/Gemini/model/provider/
+    cloud call, no direct `clean.md` write. Closed warning tokens only; no leaks (hostile-canary tested).
+  - **Roadmap (83–86 = Full Material Coverage backend foundation):** **83** planner core (this) · **84** persist
+    `visual_inclusion_plan.json` (safe exact-name artifact; stable safe candidate IDs + source pages OK, never raw image
+    refs/filenames/text) · **85** table reconstruction/simplification policy core · **86** material-coverage E2E. **No
+    UI** until the backend chain proves selections apply consistently to extraction, visual candidates, table policy, and
+    coverage reporting.
+  - **Slice 83 is NOT committed.**
+
+### Prior position (Slice 82 — committed & merged)
+- **Slice 82 (apply material page selections to visual/table manifests) — COMMITTED `fd3fb97` + MERGED to
+  `chrome-renderer-v1` (fast-forward) + PUSHED** on branch `slice82-apply-material-page-selection-to-visuals`. It applied
+  the **same** effective material page selection Slice 81 used for text extraction to **visual-assets manifest planning**:
+  `_attach_sources` keeps `visual_page_filters` in lockstep with `extraction_metadata_sources` and passes them as the new
+  `page_filters=` kwarg to `write_visual_assets_manifest`, which drops `page_visual_signal` candidates whose `source_page`
+  is not in their source's allowed set (the Slice-81 intersection of the `page_selections` universe with the material
+  selection — never expands beyond it). Missing/invalid `source_page` under an active filter is dropped conservatively
+  (`material_selection_visual_page_unknown`). No table manifest exists yet (reserved token
+  `material_selection_table_manifest_not_present`). New pure helper `page_is_in_material_selection(...)`. Validated: host
+  suite green; Docker `test_page_selection_request_persistence.py` 182/0 and `test_page_selections.py` 24/24; Docker
+  rebuild + `/api/health` + `smoke_release.py` 29/0/0.
 
 ### Prior position (Slice 81 — committed & merged)
 - **Slice 81 (apply material page selections to extraction/content planning) — COMMITTED `7ca109d` + MERGED to

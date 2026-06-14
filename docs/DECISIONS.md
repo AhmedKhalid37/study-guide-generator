@@ -3748,4 +3748,60 @@ sees fewer (or no) candidates when a selection excludes pages, and the cap is un
 `summary.pages_filtered_by_material_selection` is a count and the warnings are closed tokens, so the manifest's no-leak
 boundary (no page lists, filenames, paths, captions, image refs, text, base64, data URIs, tokens, or URLs) is preserved.
 No render/export/prompt/provider change, no Chandra/Mistral/Gemini/model/provider/cloud call, no direct `clean.md` write.
-Chandra remains blocked by its own live-validation gate. **Slice 82 is NOT committed.**
+Chandra remains blocked by its own live-validation gate. **Slice 82 committed `fd3fb97`, fast-forward merged to
+`chrome-renderer-v1`, and pushed.**
+
+
+## Slice 83 — full non-table visual inclusion planner starts as a pure core that plans ALL eligible non-table visuals (2026-06-14)
+
+**Decision.** Slice 83 adds `pipeline/visual_inclusion_planner.py`, a pure, stdlib-only, **unwired** core that consumes a
+sanitized `visual_assets_manifest.json`-shaped dict (already material-page-filtered by Slice 82) and emits a sanitized
+`visual_inclusion_plan` dict naming which **non-table** visuals from included pages to plan for future guide inclusion. It
+is not imported by generation, Markdown insertion, renderers, exporters, prompts, the API, or the frontend, and it
+persists no artifact.
+
+**Why a pure core (again).** Same staged pattern proven through Slices 76–82: land the decision logic as a pure,
+exhaustively-testable, no-leak function *before* wiring it to anything that renders or persists. The planner can therefore
+be validated with synthetic dictionaries (178 host checks) with zero risk to the load-bearing PDF/render pipeline,
+extraction/OCR routing, the visual pilot, or any export — and a later slice can wire it deliberately. Persistence is
+Slice 84; table policy is Slice 85; E2E coverage is Slice 86.
+
+**Why it plans ALL eligible non-table visuals by default (no top-1/top-2 cap).** The product goal of Full Material
+Coverage is to *include all useful non-table figures/diagrams/graphs/charts/instructional visuals from included pages,
+after deterministic safety filtering* — explicitly the opposite of the parked visual-pilot's "best 1–2 crops" heuristic.
+Re-introducing a small default cap here would re-create exactly the behavior this roadmap is moving away from. So the
+default plans every eligible record. `max_items` exists only as a **defensive ceiling** for pathological documents
+(default `None`); when it truncates, the plan is `partial` and records `max_items_applied`. It is deliberately *not* the
+old cap and is never set by the product path in this slice.
+
+**Why "all useful," not "every crop."** "All figures" is bounded by deterministic safety filtering, never an unfiltered
+dump: table-like records are skipped (see below); decorative/logo/header/footer/background/watermark records are skipped;
+low-information pages (`signals.classification == "blank_or_low_text"`) and tiny crops (`crop_*_px < 24`) are skipped;
+records marked unsafe are skipped; and a record whose `source_page` cannot be verified as a positive int is dropped
+conservatively so a material-excluded or unverifiable page can never surface a visual. A record with no recognized type
+token at all is skipped as `visual_type_unknown` — the safer choice, and harmless in practice because today's real
+manifests only emit `page_visual_signal`/`extracted_figure`.
+
+**Why table-like records are skipped, not screenshot-inserted.** Tables are a separate problem with their own quality
+bar: a screenshot of a table is rarely an acceptable study-guide artifact, and reconstructing/simplifying tables into
+real Markdown/structured form is the job of the later **Slice 85** table reconstruction/simplification policy. Mixing
+table handling into the figure planner would either ship low-quality table screenshots or prematurely couple two
+independent policies. The planner therefore skips any record typed `table`/`table_like`/`grid_table`/`dense_table`/
+`table_region`/`tabular`/`table_image` (table wins over any co-present figure token) and counts them in
+`table_like_skipped_count` for later observability. No table artifact is invented here.
+
+**Why artifact persistence / rendering / UI are deferred.** Persisting `visual_inclusion_plan.json` is a distinct,
+exact-name-artifact concern (Slice 84) with its own no-leak review; rendering/insertion changes touch the load-bearing
+pipeline and must not ride along with a planner experiment; and **no UI** should be built until the backend chain proves
+page selections apply consistently across content extraction, visual candidates, table candidates/policy, and coverage
+reporting (Slice 86). Keeping Slice 83 unwired means current rendering/export behavior is byte-unchanged.
+
+**Why this is Full Material Coverage work, not a visual-pilot heuristic loop.** The planner makes deterministic
+include/skip decisions from explicit manifest signals and user-driven page selections; it has no ranking, scoring,
+provider call, two-key gate, or "pick the best N" heuristic. It changes none of the visual pilot's
+selection/ranking/classification/cap/default/two-key-gate/caption behavior. The plan emits only closed tokens, ints,
+`None`, and fixed strings — no filename/path, document/OCR/caption/table text, image ref, asset ref/asset id, image
+bytes, base64/data URI, provider payload, token, URL, argv, socket path, model path, or raw exception (input fields are
+read for decisions only and never echoed; the manifest's internal `asset_id` is used for dedupe only and never emitted),
+verified by hostile-canary tests. No Chandra/Mistral/Gemini/model/provider/cloud call; no direct `clean.md` write. Chandra
+remains blocked by its own live-validation gate. **Slice 83 is NOT committed.**
