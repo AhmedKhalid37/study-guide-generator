@@ -5,7 +5,52 @@
 
 ---
 
-## Slice 88 — **JobDetails material coverage display**, on `slice88-jobdetails-material-coverage-display`. **NOT COMMITTED.**
+## Slice 89 — **Full Material Coverage controls and warnings**, on `slice89-material-coverage-controls-warnings`. **NOT COMMITTED.**
+
+- **Final user-facing warning/control polish before Slice 90 full non-table figure insertion v2.** Slice 88 was
+  committed `769d1f5`, fast-forward merged, and pushed to trunk on `chrome-renderer-v1` (it added the read-only JobDetails
+  "Material Coverage" display). Slices 87–88 let users *set* per-attachment page/slide exclusions and *see* coverage
+  counts after a job. Slice 89 adds the honest **controls + warnings** layer so the user clearly understands which
+  attachments have active exclusions, how many pages/slides are excluded, that exclusions apply to guide content **and**
+  visual/table planning, that the separate `page_selections` is preserved, and — critically — that full figure insertion
+  and table reconstruction are **not enabled yet** (no overpromising).
+- **Frontend UX/control slice only.** No backend change: extraction logic, material page-selection application,
+  visual-manifest filtering, visual inclusion planning, table policy, render/export/prompt/provider behavior, and
+  visual-pilot ranking/classification/cap/default/two-key-gate/caption are all untouched. **No new backend field; the
+  Slice 87 submit payload shape is unchanged.** No table reconstruction; no all-visual insertion/rendering.
+- **New pure helper** `frontend/src/materialCoverageWarnings.js` (React-free, node-testable):
+  - `buildBuilderMaterialCoverageSummary({ exclusionInputs }) → { active, attachmentsWithExclusions, totalExcludedPages,
+    hasInvalidTokens }` — consumes the **positional** ordered array of raw exclusion-input strings (the same array the
+    submit path maps from `attachments`); emits **counts + a boolean invalid flag only**. Never carries filenames, paths,
+    page numbers, or the raw invalid tokens the user typed. Reuses `parsePageListInput` for parsing.
+  - `buildJobMaterialCoverageNotes(displayModel) → [{ token, tone, text }]` — derives a fixed, deterministic, **closed
+    vocabulary** of honest note strings from the Slice 88 display model: selections applied, useful visuals planned
+    (insertion is a later step), table reconstruction not enabled yet, and a calm "artifacts may be unavailable for older
+    jobs" note. Never echoes raw artifact warning text; tolerates missing/malformed models.
+- **Builder controls/warnings** (`frontend/src/components/BuilderWorkspace.jsx`): a compact `MaterialCoverageControls`
+  block rendered once below the attachment list whenever ≥1 paginated attachment is present. Shows the active/inactive
+  state, the local summary (`"N attachments have exclusions. M pages/slides will be skipped."`), a generic invalid-token
+  hint (`"Some entries were ignored. Use numbers or ranges like 2, 4-6, 10."` — never the raw token), the scope note
+  (`"Exclusions apply to guide source text and visual/table coverage planning."`), the honest limitation copy (`"Full
+  figure insertion and table reconstruction are not enabled yet; this job will still record coverage signals for them."`),
+  and a **"Clear exclusions"** button that resets the parent's raw-input state. The block consumes the positional summary
+  only — it never persists filenames/paths as keys and never changes the submit payload shape.
+- **JobDetails warnings** (`frontend/src/components/MaterialCoveragePanel.jsx`): a new "What this means" section renders
+  the closed-vocab notes from `buildJobMaterialCoverageNotes`, computed only once both artifact fetches settle (so no
+  premature "unavailable" flash). 404/missing artifacts stay calm; no scary error language; no raw artifact warnings.
+- **CSS** `frontend/src/design-system.css`: `.sg-coverage-controls*` (Builder block) and `.sg-coverage-note*` (JobDetails
+  notes) — calm, count/status-only surfaces, no per-source detail.
+- **Validation:** new node harness `frontend/scripts/verify-material-coverage-warnings.mjs` (added to `npm run test` +
+  `test:material-coverage-warnings`) covers inactive/active summaries, attachment + total page counts, invalid-token
+  generic flag (no raw value), cleared = empty deterministic state, positional/no-filename-leak, notes for active
+  selections / available plan / deferred table reconstruction / missing artifacts, malformed-model tolerance, hostile
+  canary no-leak, and determinism. `npm run build` + full frontend suite pass; existing
+  `verify-material-page-selections-ui.mjs` / `verify-material-coverage-display.mjs` still pass. Python regressions green
+  on host. Docker build + health + `smoke_release.py` 29/0. **Slice 89 is NOT committed.**
+
+---
+
+## Slice 88 — **JobDetails material coverage display**, on `slice88-jobdetails-material-coverage-display`. **COMMITTED `769d1f5` + MERGED (ff) + PUSHED to `chrome-renderer-v1`.**
 
 - **First read-only surface for the Full Material Coverage signals.** Slice 87 was committed `844e394`, fast-forward
   merged, and pushed to trunk on `chrome-renderer-v1` (it added the Builder UI for per-attachment page/slide exclusions).
@@ -39,7 +84,7 @@
   hostile canary no-leak over the display model, and determinism. `npm run build` + full frontend suite pass. Python
   regressions green on host (material coverage E2E 79/0, source coverage report 59/0, source coverage artifact 45/0,
   inclusion planner 178/0, plan artifact 62/0, table policy 145/0). Docker build + health + `smoke_release.py` 29/0.
-  **Slice 88 is NOT committed.**
+  Committed `769d1f5`, fast-forward merged, and pushed to `chrome-renderer-v1`.
 
 ---
 

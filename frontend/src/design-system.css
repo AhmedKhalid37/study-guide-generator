@@ -3158,6 +3158,31 @@ details.sg-mdl-helper > summary::-webkit-details-marker { display: none; }
 /* Neutral slate tag for calm "not available / inactive / deferred" states (Slice 88). */
 .sg-tag-slate  { border-color: var(--card-border); background: var(--card); color: var(--muted); }
 
+/* Slice 89: Builder-side material coverage review/warning block + JobDetails
+   "what this means" notes. Calm, count/status-only surfaces — no per-source detail. */
+.sg-coverage-controls {
+  margin-top: 7px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  border: 1px solid var(--card-border);
+  border-radius: var(--r-inner);
+  background: var(--card);
+  padding: 11px 12px;
+}
+.sg-coverage-controls-head { display: flex; align-items: center; gap: 8px; }
+.sg-coverage-controls-icon { width: 15px; height: 15px; flex: none; color: var(--muted); }
+.sg-coverage-controls-title { font-size: 13.5px; font-weight: 600; color: var(--text-dim); margin-right: auto; }
+.sg-coverage-controls-summary { font-size: 13px; color: var(--text-dim); margin: 0; }
+.sg-coverage-controls-warn { font-size: 12.5px; color: #F4C76B; margin: 0; }
+.sg-coverage-controls-help { font-size: 12.5px; color: var(--muted); margin: 0; }
+.sg-coverage-controls-note { font-size: 12px; color: var(--muted); margin: 0; font-style: italic; }
+
+.sg-coverage-notes { list-style: none; margin: 10px 0 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
+.sg-coverage-note { display: flex; align-items: flex-start; gap: 8px; font-size: 12.5px; line-height: 1.5; color: var(--text-dim); }
+.sg-coverage-note-icon { width: 14px; height: 14px; flex: none; margin-top: 2px; color: var(--muted); }
+.sg-coverage-note-icon.good { color: #6EE7B7; }
+
 /* responsive metric/field grids (replace inert grid-cols-* utilities) */
 .sg-grid-2 { display: grid; gap: 10px; }
 .sg-grid-3 { display: grid; gap: 10px; }

@@ -13,6 +13,7 @@ import {
   buildMaterialCoverageDisplayModel,
   isCoverageArtifactMissing,
 } from "../materialCoverageDisplay";
+import { buildJobMaterialCoverageNotes } from "../materialCoverageWarnings";
 
 // Slice 88 — read-only Job Details "Material coverage" display.
 //
@@ -136,6 +137,12 @@ export default function MaterialCoveragePanel({ jobId, job }) {
   const coverageResolved = !coverageState.loading && !coverageState.missing && !coverageState.error;
   const planResolved = !planState.loading && !planState.missing && !planState.error;
 
+  // Slice 89: closed-vocabulary, honest "what this means" notes. Only computed once
+  // both artifact fetches have settled so we never flash a premature "unavailable"
+  // note while loading.
+  const fetchesSettled = !coverageState.loading && !planState.loading;
+  const coverageNotes = fetchesSettled ? buildJobMaterialCoverageNotes(model) : [];
+
   return (
     <div className="sg-tab-stack">
       <section>
@@ -255,6 +262,29 @@ export default function MaterialCoveragePanel({ jobId, job }) {
           {tablePolicy.note}
         </p>
       </section>
+
+      {/* Coverage notes — Slice 89 "what this means". Closed-vocabulary, honest copy
+          only; never claims full figure insertion / table reconstruction is enabled,
+          and never echoes raw artifact warning text. */}
+      {coverageNotes.length > 0 && (
+        <section>
+          <div className="sg-head-row">
+            <h3>What this means</h3>
+          </div>
+          <ul className="sg-coverage-notes">
+            {coverageNotes.map((note) => (
+              <li key={note.token} className="sg-coverage-note">
+                {note.tone === "good" ? (
+                  <CheckCircle2 className={`sg-coverage-note-icon good`} />
+                ) : (
+                  <Info className="sg-coverage-note-icon" />
+                )}
+                <span>{note.text}</span>
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
     </div>
   );
 }

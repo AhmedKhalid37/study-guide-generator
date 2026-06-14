@@ -6,27 +6,48 @@
 > stable overview see `PROJECT_CONTEXT.md`; canonical brief is `../CLAUDE.md`.
 
 ## Current position
-- **Working tree:** **Slice 88 (JobDetails material coverage display) — UNCOMMITTED (per instruction)** on branch
-  `slice88-jobdetails-material-coverage-display` (branched from fresh trunk after Slice 87 was committed/merged/pushed).
-  Slice 87 is now trunk commit `844e394`.
+- **Working tree:** **Slice 89 (Full Material Coverage controls and warnings) — UNCOMMITTED (per instruction)** on branch
+  `slice89-material-coverage-controls-warnings` (branched from fresh trunk after Slice 88 was committed/merged/pushed).
+  Slice 88 is now trunk commit `769d1f5`.
+  - **Purpose:** add the final user-facing **controls + warnings** polish before Slice 90 full non-table figure insertion.
+    The user should clearly understand which attachments have active exclusions, how many pages/slides are excluded, that
+    exclusions apply to guide content **and** visual/table planning, that `page_selections` is separate/preserved, and —
+    crucially — that full figure insertion and table reconstruction are **not enabled yet** (the UI must not overpromise).
+  - **Frontend UX/control slice only.** **No new backend field; Slice 87 submit payload shape unchanged.** No
+    backend/extraction/material-application/visual-manifest/visual-planner/table-policy/render/export/prompt/provider/
+    visual-pilot change; no table reconstruction; no all-visual insertion.
+  - **New pure helper** `frontend/src/materialCoverageWarnings.js`: `buildBuilderMaterialCoverageSummary({ exclusionInputs })`
+    (positional ordered raw-input array → `{ active, attachmentsWithExclusions, totalExcludedPages, hasInvalidTokens }`,
+    counts + boolean flag only, never filenames/paths/page numbers/raw tokens; reuses `parsePageListInput`) and
+    `buildJobMaterialCoverageNotes(displayModel)` (closed-vocab honest notes from the Slice 88 model: selections applied,
+    visuals planned/insertion-later, table reconstruction deferred, artifacts-may-be-unavailable; never raw artifact text).
+  - **Builder** (`BuilderWorkspace.jsx`): `MaterialCoverageControls` block below the attachment list (when ≥1 paginated
+    attachment) — active/inactive state, local summary (`"N attachments have exclusions. M pages/slides will be skipped."`),
+    generic invalid-token hint (no raw value), scope note, honest limitation copy, and a **"Clear exclusions"** button that
+    resets parent raw-input state. Consumes the positional summary only; never persists filenames/paths; payload unchanged.
+  - **JobDetails** (`MaterialCoveragePanel.jsx`): new "What this means" section renders the closed-vocab notes once both
+    artifact fetches settle; 404/missing stays calm; no raw artifact warnings surfaced.
+  - **Validation:** `frontend/scripts/verify-material-coverage-warnings.mjs` (in `npm run test`) green; existing
+    `verify-material-page-selections-ui.mjs` / `verify-material-coverage-display.mjs` green; `npm run build` + full
+    frontend suite green; Python regressions green on host (E2E 79/0, source coverage report 59/0, source coverage
+    artifact 45/0, inclusion planner 178/0, plan artifact 62/0, table policy 145/0, page-selection model 183/0,
+    extraction-planning 31/0, manifest-planning 47/0); Docker build + health + `smoke_release.py` 29/0. **NOT committed.**
+  - **Next:** Slice 90 — full non-table figure insertion v2 (moves into actual guide-generation quality).
+
+### Prior position (Slice 88 — committed & merged)
+- **Working tree:** **Slice 88 (JobDetails material coverage display) — COMMITTED `769d1f5` + MERGED (ff) + PUSHED** to
+  `chrome-renderer-v1` (branched from fresh trunk after Slice 87 was committed/merged/pushed). Slice 87 is trunk commit
+  `844e394`.
   - **Purpose:** add the **first read-only surface** for the Full Material Coverage signals — a "Material Coverage" tab in
-    Job Details that shows safe counts/status after a job finishes. **Display only:** no backend/extraction/OCR/visual/
-    table/render/export/prompt/provider/visual-pilot change; no table reconstruction; no all-visual insertion.
+    Job Details that shows safe counts/status after a job finishes. **Display only.**
   - **Data sources (already-safe only):** the `material_page_selection(s)` envelopes echoed by the job response, plus the
     **exact-name** artifacts `source_coverage_report.json` (Slice 77) and `visual_inclusion_plan.json` (Slice 84), fetched
-    through the existing `getJobArtifact` / `artifactUrl` helpers. **No new backend route, no client.js change** — the
-    artifact route already serves both names by exact filename and 404 ⇒ neutral "not available".
-  - **New pure helper** `frontend/src/materialCoverageDisplay.js`: `summarizeMaterialSelections` (active/inactive +
-    safe positional-key-only attachment count), `summarizeSourceCoverage` (closed-vocab status + page counts),
-    `summarizeVisualInclusionPlan` (status + planned/table-like-skipped/unsafe-skipped counts),
-    `buildMaterialCoverageDisplayModel` (composite; null reports ⇒ neutral `unavailable`, never an error). All
-    degrade-never-throw, counts/booleans/closed tokens only, no filenames/paths/captions/source text leak.
-  - **New panel** `frontend/src/components/MaterialCoveragePanel.jsx` wired into `RecentJobsPanel.jsx` as a `Gauge`-icon
-    drawer tab; new neutral `.sg-tag-slate` class in `design-system.css`.
-  - **Validation:** `frontend/scripts/verify-material-coverage-display.mjs` (in `npm run test`) green; `npm run build`
-    green; full frontend suite green; Python regressions green on host (E2E 79/0, source coverage report 59/0, source
-    coverage artifact 45/0, inclusion planner 178/0, plan artifact 62/0, table policy 145/0); Docker build + health +
-    `smoke_release.py` 29/0. **NOT committed.**
+    through the existing `getJobArtifact` / `artifactUrl` helpers. **No new backend route, no client.js change** — 404 ⇒
+    neutral "not available".
+  - **Helper** `frontend/src/materialCoverageDisplay.js` (`summarizeMaterialSelections`, `summarizeSourceCoverage`,
+    `summarizeVisualInclusionPlan`, `buildMaterialCoverageDisplayModel`); **panel**
+    `frontend/src/components/MaterialCoveragePanel.jsx` wired into `RecentJobsPanel.jsx` as a `Gauge`-icon drawer tab; new
+    neutral `.sg-tag-slate` class. All degrade-never-throw, counts/booleans/closed tokens only.
 
 ### Prior position (Slice 87 — committed & merged)
 - **Working tree:** **Slice 87 (Builder UI for per-attachment page/slide exclusions) — COMMITTED `844e394` + MERGED (ff) +

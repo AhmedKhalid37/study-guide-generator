@@ -12,6 +12,7 @@ import {
   FileText,
   Folder,
   FolderPlus,
+  Gauge,
   Info,
   LayoutTemplate,
   Leaf,
@@ -76,6 +77,7 @@ import {
   hasActiveMaterialSelections,
   parsePageListInput
 } from "../materialPageSelections";
+import { buildBuilderMaterialCoverageSummary } from "../materialCoverageWarnings";
 import { Icon } from "./Icon";
 import { JobDetailsDrawer } from "./RecentJobsPanel";
 import { BUILTIN_STYLE_NAMES } from "../styleMeta";
@@ -1767,6 +1769,14 @@ function BuilderComposer({
             materialExclusions={materialExclusions}
             setMaterialExclusions={setMaterialExclusions}
           />
+          {attachments.some(isPaginatedFile) && (
+            <MaterialCoverageControls
+              exclusionInputs={attachments.map(
+                (file) => materialExclusions[attachmentKey(file)] ?? ""
+              )}
+              onClearExclusions={() => setMaterialExclusions({})}
+            />
+          )}
           <Toggle label="Strict math" checked={strictMath} onChange={setStrictMath} tip={TOOLTIPS.strictMath} />
           {/* Slice 55/57: per-job opt-in for the experimental visual markdown image
               pilot. Disabled (and forced visually off) unless the server reports
@@ -2758,6 +2768,51 @@ function MaterialExclusionField({ value, onChange }) {
           {MATERIAL_EXCLUSION_HINTS[token] ?? "Some entries were ignored."}
         </p>
       ))}
+    </div>
+  );
+}
+
+// Slice 89: compact Builder-side material coverage review/warning block, rendered
+// once below the attachment list whenever at least one paginated attachment is
+// present. Purely presentational over the safe positional summary — it shows the
+// active/inactive state, attachment + total excluded page counts, a generic invalid-
+// token hint (never the raw value), the scope explanation, and honest limitation
+// copy (full figure insertion / table reconstruction are NOT enabled yet). The
+// optional "Clear exclusions" button resets the parent's raw-input state; it never
+// changes the submit payload shape (the envelope is still built at submit time).
+function MaterialCoverageControls({ exclusionInputs = [], onClearExclusions }) {
+  const summary = buildBuilderMaterialCoverageSummary({ exclusionInputs });
+  const attachmentWord = summary.attachmentsWithExclusions === 1 ? "attachment has" : "attachments have";
+  return (
+    <div className="sg-coverage-controls">
+      <div className="sg-coverage-controls-head">
+        <Gauge className="sg-coverage-controls-icon" />
+        <span className="sg-coverage-controls-title">Page/slide coverage</span>
+        <span className={`sg-tag ${summary.active ? "sg-tag-green" : "sg-tag-slate"}`}>
+          {summary.active ? "Active" : "No exclusions"}
+        </span>
+        {summary.active && onClearExclusions && (
+          <button type="button" className="sg-mini-btn" onClick={onClearExclusions}>
+            Clear exclusions
+          </button>
+        )}
+      </div>
+      <p className="sg-coverage-controls-summary">
+        {summary.active
+          ? `${summary.attachmentsWithExclusions} ${attachmentWord} exclusions. ${summary.totalExcludedPages} pages/slides will be skipped.`
+          : "No page/slide exclusions set. All pages/slides will be included."}
+      </p>
+      {summary.hasInvalidTokens && (
+        <p className="sg-coverage-controls-warn">
+          Some entries were ignored. Use numbers or ranges like 2, 4-6, 10.
+        </p>
+      )}
+      <p className="sg-coverage-controls-help">
+        Exclusions apply to guide source text and visual/table coverage planning.
+      </p>
+      <p className="sg-coverage-controls-note">
+        Full figure insertion and table reconstruction are not enabled yet; this job will still record coverage signals for them.
+      </p>
     </div>
   );
 }

@@ -4024,3 +4024,42 @@ both are large, separately-designed slices with their own correctness and no-lea
 quietly start producing content. Slice 88 changes nothing about extraction, visual filtering/planning, table policy,
 render/export/prompt/provider behavior, or visual-pilot behavior. Chandra remains blocked by its own live-validation gate.
 **Slice 88 is NOT committed.**
+
+## Slice 89 — Full Material Coverage controls and warnings: honest UX polish before full insertion (2026-06-14)
+Slices 87–88 let users *set* per-attachment page/slide exclusions and *see* coverage counts after a job. Slice 89 adds the
+user-facing **controls + warnings** layer: a Builder-side `MaterialCoverageControls` block (active/inactive state, "N
+attachments have exclusions. M pages/slides will be skipped.", a generic invalid-token hint, scope and limitation copy, and
+a "Clear exclusions" button) plus a JobDetails "What this means" notes section. It is a frontend UX/control slice only —
+new pure helper `materialCoverageWarnings.js` (`buildBuilderMaterialCoverageSummary`, `buildJobMaterialCoverageNotes`),
+wiring in `BuilderWorkspace.jsx` / `MaterialCoveragePanel.jsx`, and CSS. **Slice 89 is NOT committed.**
+
+**Why warnings/control polish comes before full insertion.** The backend can already plan coverage (Slices 76–86) and the
+UI can already set/see it (Slices 87–88), but the user has no single, honest summary of what their exclusions do or what
+the system will and will not do with them. Shipping that understanding *before* Slice 90's full non-table figure insertion
+means the riskier generation-quality work lands against users who already have correct expectations, instead of having to
+retrofit explanations after behavior changes.
+
+**Why the UI must not overpromise full figure insertion / table reconstruction yet.** Coverage *planning* exists, but full
+automatic figure insertion (Slice 90+) and table reconstruction (Slice 85 shipped the policy *core* only, unwired) are not
+enabled. The copy deliberately says visuals were *planned* ("full automatic insertion is a later step") and that "table
+reconstruction is not enabled yet". **Why:** claiming inserted/reconstructed content that the generated guide does not
+actually contain would be a correctness lie that erodes trust and masks the real state of the pipeline.
+
+**Why no new backend field is added.** All the signals the controls/warnings need already exist: the Builder summary is
+computed locally from the same positional exclusion inputs that build the Slice 87 envelope, and the JobDetails notes are
+derived from the Slice 88 display model (itself built from already-safe job fields + exact-name artifacts). Adding a
+backend field would mean touching `LLMJobRequest` and both request-construction paths for a purely presentational summary —
+unnecessary risk. The Slice 87 submit payload shape is therefore unchanged, and `page_selections` is preserved/separate.
+
+**Why raw artifact warnings / source details are converted into safe notes/counts.** Coverage artifacts are derived from
+private source documents, and the no-leak invariants forbid filenames, paths, page numbers, captions, OCR/source/table
+text, image/asset refs, data URIs, base64, provider payloads, tokens, full URLs, and raw exception strings in any served
+frontend state. The Builder summary thinks only in positional upload order and emits counts plus a boolean "some entries
+were ignored" flag (never the raw token); the JobDetails notes are a fixed, closed-vocabulary set of static strings (never
+artifact warning text passed through verbatim). Canary tests verify no hostile input rides out of either builder.
+
+**Why Slice 90 should move into actual guide-generation quality.** With coverage controls/warnings honest and complete, the
+next meaningful improvement is the real payoff: full non-table figure insertion v2, which finally turns planned visuals into
+inserted guide content (with its own correctness + no-leak design). Slice 89 changes nothing about extraction, material
+application, visual filtering/planning, table policy, render/export/prompt/provider behavior, or visual-pilot behavior.
+Chandra remains blocked by its own live-validation gate.
