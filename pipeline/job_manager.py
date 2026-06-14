@@ -164,6 +164,15 @@ class Job:
         return self.dir / "visual_replacement_plan.json"
 
     @property
+    def source_coverage_report_json(self) -> Path:
+        # Slice 77: sibling measurement artifact holding the deterministic source
+        # coverage report (pipeline/source_coverage_report.py), derived from
+        # already-sanitized extraction metadata plus optional visual-manifest
+        # counts. Exact-name download only; not in generic artifact rows or export
+        # selectors, and it never gates generation.
+        return self.dir / "source_coverage_report.json"
+
+    @property
     def assets_dir(self) -> Path:
         # Slice 40: holds locally-cropped figure images (PNG) referenced by the
         # visual-assets manifest's `extracted_figure` records via safe RELATIVE

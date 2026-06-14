@@ -3498,4 +3498,39 @@ no extraction/OCR routing, no renderer, no export, no frontend/UI, and no prompt
 **Why not visual-pilot continuation.** Optional visual-manifest input is counts-only (`source_page` coverage) and never
 emits asset ids, image refs, captions, bbox values, provider details, or source text. It is included only so the Trust
 report can later summarize whether visual candidates existed; it does not change visual insertion, selection, ranking,
-classification, caps, defaults, two-key gates, captions, rendering, or exports. **Slice 76 is NOT committed.**
+classification, caps, defaults, two-key gates, captions, rendering, or exports. **Slice 76 commit `91e3845`,
+fast-forward merged + pushed to trunk `chrome-renderer-v1`.**
+
+## Slice 77 — source coverage report is persisted as the first Full Material Coverage foundation artifact (2026-06-13)
+Slice 76 was committed `91e3845`, fast-forward merged, and pushed to trunk. Slice 77 wires that pure core into backend
+job artifacts as the exact-name JSON file `source_coverage_report.json`.
+
+**Decision.** Persist source coverage as an exact-name sibling artifact first, not as a generic UI row or export
+selector. The writer lives in `pipeline/source_coverage_artifact.py`, uses
+`build_source_coverage_report(extraction_metadata, *, visual_manifest=None)`, writes under the job directory through
+`Job.source_coverage_report_json`, and is called from `_attach_sources` only after extraction metadata and the optional
+visual manifest are available. The exact-name route maps `source_coverage_report.json`; `ARTIFACTS`, generic JobDetails
+rows, export selectors, and export ZIP ride-alongs are unchanged.
+
+**Full Material Coverage direction.** `source_coverage_report.json` is the first foundation artifact for future Full
+Material Coverage work: page/slide include-exclude controls, all useful non-table figure/diagram/graph inclusion from
+included pages, table reconstruction/simplification, and coverage-aware guide generation. Slice 77 implements none of
+those behaviors; it only makes safe coverage measurement persist for later consumers.
+
+**Why defer UI/JobDetails/export surfacing.** This artifact is a measurement boundary. Surfacing it in generic
+JobDetails, generic artifact lists, or export bundles would create product and privacy decisions before the coverage
+model is stable. Exact-name download is enough for tests and future slices while keeping user-visible behavior stable.
+
+**Why filenames/source text are excluded.** Coverage needs counts and statuses, not private source identity or content.
+The persisted report intentionally excludes filenames, paths, source titles, source text, OCR text, source captions,
+table text, image refs, image bytes, base64/data URI, provider payloads, tokens, raw argv, sockets, model/mmproj/
+executable paths, URLs, and raw exception messages. Warnings remain closed vocabulary only.
+
+**Why generation must degrade-never-fail.** Coverage reporting is advisory measurement. A build/write/readback failure
+must never block guide generation, extraction, rendering, exports, prompts, or provider calls. The writer catches
+failures, emits only safe skipped report shapes when possible, and `_attach_sources` guards the call site as well.
+
+**Out of scope.** No frontend/UI, no `clean.md` write, no extraction/OCR routing change, no render/export/prompt/
+provider/model/cloud behavior change, no Chandra/Mistral/Gemini call, and no visual-pilot selection/ranking/
+classification/cap/default/two-key-gate/caption behavior change. Chandra remains blocked by its own live-validation
+gate. **Slice 77 is NOT committed.**

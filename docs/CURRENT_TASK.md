@@ -5,35 +5,57 @@
 
 ---
 
-## Slice 76 — **Source coverage report pure core**, on `slice76-source-coverage-report-core`. **NOT COMMITTED.**
+## Slice 77 — **Source coverage report artifact writer**, on `slice77-source-coverage-report-artifact`. **NOT COMMITTED.**
 
-- **Trust / measurement slice, not visual-pilot behavior.** Slice 75 was committed, fast-forward merged, and pushed to
-  trunk as `00c3f79` after honestly recording `diverse_visual_pilot_exit_validation: not_run`, `reason:
-  non_private_diverse_samples_not_available`, and `exit_recommendation: insufficient_evidence`. No sample categories
-  were validated and no results were invented. The visual-pilot morphology and caption loops remain paused.
-- **What changed:** new pure module `pipeline/source_coverage_report.py` plus synthetic-dict tests in
-  `test_scripts/test_source_coverage_report.py`. The public API is
+- **Foundation for revised Full Material Coverage direction.** Slice 76 was committed, fast-forward merged, and pushed
+  to trunk as `91e3845`. Slice 77 persists its pure report as the exact-name job artifact
+  `source_coverage_report.json`, the first foundation artifact for future page/slide include-exclude controls,
+  all useful non-table figure/diagram/graph inclusion from included pages, table reconstruction/simplification, and
+  coverage-aware guide generation.
+- **What changed:** new writer `pipeline/source_coverage_artifact.py`, new `Job.source_coverage_report_json`, exact-name
+  download mapping in `api/server.py`, and `_attach_sources` wiring in `pipeline/run_llm_job.py` after extraction
+  metadata and the optional visual manifest are available. The writer consumes
   `build_source_coverage_report(extraction_metadata, *, visual_manifest=None)`.
-- **Input shape:** consumes the existing `extraction_metadata.json` artifact shape (`version: 2`,
-  `kind: "extraction_metadata"`, `status`, `sources[*].content_type`, `page_count`, `pages[*].method`,
-  `text_chars`, `word_count`, `has_page_anchor`) and optional `visual_assets_manifest.json`-shaped dictionaries.
-  Inputs are dictionaries only; the core reads no files and imports no extraction/render/provider modules.
-- **Output shape:** emits `version: 1`, `kind: "source_coverage_report"`, top-level `status`, `summary`,
-  `sources`, and closed-vocabulary `warnings`. Counts include source/PDF/page totals, covered pages, embedded-text
-  pages, OCR pages, empty/unreadable pages, anchor pages, visual-candidate page count, and source-status counts.
-- **Safety:** output is counts/status only. It never copies filenames, paths, titles, document/OCR/table text, source
-  captions, image refs, image bytes, base64/data URI, URLs, provider payloads, tokens, raw argv, socket paths,
-  model/mmproj/executable paths, or raw exception messages. Warnings are closed tokens such as
-  `metadata_missing`, `metadata_skipped`, `metadata_malformed`, `source_malformed`, `page_malformed`,
-  `page_count_mismatch`, `visual_manifest_malformed`, `visual_page_out_of_range`, and `unknown_method`.
-- **Scope intentionally unwired:** no API route, no job artifact writer, no `clean.md` write, no frontend/UI, no export
-  behavior, no extraction/OCR routing, no renderer, no prompt/provider/model/cloud call, no Chandra/Mistral/Gemini
-  integration, and no visual insertion/ranking/classification/cap/default/two-key-gate behavior change. A future slice
-  may persist this as `source_coverage_report.json` after extraction, but this slice does not wire it.
-- **Validation:** `python -m compileall pipeline test_scripts` passes; `python test_scripts/test_source_coverage_report.py`
-  passes 59/59; adjacent `python test_scripts/test_extraction_metadata.py` passes 9/9 with environment skips for fitz/
-  FastAPI-dependent branches; adjacent `python test_scripts/test_visual_assets_manifest.py` passes 65/65. Docker rebuild
-  is not required because the slice is pure/unwired. **Slice 76 is NOT committed.**
+- **Artifact behavior:** writes deterministic JSON at `<job>/source_coverage_report.json`. Completed PDF extraction
+  metadata produces a completed/partial Slice 76 report; skipped/unavailable metadata produces the same safe skipped
+  report schema. Visual manifest input is counts-only from sanitized `source_page` values and malformed visual input
+  emits closed warnings without failing generation.
+- **Safety:** the artifact is sanitized, closed-vocabulary, deterministic, and degrade-never-fail. It does not copy
+  filenames, paths, source titles, source text, OCR text, source captions, table text, image refs, image bytes,
+  base64/data URI, provider payloads, tokens, raw argv, sockets, model/mmproj/executable paths, URLs, or raw exception
+  messages.
+- **Scope boundaries:** no frontend/UI; no generic JobDetails row; no generic artifact list exposure; export ZIP
+  inclusion deferred; no `clean.md` write; no extraction/OCR routing change; no render/export/prompt/provider/model/
+  cloud behavior change; no Chandra/Mistral/Gemini call; no visual-pilot selection/ranking/classification/cap/default/
+  two-key-gate/caption behavior change. Page exclusion, all-figures mode, and table reconstruction are documented
+  future direction only, not implemented in Slice 77. Chandra remains blocked by its own live-validation gate.
+- **Validation in progress:** focused tests include `test_scripts/test_source_coverage_report.py` and new
+  `test_scripts/test_source_coverage_artifact.py`. Full requested validation and Docker/smoke status must be recorded
+  before handoff. **Slice 77 is NOT committed.**
+
+### Prior position (Slice 76 — committed & merged)
+- **Slice 76 (source coverage report pure core) — COMMITTED `91e3845` + MERGED to `chrome-renderer-v1`
+  (fast-forward) + PUSHED** on branch `slice76-source-coverage-report-core`. It added stdlib-only
+  `pipeline/source_coverage_report.py` with public API
+  `build_source_coverage_report(extraction_metadata, *, visual_manifest=None)` plus
+  `test_scripts/test_source_coverage_report.py`.
+- The core reads no files and imports no extraction/render/provider modules. It emits only `version: 1`,
+  `kind: "source_coverage_report"`, status, summary counts, per-source counts/status, and closed warning tokens. It
+  never copies filenames, paths, titles, document/OCR/table text, source captions, image refs, image bytes,
+  base64/data URI, URLs, provider payloads, tokens, raw argv, socket paths, model/mmproj/executable paths, or raw
+  exception messages.
+- Slice 76 changed no API route, no job artifact writer, no `clean.md`, no frontend/UI, no export, no extraction/OCR
+  routing, no render/prompt/provider/model/cloud behavior, and no visual-pilot behavior.
+
+### Likely next slices after Slice 77 (documentation only)
+- Slice 78 — Page/slide inclusion-exclusion pure model
+- Slice 79 — Persist page/slide inclusion-exclusion with job requests
+- Slice 80 — Builder UI for per-attachment page/slide exclusions
+- Slice 81 — Apply exclusions to extraction/content planning
+- Slice 82 — Apply exclusions to visual/table manifests
+- Slice 83 — Full non-table figure inclusion planner
+- Slice 84 — Table reconstruction/simplification policy core
+- Slice 85 — Table reconstruction prompt integration or E2E material coverage validation
 
 ---
 

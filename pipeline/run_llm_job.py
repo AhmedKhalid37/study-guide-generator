@@ -18,6 +18,7 @@ from pipeline.extraction_metadata import (
     write_extraction_metadata,
     write_skipped_extraction_metadata,
 )
+from pipeline.source_coverage_artifact import write_source_coverage_report
 from pipeline.visual_assets_manifest import write_visual_assets_manifest
 from pipeline.visual_asset_scoring import write_visual_asset_scoring_report
 from pipeline.visual_replacement_planner import write_visual_replacement_plan_report
@@ -301,6 +302,16 @@ def _attach_sources(
 
     if pdf_metadata_unavailable:
         write_skipped_extraction_metadata(job)
+        _write_source_coverage_report_safely(
+            job,
+            {
+                "version": 2,
+                "kind": "extraction_metadata",
+                "status": "skipped",
+                "reason": "metadata_unavailable",
+                "safe_message": "Extraction metadata could not be collected.",
+            },
+        )
     elif extraction_metadata_sources:
         write_extraction_metadata(job, extraction_metadata_sources)
         # Slice 38: derive the provider-agnostic visual-assets manifest from the
@@ -320,6 +331,16 @@ def _attach_sources(
         # fails the job. Written exactly when the manifest is written; non-PDF jobs
         # with no extraction metadata simply omit these artifacts (no call here).
         visual_manifest_obj = _read_visual_manifest_for_scoring(job)
+        _write_source_coverage_report_safely(
+            job,
+            {
+                "version": 2,
+                "kind": "extraction_metadata",
+                "status": "completed",
+                "sources": extraction_metadata_sources,
+            },
+            visual_manifest=visual_manifest_obj,
+        )
         scoring_report = write_visual_asset_scoring_report(job, visual_manifest_obj)
         # Slice 49: persist the advisory visual REPLACEMENT PLAN derived from the
         # scoring report we just wrote; the manifest is passed only for a
@@ -373,6 +394,26 @@ def _read_visual_manifest_for_scoring(job: Job) -> dict[str, Any] | None:
         return loaded if isinstance(loaded, dict) else None
     except Exception:
         return None
+
+
+def _write_source_coverage_report_safely(
+    job: Job,
+    extraction_metadata: Any,
+    *,
+    visual_manifest: Any = None,
+) -> None:
+    """Best-effort source coverage artifact write; never gates generation."""
+    try:
+        write_source_coverage_report(
+            job,
+            extraction_metadata,
+            visual_manifest=visual_manifest,
+        )
+    except Exception as exc:
+        print(
+            f"Source coverage report skipped ({type(exc).__name__}); job continues.",
+            file=sys.stderr,
+        )
 
 
 def _extract_local_figures(

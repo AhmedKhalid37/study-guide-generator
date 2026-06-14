@@ -3888,6 +3888,12 @@ def _artifact_path(job: Job, artifact_name: str) -> tuple[Path, str]:
         # bundles it as a ride-along JSON diagnostic when present — see
         # VISUAL_ADVISORY_EXPORT_ARTIFACTS — without adding any generic artifact row.)
         return job.visual_replacement_plan_json, "application/json"
+    if artifact_name == "source_coverage_report.json":
+        # Slice 77: Full Material Coverage foundation report derived from
+        # extraction metadata plus optional visual-manifest counts. Exact-name
+        # download only; deliberately NOT in ARTIFACTS, generic UI rows, or export
+        # selectors.
+        return job.source_coverage_report_json, "application/json"
 
     artifact = ARTIFACTS.get(artifact_name)
     if artifact is None:
