@@ -5,7 +5,53 @@
 
 ---
 
-## Slice 85 — **Table reconstruction/simplification policy core**, on `slice85-table-reconstruction-policy-core`. **NOT COMMITTED.**
+## Slice 86 — **Material Coverage E2E validation harness**, on `slice86-material-coverage-e2e-validation`. **NOT COMMITTED.**
+
+- **Full Material Coverage foundation slice (validation side).** Slice 85 was committed `8a1b780`, fast-forward merged,
+  and pushed to trunk on `chrome-renderer-v1` (it added the pure, stdlib-only table reconstruction/simplification **policy
+  core** `pipeline/table_reconstruction_policy.py`). Slices 76–85 built the backend foundation for Full Material Coverage
+  (source coverage report core/artifact; global + per-attachment material page-selection persistence; selection applied to
+  text extraction and to visual-manifest planning; full non-table visual inclusion planner + artifact; table policy core).
+  Slice 86 adds a **deterministic synthetic E2E validation harness** that proves these pieces work together as one chain —
+  **before** any Builder UI is built on top of them.
+- **Validation-only.** No UI, no new job artifact persisted, no table reconstruction, no LLM/prompt integration, no extra
+  visuals inserted, no visual-pilot cap change, no render/export change, no provider/model call. The harness is pure and
+  unwired: it composes already-merged pure helpers over synthetic dictionaries and asserts the result.
+- **New test** `test_scripts/test_material_coverage_e2e_validation.py` validates the chain:
+  `material page selection → text extraction page filtering → visual manifest page filtering → visual inclusion plan →
+  table reconstruction policy → source/visual/material coverage summary`, using
+  `apply_material_selection_to_page_universe` / `page_is_in_material_selection`,
+  `build_visual_assets_manifest(..., page_filters=...)`, `build_visual_inclusion_plan`,
+  `build_table_reconstruction_policy`, and `build_source_coverage_report`.
+- **Synthetic scenario:** two attachments (`attachment_0`, `attachment_1`) with existing `page_selections` universes
+  `{1,2,3,4}` and `{5,6,7,8}`; a global material selection (`exclude 2,4,6,8`); a per-attachment override on
+  `attachment_0` (`include 1,9`). Effective extraction sets resolve to `attachment_0 → {1}` (override beats global; page 9
+  dropped as outside the universe) and `attachment_1 → {5,7}` (global fallback). Visual sources carry signals on every
+  page so the filter is exercised; enriched records add a useful figure + a table-like + a decorative + a tiny visual;
+  four table-candidate dicts feed the policy.
+- **Proven by assertions (79 pass / 0 fail on host):** per-attachment selection overrides the global fallback; existing
+  `page_selections` caps the maximum universe and material cannot expand beyond it (page 9 dropped, out-of-universe
+  include → empty + closed `material_selection_no_matching_pages`); excluded pages are absent from the extracted-content
+  page plan; visual records on excluded pages are filtered out (only pages `{1,5,7}` survive, 5 filtered); the full
+  inclusion plan includes **all** eligible useful non-table visuals (4, not top 1–2); decorative/tiny/table-like visuals
+  are **not** planned as normal visuals; table-like records are counted by the **table policy** (all 4 handled, routed to
+  `reconstruct_with_original`/`simplify_only`), never screenshot-inserted — `screenshot_insert_count` stays `0`; source
+  coverage counts are deterministic and sanitized; an in-memory `material_coverage_validation` summary shape is emitted;
+  a hostile-canary no-leak sweep over every stage output passes; repeated calls serialize identically.
+- **In-memory summary only.** The harness emits a `material_coverage_validation` summary dict (checks + counts) for
+  assertion; **no new job artifact is persisted** in this slice.
+- **Scope boundaries.** Validation-only: `api/server.py`, `pipeline/run_llm_job.py`, `pipeline/job_manager.py`, the
+  visual-inclusion planner/artifact, `visual_markdown_insertion.py`, renderers, exporters, prompts, providers, frontend,
+  and visual-pilot ranking/classification/cap/caption files are all untouched. No API route change, no job-execution
+  wiring, no extraction/OCR routing change, no render/export/prompt/provider behavior change, no visual-pilot
+  ranking/classification/cap/default/two-key-gate/caption change, no table reconstruction implemented, no new artifact
+  persisted, no Chandra/Mistral/Gemini/model/provider/cloud call, no direct `clean.md` write, no table manifest invented.
+  Chandra remains blocked by its own live-validation gate. Docker rebuild **not required** (pure/unwired validation).
+  **Slice 86 is NOT committed.**
+
+---
+
+## Slice 85 — **Table reconstruction/simplification policy core**, on `slice85-table-reconstruction-policy-core`. **COMMITTED `8a1b780` + MERGED (ff) + PUSHED to `chrome-renderer-v1`.**
 
 - **Full Material Coverage foundation slice (table decision side).** Slice 84 was committed `7cc9d6f`, fast-forward
   merged, and pushed to trunk on `chrome-renderer-v1` (it persisted the Slice 83 non-table plan as the exact-name artifact

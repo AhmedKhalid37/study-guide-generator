@@ -3899,4 +3899,52 @@ or UI change rides along on a policy-core slice. The module imports no API/FastA
 job-manager/visual-insertion/visual-pilot/visual-inclusion/manifest module (import-hygiene tested), changes no API route,
 no job-execution wiring, no extraction/OCR routing, and no render/export/prompt/provider or visual-pilot
 ranking/classification/cap/default/two-key-gate/caption behavior. No Chandra/Mistral/Gemini/model/provider/cloud call; no
-direct `clean.md` write. Chandra remains blocked by its own live-validation gate. **Slice 85 is NOT committed.**
+direct `clean.md` write. Chandra remains blocked by its own live-validation gate. (Slice 85 was subsequently committed
+`8a1b780`, merged ff, and pushed.)
+
+---
+
+## Slice 86 — Validate the Full Material Coverage backend chain before building UI
+Slices 76–85 added the backend foundation for Full Material Coverage as independent, individually-tested pure pieces
+(source coverage report core/artifact; global + per-attachment material page-selection persistence; selection applied to
+text extraction and to visual-manifest planning; the full non-table visual inclusion planner + artifact; the table
+reconstruction/simplification policy core). Slice 86 adds a single deterministic, synthetic **E2E validation harness**
+(`test_scripts/test_material_coverage_e2e_validation.py`) that composes those helpers and asserts they behave as one
+chain: `material page selection → text extraction page filtering → visual manifest page filtering → visual inclusion plan
+→ table reconstruction policy → source/visual/material coverage summary`.
+
+**Why validation comes before UI.** The Builder UI (page pickers, material toggles, coverage readout) is the most
+expensive, least-reversible layer to change, and it would *encode assumptions* about how the backend chain composes —
+which page set wins, what is filtered, what is planned, what is deferred to the table policy. Locking those assumptions in
+a deterministic harness first means the UI can be built against a proven contract instead of a guessed one, and any future
+backend change that breaks composition fails a cheap test rather than surfacing as a UI bug over a real private document.
+
+**Why synthetic deterministic tests instead of real private PDFs.** The chain's correctness is structural (which pages
+survive, which records are planned vs. deferred, which counts are produced), not perceptual, so it can be proven entirely
+with synthetic dictionaries. Real PDFs would add no signal while introducing private document text, OCR text, captions,
+table text, filenames, and paths into the test corpus — exactly the categories the no-leak boundary forbids. The harness
+instead seeds *canaries* (synthetic forbidden values) into every input and asserts they are stripped from every stage
+output, so it doubles as a leak regression test without ever handling real material.
+
+**Why table reconstruction and full visual insertion remain deferred.** This slice only proves *routing and planning*:
+that table-like candidates are counted by the table policy (and never screenshot-inserted, `screenshot_insert_count`
+stays `0`) and that all eligible useful non-table visuals are planned (not a top-1/2 subset). Actually reconstructing a
+table or inserting a planned visual both require an LLM/render pass over real content and a settled persistence/insertion
+boundary — each is a separate, later, explicitly-scoped slice. Validating the decisions first de-risks those slices.
+
+**Why this is Full Material Coverage foundation work.** "Full Material Coverage" means the guide reflects exactly the
+material the operator selected — every selected page's text and useful visuals, with tables reconstructed rather than
+screenshotted, and nothing from excluded pages. Slice 86 is the first slice that demonstrates the whole selection→content
+pipeline end to end (selection bounded by `page_selections`, per-attachment override beating the global fallback, excluded
+pages absent from both text and visuals, useful visuals planned, tables routed to policy, coverage summarized), which is
+the contract the remaining coverage UI and reconstruction/insertion slices build on.
+
+**Why no new artifact is persisted in Slice 86.** A validation harness proves a property; it is not a pipeline stage, so
+persisting a `material_coverage_validation.json` job artifact would (a) add a production surface that has to be wired,
+secured, and kept in sync, and (b) imply a runtime contract that does not yet exist. The harness emits its summary shape
+**in memory only** for assertion. The harness is also kept test-only (no `pipeline/material_coverage_validation.py`
+module was needed) since the composition is already expressible directly over the merged helpers. No API route, no
+job-execution wiring, no extraction/OCR routing, no render/export/prompt/provider or visual-pilot
+ranking/classification/cap/default/two-key-gate/caption change; no Chandra/Mistral/Gemini/model/provider/cloud call; no
+direct `clean.md` write; no table manifest invented. Chandra remains blocked by its own live-validation gate. **Slice 86
+is NOT committed.**

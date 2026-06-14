@@ -6,9 +6,40 @@
 > stable overview see `PROJECT_CONTEXT.md`; canonical brief is `../CLAUDE.md`.
 
 ## Current position
-- **Working tree:** **Slice 85 (table reconstruction/simplification policy core) — UNCOMMITTED (per instruction)** on
-  branch `slice85-table-reconstruction-policy-core` (branched from fresh trunk after Slice 84 was committed/merged/pushed).
-  Slice 84 is now trunk commit `7cc9d6f`.
+- **Working tree:** **Slice 86 (Material Coverage E2E validation harness) — UNCOMMITTED (per instruction)** on branch
+  `slice86-material-coverage-e2e-validation` (branched from fresh trunk after Slice 85 was committed/merged/pushed). Slice
+  85 is now trunk commit `8a1b780`.
+  - **Purpose:** add a deterministic, synthetic **E2E validation harness** that proves the Slices 76–85 Full Material
+    Coverage backend chain works together — *before* any Builder UI is built on top of it.
+  - **Validated chain:** `material page selection → text extraction page filtering → visual manifest page filtering →
+    visual inclusion plan → table reconstruction policy → source/visual/material coverage summary`, composing the
+    already-merged pure helpers (`apply_material_selection_to_page_universe`, `page_is_in_material_selection`,
+    `build_visual_assets_manifest(..., page_filters=...)`, `build_visual_inclusion_plan`,
+    `build_table_reconstruction_policy`, `build_source_coverage_report`).
+  - **New test:** `test_scripts/test_material_coverage_e2e_validation.py` (**79/0** on host). Synthetic two-attachment
+    scenario: universes `{1,2,3,4}` / `{5,6,7,8}`, global `exclude 2,4,6,8`, per-attachment override `include 1,9` on
+    `attachment_0`. Effective sets resolve to `{1}` (override beats global; page 9 dropped as out-of-universe) and `{5,7}`
+    (global fallback).
+  - **Proven:** per-attachment overrides global; `page_selections` caps the universe (material can't expand it); excluded
+    pages absent from extraction; visual records from excluded pages filtered (only `{1,5,7}` survive); full plan includes
+    all useful non-table visuals (4, not top 1–2); decorative/tiny/table-like not planned as normal visuals; table-like
+    routed to the table policy (all 4 handled, reconstruct/simplify), `screenshot_insert_count` stays `0`; coverage counts
+    deterministic + sanitized; hostile-canary no-leak sweep across every stage; identical serialization on repeat.
+  - **What changed:** new `test_scripts/test_material_coverage_e2e_validation.py` + docs only. **No production wiring** —
+    no `pipeline/material_coverage_validation.py` was needed (test-only harness). `api/server.py`, `run_llm_job.py`,
+    `job_manager.py`, the planner/artifact, `visual_markdown_insertion.py`, renderers, exporters, prompts, providers,
+    frontend, visual-pilot files all unchanged.
+  - **Scope:** validation-only — no API route, no job execution wiring, no extraction/OCR routing, no render/export/prompt/
+    provider change, no visual-pilot ranking/classification/cap/default/two-key-gate/caption change, no table
+    reconstruction, **no new job artifact persisted**, no Chandra/Mistral/Gemini/model/provider/cloud call, no direct
+    `clean.md` write, no table manifest invented. Closed warning tokens only; no leaks (hostile-canary tested). Chandra
+    remains blocked by its own live-validation gate. Docker rebuild **not required** (pure/unwired). **Slice 86 is NOT
+    committed.**
+
+### Prior position (Slice 85 — committed & merged)
+- **Working tree:** **Slice 85 (table reconstruction/simplification policy core) — COMMITTED `8a1b780` + MERGED (ff) +
+  PUSHED to `chrome-renderer-v1`** on branch `slice85-table-reconstruction-policy-core` (branched from fresh trunk after
+  Slice 84 was committed/merged/pushed). Slice 84 is now trunk commit `7cc9d6f`.
   - **Purpose:** add a pure, deterministic **policy core** that decides what should later happen to a table-like candidate.
     The Slice 83/84 non-table planner+artifact deliberately **skip table-like material**; tables must not be treated as
     ordinary screenshot visuals. This slice defines that decision layer only — **no actual table reconstruction yet.**
@@ -32,7 +63,8 @@
     prompt/provider behavior change, no visual-pilot ranking/classification/cap/default/two-key-gate/caption change, no
     Chandra/Mistral/Gemini/model/provider/cloud call, no direct `clean.md` write, no table manifest invented. Closed
     warning tokens only; no leaks (hostile-canary tested). Chandra remains blocked by its own live-validation gate. Docker
-    rebuild **not required** (pure/unwired). **Slice 85 is NOT committed.**
+    rebuild **not required** (pure/unwired). **Slice 85 was committed `8a1b780`, merged (ff), and pushed to
+    `chrome-renderer-v1`.**
 
 ### Prior position (Slice 84 — committed & merged)
 - **Working tree:** **Slice 84 (persist visual inclusion plan artifact) — COMMITTED `7cc9d6f` + MERGED (ff) + PUSHED to
