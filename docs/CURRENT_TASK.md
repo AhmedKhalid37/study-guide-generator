@@ -5,7 +5,52 @@
 
 ---
 
-## Slice 89 — **Full Material Coverage controls and warnings**, on `slice89-material-coverage-controls-warnings`. **NOT COMMITTED.**
+## Slice 90 — **Full non-table figure insertion v2**, on `slice90-full-non-table-figure-insertion-v2`. **NOT COMMITTED.**
+
+- **Moves from coverage/control into actual guide-generation behavior.** Slices 82–89 built and exposed the Full Material
+  Coverage foundation (planner core, plan artifact, table-policy core, coverage E2E, Builder exclusion UI, JobDetails
+  display, controls/warnings). Slice 89 was committed `b879590`, fast-forward merged, and pushed to trunk on
+  `chrome-renderer-v1`. Slice 90 turns *planned* non-table visuals into *inserted* guide content: when visuals are enabled
+  it inserts **all useful planned non-table figures from included pages** (subject to the deterministic Slice 83 safety
+  filtering) instead of the legacy top-1/top-2 visual-pilot cap. It is **not** "insert every crop": table-like,
+  decorative/logo/header/background, tiny, blank, unsafe, and unmappable records are still skipped. No table reconstruction;
+  no prompt/provider/model/cloud change; no UI; no render/export code change.
+- **Gate (unchanged two-key AND, plus a mode switch).** Insertion still requires BOTH the env master switch
+  (`GUIDEFORGE_ENABLE_VISUAL_MARKDOWN_IMAGE_PILOT`) AND the per-job opt-in (`visual_markdown_image_pilot`). On top of that,
+  the new server-side **mode switch** `GUIDEFORGE_ENABLE_FULL_VISUAL_INSERTION` (off by default) selects the plan-driven
+  full path; with it off the legacy capped pilot runs **byte-identical**. The mode switch can never enable insertion on its
+  own. Default deployment output is unchanged.
+- **Safe candidate mapping (Slice 84 deferral resolved).** The planner now emits a safe generated `candidate_id`
+  (`pipeline/visual_inclusion_planner.candidate_id_for_manifest_position` → `"visual_candidate_NNNN"`, a fixed-shape
+  positional ordinal, never a slug/path/filename/ref). Insertion walks the manifest once to build `{candidate_id: record}`
+  by the same positional formula, then resolves each plan item back to its sanitized manifest record without any path/slug.
+  The plan public schema gains exactly this one safe field; everything else is the Slice 83 closed-token schema.
+- **Insertion path** (`pipeline/visual_markdown_insertion.py`): new `is_full_visual_insertion_enabled()`,
+  `select_full_visual_markdown_candidates(job, *, manifest, plan)` (ordered, de-duplicated by candidate_id + asset slug,
+  each record re-validated by the **unchanged** hard gates: `fitz_local` `extracted_figure` only, safe `assets/<slug>.png`
+  ref, real file inside the job dir, never Chandra/Mistral/page-signal), and `_apply_full_visual_insertion(job, text)`.
+  Reuses the existing `insert_visual_markdown_references` placement (source-page anchor when present, else one trailing
+  `## Visual References` section). **Captions forced to the generic page-derived convention** (`None` →
+  `![Extracted figure from source page N]` + `*Source visual, page N.*`) so a future manifest `caption`/OCR fragment can
+  never ride into the guide. Degrade-never-fail: unmappable/missing/all-skipped degrades to a closed skip reason and the
+  original guide; a job never fails because of insertion.
+- **Files changed:** `pipeline/visual_inclusion_planner.py` (+`candidate_id`), `pipeline/visual_markdown_insertion.py`
+  (full-insertion path), `test_scripts/test_full_visual_insertion_v2.py` (new), `test_scripts/test_visual_inclusion_planner.py`
+  + `test_scripts/test_visual_inclusion_plan_artifact.py` (schema now allows the safe `candidate_id`), and the three docs.
+  `visual_inclusion_plan_artifact.py` is unchanged (it inherits the planner schema). `run_llm_job.py` / `run_markdown_job.py`
+  unchanged — the insertion wiring point (`apply_visual_markdown_pilot` just before `save_clean_md`) already covers both the
+  LLM and raw-markdown paths.
+- **Validation:** `test_full_visual_insertion_v2.py` 81/0 (5-figure insert-all, table/decorative/tiny/blank/unsafe skipped,
+  excluded-page absence, deterministic order, safe mapping, unmappable/all-unmappable degrade, dedupe, safe captions,
+  sanitized public plan, mode-off legacy, import hygiene). Reran inclusion planner 179/0, plan artifact 64/0, manifest 65/0,
+  manifest-planning 47/0, coverage E2E 79/0, pilot trace 56/0, caption polish 132/0, multifigure 63/0, quality gate 50/0,
+  export asset 9/0, table policy 145/0, legacy insertion 53/0. `compileall api pipeline test_scripts` clean. Docker build +
+  health + `smoke_release.py` 29/0 (default output unchanged). **Slice 91 will validate PDF/DOCX/HTML/export with many
+  figures.** Chandra remains blocked by its own live-validation gate. **Slice 90 is NOT committed.**
+
+---
+
+## Slice 89 — **Full Material Coverage controls and warnings**, on `slice89-material-coverage-controls-warnings`. **COMMITTED `b879590` + MERGED (ff) + PUSHED to `chrome-renderer-v1`.**
 
 - **Final user-facing warning/control polish before Slice 90 full non-table figure insertion v2.** Slice 88 was
   committed `769d1f5`, fast-forward merged, and pushed to trunk on `chrome-renderer-v1` (it added the read-only JobDetails

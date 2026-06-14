@@ -268,18 +268,25 @@ def test_malformed_manifest_degrades_safely() -> None:
             check(f"malformed {label} no leak", _scan_for_leak(plan) is None, "")
 
 
-def test_optional_candidate_ids_deferred() -> None:
-    # Slice 84 keeps the Slice 83 plan schema as-is; candidate mapping is deferred.
-    # Items expose only safe closed tokens / ints / None — no candidate_id field that
-    # could carry a filename/path/ref. This pins that contract.
+def test_safe_candidate_id_mapping() -> None:
+    # Slice 90 adds a safe generated ``candidate_id`` to every item so the
+    # full-insertion path can map a planned item back to its sanitized manifest
+    # record WITHOUT the plan ever carrying a filename/path/slug/ref. This pins that
+    # the id is a fixed-shape sequential ordinal and that nothing else widened the
+    # item schema or leaked a ref.
     with tempfile.TemporaryDirectory() as tmp:
         job = _make_job(tmp, "job-schema")
         plan = write_visual_inclusion_plan(job, _manifest([_figure(0, 1, asset_id="a1")]))
         item = plan["items"][0]
-        allowed = {"plan_index", "source_index", "source_page", "visual_kind",
-                   "inclusion_role", "reason", "warnings"}
+        allowed = {"plan_index", "candidate_id", "source_index", "source_page",
+                   "visual_kind", "inclusion_role", "reason", "warnings"}
         check("item keys whitelisted", set(item.keys()) <= allowed, str(item.keys()))
-        check("no candidate_id leaks a ref", _scan_for_leak(item) is None, _scan_for_leak(item) or "")
+        check("candidate_id present", "candidate_id" in item, str(item.keys()))
+        cid = item.get("candidate_id")
+        check("candidate_id is safe generated ordinal",
+              isinstance(cid, str) and cid.startswith("visual_candidate_"), str(cid))
+        check("candidate_id carries no ref/path/slug", _scan_for_leak(item) is None,
+              _scan_for_leak(item) or "")
         check("source_page is an int", isinstance(item["source_page"], int), str(item))
 
 
@@ -461,7 +468,7 @@ def main() -> int:
     test_decorative_tiny_blank_unsafe_skipped()
     test_missing_manifest_writes_safe_skipped_plan()
     test_malformed_manifest_degrades_safely()
-    test_optional_candidate_ids_deferred()
+    test_safe_candidate_id_mapping()
     test_write_failure_degrades_never_fails()
     test_deterministic_output()
     test_exact_name_route_and_no_generic_or_export_exposure()

@@ -470,11 +470,18 @@ def test_no_leak_hostile_canaries() -> None:
 def test_emitted_keys_are_whitelisted() -> None:
     plan = build_visual_inclusion_plan(_manifest([_page_signal(1), _extracted_figure(2)]))
     allowed_item_keys = {
-        "plan_index", "source_index", "source_page", "visual_kind",
+        "plan_index", "candidate_id", "source_index", "source_page", "visual_kind",
         "inclusion_role", "reason", "warnings",
     }
     ok = all(set(it.keys()) == allowed_item_keys for it in plan["items"])
     check("schema: item keys whitelisted", ok)
+    # Slice 90: candidate_id is the safe generated mapping key — a fixed-shape
+    # sequential ordinal, never a slug / path / filename / ref.
+    cid_ok = all(
+        isinstance(it["candidate_id"], str) and it["candidate_id"].startswith("visual_candidate_")
+        for it in plan["items"]
+    )
+    check("schema: candidate_id is a safe generated ordinal", cid_ok)
     allowed_top = {"version", "kind", "status", "summary", "items", "warnings"}
     check("schema: top keys whitelisted", set(plan.keys()) == allowed_top)
 

@@ -6,33 +6,44 @@
 > stable overview see `PROJECT_CONTEXT.md`; canonical brief is `../CLAUDE.md`.
 
 ## Current position
-- **Working tree:** **Slice 89 (Full Material Coverage controls and warnings) — UNCOMMITTED (per instruction)** on branch
-  `slice89-material-coverage-controls-warnings` (branched from fresh trunk after Slice 88 was committed/merged/pushed).
-  Slice 88 is now trunk commit `769d1f5`.
-  - **Purpose:** add the final user-facing **controls + warnings** polish before Slice 90 full non-table figure insertion.
-    The user should clearly understand which attachments have active exclusions, how many pages/slides are excluded, that
-    exclusions apply to guide content **and** visual/table planning, that `page_selections` is separate/preserved, and —
-    crucially — that full figure insertion and table reconstruction are **not enabled yet** (the UI must not overpromise).
-  - **Frontend UX/control slice only.** **No new backend field; Slice 87 submit payload shape unchanged.** No
-    backend/extraction/material-application/visual-manifest/visual-planner/table-policy/render/export/prompt/provider/
-    visual-pilot change; no table reconstruction; no all-visual insertion.
-  - **New pure helper** `frontend/src/materialCoverageWarnings.js`: `buildBuilderMaterialCoverageSummary({ exclusionInputs })`
-    (positional ordered raw-input array → `{ active, attachmentsWithExclusions, totalExcludedPages, hasInvalidTokens }`,
-    counts + boolean flag only, never filenames/paths/page numbers/raw tokens; reuses `parsePageListInput`) and
-    `buildJobMaterialCoverageNotes(displayModel)` (closed-vocab honest notes from the Slice 88 model: selections applied,
-    visuals planned/insertion-later, table reconstruction deferred, artifacts-may-be-unavailable; never raw artifact text).
-  - **Builder** (`BuilderWorkspace.jsx`): `MaterialCoverageControls` block below the attachment list (when ≥1 paginated
-    attachment) — active/inactive state, local summary (`"N attachments have exclusions. M pages/slides will be skipped."`),
-    generic invalid-token hint (no raw value), scope note, honest limitation copy, and a **"Clear exclusions"** button that
-    resets parent raw-input state. Consumes the positional summary only; never persists filenames/paths; payload unchanged.
-  - **JobDetails** (`MaterialCoveragePanel.jsx`): new "What this means" section renders the closed-vocab notes once both
-    artifact fetches settle; 404/missing stays calm; no raw artifact warnings surfaced.
-  - **Validation:** `frontend/scripts/verify-material-coverage-warnings.mjs` (in `npm run test`) green; existing
-    `verify-material-page-selections-ui.mjs` / `verify-material-coverage-display.mjs` green; `npm run build` + full
-    frontend suite green; Python regressions green on host (E2E 79/0, source coverage report 59/0, source coverage
-    artifact 45/0, inclusion planner 178/0, plan artifact 62/0, table policy 145/0, page-selection model 183/0,
-    extraction-planning 31/0, manifest-planning 47/0); Docker build + health + `smoke_release.py` 29/0. **NOT committed.**
-  - **Next:** Slice 90 — full non-table figure insertion v2 (moves into actual guide-generation quality).
+- **Working tree:** **Slice 90 (Full non-table figure insertion v2) — UNCOMMITTED (per instruction)** on branch
+  `slice90-full-non-table-figure-insertion-v2` (branched from fresh trunk after Slice 89 was committed/merged/pushed).
+  Slice 89 is now trunk commit `b879590`.
+  - **Purpose:** turn *planned* non-table visuals into *inserted* guide content. When visuals are enabled it inserts **all
+    useful planned non-table figures from included pages** (deterministic Slice 83 safety filtering), not the legacy
+    top-1/top-2 cap. **Not** "insert every crop": table-like, decorative/logo/header/background, tiny, blank, unsafe, and
+    unmappable records are still skipped. No table reconstruction; no prompt/provider/model/cloud; no UI; no render/export
+    code change.
+  - **Gate (unchanged two-key AND + mode switch).** Insertion still needs the env master switch
+    (`GUIDEFORGE_ENABLE_VISUAL_MARKDOWN_IMAGE_PILOT`) AND the per-job opt-in (`visual_markdown_image_pilot`). New
+    server-side **mode switch** `GUIDEFORGE_ENABLE_FULL_VISUAL_INSERTION` (off by default) selects the plan-driven full path;
+    off ⇒ legacy capped pilot byte-identical. The mode switch never enables insertion alone. Default output unchanged.
+  - **Safe candidate mapping (Slice 84 deferral resolved).** Planner emits a safe generated `candidate_id`
+    (`candidate_id_for_manifest_position` → `visual_candidate_NNNN`, a positional ordinal, never slug/path/filename/ref);
+    insertion re-derives `{candidate_id: record}` by the same formula. Public plan gains exactly this one closed-shape field.
+  - **Insertion** (`pipeline/visual_markdown_insertion.py`): `is_full_visual_insertion_enabled()`,
+    `select_full_visual_markdown_candidates(job, *, manifest, plan)` (ordered; de-duped by candidate_id + asset slug; each
+    record re-validated by the **unchanged** hard gates — `fitz_local` `extracted_figure` only, safe `assets/<slug>.png`,
+    real file in job dir, never Chandra/Mistral/page-signal), `_apply_full_visual_insertion`. Reuses
+    `insert_visual_markdown_references` (source-page anchor else one `## Visual References` section). Captions forced to the
+    generic page-derived convention (no raw caption/OCR can ride through). Degrade-never-fail.
+  - **Files:** `pipeline/visual_inclusion_planner.py` (+`candidate_id`), `pipeline/visual_markdown_insertion.py`,
+    `test_scripts/test_full_visual_insertion_v2.py` (new), `test_scripts/test_visual_inclusion_planner.py` +
+    `test_scripts/test_visual_inclusion_plan_artifact.py` (schema allows the safe `candidate_id`), three docs.
+    `visual_inclusion_plan_artifact.py` / `run_llm_job.py` / `run_markdown_job.py` unchanged.
+  - **Validation:** `test_full_visual_insertion_v2.py` 81/0; reran inclusion planner 179/0, plan artifact 64/0, manifest
+    65/0, manifest-planning 47/0, coverage E2E 79/0, pilot trace 56/0, caption polish 132/0, multifigure 63/0, quality gate
+    50/0, export asset 9/0, table policy 145/0, legacy insertion 53/0; `compileall api pipeline test_scripts` clean; Docker
+    build + health + `smoke_release.py` 29/0 (default output unchanged). **NOT committed.**
+  - **Next:** Slice 91 — validate PDF/DOCX/HTML/export behavior with many figures (incl. the still-capped export ride-along).
+
+### Prior position (Slice 89 — committed & merged)
+- **Working tree:** **Slice 89 (Full Material Coverage controls and warnings) — COMMITTED `b879590` + MERGED (ff) + PUSHED**
+  to `chrome-renderer-v1` (branched from fresh trunk after Slice 88 was committed/merged/pushed). Slice 88 is trunk commit
+  `769d1f5`. Added Builder `MaterialCoverageControls` (active/inactive state, summary, generic invalid-token hint, scope +
+  honest "not enabled yet" copy, "Clear exclusions"), JobDetails "What this means" notes, pure helper
+  `frontend/src/materialCoverageWarnings.js`, and `verify-material-coverage-warnings.mjs`. Frontend UX/control only; no
+  backend field; Slice 87 payload shape unchanged.
 
 ### Prior position (Slice 88 — committed & merged)
 - **Working tree:** **Slice 88 (JobDetails material coverage display) — COMMITTED `769d1f5` + MERGED (ff) + PUSHED** to

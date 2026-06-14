@@ -58,7 +58,29 @@ import re
 import sys
 from typing import Any
 
+from pipeline.visual_inclusion_planner import (
+    build_visual_inclusion_plan,
+    candidate_id_for_manifest_position,
+)
+
 ENABLE_ENV = "GUIDEFORGE_ENABLE_VISUAL_MARKDOWN_IMAGE_PILOT"
+
+# Slice 90: separate server-side master switch selecting the **full non-table
+# figure insertion v2** path over the legacy Slice 62 cap-1/cap-2 pilot. Off by
+# default, so a deployment that has not opted in stays byte-identical to the
+# capped pilot (and a deployment with no visuals at all stays byte-identical to
+# pre-Slice-54 output). It is a *mode* switch layered on top of the existing
+# two-key visual gate (master pilot switch AND per-job opt-in must still both be
+# on) — it can never enable insertion on its own and never widens what counts as a
+# safe candidate. When on, the plan-driven path inserts *all* useful non-table
+# planned figures from included pages instead of the top 1–2.
+FULL_INSERTION_ENABLE_ENV = "GUIDEFORGE_ENABLE_FULL_VISUAL_INSERTION"
+
+# Absolute defensive ceiling on figures the full-insertion path will place in a
+# single guide. This is NOT the product cap (the product goal is "all useful
+# non-table planned figures"); it only guards against a pathological manifest with
+# thousands of crops. It is deliberately far above any realistic lecture/slide deck.
+_FULL_INSERTION_HARD_CEILING = 200
 
 # Slice 62: cautious capped multi-figure pilot. When BOTH gates are on (master env
 # switch AND per-job opt-in) the pilot may now insert a *small* number of high-quality
@@ -135,7 +157,16 @@ SKIP_ASSET_PATH_INVALID = "visual_asset_path_invalid"
 SKIP_INSERT_FAILED = "visual_markdown_insert_failed"
 SKIP_FORMAT_UNSUPPORTED = "visual_format_unsupported"
 SKIP_RENDER_DEGRADED = "visual_render_degraded"
+# Slice 90: the full-insertion path found a manifest/plan but no planned item could
+# be mapped to a safe, present, insertable figure (e.g. every plan item was a
+# page-level signal with no croppable asset file, or the plan was skipped/empty).
+SKIP_PLAN_UNMAPPABLE = "visual_plan_unmappable"
 STATUS_INSERTED = "visual_inserted"
+
+# Slice 90: closed mode tokens carried on the (diagnostic, never-embedded) info dict
+# so a caller / future trace can tell which path produced the result.
+MODE_FULL_INSERTION = "full_visual_insertion"
+MODE_PILOT_CAPPED = "visual_pilot_capped"
 SKIP_REASONS = {
     SKIP_DISABLED,
     SKIP_JOB_OPT_OUT,
@@ -426,6 +457,18 @@ def is_job_visual_pilot_opt_in(job: Any) -> bool:
     return _coerce_opt_in(_job_option(job, JOB_OPT_IN_KEY))
 
 
+def is_full_visual_insertion_enabled() -> bool:
+    """Whether the Slice 90 full non-table figure insertion path is selected.
+
+    Reads ``GUIDEFORGE_ENABLE_FULL_VISUAL_INSERTION``. Off unless explicitly set to
+    a truthy token. This is a *mode* switch on top of the existing two-key visual
+    gate: it is only consulted once both :func:`is_visual_markdown_pilot_enabled`
+    and :func:`is_job_visual_pilot_opt_in` are already true, so it can never enable
+    insertion on its own. Off ⇒ the legacy capped pilot runs unchanged.
+    """
+    return os.getenv(FULL_INSERTION_ENABLE_ENV, "").strip().lower() in {"1", "true", "yes", "on"}
+
+
 # --- Public entry point (degrade-never-fail) ---------------------------------
 
 
@@ -435,6 +478,12 @@ def apply_visual_markdown_pilot(job: Any, clean_md: Any) -> tuple[str, dict[str,
     Returns ``(markdown, info)``. When the flag is off, or no safe candidate
     exists, or anything goes wrong, the *original* ``clean_md`` is returned
     unchanged together with a closed-vocabulary skip ``info``. Never raises.
+
+    Slice 90: once both visual gates pass, the path is chosen by
+    :func:`is_full_visual_insertion_enabled`. When that mode switch is on, the
+    plan-driven **full non-table figure insertion v2** path runs and inserts *all*
+    useful planned non-table figures from included pages. When it is off, the legacy
+    Slice 62 cap-1/cap-2 pilot runs exactly as before (byte-identical).
     """
     text = clean_md if isinstance(clean_md, str) else ""
     # Both gates are required (AND). The env master switch is checked first so a
@@ -444,6 +493,12 @@ def apply_visual_markdown_pilot(job: Any, clean_md: Any) -> tuple[str, dict[str,
         return text, {"status": "skipped", "reason": SKIP_DISABLED}
     if not is_job_visual_pilot_opt_in(job):
         return text, {"status": "skipped", "reason": SKIP_JOB_OPT_OUT}
+
+    # Slice 90: mode select. The full-insertion path is a separate, plan-driven
+    # branch; the legacy capped pilot below is left untouched so its behavior /
+    # selection trace are byte-identical when the mode switch is off.
+    if is_full_visual_insertion_enabled():
+        return _apply_full_visual_insertion(job, text)
 
     try:
         # Slice 62: select up to the server-configured cap (hard-bounded at 2). With the
@@ -488,6 +543,128 @@ def apply_visual_markdown_pilot(job: Any, clean_md: Any) -> tuple[str, dict[str,
     except Exception as exc:  # never let the pilot break a job
         _log(f"Visual markdown pilot skipped ({type(exc).__name__}); job continues.")
         return text, {"status": "skipped", "reason": SKIP_RENDER_DEGRADED}
+
+
+# --- Slice 90: full non-table figure insertion v2 ----------------------------
+
+
+def select_full_visual_markdown_candidates(
+    job: Any,
+    *,
+    manifest: Any = None,
+    plan: Any = None,
+) -> list[dict[str, Any]]:
+    """Map the Slice 83/84 inclusion plan → an ordered list of safe insert candidates.
+
+    This is the Slice 90 full-inclusion selector: instead of the legacy cap-1/cap-2
+    quality pick, it walks the **whole** non-table visual inclusion plan and returns
+    *every* planned item that maps to a safe, present, insertable extracted figure —
+    in deterministic plan order (source → page → manifest position → plan order).
+
+    Mapping is by the plan's safe generated ``candidate_id`` (see
+    :func:`pipeline.visual_inclusion_planner.candidate_id_for_manifest_position`):
+    the manifest is walked once to build ``{candidate_id: record}`` by the same
+    positional formula, so no path / filename / slug is needed to resolve an item.
+
+    Each resolved record still passes the *unchanged* hard safety gates of
+    :func:`_build_candidate_from_asset` (``fitz_local`` ``extracted_figure`` only,
+    safe ``assets/<slug>.png`` ref, real file inside the job dir, never Chandra /
+    Mistral / page-signal). A planned item that does not resolve to an insertable
+    figure (e.g. a page-level signal with no croppable asset, or a missing/unsafe
+    file) is **skipped** and iteration continues. Duplicate candidate ids and
+    duplicate asset slugs are de-duplicated. Pure w.r.t. its inputs; never raises.
+    """
+    try:
+        manifest_obj = manifest if isinstance(manifest, dict) else _read_json(
+            _path(job, "visual_assets_manifest_json")
+        )
+        if not isinstance(manifest_obj, dict):
+            return []
+
+        # Build the candidate_id → manifest record map by the same positional
+        # formula the planner used, so a plan item resolves without any path/slug.
+        by_candidate: dict[str, dict[str, Any]] = {}
+        assets = manifest_obj.get("assets")
+        if isinstance(assets, list):
+            for position, record in enumerate(assets):
+                cid = candidate_id_for_manifest_position(position)
+                if cid is not None and isinstance(record, dict):
+                    by_candidate.setdefault(cid, record)
+
+        plan_obj = plan if isinstance(plan, dict) else build_visual_inclusion_plan(manifest_obj)
+        items = plan_obj.get("items") if isinstance(plan_obj, dict) else None
+        if not isinstance(items, list):
+            return []
+
+        out: list[dict[str, Any]] = []
+        seen_cids: set[str] = set()
+        seen_slugs: set[str] = set()
+        for item in items:
+            if not isinstance(item, dict):
+                continue
+            cid = item.get("candidate_id")
+            if not isinstance(cid, str) or cid in seen_cids:
+                continue
+            record = by_candidate.get(cid)
+            if record is None:
+                continue  # unmappable planned item — skip, keep going
+            built, _ok = _build_candidate_from_asset(job, record, origin="manifest")
+            if built is None:
+                continue  # page signal / non-figure / unsafe / missing file — skip
+            # Slice 90 no-leak: full insertion never carries a raw manifest caption.
+            # Force the generic page-derived caption (the Slice 74 safe convention) so
+            # a future manifest that *does* populate ``caption`` can never ride a raw
+            # original caption / OCR fragment into the guide. ``None`` makes
+            # ``_safe_caption`` fall back to "…source page N" / "*Source visual, page N.*".
+            built = {**built, "caption": None}
+            slug = built.get("asset_id")
+            if isinstance(slug, str) and slug in seen_slugs:
+                continue  # exact-duplicate asset already inserted
+            seen_cids.add(cid)
+            if isinstance(slug, str):
+                seen_slugs.add(slug)
+            out.append(built)
+            if len(out) >= _FULL_INSERTION_HARD_CEILING:
+                break
+        return out
+    except Exception:
+        return []
+
+
+def _apply_full_visual_insertion(job: Any, text: str) -> tuple[str, dict[str, Any]]:
+    """Slice 90 plan-driven full insertion branch of ``apply_visual_markdown_pilot``.
+
+    Inserts every safe planned non-table figure (no cap-1/cap-2 selection). Reuses
+    the existing :func:`insert_visual_markdown_references` placement (source-page
+    anchor when present, else a single trailing ``## Visual References`` section).
+    Degrade-never-fail: any problem yields the original text and a closed skip
+    reason. No selection trace is emitted here — that is the legacy pilot's surface.
+    """
+    try:
+        candidates = select_full_visual_markdown_candidates(job)
+        if not candidates:
+            _log("Full visual insertion: no insertable planned figure; job continues.")
+            return text, {
+                "status": "skipped",
+                "reason": SKIP_PLAN_UNMAPPABLE,
+                "mode": MODE_FULL_INSERTION,
+            }
+        new_text, info = insert_visual_markdown_references(text, candidates)
+        info = dict(info) if isinstance(info, dict) else {}
+        info["mode"] = MODE_FULL_INSERTION
+        if info.get("status") != STATUS_INSERTED:
+            _log(f"Full visual insertion: nothing inserted ({info.get('reason')}).")
+            return text, info
+        info.setdefault("inserted_visual_count", len(candidates))
+        info["planned_candidate_count"] = len(candidates)
+        _log(
+            f"Full visual insertion: inserted {info.get('inserted_visual_count')} "
+            f"non-table figure(s)."
+        )
+        return new_text, info
+    except Exception as exc:  # never let full insertion break a job
+        _log(f"Full visual insertion skipped ({type(exc).__name__}); job continues.")
+        return text, {"status": "skipped", "reason": SKIP_RENDER_DEGRADED, "mode": MODE_FULL_INSERTION}
 
 
 # --- Candidate selection -----------------------------------------------------

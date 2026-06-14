@@ -4063,3 +4063,50 @@ next meaningful improvement is the real payoff: full non-table figure insertion 
 inserted guide content (with its own correctness + no-leak design). Slice 89 changes nothing about extraction, material
 application, visual filtering/planning, table policy, render/export/prompt/provider behavior, or visual-pilot behavior.
 Chandra remains blocked by its own live-validation gate.
+
+## Slice 90 — Full non-table figure insertion v2: plan-driven, safe-mapped, all useful figures (2026-06-14)
+Slices 82–89 built and exposed the Full Material Coverage foundation (planner core, plan artifact, table-policy core,
+coverage E2E, Builder exclusion UI, JobDetails display, controls/warnings). Slice 90 is the first slice that turns *planned*
+non-table visuals into *inserted* guide content. When visuals are enabled it inserts **all useful planned non-table
+figures from included pages** (subject to the deterministic Slice 83 safety filtering), not the legacy top-1/top-2 cap. It
+adds `candidate_id` to the inclusion plan, a plan-driven full-insertion path in `visual_markdown_insertion.py`
+(`is_full_visual_insertion_enabled` / `select_full_visual_markdown_candidates` / `_apply_full_visual_insertion`), and
+`test_full_visual_insertion_v2.py`. **Slice 90 is NOT committed.**
+
+**Why full figure insertion only starts now, after the coverage/control foundation.** Inserting real figures changes the
+generated guide — the highest-risk, highest-value visual work. Doing it only after the deterministic planner (Slice 83),
+the persisted plan artifact (Slice 84), the table-exclusion policy core (Slice 85), the coverage E2E harness (Slice 86),
+and the Builder/JobDetails coverage UI with honest "not enabled yet" warnings (Slices 87–89) means insertion lands on a
+filtered, audited, page-selected candidate set against users who already have correct expectations — instead of retrofitting
+filtering, safety, and explanations after behavior already changed.
+
+**Why mapping must use a safe generated id / deterministic safe index.** Slice 84 deliberately deferred candidate IDs so the
+public plan could never carry a filename, path, slug, or asset ref. Slice 90 needs to map a planned item back to a manifest
+record to actually insert it. Rather than expose the manifest `asset_id`/`image_ref` (a slug/path), the planner emits a
+**safe generated** `candidate_id` = `visual_candidate_NNNN` derived purely from the record's positional index, and insertion
+re-derives the same `{candidate_id: record}` map by the same formula. This keeps the public artifact sanitized (only one new
+closed-shape field), is deterministic and order-stable (the id is tied to manifest position, not plan order, so it survives
+the deterministic re-sort), and is unambiguous (positions are unique). Insertion additionally forces the generic page-derived
+caption (`None` → "…source page N" / "*Source visual, page N.*"), so even if a future manifest populates `caption`/OCR the
+raw text can never ride into the guide.
+
+**Why the old cap-2 visual pilot is not the final behavior.** The Slice 54–74 pilot was a deliberately tiny, heuristic
+top-1/top-2 selector built to prove the insertion plumbing safely; its cap exists to avoid dumping low-value crops before a
+real candidate-quality story existed. The Slice 83 planner *is* that story: it already filters to useful non-table visuals
+deterministically. So full insertion should consume the planner, not a second heuristic loop or a hard cap. The legacy pilot
+is kept as a byte-identical fallback behind an off-by-default mode switch (`GUIDEFORGE_ENABLE_FULL_VISUAL_INSERTION`) layered
+on the unchanged two-key visual gate — the mode switch can never enable insertion on its own, and with it off every existing
+deployment is unchanged.
+
+**Why table-like visuals are still excluded.** A table screenshot is usually reconstructable from extracted text into clean
+generated Markdown/HTML — embedding it as an image is lower quality and harder to read, and table reconstruction is its own
+separately-designed policy (Slice 85 shipped the core only, still unwired). The planner skips table-like records and the
+insertion path never inserts them as screenshots; a test pins that a table-typed record is planned-out and absent from the
+guide, with no reconstruction field introduced.
+
+**Why export/render stress validation is deferred to Slice 91.** Slice 90 proves insertion correctness with focused
+synthetic tests and the existing smoke (default output unchanged). It does **not** broadly exercise PDF/DOCX/HTML rendering
+or multi-job ZIP export with many figures — and the export ride-along helper is still capped at 2 images, so a bundle of a
+guide with N>2 figures would currently under-include assets. Rather than widen export/render code casually (load-bearing,
+tuned), that whole surface — many-figure render fidelity, DOCX image embedding, and the export asset cap — is reserved for
+Slice 91. Chandra remains blocked by its own live-validation gate.
