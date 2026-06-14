@@ -5,8 +5,44 @@
 
 ---
 
-## Slice 77 — **Source coverage report artifact writer**, on `slice77-source-coverage-report-artifact`. **NOT COMMITTED.**
+## Slice 78 — **Page/slide inclusion-exclusion pure model**, on `slice78-page-slide-selection-model`. **NOT COMMITTED.**
 
+- **Next Full Material Coverage foundation slice.** Slice 77 was committed `3ebfe54`, fast-forward merged, and pushed to
+  trunk on `chrome-renderer-v1` (it persisted `source_coverage_report.json` as a safe exact-name artifact). Slice 78
+  adds the pure, deterministic model for representing user-controlled page/slide inclusion and exclusion per attachment.
+- **What changed:** new stdlib-only module `pipeline/page_selection_model.py` plus synthetic tests
+  `test_scripts/test_page_selection_model.py`. No production wiring.
+- **Public API:** `normalize_page_selection(selection, *, page_count=None)`,
+  `apply_page_selection(page_numbers, selection)`, and `summarize_page_selection(selection, *, page_count=None)`.
+- **Normalized schema:** `{version, mode, include_pages, exclude_pages, warnings}` with `mode ∈ {all, include,
+  exclude}`. Pages are positive 1-based integers, deduplicated and sorted. Invalid pages are dropped with warnings;
+  with a valid `page_count` out-of-range pages are dropped. `mode: all` includes all pages except exclusions; `mode:
+  include` includes only listed pages (then subtracts exclusions); `mode: exclude` includes all except exclusions.
+  Unknown mode degrades to `all` with a warning; an empty include list in `include` mode yields an empty included set
+  with a warning.
+- **Apply behavior:** `apply_page_selection(page_numbers, selection)` returns `{included_pages, excluded_pages,
+  effective_mode, warnings}`. The page-number universe is normalized (positive/unique/sorted); invalid values are
+  dropped with a warning; pages are never inferred when none are provided.
+- **Summary behavior:** `summarize_page_selection(...)` returns counts only — `{version, mode, included_page_count,
+  excluded_page_count, explicit_include_count, explicit_exclude_count, warnings}`.
+- **Warning tokens (closed vocabulary):** `selection_missing`, `selection_malformed`, `mode_unknown`, `page_invalid`,
+  `page_out_of_range`, `page_count_invalid`, `include_empty`, `exclude_overlaps_include`.
+- **Safety:** stdlib-only, deterministic, and degrade-never-fail. It never raises and never copies filenames, paths,
+  source titles, document text, OCR text, source captions, table text, image refs, image bytes, base64/data URI,
+  provider payloads, tokens, raw argv, sockets, model/mmproj/executable paths, URLs, or raw exception messages.
+- **Scope boundaries (pure core only):** no API route, no request/job-manifest wiring, no job execution wiring, no
+  extraction/OCR routing change, no visual manifest behavior change, no render/export change, no frontend/UI, no prompt
+  change, no provider/model/cloud call, no Chandra/Mistral/Gemini integration, and no `clean.md` write. No visual-pilot
+  selection/ranking/classification/cap/default/two-key-gate/caption behavior change.
+- **Future slices may** persist this model with job requests, expose Builder UI controls, apply it to
+  extraction/content planning, apply it to visual/table manifests, and later plan all useful non-table figures plus
+  table reconstruction/simplification. Chandra remains blocked by its own live-validation gate. **Slice 78 is NOT
+  committed.**
+
+### Prior position (Slice 77 — committed & merged)
+
+- **Source coverage report artifact writer**, on `slice77-source-coverage-report-artifact`. **COMMITTED `3ebfe54` +
+  MERGED to `chrome-renderer-v1` (fast-forward) + PUSHED.**
 - **Foundation for revised Full Material Coverage direction.** Slice 76 was committed, fast-forward merged, and pushed
   to trunk as `91e3845`. Slice 77 persists its pure report as the exact-name job artifact
   `source_coverage_report.json`, the first foundation artifact for future page/slide include-exclude controls,
@@ -29,9 +65,9 @@
   cloud behavior change; no Chandra/Mistral/Gemini call; no visual-pilot selection/ranking/classification/cap/default/
   two-key-gate/caption behavior change. Page exclusion, all-figures mode, and table reconstruction are documented
   future direction only, not implemented in Slice 77. Chandra remains blocked by its own live-validation gate.
-- **Validation in progress:** focused tests include `test_scripts/test_source_coverage_report.py` and new
-  `test_scripts/test_source_coverage_artifact.py`. Full requested validation and Docker/smoke status must be recorded
-  before handoff. **Slice 77 is NOT committed.**
+- **Validation:** focused tests `test_scripts/test_source_coverage_report.py` and
+  `test_scripts/test_source_coverage_artifact.py` passed, alongside `test_extraction_metadata.py` and
+  `test_visual_assets_manifest.py`; Docker build + health + `smoke_release.py` all green before commit.
 
 ### Prior position (Slice 76 — committed & merged)
 - **Slice 76 (source coverage report pure core) — COMMITTED `91e3845` + MERGED to `chrome-renderer-v1`
@@ -47,8 +83,7 @@
 - Slice 76 changed no API route, no job artifact writer, no `clean.md`, no frontend/UI, no export, no extraction/OCR
   routing, no render/prompt/provider/model/cloud behavior, and no visual-pilot behavior.
 
-### Likely next slices after Slice 77 (documentation only)
-- Slice 78 — Page/slide inclusion-exclusion pure model
+### Likely next slices after Slice 78 (documentation only)
 - Slice 79 — Persist page/slide inclusion-exclusion with job requests
 - Slice 80 — Builder UI for per-attachment page/slide exclusions
 - Slice 81 — Apply exclusions to extraction/content planning

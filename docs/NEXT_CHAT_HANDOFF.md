@@ -6,29 +6,43 @@
 > stable overview see `PROJECT_CONTEXT.md`; canonical brief is `../CLAUDE.md`.
 
 ## Current position
-- **Working tree:** **Slice 77 (source coverage report artifact writer) — UNCOMMITTED (per instruction)** on branch
-  `slice77-source-coverage-report-artifact` (branched from fresh trunk after Slice 76 was committed/merged/pushed).
-  Slice 76 is now trunk commit `91e3845`.
-  - **Purpose:** persist Slice 76's pure source coverage report as the safe exact-name artifact
-    `source_coverage_report.json`. This is the first foundation artifact for the revised Full Material Coverage
-    direction: future page/slide include-exclude controls, all useful non-table figure/diagram/graph inclusion from
-    included pages, table reconstruction/simplification, and coverage-aware guide generation.
-  - **What changed:** new `pipeline/source_coverage_artifact.py`, `Job.source_coverage_report_json`, an exact-name
-    `_artifact_path` mapping, and `_attach_sources` wiring after extraction metadata / optional visual manifest
-    availability. The writer uses `build_source_coverage_report(extraction_metadata, *, visual_manifest=None)`.
-  - **Safety:** the artifact is deterministic, closed-vocabulary, and degrade-never-fail. It does not copy filenames,
-    paths, source titles, source text, OCR text, source captions, table text, image refs, image bytes, base64/data URI,
-    provider payloads, tokens, raw argv, sockets, model/mmproj/executable paths, URLs, or raw exception messages.
-  - **Scope:** no frontend/UI, no generic JobDetails row, no generic artifact-list exposure, no export ZIP inclusion
-    change, no `clean.md`, no extraction/OCR routing change, no render/export/prompt/provider/model/cloud behavior
-    change, no Chandra/Mistral/Gemini call, and no visual-pilot selection/ranking/classification/cap/default/
-    two-key-gate/caption behavior change. Page exclusion, all-figures mode, and table reconstruction are documented
-    future direction only.
-  - **Next likely slices (do not implement in Slice 77):** Slice 78 page/slide inclusion-exclusion pure model; Slice 79
-    persist page/slide inclusion-exclusion with job requests; Slice 80 Builder UI; Slice 81 apply exclusions to
-    extraction/content planning; Slice 82 apply exclusions to visual/table manifests; Slice 83 full non-table figure
-    inclusion planner; Slice 84 table reconstruction/simplification policy core; Slice 85 table reconstruction prompt
-    integration or E2E material coverage validation.
+- **Working tree:** **Slice 78 (page/slide inclusion-exclusion pure model) — UNCOMMITTED (per instruction)** on branch
+  `slice78-page-slide-selection-model` (branched from fresh trunk after Slice 77 was committed/merged/pushed). Slice 77
+  is now trunk commit `3ebfe54`.
+  - **Purpose:** add the pure, deterministic model for representing user-controlled page/slide inclusion and exclusion
+    per attachment. This is the next Full Material Coverage foundation slice after Slice 77 persisted
+    `source_coverage_report.json`.
+  - **What changed:** new stdlib-only `pipeline/page_selection_model.py` plus synthetic tests
+    `test_scripts/test_page_selection_model.py`. No production wiring.
+  - **Public API:** `normalize_page_selection(selection, *, page_count=None)` → `{version, mode, include_pages,
+    exclude_pages, warnings}`; `apply_page_selection(page_numbers, selection)` → `{included_pages, excluded_pages,
+    effective_mode, warnings}`; `summarize_page_selection(selection, *, page_count=None)` → counts only.
+  - **Model rules:** `mode ∈ {all, include, exclude}`; pages are positive 1-based integers, deduplicated and sorted;
+    invalid/out-of-range pages drop with closed warnings; unknown mode degrades to `all`; empty include in `include`
+    mode yields an empty included set. Warning tokens: `selection_missing`, `selection_malformed`, `mode_unknown`,
+    `page_invalid`, `page_out_of_range`, `page_count_invalid`, `include_empty`, `exclude_overlaps_include`.
+  - **Safety:** stdlib-only, deterministic, degrade-never-fail; never raises and copies no filenames, paths, titles,
+    document/OCR/table text, captions, image refs, image bytes, base64/data URI, provider payloads, tokens, raw argv,
+    sockets, model/mmproj/executable paths, URLs, or raw exception messages.
+  - **Scope (pure core only):** no API route, no request/job-manifest wiring, no job execution wiring, no
+    extraction/OCR routing change, no visual manifest behavior change, no render/export change, no frontend/UI, no
+    prompt change, no provider/model/cloud call, no Chandra/Mistral/Gemini integration, no `clean.md` write, and no
+    visual-pilot selection/ranking/classification/cap/default/two-key-gate/caption behavior change.
+  - **Next likely slices (do not implement in Slice 78):** Slice 79 persist page/slide inclusion-exclusion with job
+    requests; Slice 80 Builder UI; Slice 81 apply exclusions to extraction/content planning; Slice 82 apply exclusions
+    to visual/table manifests; Slice 83 full non-table figure inclusion planner; Slice 84 table
+    reconstruction/simplification policy core; Slice 85 table reconstruction prompt integration or E2E material coverage
+    validation.
+
+### Prior position (Slice 77 — committed & merged)
+- **Slice 77 (source coverage report artifact writer) — COMMITTED `3ebfe54` + MERGED to `chrome-renderer-v1`
+  (fast-forward) + PUSHED** on branch `slice77-source-coverage-report-artifact`. It persisted Slice 76's pure report as
+  the safe exact-name artifact `source_coverage_report.json` (new `pipeline/source_coverage_artifact.py`,
+  `Job.source_coverage_report_json`, an exact-name `_artifact_path` mapping, and `_attach_sources` wiring after
+  extraction metadata / optional visual manifest). Exact-name download only — not added to `ARTIFACTS`, generic
+  JobDetails rows, export selectors, or export ZIP ride-alongs. Deterministic, closed-vocabulary, degrade-never-fail;
+  no `clean.md`, no extraction/OCR routing, no render/export/prompt/provider/model/cloud, no Chandra/Mistral/Gemini
+  call, and no visual-pilot behavior changed.
 
 ### Prior position (Slice 76 — committed & merged)
 - **Slice 76 (source coverage report pure core) — COMMITTED `91e3845` + MERGED to `chrome-renderer-v1`

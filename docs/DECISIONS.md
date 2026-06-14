@@ -3534,3 +3534,42 @@ failures, emits only safe skipped report shapes when possible, and `_attach_sour
 provider/model/cloud behavior change, no Chandra/Mistral/Gemini call, and no visual-pilot selection/ranking/
 classification/cap/default/two-key-gate/caption behavior change. Chandra remains blocked by its own live-validation
 gate. **Slice 77 is NOT committed.**
+
+## Slice 78 — page/slide inclusion-exclusion starts as a pure model (2026-06-14)
+Slice 77 was committed `3ebfe54`, fast-forward merged, and pushed to trunk `chrome-renderer-v1`; it persisted
+`source_coverage_report.json` as a safe exact-name artifact. Slice 78 adds the pure, deterministic model for
+representing user-controlled page/slide inclusion and exclusion per attachment, in stdlib-only
+`pipeline/page_selection_model.py` (`normalize_page_selection`, `apply_page_selection`, `summarize_page_selection`).
+
+**Why a pure model first.** Page/slide include-exclude is the user-facing knob behind the revised Full Material Coverage
+direction, so its normalization, edge-case handling, and no-leak boundary must be proven in isolation before any
+request schema, job manifest, extraction path, visual/table manifest, UI, or render/export depends on it. A pure core
+keeps the behavioral surface unchanged while pinning the contract (modes, warnings, determinism) that later wiring
+slices will rely on.
+
+**Why 1-based and deterministic.** Users and source documents count pages/slides from 1, and the existing extraction
+metadata / visual manifest already speak in 1-based page numbers, so the model matches that vocabulary instead of
+introducing a 0-based offset that callers would have to translate. All outputs are deduplicated and sorted so repeated
+calls and equivalent inputs produce byte-identical results — a precondition for stable artifacts, tests, and future
+diffs.
+
+**Why invalid pages degrade with warnings rather than raising.** This model will eventually sit on the
+attachment/request boundary where input is user- and document-derived and may be malformed, hostile, out of range, or
+absent. Raising would let an advisory selection knob break extraction or generation, which violates the same
+degrade-never-fail rule the source coverage artifact already follows. Instead, malformed input returns a safe normalized
+output with closed-vocabulary warning tokens (`selection_missing`, `selection_malformed`, `mode_unknown`,
+`page_invalid`, `page_out_of_range`, `page_count_invalid`, `include_empty`, `exclude_overlaps_include`) and never copies
+raw exception messages, filenames, paths, document/OCR/table text, captions, image refs/bytes, base64/data URI, provider
+payloads, tokens, raw argv, sockets, model/mmproj/executable paths, or URLs.
+
+**Why production wiring/UI are deferred.** Persisting the selection with job requests, surfacing Builder controls, and
+applying exclusions to extraction/content planning and visual/table manifests each carry product, privacy, and pipeline
+decisions that would widen the surface before the core is stable. Slice 78 therefore changes no API route, no request/
+job-manifest schema, no job execution, no extraction/OCR routing, no visual manifest behavior, no render/export, no
+prompt, no provider/model/cloud call, and writes no `clean.md`.
+
+**Why this is Full Material Coverage, not a visual-pilot cap expansion.** The model governs which source pages/slides
+feed both generated content and extracted visuals/tables — it is upstream of, and independent from, visual-pilot
+selection/ranking/classification/caps/defaults/two-key gating/captions. It deliberately does not touch any of that
+behavior; it is a coverage-control primitive, not a change to how the existing visual pilot picks or inserts assets.
+Chandra remains blocked by its own live-validation gate. **Slice 78 is NOT committed.**
