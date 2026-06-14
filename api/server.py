@@ -253,6 +253,16 @@ class LLMJobRequest(BaseModel):
     # extraction, content, visuals/tables, render, export, or prompts. Absent/None
     # ⇒ default normalized "all" ⇒ output byte-identical to current behaviour.
     material_page_selection: dict[str, Any] | None = None
+    # Slice 80 (Full Material Coverage foundation): optional PER-ATTACHMENT material
+    # page/slide selection, keyed by SAFE internal attachment indices
+    # ("attachment_0", "attachment_1", ... in request attachment order) — never
+    # filenames/paths/titles. Each value is the Slice 78 normalized model. Accepts a
+    # flat {key: model} map or the persisted envelope {version, attachments, warnings}
+    # (so retry round-trips). Normalized + persisted this slice; the per-attachment
+    # model is the preferred future intent, with material_page_selection above as the
+    # global fallback. NOT applied to extraction/content/visuals/render/export/prompts
+    # yet. Absent/None ⇒ empty envelope ⇒ output byte-identical to current behaviour.
+    material_page_selections: dict[str, Any] | None = None
     # Slice 55: per-job opt-in for the off-by-default visual markdown image pilot.
     # This is ONLY the per-job half of the gate — the global
     # GUIDEFORGE_ENABLE_VISUAL_MARKDOWN_IMAGE_PILOT master switch must ALSO be on for
@@ -1078,6 +1088,9 @@ def get_ask_job_context(job_id: str) -> dict[str, Any]:
         "page_selections": _safe_page_selections(manifest.get("page_selections")),
         "material_page_selection": _safe_material_page_selection(
             manifest.get("material_page_selection")
+        ),
+        "material_page_selections": _safe_material_page_selections(
+            manifest.get("material_page_selections")
         ),
         "readiness": {
             "status": "ready" if ready else "not_ready",
@@ -1963,6 +1976,11 @@ async def create_llm_job(request: Request) -> dict[str, Any]:
     material_page_selection = _normalize_material_page_selection(
         llm_request.material_page_selection
     )
+    # Slice 80: normalize + persist the PER-ATTACHMENT material selections (safe
+    # attachment_<index> keys). Degrade-never-fail; persisted only, not yet applied.
+    material_page_selections = _normalize_material_page_selections(
+        llm_request.material_page_selections
+    )
     folder_target = _resolve_folder_target(llm_request.folder_id)
     # Prepend a "Required Outline" directive into the source so it works with any
     # style (the {source} slot is the one injection point every template shares).
@@ -2016,6 +2034,7 @@ async def create_llm_job(request: Request) -> dict[str, Any]:
             attachments=attachments,
             page_selections=page_selections,
             material_page_selection=material_page_selection,
+            material_page_selections=material_page_selections,
             enable_visual_references=llm_request.enable_visual_references,
         )
     except MissingLLMConfigError as exc:
@@ -2430,6 +2449,13 @@ def retry_failed_job(job_id: str) -> dict[str, Any]:
             manifest.get("material_page_selection")
         )
         job.update(material_page_selection=material_page_selection)
+        # Slice 80: preserve the per-attachment material selections across a retry.
+        # Re-normalize the stored envelope and write it back so the manifest stays
+        # canonical even if it predates this field. Still consumed by nothing.
+        material_page_selections = _safe_material_page_selections(
+            manifest.get("material_page_selections")
+        )
+        job.update(material_page_selections=material_page_selections)
         # Reproduce the generator preset the job was created with, so a retry rebuilds
         # through the same preset system prompt + tuned sampling params (not the default
         # prompt path). If the stored preset id no longer exists (e.g. removed since the
@@ -3131,6 +3157,11 @@ def job_response(job: Job) -> dict[str, Any]:
         "material_page_selection": _safe_material_page_selection(
             manifest.get("material_page_selection")
         ),
+        # Echo the stored PER-ATTACHMENT material selections (Slice 80). Envelope with
+        # attachment_<index> keys; default empty. Persisted only — not applied yet.
+        "material_page_selections": _safe_material_page_selections(
+            manifest.get("material_page_selections")
+        ),
         **_outline_summary(manifest),
     }
     if manifest.get("error"):
@@ -3471,6 +3502,19 @@ async def _parse_llm_request(request: Request) -> tuple[LLMJobRequest, list[Atta
                 parsed_material = None
             if isinstance(parsed_material, dict):
                 data["material_page_selection"] = parsed_material
+        # Slice 80: the PER-ATTACHMENT material selections ride as a JSON string in
+        # multipart too, mirroring material_page_selection above. Bad JSON / non-dict
+        # falls back to the default; _normalize_material_page_selections
+        # (degrade-never-fail) normalizes at the handler. Wired here so the field is
+        # NOT silently dropped on the attachments path ("both request paths" rule).
+        material_selections_raw = _form_text(form, "material_page_selections")
+        if material_selections_raw:
+            try:
+                parsed_materials = json.loads(material_selections_raw)
+            except json.JSONDecodeError:
+                parsed_materials = None
+            if isinstance(parsed_materials, dict):
+                data["material_page_selections"] = parsed_materials
         uploads = [
             value
             for key, value in form.multi_items()
@@ -3856,6 +3900,85 @@ def _safe_material_page_selection(raw: Any) -> dict[str, Any]:
     if not isinstance(raw, dict):
         return normalize_page_selection({"mode": "all"})
     return normalize_page_selection(raw)
+
+
+# Safe internal per-attachment key: "attachment_<index>" only. NEVER a filename,
+# path, source title, or any user-controlled name (those would leak private source
+# identity into a persisted artifact). Keys that do not match are dropped.
+_MATERIAL_ATTACHMENT_KEY_RE = re.compile(r"^attachment_(\d+)$")
+_MATERIAL_SELECTIONS_VERSION = 1
+
+
+def _normalize_material_page_selections(raw: Any) -> dict[str, Any]:
+    """Normalize the optional PER-ATTACHMENT material page-selection map (Slice 80).
+
+    Returns the persisted envelope::
+
+        {
+            "version": 1,
+            "attachments": {"attachment_0": <normalized model>, ...},
+            "warnings": [<closed tokens>],
+        }
+
+    Degrade-never-fail: malformed input never raises. Accepts either a flat
+    ``{key: model}`` map or a previously-persisted envelope (so retry round-trips).
+    Only keys matching ``attachment_<index>`` survive — filenames/paths/titles or
+    any other user-controlled key are dropped with the closed warning
+    ``attachment_key_invalid`` (the offending key itself is NEVER copied into the
+    output). Each value is normalized through the pure Slice 78 model, so unknown
+    modes / invalid pages degrade with the model's own closed warnings.
+
+    Slice 80 NOTE: persisted + round-tripped through retry, but consumed by NOTHING
+    yet — no extraction/content/visual/render/export/prompt change.
+    """
+    warnings: list[str] = []
+    if raw is None:
+        return _material_selections_envelope({}, warnings)
+    if not isinstance(raw, dict):
+        return _material_selections_envelope({}, ["selections_malformed"])
+
+    # Accept the persisted envelope shape on input (retry re-normalization) as well
+    # as the flat client-supplied map.
+    source_map = raw.get("attachments") if isinstance(raw.get("attachments"), dict) else raw
+
+    attachments: dict[str, dict[str, Any]] = {}
+    for key, value in source_map.items():
+        match = _MATERIAL_ATTACHMENT_KEY_RE.match(key) if isinstance(key, str) else None
+        if match is None:
+            warnings.append("attachment_key_invalid")
+            continue
+        # Canonicalize the key (strip any zero-padding) so duplicates collapse.
+        safe_key = f"attachment_{int(match.group(1))}"
+        attachments[safe_key] = normalize_page_selection(value)
+    return _material_selections_envelope(attachments, warnings)
+
+
+def _material_selections_envelope(
+    attachments: dict[str, dict[str, Any]], warnings: list[str]
+) -> dict[str, Any]:
+    """Build the deterministic per-attachment envelope: attachments sorted by index,
+    warnings de-duplicated to a stable closed-vocabulary order."""
+    ordered = {
+        key: attachments[key]
+        for key in sorted(attachments, key=lambda k: int(k.rsplit("_", 1)[1]))
+    }
+    seen: list[str] = []
+    for token in ("selections_malformed", "attachment_key_invalid"):
+        if token in warnings and token not in seen:
+            seen.append(token)
+    return {
+        "version": _MATERIAL_SELECTIONS_VERSION,
+        "attachments": ordered,
+        "warnings": seen,
+    }
+
+
+def _safe_material_page_selections(raw: Any) -> dict[str, Any]:
+    """Defensive read of the stored per-attachment material selections for API
+    responses. Re-runs the stored value through :func:`_normalize_material_page_selections`
+    so the echoed shape is always safe/closed-vocabulary. Absent/malformed ⇒ empty
+    envelope."""
+    return _normalize_material_page_selections(raw)
 
 
 def _validate_provider_model(provider: str, model: str) -> None:

@@ -63,6 +63,7 @@ def run_llm_job(
     attachments: list[AttachmentSource] | None = None,
     page_selections: dict[str, list[list[int]]] | None = None,
     material_page_selection: dict[str, Any] | None = None,
+    material_page_selections: dict[str, Any] | None = None,
     enable_visual_references: bool = False,
 ) -> Job:
     resolved_config = config or LLMConfig.from_env()
@@ -93,6 +94,14 @@ def run_llm_job(
             # yet — no extraction/content/visual/render/export/prompt change. Absent
             # => {} => default "all" resolved by the safe reader on read.
             "material_page_selection": material_page_selection or {},
+            # Slice 80 (Full Material Coverage): PER-ATTACHMENT material selections
+            # envelope {version, attachments:{attachment_<i>: model}, warnings},
+            # already normalized at the API handler with SAFE attachment_<index>
+            # keys (never filenames/paths). Preferred per-attachment intent; the
+            # top-level material_page_selection stays as the global fallback.
+            # Persisted so retry/rerender and later application slices preserve it;
+            # consumed by NOTHING yet. Absent => {} resolved by the safe reader.
+            "material_page_selections": material_page_selections or {},
             # Slice 55: per-job opt-in for the off-by-default visual markdown image
             # pilot. Persisted so the pilot (apply_visual_markdown_pilot, read in
             # run_raw_markdown_pipeline) can AND it with the global env master

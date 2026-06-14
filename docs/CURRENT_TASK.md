@@ -5,10 +5,55 @@
 
 ---
 
-## Slice 79 — **Persist page/slide selection with job requests**, on `slice79-page-selection-request-persistence`. **NOT COMMITTED.**
+## Slice 80 — **Per-attachment material page-selection persistence**, on `slice80-per-attachment-material-page-selections`. **NOT COMMITTED.**
 
-- **Next Full Material Coverage foundation slice.** Slice 78 was committed `ee04f55`, fast-forward merged, and pushed to
-  trunk on `chrome-renderer-v1` (it added the pure page/slide inclusion-exclusion model). Slice 79 persists that
+- **Next Full Material Coverage foundation slice.** Slice 79 was committed `d4d2513`, fast-forward merged, and pushed to
+  trunk on `chrome-renderer-v1` (it persisted the top-level `material_page_selection`). Slice 80 adds a future-facing
+  **per-attachment** persistence shape so the next Builder UI slice has a correct backend model to save into. It is
+  still applied to nothing.
+- **Persisted field:** new top-level `material_page_selections` on `LLMJobRequest`, persisted as a deterministic
+  **envelope**: `{"version": 1, "attachments": {"attachment_0": <Slice 78 normalized model>, ...}, "warnings": []}`.
+  Keys are SAFE internal attachment indices only (`attachment_<index>`, in request attachment order) — **never**
+  filenames/paths/titles. Each value is normalized through `normalize_page_selection`. An envelope (not a flat map) was
+  chosen so the "ignored unsafe key" closed warning has a home without ever copying the offending key into output.
+- **Why an envelope vs. a flat map.** A flat `{key: model}` map has nowhere safe to record `attachment_key_invalid`
+  without echoing the (potentially filename) key it rejected. The envelope carries a top-level closed-vocabulary
+  `warnings` list (`selections_malformed`, `attachment_key_invalid`) while keeping per-attachment models intact. The
+  normalizer accepts BOTH a flat client map and the persisted envelope on input, so retry round-trips.
+- **Precedence (documented, not yet applied):** `material_page_selections` is the preferred per-attachment intent;
+  the Slice 79 top-level `material_page_selection` remains the global fallback/default. Both are persisted (after
+  normalization) when supplied. Neither is merged into extracted page ranges yet.
+- **What changed:** `api/server.py` (new `LLMJobRequest.material_page_selections` field; `_MATERIAL_ATTACHMENT_KEY_RE`;
+  `_normalize_material_page_selections` + `_material_selections_envelope` + `_safe_material_page_selections` helpers;
+  wired into the JSON handler, the multipart `_parse_llm_request` branch, the retry path, and both
+  `job_response`/ask-context echoes) and `pipeline/run_llm_job.py` (new `material_page_selections` param persisted in
+  the `Job.create` manifest). Extended `test_scripts/test_page_selection_request_persistence.py` with per-attachment
+  helper + endpoint coverage.
+- **Both request paths wired + tested** (JSON body and multipart-with-attachments), per the permanent rule.
+- **Absent ⇒ byte-identical output.** Absent/None ⇒ empty envelope `{version:1, attachments:{}, warnings:[]}`; job
+  artifacts unchanged. Malformed top-level ⇒ empty envelope + `selections_malformed`. Unsafe/filename/path/title keys ⇒
+  dropped + `attachment_key_invalid` (key never persisted). Bad entry value / unknown mode / invalid pages ⇒ degrade via
+  the pure model's own per-entry warnings. Multipart bad-JSON ⇒ empty envelope. Never raises a 400.
+- **Existing behaviour preserved.** The load-bearing, filename-keyed `page_selections` PDF page-range field and Slice 79
+  `material_page_selection` are unchanged — verified by `test_page_selections.py` (24/24) and the existing Slice 79
+  cases (still passing).
+- **Safety.** Persisted/echoed envelope carries only `version`, safe `attachment_<index>` keys, normalized models
+  (mode + sorted/deduped positive 1-based ints + closed warnings), and closed top-level warnings. No filenames, paths,
+  document text, OCR text, captions, table text, image refs/bytes, base64/data URI, provider payloads, tokens, raw argv,
+  sockets, model/mmproj/executable paths, URLs, or raw exception messages — verified with hostile-canary tests over the
+  manifest and the response.
+- **Scope boundaries.** No frontend/UI. The model is applied to NOTHING — no extraction/OCR routing, content/guide
+  generation, visual manifest, render, export, or prompt change. No visual-pilot selection/ranking/classification/cap/
+  default/two-key-gate/caption change. No Chandra/Mistral/Gemini/model/provider/cloud call. No direct `clean.md` write
+  (all `clean.md` writes still via `JobManager.save_clean_md`). Page-exclusion application, all-figures planner, and
+  table reconstruction remain documented future direction only. Chandra remains blocked by its own live-validation
+  gate. **Slice 80 is NOT committed.**
+
+### Prior position (Slice 79 — committed & merged)
+
+- **Persist page/slide selection with job requests**, on `slice79-page-selection-request-persistence`. **COMMITTED
+  `d4d2513` + MERGED to `chrome-renderer-v1` (fast-forward) + PUSHED.**
+- Slice 79 persisted the top-level `material_page_selection`
   normalized model with job requests/manifests so later slices can apply it to extraction/content planning, visual/table
   manifests, and Builder UI. It is still NOT applied to anything yet.
 - **Persisted field:** new top-level `material_page_selection` on `LLMJobRequest` — the Slice 78 normalized shape
@@ -40,7 +85,7 @@
   two-key-gate/caption change. No Chandra/Mistral/Gemini/model/provider/cloud call. No direct `clean.md` write
   (all `clean.md` writes still go through `JobManager.save_clean_md`). Page exclusion application, all-figures planner,
   and table reconstruction remain documented future direction only. Chandra remains blocked by its own
-  live-validation gate. **Slice 79 is NOT committed.**
+  live-validation gate.
 
 ### Prior position (Slice 78 — committed & merged)
 
@@ -120,14 +165,13 @@
 - Slice 76 changed no API route, no job artifact writer, no `clean.md`, no frontend/UI, no export, no extraction/OCR
   routing, no render/prompt/provider/model/cloud behavior, and no visual-pilot behavior.
 
-### Likely next slices after Slice 79 (documentation only)
-- Slice 79b/80 — Per-attachment `material_page_selections` mapping (safe indices/IDs, not filenames)
-- Slice 80 — Builder UI for per-attachment page/slide exclusions
-- Slice 81 — Apply exclusions to extraction/content planning
-- Slice 82 — Apply exclusions to visual/table manifests
-- Slice 83 — Full non-table figure inclusion planner
-- Slice 84 — Table reconstruction/simplification policy core
-- Slice 85 — Table reconstruction prompt integration or E2E material coverage validation
+### Likely next slices after Slice 80 (documentation only)
+- Slice 81 — Builder UI for per-attachment page/slide exclusions (save/load `material_page_selections`)
+- Slice 82 — Apply exclusions to extraction/content planning
+- Slice 83 — Apply exclusions to visual/table manifests
+- Slice 84 — Full non-table figure inclusion planner
+- Slice 85 — Table reconstruction/simplification policy core
+- Slice 86 — Table reconstruction prompt integration or E2E material coverage validation
 
 ---
 

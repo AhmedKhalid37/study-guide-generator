@@ -3615,3 +3615,46 @@ surface minimal: it stores and echoes the normalized model and preserves it acro
 routing, content/guide generation, visual manifest, render, export, prompt, provider/model/cloud behavior, or
 visual-pilot selection/ranking/classification/cap/default/two-key-gate/caption behavior, and writes no `clean.md`
 directly. Chandra remains blocked by its own live-validation gate. **Slice 79 is NOT committed.**
+
+## Slice 80 — per-attachment material selections, keyed by safe attachment indices (2026-06-14)
+Slice 79 was committed `d4d2513`, fast-forward merged, and pushed to trunk `chrome-renderer-v1`; it persisted the
+top-level `material_page_selection`. Slice 80 adds a future-facing per-attachment field, `material_page_selections`,
+persisted as the deterministic envelope `{version, attachments: {attachment_<index>: <Slice 78 model>}, warnings}`. It
+is applied to nothing yet.
+
+**Why per-attachment persistence is needed before Builder UI.** The Builder lets a user attach several files and will
+need to express different page/slide include-exclude intent per attachment. Building that UI against a guessed backend
+shape risks a rewrite; persisting the correct per-attachment model first gives the UI slice a stable, tested contract to
+save into and load from (including across retry), while keeping job output byte-identical today.
+
+**Why an envelope instead of a flat `{key: model}` map.** The rule "ignored unsafe key → closed warning" has nowhere to
+live in a flat map without echoing the rejected key — and a rejected key may itself be a filename or path, i.e. a leak.
+The envelope carries a top-level closed-vocabulary `warnings` list (`selections_malformed`, `attachment_key_invalid`)
+alongside the per-attachment `attachments` map, so we can report that something was dropped without ever copying what was
+dropped. The normalizer accepts both a flat client-supplied map and the persisted envelope on input, so retry
+re-normalization round-trips.
+
+**Why keys are internal attachment indices and not filenames/paths.** Persisted keys must never carry private source
+identity. Filenames, paths, and source titles are user-controlled and could leak document identity into a stored
+artifact, an API response, or a future export. Keys are therefore restricted to `attachment_<index>` (matched by
+`_MATERIAL_ATTACHMENT_KEY_RE`, canonicalized so `attachment_00` collapses to `attachment_0`); the index corresponds to
+request attachment order, which the Builder/back end already track without exposing names. Any other key is dropped with
+`attachment_key_invalid` and never appears in output — verified by hostile-canary tests over the manifest and the
+response.
+
+**Why the top-level `material_page_selection` remains as fallback.** Removing or repurposing the Slice 79 field would be
+a behavior change and would strand a coverage knob that may still be useful as a single global default (e.g. "exclude
+the cover page of everything"). The documented precedence is: per-attachment `material_page_selections` is the preferred
+intent when present, with the global `material_page_selection` as fallback/default. Slice 80 persists both (after
+normalization) but applies neither — no merge into extracted page ranges happens yet.
+
+**Why existing `page_selections` extraction behavior is preserved.** The load-bearing, filename-keyed `page_selections`
+field still drives PDF page-range extraction and still 400s on bad shapes. Slice 80 adds a separate, clearly-named field
+and touches none of that path; the unchanged `test_page_selections.py` (24/24) is the regression guard.
+
+**Why application/UI are deferred.** Surfacing controls in the Builder and applying exclusions to extraction, content
+planning, and visual/table manifests are separate product and privacy decisions with their own validation needs. Slice
+80 keeps the surface minimal: normalize, persist, echo, and preserve across retry. It changes no extraction/OCR routing,
+content/guide generation, visual manifest, render, export, prompt, provider/model/cloud behavior, or visual-pilot
+selection/ranking/classification/cap/default/two-key-gate/caption behavior, and writes no `clean.md` directly. Chandra
+remains blocked by its own live-validation gate. **Slice 80 is NOT committed.**

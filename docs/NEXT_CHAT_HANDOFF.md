@@ -6,38 +6,49 @@
 > stable overview see `PROJECT_CONTEXT.md`; canonical brief is `../CLAUDE.md`.
 
 ## Current position
-- **Working tree:** **Slice 79 (persist page/slide selection with job requests) — UNCOMMITTED (per instruction)** on
-  branch `slice79-page-selection-request-persistence` (branched from fresh trunk after Slice 78 was
-  committed/merged/pushed). Slice 78 is now trunk commit `ee04f55`.
-  - **Purpose:** persist the Slice 78 normalized page/slide inclusion-exclusion model with job requests/manifests so
-    later slices can apply it to extraction/content planning, visual/table manifests, and Builder UI. It is NOT applied
-    to anything yet.
-  - **Persisted field:** new top-level `material_page_selection` on `LLMJobRequest`, holding the Slice 78 normalized
-    shape `{version, mode, include_pages, exclude_pages, warnings}`. **Separate** from the existing load-bearing,
-    filename-keyed `page_selections` PDF page-range field (which still drives extraction and is unchanged). Single
-    top-level model chosen for the smallest safe change; per-attachment `material_page_selections` mapping (using safe
-    indices/IDs, never filenames) is the documented next step.
-  - **What changed:** `api/server.py` (field + `_normalize_material_page_selection`/`_safe_material_page_selection`
-    helpers; wired into the JSON handler, the multipart `_parse_llm_request` branch, the retry path, and both
-    `job_response`/ask-context echoes; imports `normalize_page_selection`) and `pipeline/run_llm_job.py` (new param
-    persisted in the `Job.create` manifest). New `test_scripts/test_page_selection_request_persistence.py`.
-  - **Both request paths wired + tested** (JSON body and multipart-with-attachments), per the permanent "wire new
-    `LLMJobRequest` fields into both paths" rule.
-  - **Behaviour:** absent ⇒ default `mode: "all"`, no warnings, job output byte-identical (only an extra safe manifest
-    key). Degrade-never-fail — malformed *content* never 400s (unlike `page_selections`): unknown mode → `all` +
-    `mode_unknown`; bad pages dropped + `selection_malformed`/`page_invalid`. Retry re-normalizes and preserves it.
-    Existing `page_selections` behaviour preserved (verified by unchanged `test_page_selections.py`).
-  - **Safety:** persisted/echoed model carries only version, mode, sorted/deduped positive 1-based ints, and closed
-    warnings — no filenames, paths, document/OCR/table text, captions, image refs/bytes, base64/data URI, provider
-    payloads, tokens, raw argv, sockets, model/mmproj/executable paths, URLs, or raw exception messages (hostile-canary
-    tested over manifest + response).
+- **Working tree:** **Slice 80 (per-attachment material page-selection persistence) — UNCOMMITTED (per instruction)**
+  on branch `slice80-per-attachment-material-page-selections` (branched from fresh trunk after Slice 79 was
+  committed/merged/pushed). Slice 79 is now trunk commit `d4d2513`.
+  - **Purpose:** add a future-facing per-attachment persistence shape so the next Builder UI slice has a correct backend
+    model to save into. It is NOT applied to anything yet.
+  - **Persisted field:** new top-level `material_page_selections` on `LLMJobRequest`, persisted as the deterministic
+    envelope `{"version":1, "attachments": {"attachment_<index>": <Slice 78 normalized model>}, "warnings": []}`.
+    Keys are SAFE internal attachment indices only (`attachment_0`, `attachment_1`, … in request attachment order) —
+    never filenames/paths/titles. The envelope (vs. a flat map) gives the "ignored unsafe key" closed warning a home
+    without ever copying the rejected key. The normalizer accepts both a flat client map and the persisted envelope on
+    input, so retry round-trips.
+  - **Precedence (documented, not applied):** `material_page_selections` is the preferred per-attachment intent; the
+    Slice 79 top-level `material_page_selection` remains the global fallback/default. Both persist when supplied.
+  - **What changed:** `api/server.py` (field + `_MATERIAL_ATTACHMENT_KEY_RE`; `_normalize_material_page_selections` /
+    `_material_selections_envelope` / `_safe_material_page_selections` helpers; wired into the JSON handler, the
+    multipart `_parse_llm_request` branch, the retry path, and both `job_response`/ask-context echoes) and
+    `pipeline/run_llm_job.py` (new param persisted in the `Job.create` manifest). Extended
+    `test_scripts/test_page_selection_request_persistence.py` with per-attachment helper + endpoint coverage.
+  - **Both request paths wired + tested** (JSON body and multipart-with-attachments), per the permanent rule.
+  - **Behaviour:** absent ⇒ empty envelope, job output byte-identical. Malformed top-level ⇒ empty envelope +
+    `selections_malformed`. Unsafe/filename/path/title keys ⇒ dropped + `attachment_key_invalid` (key never persisted).
+    Bad entry / unknown mode / invalid pages ⇒ degrade via the pure model's per-entry warnings. Multipart bad-JSON ⇒
+    empty envelope. Never 400s. Retry re-normalizes and preserves it. Existing `page_selections` and Slice 79
+    `material_page_selection` behaviour unchanged.
+  - **Safety:** envelope carries only version, safe `attachment_<index>` keys, normalized models, and closed warnings —
+    no filenames, paths, document/OCR/table text, captions, image refs/bytes, base64/data URI, provider payloads,
+    tokens, raw argv, sockets, model/mmproj/executable paths, URLs, or raw exception messages (hostile-canary tested
+    over manifest + response).
   - **Scope:** no frontend/UI; model applied to nothing (no extraction/OCR routing, content/guide, visual manifest,
     render, export, prompt change); no visual-pilot behaviour change; no Chandra/Mistral/Gemini/model/provider/cloud
     call; no direct `clean.md` write (still via `JobManager.save_clean_md`).
-  - **Next likely slices (do not implement in Slice 79):** per-attachment `material_page_selections` mapping; Slice 80
-    Builder UI; Slice 81 apply exclusions to extraction/content planning; Slice 82 apply exclusions to visual/table
-    manifests; Slice 83 full non-table figure inclusion planner; Slice 84 table reconstruction/simplification policy
-    core; Slice 85 table reconstruction prompt integration or E2E material coverage validation.
+  - **Next likely slices (do not implement in Slice 80):** Slice 81 Builder UI (save/load `material_page_selections`);
+    Slice 82 apply exclusions to extraction/content planning; Slice 83 apply exclusions to visual/table manifests;
+    Slice 84 full non-table figure inclusion planner; Slice 85 table reconstruction/simplification policy core; Slice 86
+    table reconstruction prompt integration or E2E material coverage validation.
+
+### Prior position (Slice 79 — committed & merged)
+- **Slice 79 (persist page/slide selection with job requests) — COMMITTED `d4d2513` + MERGED to `chrome-renderer-v1`
+  (fast-forward) + PUSHED** on branch `slice79-page-selection-request-persistence`. It added the top-level
+  `material_page_selection` field on `LLMJobRequest` (Slice 78 normalized shape), wired into both request paths, the
+  retry path, and the response echoes via `_normalize_material_page_selection`/`_safe_material_page_selection`, and
+  persisted it in the `Job.create` manifest. Separate from the load-bearing `page_selections` field; degrade-never-fail;
+  applied to nothing. New `test_scripts/test_page_selection_request_persistence.py`.
 
 ### Prior position (Slice 78 — committed & merged)
 - **Slice 78 (page/slide inclusion-exclusion pure model) — COMMITTED `ee04f55` + MERGED to `chrome-renderer-v1`
