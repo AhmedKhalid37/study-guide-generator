@@ -71,6 +71,11 @@ import {
   visualPilotPayloadFields
 } from "../visualPilotOptIn";
 import { presetCompat, presetModelLabel, providerIconFor, providerLabelFor } from "../presetMeta";
+import {
+  buildMaterialPageSelections,
+  hasActiveMaterialSelections,
+  parsePageListInput
+} from "../materialPageSelections";
 import { Icon } from "./Icon";
 import { JobDetailsDrawer } from "./RecentJobsPanel";
 import { BUILTIN_STYLE_NAMES } from "../styleMeta";
@@ -282,6 +287,14 @@ export default function BuilderWorkspace({
   // only (like attachmentPreflights) — not persisted to drafts/shortcuts, since the
   // attachments it refers to are not persisted either.
   const [pageSelections, setPageSelections] = useState({});
+  // Per-attachment material page/slide exclusions (Slice 87). Keyed by the same
+  // stable attachmentKey(file) signature as preflights so it survives add/remove,
+  // mapping each attachment to the raw "exclude pages/slides" text the user typed.
+  // This is SEPARATE from `pageSelections` (the load-bearing extraction page-range
+  // field): at submit time it is converted by upload order into the safe
+  // `material_page_selections` envelope (`attachment_<index>` keys, never filenames).
+  // Default {} means "no exclusions" and the field is omitted from the request.
+  const [materialExclusions, setMaterialExclusions] = useState({});
   const [folderId, setFolderId] = useState("unfiled");
   const [folders, setFolders] = useState([]);
   const [styleOptions, setStyleOptions] = useState(styleChips);
@@ -765,6 +778,13 @@ export default function BuilderWorkspace({
 
     const signatureAtSubmit = settingsSignature;
     try {
+      // Slice 87: convert the per-attachment exclusion inputs into the safe
+      // `material_page_selections` envelope by UPLOAD ORDER (so keys are
+      // `attachment_<index>`, never filenames). buildLlmPayload omits the field
+      // unless at least one attachment carries an active exclusion.
+      const materialPageSelections = buildMaterialPageSelections(
+        attachments.map((file) => materialExclusions[attachmentKey(file)] ?? "")
+      );
       const { kind, payload } = buildBuilderPayload({
         source,
         text,
@@ -784,7 +804,8 @@ export default function BuilderWorkspace({
         difficulty,
         folderId,
         outline: outlineEnabled ? { enabled: true, sections: outlineSections } : null,
-        pageSelections
+        pageSelections,
+        materialPageSelections
       });
       assertBuilderPayload(kind, payload, { text, title, length });
       const job = await createJob(kind, payload);
@@ -1188,6 +1209,8 @@ export default function BuilderWorkspace({
               setAttachmentPreflights={setAttachmentPreflights}
               pageSelections={pageSelections}
               setPageSelections={setPageSelections}
+              materialExclusions={materialExclusions}
+              setMaterialExclusions={setMaterialExclusions}
               folders={folders}
               folderId={folderId}
               setFolderId={setFolderId}
@@ -1643,6 +1666,8 @@ function BuilderComposer({
   setAttachmentPreflights,
   pageSelections,
   setPageSelections,
+  materialExclusions,
+  setMaterialExclusions,
   folders,
   folderId,
   setFolderId,
@@ -1739,6 +1764,8 @@ function BuilderComposer({
             setAttachmentPreflights={setAttachmentPreflights}
             pageSelections={pageSelections}
             setPageSelections={setPageSelections}
+            materialExclusions={materialExclusions}
+            setMaterialExclusions={setMaterialExclusions}
           />
           <Toggle label="Strict math" checked={strictMath} onChange={setStrictMath} tip={TOOLTIPS.strictMath} />
           {/* Slice 55/57: per-job opt-in for the experimental visual markdown image
@@ -2447,6 +2474,15 @@ function isPdfFile(file) {
   return (file?.name || "").toLowerCase().endsWith(".pdf");
 }
 
+// Slice 87: only paginated source types (PDF pages / PPTX slides) get the
+// per-attachment "exclude pages/slides" control. Other types have no page/slide
+// concept, so the control is hidden for them (the backend still safely ignores
+// any selection that lands on a non-paginated attachment).
+function isPaginatedFile(file) {
+  const name = (file?.name || "").toLowerCase();
+  return name.endsWith(".pdf") || name.endsWith(".pptx");
+}
+
 // Format normalized 1-based inclusive ranges back to a compact human string:
 // [[1,20],[35,42]] -> "1-20, 35-42"; a single-page range [[5,5]] -> "5".
 function formatPageRanges(ranges) {
@@ -2514,8 +2550,26 @@ function AttachmentsPicker({
   attachmentPreflights = {},
   setAttachmentPreflights,
   pageSelections = {},
-  setPageSelections
+  setPageSelections,
+  materialExclusions = {},
+  setMaterialExclusions
 }) {
+  // Slice 87: store the raw "exclude pages/slides" text per attachment, keyed by the
+  // stable attachmentKey(file) signature (not the index, so it survives reordering /
+  // removal). It is converted to safe `attachment_<index>` envelope keys only at
+  // submit time. Empty/whitespace drops the entry — no exclusions for that file.
+  function setFileExclusion(file, value) {
+    const key = attachmentKey(file);
+    setMaterialExclusions?.((current) => {
+      const next = { ...current };
+      if (!value || !value.trim()) {
+        delete next[key];
+      } else {
+        next[key] = value;
+      }
+      return next;
+    });
+  }
   // Page selections are keyed by the original upload filename (file.name) — the
   // exact key the backend matches attachments on. Setting `ranges` to null/[] drops
   // the entry, which means "all pages" again.
@@ -2579,6 +2633,17 @@ function AttachmentsPicker({
       );
       if (!stillPresent) setFileSelection(target.name, null);
     }
+    // Drop this file's material exclusions too. Keyed by attachmentKey (a per-file
+    // signature), so a removed file's entry is always safe to delete directly.
+    if (target && setMaterialExclusions) {
+      const key = attachmentKey(target);
+      setMaterialExclusions((current) => {
+        if (!(key in current)) return current;
+        const next = { ...current };
+        delete next[key];
+        return next;
+      });
+    }
   }
 
   function acknowledge(file) {
@@ -2639,10 +2704,60 @@ function AttachmentsPicker({
                   onClearSelection={() => setFileSelection(file.name, null)}
                 />
               )}
+              {isPaginatedFile(file) && (
+                <MaterialExclusionField
+                  value={materialExclusions[attachmentKey(file)] ?? ""}
+                  onChange={(value) => setFileExclusion(file, value)}
+                />
+              )}
             </div>
           ))}
         </div>
       )}
+    </div>
+  );
+}
+
+// Closed-vocabulary local hints → short human copy. Keeps the warning surface
+// generic: it never echoes the raw token the user typed (no-leak invariant).
+const MATERIAL_EXCLUSION_HINTS = {
+  page_token_invalid: "Some entries weren't valid page numbers and were ignored.",
+  page_range_invalid: "Some ranges weren't valid and were ignored.",
+  page_range_reversed: "A reversed range (e.g. 6-2) was ignored.",
+  page_number_invalid: "Page numbers must be 1 or greater; those were ignored."
+};
+
+// Slice 87: per-attachment "exclude pages/slides" control. Pure-presentational —
+// it owns no envelope state; the parent stores the raw text keyed by attachmentKey
+// and converts everything to the safe `attachment_<index>` envelope at submit time.
+// Live parse drives a calm "Excluding pages …" confirmation plus generic hint text
+// for any invalid tokens (never the raw value).
+function MaterialExclusionField({ value, onChange }) {
+  const { pages, warnings } = parsePageListInput(value);
+  return (
+    <div className="sg-attach-exclude">
+      <label className="sg-attach-exclude-label">
+        Exclude pages/slides
+        <input
+          type="text"
+          value={value}
+          inputMode="numeric"
+          placeholder="e.g. 2, 4-6, 10"
+          onChange={(event) => onChange(event.target.value)}
+          className="sg-attach-exclude-input"
+        />
+      </label>
+      <p className="sg-attach-exclude-help">
+        These pages will be skipped from guide content and visual/table planning.
+      </p>
+      {pages.length > 0 && (
+        <p className="sg-attach-exclude-note">Excluding pages {pages.join(", ")}.</p>
+      )}
+      {warnings.map((token) => (
+        <p key={token} className="sg-attach-exclude-warn">
+          {MATERIAL_EXCLUSION_HINTS[token] ?? "Some entries were ignored."}
+        </p>
+      ))}
     </div>
   );
 }
@@ -3345,7 +3460,8 @@ export function buildBuilderPayload({
   difficulty = "",
   folderId = "unfiled",
   outline = null,
-  pageSelections = {}
+  pageSelections = {},
+  materialPageSelections = null
 }) {
   if (source === "upload") {
     return {
@@ -3379,7 +3495,8 @@ export function buildBuilderPayload({
         difficulty,
         folderId,
         outline,
-        pageSelections
+        pageSelections,
+        materialPageSelections
       })
     };
   }
@@ -3413,13 +3530,18 @@ export function buildLlmPayload({
   difficulty = "",
   folderId = "unfiled",
   outline = null,
-  pageSelections = {}
+  pageSelections = {},
+  materialPageSelections = null
 }) {
   const hasOutline = outline?.enabled && (outline.sections || []).some((section) => section.title?.trim());
   // PDF page selections (Slice 3): include only when the Builder actually carries a
   // selection. No page-range UI exists yet, so this is {} for every normal request
   // and the field is omitted entirely — keeping the default request byte-equivalent.
   const hasPageSelections = pageSelections && Object.keys(pageSelections).length > 0;
+  // Slice 87: only attach the per-attachment material exclusions envelope when it
+  // carries at least one active exclusion, so a default request stays unchanged.
+  // The backend re-normalizes it; we never send filenames/paths as keys.
+  const hasMaterialSelections = hasActiveMaterialSelections(materialPageSelections);
   // Send the canonical fields only when they carry intent: omit include_sections
   // entirely when nothing is enabled, and omit each axis when unset. This keeps a
   // default/fresh generate request free of include_sections/output_depth/difficulty.
@@ -3443,6 +3565,7 @@ export function buildLlmPayload({
     ...(outputDepth ? { output_depth: outputDepth } : {}),
     ...(difficulty ? { difficulty } : {}),
     ...(hasPageSelections ? { page_selections: pageSelections } : {}),
+    ...(hasMaterialSelections ? { material_page_selections: materialPageSelections } : {}),
     // Slice 55: only send the per-job visual-pilot opt-in when actually on, so a
     // default/opted-out request stays byte-equivalent to before this slice. The
     // backend env master switch still gates whether it has any effect.

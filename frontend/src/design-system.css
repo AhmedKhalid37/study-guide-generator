@@ -946,6 +946,19 @@ body { overflow: hidden; }
 .sg-attach-name { min-width: 0; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text-dim); }
 .sg-attach-size { font-size: 13px; color: var(--muted); }
 
+/* per-attachment exclude pages/slides (Slice 87) */
+.sg-attach-exclude { margin-top: 7px; display: flex; flex-direction: column; gap: 4px; }
+.sg-attach-exclude-label { display: flex; flex-direction: column; gap: 5px; font-size: 13.5px; font-weight: 550; color: var(--text-dim); }
+.sg-attach-exclude-input {
+  padding: 7px 10px; border-radius: 8px;
+  border: 1px solid var(--card-border); background: #131315;
+  color: var(--text); font-size: 14.5px; font-weight: 450;
+}
+.sg-attach-exclude-input:focus { outline: none; border-color: var(--card-border-2); }
+.sg-attach-exclude-help { font-size: 12.5px; color: var(--muted); margin: 0; }
+.sg-attach-exclude-note { font-size: 13px; color: var(--text-dim); margin: 0; }
+.sg-attach-exclude-warn { font-size: 12.5px; color: #F4C76B; margin: 0; }
+
 /* small inline actions (remove / range / continue …) */
 .sg-mini-btn {
   display: inline-flex; align-items: center; gap: 6px;

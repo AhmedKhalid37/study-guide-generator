@@ -5,7 +5,49 @@
 
 ---
 
-## Slice 86 — **Material Coverage E2E validation harness**, on `slice86-material-coverage-e2e-validation`. **NOT COMMITTED.**
+## Slice 87 — **Builder UI for per-attachment page/slide exclusions**, on `slice87-builder-page-slide-exclusions-ui`. **NOT COMMITTED.**
+
+- **First UI slice on top of the Full Material Coverage backend.** Slice 86 was committed `3db8572`, fast-forward merged,
+  and pushed to trunk on `chrome-renderer-v1` (it added the deterministic synthetic Material Coverage **E2E validation
+  harness** that proved the whole backend chain end-to-end). Slices 78–86 proved the backend can persist + apply
+  per-attachment material page selections. Slice 87 adds the **first Builder control** so a user can actually set
+  per-attachment page/slide **exclusions** and submit them through the already-merged `material_page_selections` field.
+- **UI-wiring only.** No backend change: extraction logic, visual-manifest filtering, visual inclusion planning, table
+  policy, render/export/prompt/provider behavior, and visual-pilot cap/ranking/classification/caption are all untouched.
+  The backend remains the source of truth for normalization/application.
+- **New pure helper** `frontend/src/materialPageSelections.js`:
+  - `parsePageListInput(input) → { pages, warnings }` — parses positive 1-based integers and simple ranges (`2, 4-6, 10`);
+    dedupes + sorts; drops invalid tokens with **closed-vocabulary** local warning tokens (`page_token_invalid`,
+    `page_range_invalid`, `page_range_reversed`, `page_number_invalid`) and never echoes the raw token.
+  - `buildMaterialPageSelections(orderedInputs) → envelope` — maps per-attachment raw inputs **by upload order** into the
+    safe envelope `{ version:1, attachments:{ attachment_<index>: { version:1, mode:"exclude", include_pages:[],
+    exclude_pages:[…], warnings:[] } }, warnings:[] }`. Attachments with no exclusions are omitted; index follows upload
+    order even when earlier attachments have none. Keys are **always** `attachment_<index>`, never filenames/paths.
+  - `hasActiveMaterialSelections(envelope)` — the gate the Builder uses to decide whether to send the field at all.
+- **Builder wiring** (`frontend/src/components/BuilderWorkspace.jsx`): new `materialExclusions` state keyed by the stable
+  `attachmentKey(file)` signature (raw typed text per attachment); a small `MaterialExclusionField` rendered under each
+  paginated attachment (`.pdf` / `.pptx`) with copy *"Exclude pages/slides — e.g. 2, 4-6, 10 — These pages will be skipped
+  from guide content and visual/table planning."* plus a live "Excluding pages …" confirmation and generic hint text for
+  invalid input (never the raw value). At submit, `attachments.map(f => materialExclusions[attachmentKey(f)] ?? "")` is
+  converted to the envelope and threaded through `buildBuilderPayload → buildLlmPayload`, which adds
+  `material_page_selections` **only** when at least one exclusion is active. Removing an attachment drops its entry.
+- **Request path** (`frontend/src/api/client.js`): `material_page_selections` added to the multipart object-stringify
+  whitelist (alongside `outline` / `include_sections` / `page_selections`) so the envelope is JSON-stringified into the
+  attachment `FormData`. The JSON-only (no-attachment) path serializes it with the rest of the payload; with no active
+  exclusion the field is simply absent.
+- **`page_selections` untouched.** The older extraction page-range field (keyed by filename, load-bearing) is preserved
+  exactly — separate state, separate field, separate UI (the preflight card).
+- **Validation:** new node harness `frontend/scripts/verify-material-page-selections-ui.mjs` (added to `npm run test` and
+  `test:material-page-selections-ui`) covers parse/dedupe/ranges, closed warnings, positional keys, omitted attachments,
+  the active gate, determinism, and filename/path/URL/data-URI/base64 canary no-leak over the serialized payload.
+  `npm run build` passes; the full frontend suite passes. Python suite green on host (material coverage E2E 79/0, model
+  183/0, extraction 31/0, manifest planning 47/0, inclusion planner 178/0, plan artifact 62/0, table policy 145/0);
+  FastAPI-gated tests run in Docker: `test_page_selection_request_persistence.py` 182/0, `test_page_selections.py` 24/0.
+  Docker build + health + `smoke_release.py` 29/0. **Slice 87 is NOT committed.**
+
+---
+
+## Slice 86 — **Material Coverage E2E validation harness**, on `slice86-material-coverage-e2e-validation`. **COMMITTED `3db8572` + MERGED (ff) + PUSHED to `chrome-renderer-v1`.**
 
 - **Full Material Coverage foundation slice (validation side).** Slice 85 was committed `8a1b780`, fast-forward merged,
   and pushed to trunk on `chrome-renderer-v1` (it added the pure, stdlib-only table reconstruction/simplification **policy

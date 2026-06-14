@@ -6,9 +6,29 @@
 > stable overview see `PROJECT_CONTEXT.md`; canonical brief is `../CLAUDE.md`.
 
 ## Current position
-- **Working tree:** **Slice 86 (Material Coverage E2E validation harness) — UNCOMMITTED (per instruction)** on branch
-  `slice86-material-coverage-e2e-validation` (branched from fresh trunk after Slice 85 was committed/merged/pushed). Slice
-  85 is now trunk commit `8a1b780`.
+- **Working tree:** **Slice 87 (Builder UI for per-attachment page/slide exclusions) — UNCOMMITTED (per instruction)** on
+  branch `slice87-builder-page-slide-exclusions-ui` (branched from fresh trunk after Slice 86 was committed/merged/pushed).
+  Slice 86 is now trunk commit `3db8572`.
+  - **Purpose:** add the **first Builder UI control** on top of the Slices 78–86 Full Material Coverage backend, so a user
+    can set per-attachment page/slide **exclusions** and submit them through the already-merged `material_page_selections`
+    field. UI-wiring only — no backend/extraction/visual/table/render/export/prompt/provider/visual-pilot change.
+  - **New pure helper** `frontend/src/materialPageSelections.js`: `parsePageListInput` (positive 1-based ints + simple
+    ranges `2,4-6,10`; dedupe/sort; closed-vocabulary warnings, never the raw token), `buildMaterialPageSelections`
+    (per-attachment raw inputs **by upload order** → safe envelope with `attachment_<index>` keys, exclude-mode models;
+    omits empty attachments; never filenames/paths), `hasActiveMaterialSelections` (send-gate).
+  - **Builder** (`BuilderWorkspace.jsx`): `materialExclusions` state keyed by stable `attachmentKey(file)`; a
+    `MaterialExclusionField` under each paginated (`.pdf`/`.pptx`) attachment; at submit, mapped by upload order to the
+    envelope and threaded `buildBuilderPayload → buildLlmPayload`, which adds `material_page_selections` only when active.
+  - **Request** (`api/client.js`): `material_page_selections` added to the multipart object-stringify whitelist; absent
+    when no exclusion is active. **`page_selections` (filename-keyed extraction ranges) preserved exactly — separate.**
+  - **Validation:** `frontend/scripts/verify-material-page-selections-ui.mjs` (in `npm run test`) green; `npm run build`
+    green; full frontend suite green; Python suite green on host; FastAPI-gated `test_page_selection_request_persistence`
+    182/0 + `test_page_selections` 24/0 in Docker; Docker build + health + `smoke_release.py` 29/0. **NOT committed.**
+
+### Prior position (Slice 86 — committed & merged)
+- **Working tree:** **Slice 86 (Material Coverage E2E validation harness) — COMMITTED `3db8572` + MERGED (ff) + PUSHED** to
+  `chrome-renderer-v1` (branched from fresh trunk after Slice 85 was committed/merged/pushed). Slice 85 is trunk commit
+  `8a1b780`.
   - **Purpose:** add a deterministic, synthetic **E2E validation harness** that proves the Slices 76–85 Full Material
     Coverage backend chain works together — *before* any Builder UI is built on top of it.
   - **Validated chain:** `material page selection → text extraction page filtering → visual manifest page filtering →

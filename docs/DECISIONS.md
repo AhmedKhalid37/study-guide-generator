@@ -3948,3 +3948,43 @@ job-execution wiring, no extraction/OCR routing, no render/export/prompt/provide
 ranking/classification/cap/default/two-key-gate/caption change; no Chandra/Mistral/Gemini/model/provider/cloud call; no
 direct `clean.md` write; no table manifest invented. Chandra remains blocked by its own live-validation gate. **Slice 86
 is NOT committed.**
+
+## Builder UI for per-attachment page/slide exclusions comes after backend E2E validation (Slice 87)
+The Builder's first material-coverage control (per-attachment "exclude pages/slides") was deliberately built **after**
+Slices 78–86 had persisted, applied, and end-to-end **validated** the `material_page_selections` backend chain (Slice 86's
+synthetic harness proved selection → extraction filtering → visual-manifest filtering → inclusion plan → table policy →
+coverage as one chain). **Why:** wiring a UI to a field whose semantics were still settling would risk shipping a control
+whose effect we could not yet describe or guarantee. With the backend contract locked and tested, the UI is a thin,
+low-risk producer of an already-understood payload — the backend stays the single normalizer/source of truth and the UI
+adds no new behavior of its own.
+
+**Why the first UI is exclude-only, not full include/exclude.** The backend page-selection model supports `all` /
+`include` / `exclude`, but the first UX exposes **exclusions only**. **Why:** "skip these few pages/slides" is the common,
+low-cognitive-load operator action and maps to a single text box; an include-mode UI implies a per-attachment page picker
+(or a "keep only these" mental model that interacts with the existing filename-keyed `page_selections` extraction ranges)
+and is easy to get subtly wrong. Exclusions are additive and safe — the backend still normalizes, and include-mode can be
+layered on later if a real need appears. Keeping the first surface minimal avoids a confusing two-axis control on day one.
+
+**Why attachment keys are `attachment_<index>`, never filenames/paths.** The submitted/persisted envelope keys are derived
+purely from **upload order** (`attachment_0`, `attachment_1`, …), matching the order the multipart request appends the
+files and the order the backend already keys on. **Why:** filenames and paths are user-controlled, can collide, can carry
+private document titles, and are exactly the kind of value the no-leak invariants forbid in artifacts/logs/payloads. A
+positional key is stable, collision-free, and leak-safe. The local filename is still shown to the operator in the picker
+for orientation, but it never becomes a persisted key — the helper accepts ordered raw inputs and assigns positional keys,
+so a filename cannot reach the payload even by accident (covered by a canary test).
+
+**Why existing `page_selections` stays a separate field.** The older `page_selections` field (filename-keyed, 1-based
+inclusive extraction ranges from the large-PDF preflight card) is load-bearing and untouched. `material_page_selections`
+is a distinct concept (per-attachment, positional keys, include/exclude model feeding the *full material coverage* chain:
+content + visual + table planning, not just extraction page ranges). **Why keep them separate:** merging them would
+overload one field with two different key schemes and two different downstream meanings, and would put the tuned extraction
+path at risk. They evolve independently; the Builder owns separate state for each.
+
+**Why JobDetails / source-coverage display is deferred.** Slice 87 only adds the *input* control. Showing the resulting
+source/visual/material **coverage summary** back to the operator (in JobDetails) is a separate, later slice. **Why:** the
+coverage report core/artifact exists (Slices 76–77) but surfacing it well is a read-side UX problem with its own no-leak
+constraints (it must show counts/anchors without leaking source titles, captions, or document/OCR text), and it should be
+designed once there is real selected-vs-covered data to render. Splitting input UI from coverage display keeps each slice
+small and independently verifiable. No table reconstruction, no all-visual insertion/rendering, and no render/export/
+prompt/provider/visual-pilot change ride along. Chandra remains blocked by its own live-validation gate. **Slice 87 is NOT
+committed.**
