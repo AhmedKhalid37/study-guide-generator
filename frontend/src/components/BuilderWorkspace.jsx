@@ -83,6 +83,11 @@ import {
   parsePageListInput
 } from "../materialPageSelections";
 import { buildBuilderMaterialCoverageSummary } from "../materialCoverageWarnings";
+import {
+  classifyAttachmentSize,
+  LARGE_FILE_NOTICE,
+  OVERSIZE_REJECTION
+} from "../uploadLimits";
 import { Icon } from "./Icon";
 import { JobDetailsDrawer } from "./RecentJobsPanel";
 import { BUILTIN_STYLE_NAMES } from "../styleMeta";
@@ -2591,6 +2596,10 @@ function AttachmentsPicker({
   materialExclusions = {},
   setMaterialExclusions
 }) {
+  // Slice 101: transient, content-free size notice for the attachment picker.
+  // Holds either the generic oversize-rejection copy or null — never a filename,
+  // path, or byte count from a specific file.
+  const [sizeNotice, setSizeNotice] = useState(null);
   // Slice 87: store the raw "exclude pages/slides" text per attachment, keyed by the
   // stable attachmentKey(file) signature (not the index, so it survives reordering /
   // removal). It is converted to safe `attachment_<index>` envelope keys only at
@@ -2641,7 +2650,22 @@ function AttachmentsPicker({
     const incoming = Array.from(fileList || []);
     if (incoming.length === 0) return;
     const room = Math.max(0, 5 - attachments.length);
-    const added = incoming.slice(0, room);
+    const withinCount = incoming.slice(0, room);
+    if (withinCount.length === 0) return;
+    // Slice 101: client-side size guard. Drop anything over the configured
+    // ceiling before the upload starts (the backend re-enforces the real cap).
+    // Only file.size is inspected — never the name or contents — and the notice
+    // is the generic OVERSIZE_REJECTION string, so no filename/byte count leaks.
+    const added = [];
+    let rejectedOversize = false;
+    for (const file of withinCount) {
+      if (classifyAttachmentSize(file?.size).ok) {
+        added.push(file);
+      } else {
+        rejectedOversize = true;
+      }
+    }
+    setSizeNotice(rejectedOversize ? OVERSIZE_REJECTION : null);
     if (added.length === 0) return;
     setAttachments((current) => [...current, ...added].slice(0, 5));
     added.forEach((file) => {
@@ -2651,6 +2675,7 @@ function AttachmentsPicker({
 
   function removeFile(index) {
     const target = attachments[index];
+    setSizeNotice(null);
     setAttachments((current) => current.filter((_, fileIndex) => fileIndex !== index));
     if (target && setAttachmentPreflights) {
       const key = attachmentKey(target);
@@ -2702,6 +2727,7 @@ function AttachmentsPicker({
         <span className="sg-attach-drop-body">
           <span className="sg-attach-drop-title">Attach source files</span>
           <span className="sg-attach-drop-sub">txt, md, csv, tsv, docx, pptx, pdf · max 5 files</span>
+          <span className="sg-attach-drop-note">{LARGE_FILE_NOTICE}</span>
         </span>
         <input
           type="file"
@@ -2714,6 +2740,11 @@ function AttachmentsPicker({
           className="sr-only"
         />
       </label>
+      {sizeNotice && (
+        <p className="sg-attach-size-notice" role="status">
+          {sizeNotice}
+        </p>
+      )}
       {attachments.length > 0 && (
         <div className="sg-attach-list">
           {attachments.map((file, index) => (

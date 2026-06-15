@@ -219,7 +219,10 @@ def test_endpoint() -> None:
                 "/api/preflight/pdf",
                 files={"file": ("text.pdf", text_pdf.read_bytes(), "application/pdf")},
             )
-            check("endpoint oversize -> 400", resp.status_code == 400, f"{resp.status_code} {resp.text}")
+            # Slice 101: oversize now returns 413 (Payload Too Large) with a
+            # generic, filename-free detail.
+            check("endpoint oversize -> 413", resp.status_code == 413, f"{resp.status_code} {resp.text}")
+            check("endpoint oversize detail is filename-free", "text.pdf" not in resp.text, resp.text)
         finally:
             server.MAX_LLM_ATTACHMENT_BYTES = saved_max
 

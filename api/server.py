@@ -118,7 +118,40 @@ ARTIFACTS = {
     "render.log": ("render_log", "text/plain; charset=utf-8"),
 }
 MAX_LLM_ATTACHMENTS = 5
-MAX_LLM_ATTACHMENT_BYTES = 15 * 1024 * 1024
+
+
+def _resolve_max_attachment_mb() -> int:
+    """Resolve the per-attachment upload ceiling (MB) from the environment.
+
+    Slice 101 (emergency large-attachment support): the app must accept guide
+    attachments around 100 MB. The ceiling is env-tunable via
+    ``GUIDEFORGE_MAX_ATTACHMENT_MB`` (read once at import, mirroring the
+    PREFLIGHT_* precedent above) and defaults to 150 MB — a safe margin above the
+    100 MB target. This is the single source of truth for the hard upload guard;
+    both request paths (preflight + multipart attachments) derive their byte
+    ceiling from it.
+
+    Any missing / non-integer / out-of-range value degrades to the default
+    instead of raising, so a hostile or fat-fingered env value can neither crash
+    startup nor disable the guard. The accepted band is floored at 100 MB (so the
+    documented 100 MB attachment always fits) and capped at 1024 MB (so a huge
+    value can't effectively turn the guard off).
+    """
+    default_mb = 150
+    raw = os.getenv("GUIDEFORGE_MAX_ATTACHMENT_MB")
+    if raw is None:
+        return default_mb
+    try:
+        value = int(str(raw).strip())
+    except (TypeError, ValueError):
+        return default_mb
+    if value < 100 or value > 1024:
+        return default_mb
+    return value
+
+
+MAX_LLM_ATTACHMENT_MB = _resolve_max_attachment_mb()
+MAX_LLM_ATTACHMENT_BYTES = MAX_LLM_ATTACHMENT_MB * 1024 * 1024
 
 # Large-PDF preflight thresholds (read-only inspection — see
 # docs/LARGE_PDF_PREFLIGHT_DESIGN.md). All env-tunable, read once at import,
@@ -1952,9 +1985,11 @@ async def preflight_pdf_upload(file: UploadFile = File(...)) -> dict[str, Any]:
             while chunk := await file.read(1024 * 1024):
                 size += len(chunk)
                 if size > MAX_LLM_ATTACHMENT_BYTES:
+                    # Generic, filename-free rejection (no-leak): never echo the
+                    # upload filename/path back in the error detail.
                     raise HTTPException(
-                        status_code=400,
-                        detail=f"{filename} exceeds the {MAX_LLM_ATTACHMENT_BYTES // (1024 * 1024)} MB upload limit.",
+                        status_code=413,
+                        detail=f"File exceeds the {MAX_LLM_ATTACHMENT_BYTES // (1024 * 1024)} MB upload limit.",
                     )
                 tmp.write(chunk)
         report = await run_in_threadpool(
@@ -3589,9 +3624,11 @@ async def _save_llm_attachments(uploads: list[UploadFile]) -> list[AttachmentSou
                 while chunk := await upload.read(1024 * 1024):
                     size += len(chunk)
                     if size > MAX_LLM_ATTACHMENT_BYTES:
+                        # Generic, filename-free rejection (no-leak): never echo the
+                        # upload filename/path back in the error detail.
                         raise HTTPException(
-                            status_code=400,
-                            detail=f"{filename} exceeds the {MAX_LLM_ATTACHMENT_BYTES // (1024 * 1024)} MB attachment limit.",
+                            status_code=413,
+                            detail=f"Attachment exceeds the {MAX_LLM_ATTACHMENT_BYTES // (1024 * 1024)} MB limit.",
                         )
                     tmp.write(chunk)
             attachments.append(AttachmentSource(path=temp_path, filename=filename))

@@ -4472,3 +4472,27 @@ purpose: the point is to validate the phase *as shipped*. So Slice 100 only adds
 frontend verify scripts); it touches no backend route, prompt, extractor, renderer, exporter, figure-insertion path,
 material-selection path, or UI, and adds no LLM/provider/model/cloud call. Chandra remains blocked by its own
 live-validation gate.
+
+## ~100 MB attachment support took priority over active recall (Slice 101)
+The planned Slice 101 (active recall) was **paused** mid-roadmap for an emergency: the operator needs to generate a guide
+from an attachment around **100 MB**, and the app's 15 MB ceiling rejected it outright. **Why prioritize it:** active recall
+is a study-quality enhancement that can wait; a hard size wall *blocks the core flow entirely* for a real input the operator
+has on hand. Unblocking generation is a prerequisite for any further study feature on that material, so it jumps the queue.
+Active recall is only paused, not cancelled — it resumes as a later slice from clean trunk.
+
+**Why raise the limit to a safe configurable ceiling instead of removing limits entirely.** A removed limit is a foot-gun:
+an unbounded upload invites accidental multi-GB streams, disk exhaustion, and OOM on a 2 GB-memory single-container
+deployment. So the ceiling is *raised*, not deleted — `GUIDEFORGE_MAX_ATTACHMENT_MB` (default **150 MB**, a safe margin
+above the 100 MB target) remains a single hard guard derived into `MAX_LLM_ATTACHMENT_BYTES`, enforced on both request
+paths. The env resolver degrades any missing/invalid/out-of-range value to the default and clamps the accepted band to
+[100, 1024] MB: the floor guarantees the documented 100 MB always fits, and the cap means a hostile or fat-fingered value
+can never effectively disable the guard. Files past the ceiling still get a clean **413** (generic, filename-free) rejection.
+The existing streaming guard (1 MiB chunks, reject-before-buffer) was kept, so raising the number did not introduce a
+whole-file-in-memory read.
+
+**Why tests use synthetic metadata / temp / sparse files instead of committed large fixtures.** Committing a ~100 MB binary
+would bloat the repo irreversibly, risk embedding real document bytes/filenames (a no-leak violation), and is redundant: the
+size guard is a *byte-count* decision, so a stub `UploadFile` streaming zero-filled chunks and a `truncate`-made sparse file
+exercise the exact same code path without persisting anything. The backend test streams a 100 MB stub (temp file removed
+after), the frontend verify uses pure size metadata, and the one live container check used a throwaway sparse `.pdf`
+(HTTP 200, not 413) that was deleted immediately — no large fixture, binary, or source content enters git.

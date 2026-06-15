@@ -5,7 +5,43 @@
 
 ---
 
-## Slice 100 — **Full Material Coverage E2E release validation**, on `slice100-full-material-coverage-release-validation`. **NOT COMMITTED.**
+## Slice 101 — **EMERGENCY: ~100 MB guide attachment support**, on `slice101-large-attachment-100mb-support`. **NOT COMMITTED.**
+
+- **Reprioritized:** Slice 101 active recall was **paused**. The immediate need is letting the app accept and generate a
+  guide from an attachment around **100 MB**. This slice raises the upload ceiling only — it adds no study features, no
+  LLM/provider/model/cloud call, and changes no generation/OCR/render/export/material-selection semantics.
+- **Slice 100 was committed `fbff55d`, fast-forward merged, and pushed to trunk on `chrome-renderer-v1`** (Full Material
+  Coverage release validation). Slice 101 branches from that fresh trunk.
+- **Backend (`api/server.py`):** the per-attachment ceiling is now a single env-tunable constant. New helper
+  `_resolve_max_attachment_mb()` reads `GUIDEFORGE_MAX_ATTACHMENT_MB` (default **150 MB**, a safe margin above the 100 MB
+  target). Any missing / non-integer / out-of-range value **degrades to the default** (never raises); the accepted band is
+  floored at 100 MB (so the 100 MB goal always fits) and capped at 1024 MB (so a hostile value can't disable the guard).
+  `MAX_LLM_ATTACHMENT_BYTES` is derived from it, so both request paths (preflight + multipart attachments) share one
+  ceiling. **Before: 15 MB. After: 150 MB default.**
+- **Streaming already safe:** the upload guard already reads in 1 MiB chunks and rejects *before* buffering the whole file,
+  so no whole-file-in-memory read was introduced. Oversize now returns **HTTP 413** (was 400) with a **generic,
+  filename-free** detail (no-leak: never echoes the upload filename/path/content/raw exception). Allowed file types and
+  extraction behaviour are unchanged.
+- **Frontend:** new pure helper `frontend/src/uploadLimits.js` (`classifyAttachmentSize` + constants + calm copy), mirroring
+  the 150 MB backend default with a 100 MB "large file" threshold. The Builder previously did **no** client-side size check
+  (relied on the server); it now pre-flights by `file.size` only (never name/contents), drops over-ceiling files with the
+  generic copy *"Files larger than 150 MB can't be uploaded."*, and shows *"Large files may take longer to process."* No
+  page-selection / material-selection payload changed.
+- **Tests:** new `test_scripts/test_large_attachment_limits.py` (env-resolution matrix; 100 MB stream accepted via a stub
+  UploadFile — no committed fixture; oversize → 413 generic) and `frontend/scripts/verify-large-attachment-upload-limit.mjs`
+  (100 MB accepted/flagged large; >150 MB rejected with calm copy; content-free verdict; determinism; no material-selection
+  regression). `test_pdf_preflight.py` oversize assertion updated 400→413.
+- **Validation:** frontend build + full `npm test` green; `compileall` clean; new backend test 24/24 in Docker; preflight
+  test 25/25; `smoke_release.py` 29/0/0; **live ~100 MB sparse-file upload returned HTTP 200 (not 413), `max_upload_mb` 150**
+  — temp file deleted, never committed.
+- **Limitations still present:** this raises *app-level* caps only. If a reverse proxy / web server is ever placed in front,
+  its body-size cap must be aligned separately. Very large guides may still hit provider context limits or longer
+  extraction/generation time — out of scope for this emergency slice. Chandra remains blocked by its own live-validation
+  gate. **Slice 101 is NOT committed.**
+
+---
+
+## Slice 100 — **Full Material Coverage E2E release validation**, on `slice100-full-material-coverage-release-validation`. **Committed `fbff55d`, merged + pushed to `chrome-renderer-v1`.**
 
 - **Slice 99 was committed `e8d6f86`, fast-forward merged, and pushed to trunk on `chrome-renderer-v1`** (it added the
   optional dual explanation mode). Slice 100 branches from that fresh trunk.

@@ -6,29 +6,35 @@
 > stable overview see `PROJECT_CONTEXT.md`; canonical brief is `../CLAUDE.md`.
 
 ## Current position
-- **Working tree:** **Slice 100 (Full Material Coverage E2E release validation) — UNCOMMITTED (per instruction)** on branch
-  `slice100-full-material-coverage-release-validation` (branched from fresh trunk after Slice 99 was committed/merged/pushed).
-  **Slice 99 is now trunk commit `e8d6f86`** (added the optional dual explanation mode).
-  - **Purpose:** a deterministic, synthetic, validation-only **release checkpoint** before moving into study-intelligence
-    features. It proves the whole Full Material Coverage phase (Slices 82–99) coheres end to end **without adding any
-    product behaviour** — a signal/coherence validation (safe counts/statuses/refs line up and stay leak-free), not a
-    semantic grader and not a live-LLM run.
-  - **New backend harness `test_scripts/test_full_material_coverage_release_validation.py`** (86 checks). It assembles one
-    synthetic scenario (two attachments by safe positional ids; material page exclusions active; source coverage with
-    covered + unreadable pages; 4 useful non-table figures with tiny temp PNGs; 5 table-like records →
-    reconstruct/simplify/skip_unreadable/defer/unsafe-skipped; static app headings + safe page signals + safe figure refs
-    in the guide Markdown) and walks the real pure helpers in release order: **material page selections → source coverage
-    report → visual inclusion plan → full non-table figure insertion → render/export asset ride-along → table candidate
-    manifest → table reconstruction policy → table reconstruction prompt context → missing visual/table guidance →
-    coverage-aware generation guidance → guide quality report v2 → Ask Guide coverage grounding → dual explanation mode**.
-    A deep no-leak walk over every serialized stage asserts none of the seeded canaries survive; determinism is asserted.
-  - **Frontend release validation reuses the existing per-dimension verify scripts** (`verify-material-page-selections-ui`,
-    `verify-material-coverage-display`/`-warnings`/`-final-panel`, `verify-dual-explanation-mode-ui`). **No new frontend
-    script, no UI change.**
-  - **It does NOT** add a product feature, an LLM/provider/model/cloud call, extraction/OCR, PDF/image inspection, table
-    reconstruction, UI, a render/export behaviour change, a figure-insertion-semantics change, a material page-selection
-    change, or a visual-manifest-filter change. No direct `clean.md` write. Chandra remains blocked by its own
-    live-validation gate. **Slice 100 is NOT committed.**
+- **Working tree:** **Slice 101 (EMERGENCY ~100 MB guide attachment support) — UNCOMMITTED (per instruction)** on branch
+  `slice101-large-attachment-100mb-support` (branched from fresh trunk after Slice 100 was committed/merged/pushed).
+  **Slice 100 is now trunk commit `fbff55d`** (Full Material Coverage E2E release validation).
+  - **Why this, why now:** the planned Slice 101 active recall was **paused** for an emergency need — letting the app accept
+    and generate a guide from an attachment around **100 MB**. This slice only raises the upload ceiling; it adds no study
+    feature and changes no generation/OCR/render/export/material-selection behaviour.
+  - **Backend (`api/server.py`):** new `_resolve_max_attachment_mb()` reads `GUIDEFORGE_MAX_ATTACHMENT_MB` (default
+    **150 MB**), degrading any missing/invalid/out-of-range value to the default (floor 100 MB, cap 1024 MB).
+    `MAX_LLM_ATTACHMENT_BYTES` is derived from it, so the preflight + multipart-attachment paths share one ceiling.
+    **15 MB → 150 MB.** Oversize now returns **413** with a **generic, filename-free** detail. The guard was already
+    chunked (1 MiB reads, rejects before full buffering) — no whole-file-in-memory read added.
+  - **Frontend:** new pure helper `frontend/src/uploadLimits.js` mirrors the 150 MB default (100 MB = "large file"
+    threshold). The Builder had **no** client-side size check before; it now pre-flights by `file.size` only, drops
+    over-ceiling files with calm generic copy, and shows *"Large files may take longer to process."* No page/material
+    selection payload changed.
+  - **Tests:** `test_scripts/test_large_attachment_limits.py` (resolution matrix + 100 MB stub stream accepted, no committed
+    fixture; oversize → 413 generic) and `frontend/scripts/verify-large-attachment-upload-limit.mjs`; `test_pdf_preflight.py`
+    oversize assertion updated 400→413.
+  - **Validated:** frontend build + `npm test` green; new backend test 24/24 + preflight 25/25 in Docker; `smoke_release.py`
+    29/0/0; **live ~100 MB sparse-file upload → HTTP 200 (not 413), `max_upload_mb` 150** (temp file deleted, never
+    committed).
+  - **Limitations:** app-level caps only — a future reverse proxy / web-server body cap must be aligned separately; very
+    large guides can still hit provider context limits / longer extraction time. Chandra remains blocked by its own
+    live-validation gate. **Slice 101 is NOT committed.**
+
+### Previously (Slice 100, now trunk `fbff55d`)
+- **Slice 100 (Full Material Coverage E2E release validation)** added a deterministic, synthetic, validation-only release
+  checkpoint (`test_scripts/test_full_material_coverage_release_validation.py`, 86 checks) proving the Full Material Coverage
+  phase coheres end to end. No product behaviour, no LLM/provider/model/cloud call, no UI change.
 
 ### Previously (Slice 99, now trunk `e8d6f86`)
 - **Slice 99 (Explain like I'm 10 / Exam answer mode v1)** added an optional study-quality generation mode. When on, the

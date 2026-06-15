@@ -935,6 +935,10 @@ body { overflow: hidden; }
 .sg-attach-drop-body { min-width: 0; flex: 1; }
 .sg-attach-drop-title { display: block; font-size: 15.5px; font-weight: 550; color: var(--text); }
 .sg-attach-drop-sub { display: block; font-size: 14px; color: var(--muted); }
+.sg-attach-drop-note { display: block; font-size: 13px; color: var(--muted); margin-top: 2px; }
+.sg-attach-size-notice {
+  margin-top: 8px; font-size: 13px; color: var(--amber, #f59e0b);
+}
 .sg-attach-list { margin-top: 10px; display: flex; flex-direction: column; gap: 8px; }
 .sg-attach-row {
   display: flex; align-items: center; gap: 9px;
