@@ -4436,3 +4436,39 @@ the generator to state what is missing instead of guessing when the source does 
 the generation-side coverage rules (Slices 93–95): the honest "the source doesn't cover this" is the correct output, and
 the dual-mode instruction must never become a license to hallucinate two confident answers instead of one. Chandra remains
 blocked by its own live-validation gate.
+
+---
+
+## Slice 100 — Full Material Coverage E2E release validation as a checkpoint (2026-06-15)
+
+**Why a validation checkpoint before the next phase.** Slices 82–99 grew a wide Full Material Coverage phase: page/slide
+inclusion + exclusion, source coverage reporting, visual planning + full non-table figure insertion, render/export
+ride-along, table candidate + policy artifacts, table reconstruction prompt context, missing visual/table guidance,
+coverage-aware generation prompt, guide quality report v2, the JobDetails final panel, Ask Guide coverage grounding, and
+the optional dual explanation mode. Each slice shipped with its own focused tests, but the *composition* of all of them —
+"do the safe signals still line up when the whole chain runs in order?" — was only ever proven implicitly. Before moving on
+to study-intelligence features (which will build on these signals), Slice 100 pins that composition down with one
+deterministic end-to-end harness so a future change that quietly breaks the chain (e.g. a renamed summary key, a
+reintroduced export cap, a planner that stops emitting `candidate_id`) fails loudly here instead of silently degrading a
+real guide.
+
+**Why deterministic synthetic E2E rather than a live-LLM run.** The phase's job is to assemble *honest, safe, well-shaped
+coverage signals* for the generator and Ask Guide — it is not itself a model. A live-LLM end-to-end run would be
+non-deterministic, slow, costly, provider-dependent, and would conflate "the plumbing is correct" with "the model wrote a
+good guide." A synthetic scenario (safe positional ids, tiny temp PNGs, hand-built sanitized artifacts) exercises the exact
+same pure helpers the production path uses, runs offline in milliseconds, and gives a stable pass/fail that means precisely
+"the chain still coheres." It also lets the harness seed forbidden canaries into every input and prove, by a deep walk over
+every serialized stage, that none survive into any output — a guarantee a live run could not make cleanly.
+
+**Why this is signal/coherence validation, not semantic grading.** The harness asserts that counts, statuses, and safe refs
+agree across stages (e.g. the four inserted figures equal the four planned non-table figures equal the four export refs; a
+deferred/unreadable table becomes a missing-table note; dual mode off leaves the prompt byte-equivalent) and that the whole
+serialized chain is leak-free and deterministic. It deliberately does **not** judge whether any explanation is *correct* or
+any guide is *good* — that is a model-quality question, out of scope for a plumbing checkpoint and not answerable
+deterministically. Keeping the two concerns separate keeps this gate trustworthy and fast.
+
+**Why no new product behaviour is added.** A release-hardening slice that also changed behaviour would undermine its own
+purpose: the point is to validate the phase *as shipped*. So Slice 100 only adds a backend harness (and reuses the existing
+frontend verify scripts); it touches no backend route, prompt, extractor, renderer, exporter, figure-insertion path,
+material-selection path, or UI, and adds no LLM/provider/model/cloud call. Chandra remains blocked by its own
+live-validation gate.

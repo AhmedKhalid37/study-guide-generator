@@ -5,7 +5,36 @@
 
 ---
 
-## Slice 99 — **Explain like I'm 10 / Exam answer mode v1**, on `slice99-dual-explanation-mode`. **NOT COMMITTED.**
+## Slice 100 — **Full Material Coverage E2E release validation**, on `slice100-full-material-coverage-release-validation`. **NOT COMMITTED.**
+
+- **Slice 99 was committed `e8d6f86`, fast-forward merged, and pushed to trunk on `chrome-renderer-v1`** (it added the
+  optional dual explanation mode). Slice 100 branches from that fresh trunk.
+- **Goal:** a deterministic, synthetic, validation-only **release checkpoint** proving the whole Full Material Coverage
+  phase (Slices 82–99) coheres end to end — *without adding any product behaviour*. It is a signal/coherence validation
+  (safe counts, statuses, refs line up and stay leak-free), **not** a semantic grader and **not** a live-LLM run.
+- **New backend harness `test_scripts/test_full_material_coverage_release_validation.py`** (86 checks). It assembles one
+  synthetic scenario (two attachments addressed only by safe positional ids; material page exclusions active; source
+  coverage with covered + unreadable pages; 4 useful non-table figures with tiny temp PNG assets; 5 table-like records →
+  reconstruct / simplify / skip_unreadable / defer / unsafe-skipped; static app headings + safe page signals + safe figure
+  refs in the guide Markdown) and walks the **real already-merged pure helpers** in release order:
+  material page selections → source coverage report → visual inclusion plan → **full** non-table figure insertion (into
+  synthetic clean Markdown, behind the Slice 90 env switch) → render/export asset ride-along (`find_all_exportable_visual_assets`,
+  uncapped, safe `assets/<slug>.png` only) → table candidate manifest → table reconstruction policy → table reconstruction
+  prompt context → missing visual/table guidance → coverage-aware generation guidance → guide quality report v2 → Ask Guide
+  coverage grounding → dual explanation mode (off byte-equivalent + on two-layer guidance). A deep no-leak walk over every
+  serialized stage asserts none of the seeded canaries survive; a determinism check asserts identical serialization on
+  repeat.
+- **Frontend release validation = reuse of the existing per-dimension verify scripts** (`verify-material-page-selections-ui`,
+  `verify-material-coverage-display`, `verify-material-coverage-warnings`, `verify-material-coverage-final-panel`,
+  `verify-dual-explanation-mode-ui`). No new frontend script was added (it would only duplicate these) and **no UI changed**.
+- **Out of scope / unchanged:** no new product feature; no LLM/provider/model/cloud call; no extraction/OCR change; no
+  PDF/image inspection; no table reconstruction; no UI; no render/export behaviour change; no figure-insertion semantics
+  change; no material page-selection change; no visual-manifest-filter change. No direct `clean.md` write. Chandra remains
+  blocked by its own live-validation gate. **Slice 100 is NOT committed.**
+
+---
+
+## Slice 99 — **Explain like I'm 10 / Exam answer mode v1**, on `slice99-dual-explanation-mode`. **Committed `e8d6f86`, merged + pushed to `chrome-renderer-v1`.**
 
 - **Slice 98 was committed `9f9d838`, fast-forward merged, and pushed to trunk on `chrome-renderer-v1`** (it added Ask
   Guide coverage grounding). Slice 99 branches from that fresh trunk.

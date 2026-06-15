@@ -6,10 +6,33 @@
 > stable overview see `PROJECT_CONTEXT.md`; canonical brief is `../CLAUDE.md`.
 
 ## Current position
-- **Working tree:** **Slice 99 (Explain like I'm 10 / Exam answer mode v1) — UNCOMMITTED (per instruction)** on branch
-  `slice99-dual-explanation-mode` (branched from fresh trunk after Slice 98 was committed/merged/pushed).
-  **Slice 98 is now trunk commit `9f9d838`** (added Ask Guide coverage grounding).
-  - **Purpose:** an optional study-quality generation mode. When on, the guide generator is asked to explain difficult /
+- **Working tree:** **Slice 100 (Full Material Coverage E2E release validation) — UNCOMMITTED (per instruction)** on branch
+  `slice100-full-material-coverage-release-validation` (branched from fresh trunk after Slice 99 was committed/merged/pushed).
+  **Slice 99 is now trunk commit `e8d6f86`** (added the optional dual explanation mode).
+  - **Purpose:** a deterministic, synthetic, validation-only **release checkpoint** before moving into study-intelligence
+    features. It proves the whole Full Material Coverage phase (Slices 82–99) coheres end to end **without adding any
+    product behaviour** — a signal/coherence validation (safe counts/statuses/refs line up and stay leak-free), not a
+    semantic grader and not a live-LLM run.
+  - **New backend harness `test_scripts/test_full_material_coverage_release_validation.py`** (86 checks). It assembles one
+    synthetic scenario (two attachments by safe positional ids; material page exclusions active; source coverage with
+    covered + unreadable pages; 4 useful non-table figures with tiny temp PNGs; 5 table-like records →
+    reconstruct/simplify/skip_unreadable/defer/unsafe-skipped; static app headings + safe page signals + safe figure refs
+    in the guide Markdown) and walks the real pure helpers in release order: **material page selections → source coverage
+    report → visual inclusion plan → full non-table figure insertion → render/export asset ride-along → table candidate
+    manifest → table reconstruction policy → table reconstruction prompt context → missing visual/table guidance →
+    coverage-aware generation guidance → guide quality report v2 → Ask Guide coverage grounding → dual explanation mode**.
+    A deep no-leak walk over every serialized stage asserts none of the seeded canaries survive; determinism is asserted.
+  - **Frontend release validation reuses the existing per-dimension verify scripts** (`verify-material-page-selections-ui`,
+    `verify-material-coverage-display`/`-warnings`/`-final-panel`, `verify-dual-explanation-mode-ui`). **No new frontend
+    script, no UI change.**
+  - **It does NOT** add a product feature, an LLM/provider/model/cloud call, extraction/OCR, PDF/image inspection, table
+    reconstruction, UI, a render/export behaviour change, a figure-insertion-semantics change, a material page-selection
+    change, or a visual-manifest-filter change. No direct `clean.md` write. Chandra remains blocked by its own
+    live-validation gate. **Slice 100 is NOT committed.**
+
+### Previously (Slice 99, now trunk `e8d6f86`)
+- **Slice 99 (Explain like I'm 10 / Exam answer mode v1)** added an optional study-quality generation mode. When on, the
+  guide generator is asked to explain difficult /
     exam-important concepts **two ways** — a beginner-friendly "Explain it simply" block + a formal "Exam answer" block —
     so a student understands the concept and learns the version to write in the exam. **Default off** ⇒ generation prompt
     byte-identical to before.
@@ -33,7 +56,7 @@
     Ask Guide behaviour. No direct `clean.md` write. Chandra remains blocked by its own live-validation gate.
   - **Tests:** `test_dual_explanation_prompt_context.py` (91 pure), `test_dual_explanation_request.py` (JSON+multipart parse
     / manifest persistence / prompt-block presence-absence / no-leak; skips without FastAPI),
-    `frontend/scripts/verify-dual-explanation-mode-ui.mjs`. **Slice 99 is NOT committed.**
+    `frontend/scripts/verify-dual-explanation-mode-ui.mjs`. **Committed `e8d6f86`, merged + pushed to `chrome-renderer-v1`.**
 
 ### Previously (Slice 98, now trunk `9f9d838`)
 - **Slice 98 (Ask Guide coverage grounding upgrade)** made **Ask Your Guide** aware of the same safe coverage signals the
