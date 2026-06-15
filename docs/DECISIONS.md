@@ -4289,3 +4289,45 @@ user-facing artifact. It persists no new file and adds no API/UI surface — it 
 appended only when at least one coverage signal is active. Surfacing a coverage summary in the UI (or persisting a
 downloadable artifact) would broaden scope and add a display/serialization surface for no current product need; a later
 slice can do that deliberately if a need appears. Chandra remains blocked by its own live-validation gate.
+
+## Slice 96 — A deterministic guide quality report follows coverage-aware prompting (2026-06-15)
+Slices 82–95 progressively pushed coverage signals **into** generation (material coverage, full non-table figure
+insertion, table policy context, missing-material guidance, and the Slice 95 coverage-aware generation guidance). Slice 96
+adds the matching **measurement out**: after a guide is generated, a deterministic, sanitized
+`guide_quality_report_v2.json` (`pipeline/guide_quality_report_v2.py`) that scans the generated `clean.md` for safe
+counts/signals and compares them against the already-sanitized coverage artifacts.
+
+**Why a quality report follows coverage-aware prompting.** Once generation is *told* to use the selected material
+completely and honestly, the natural next question is whether the produced guide actually reflects that guidance. A report
+closes the loop without changing generation: it observes page-grounded signals, safe figure refs, and the app's own
+guidance phrases in the output and lines them up against the coverage artifacts that drove the prompt. It runs at the same
+post-`save_clean_md` advisory stage as math-verification and guide-lint, so it inherits their never-fail contract and adds
+no new failure mode to the pipeline.
+
+**Why the report is signal/count based rather than semantic.** A semantic evaluator would need an LLM (out of scope, and
+non-deterministic) and would have to *read* the guide and source content to judge correctness — exactly the kind of
+content handling these slices avoid. A count/signal report is deterministic, cheap, stdlib-only, and honest about its
+limits: it reports where an expected signal (covered pages, planned visuals, table/missing/coverage guidance) was or was
+not observed, and emits a closed **warning** rather than asserting a pass/fail verdict it cannot justify. It never pretends
+to prove the guide is correct — only that the expected usage signals are present or absent.
+
+**Why no snippets are persisted.** The builder *may* scan `clean.md`, but `clean.md` can contain source-derived content
+(terms, numbers, reconstructed table text, figure captions). Persisting any excerpt would re-introduce exactly the
+source-content leakage the no-leak rules forbid. So the markdown is read for **counts only**: integer page numbers, a count
+of safe `assets/<slug>.png` refs (every URL / data URI / absolute path / traversal / backslash / nested path / scheme
+rejected), and counts of a closed set of *static app-authored* guidance phrases. The serialized report carries only closed
+tokens, ints, bools, `None`, fixed instruction strings, and safe generated `check_id`s — no filename, path, caption,
+document/OCR/table text, raw image/asset ref, base64/data URI, URL, token, or raw exception can survive into it.
+
+**Why exact-name artifact access is used.** Like the other Full Material Coverage siblings
+(`source_coverage_report.json`, `visual_inclusion_plan.json`, `table_candidates_manifest.json`,
+`table_reconstruction_policy.json`), the report is reachable only by its exact filename through `_artifact_path` and is
+deliberately kept out of the generic `ARTIFACTS` map. That means it never appears in `_artifact_urls` / `_artifact_details`
+/ generic UI rows / export selectors, so it introduces no new generic surface and no path-traversal vector — it is a
+diagnostic you fetch by name, not a listed artifact.
+
+**Why UI surfacing remains deferred.** The report is a diagnostic measurement, not a user-facing feature. Wiring it into
+the Builder result panel / JobDetails / exports would add display + serialization surfaces (and product decisions about how
+to present "warning" vs "passed" honestly) for no current need. Keeping it exact-name-only lets the signal exist and be
+inspected now, while a later slice can deliberately design any UI presentation if a need appears. Chandra remains blocked
+by its own live-validation gate.

@@ -6,9 +6,38 @@
 > stable overview see `PROJECT_CONTEXT.md`; canonical brief is `../CLAUDE.md`.
 
 ## Current position
-- **Working tree:** **Slice 95 (Coverage-aware generation prompt v1) — UNCOMMITTED (per instruction)** on branch
-  `slice95-coverage-aware-generation-prompt` (branched from fresh trunk after Slice 94 was committed/merged/pushed).
-  **Slice 94 is now trunk commit `3264b92`** (missing visual/table explainer core).
+- **Working tree:** **Slice 96 (Guide quality report v2) — UNCOMMITTED (per instruction)** on branch
+  `slice96-guide-quality-report-v2` (branched from fresh trunk after Slice 95 was committed/merged/pushed).
+  **Slice 95 is now trunk commit `c8d3c02`** (coverage-aware generation prompt context).
+  - **Purpose:** after a guide is generated, write a deterministic, sanitized `guide_quality_report_v2.json` that
+    measures whether the generated `clean.md` appears to reflect the Slices 82–95 coverage signals. It scans `clean.md`
+    for **safe counts only** (page-grounded signals; safe `assets/<slug>.png` image refs; a closed set of static
+    app-authored guidance phrases) and compares them against the already-sanitized coverage artifacts. It is an honest
+    signal/count report, **not** a semantic evaluator: a not-observed expected signal is a closed warning, not a failure.
+  - **It does NOT** call an LLM, change prompts, change extraction/OCR, inspect PDFs/images, read image bytes, reconstruct
+    tables, extract table text, add UI, change render/export, change figure insertion semantics, change material
+    page-selection logic, change visual-manifest filtering, or add/call any provider/model/cloud (no Chandra/Mistral/Gemini).
+  - **New pure module:** `pipeline/guide_quality_report_v2.py` —
+    `build_guide_quality_report_v2(clean_markdown, *, source_coverage_report=None, visual_inclusion_plan=None,
+    table_candidates_manifest=None, table_reconstruction_policy=None, missing_material_context=None,
+    coverage_aware_context=None, full_visual_insertion_enabled=False, max_items=None)` → sanitized report dict
+    (`version`=2/`kind`/`status`/`summary`/`checks`/`warnings`). One closed check per dimension in fixed order —
+    `source_pages`, `visuals`, `tables`, `missing_material`, `coverage` — each with a safe `check_id`
+    (`guide_quality_check_NNNN`), closed `status` (`passed`/`warning`/`not_applicable`/`unknown`), `observed_count`,
+    `expected_count`. **No `clean.md` excerpt is ever persisted.** Missing/empty guide → safe `skipped`; `max_items`/ceiling
+    → `partial`. stdlib-only.
+  - **Integration:** `pipeline/run_markdown_job.py::run_raw_markdown_pipeline`, after `_write_guide_lint(job)` (post
+    `save_clean_md`). `_write_guide_quality_report_v2(job)` reads `clean.md` + the sanitized sibling coverage artifacts,
+    rebuilds the Slice 94/95 contexts from those artifacts, and writes via `job.save_text(...)`. Advisory: never changes
+    status / blocks render / fails the job; any error or missing `clean.md` degrades to a safe `skipped` artifact.
+  - **Artifact:** `jobs/<id>/guide_quality_report_v2.json` via new `Job.guide_quality_report_v2_json` + exact-name
+    `_artifact_path` (`application/json`). **Exact-name download only** — NOT in generic ARTIFACTS / UI rows / export
+    selectors (UI surfacing deferred). Chandra remains blocked by its own live-validation gate.
+
+### Previously (Slice 95, now trunk `c8d3c02`)
+- **Slice 95 (Coverage-aware generation prompt v1)** added a single sanitized coverage-aware generation guidance block
+  (`pipeline/coverage_aware_prompt_context.py`) appended in `run_llm_job.py::_attach_sources`. Committed `c8d3c02`,
+  fast-forward merged, pushed. **Slice 94 is trunk commit `3264b92`** (missing visual/table explainer core).
   - **Purpose:** a single sanitized coverage-aware generation guidance block telling the generator to use the selected
     material completely and honestly — focus only on included pages, never rely on excluded pages/slides, treat source
     coverage gaps as constraints, connect explanations to inserted figures, reconstruct/simplify tables only from source

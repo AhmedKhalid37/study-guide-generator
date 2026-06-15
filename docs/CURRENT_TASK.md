@@ -5,7 +5,49 @@
 
 ---
 
-## Slice 95 — **Coverage-aware generation prompt v1**, on `slice95-coverage-aware-generation-prompt`. **NOT COMMITTED.**
+## Slice 96 — **Guide quality report v2**, on `slice96-guide-quality-report-v2`. **NOT COMMITTED.**
+
+- **Adds a deterministic, sanitized `guide_quality_report_v2.json` that measures whether the generated guide appears to
+  reflect the Slices 82–95 coverage signals.** Slice 95 was committed `c8d3c02`, fast-forward merged, and pushed to trunk
+  on `chrome-renderer-v1` (coverage-aware generation prompt context). Slice 96 is the matching measurement: after a guide
+  is generated it scans `clean.md` for **safe counts only** and compares them against the already-sanitized coverage
+  artifacts.
+- **It does NOT** call an LLM, change prompts, change extraction/OCR, inspect PDFs/images, read image bytes, reconstruct
+  tables, extract table text, add UI, change render/export, change figure insertion semantics, change material
+  page-selection logic, change visual-manifest filtering, or add/call any provider/model/cloud (no Chandra/Mistral/Gemini).
+  Chandra remains blocked by its own live-validation gate.
+- **This is a signal/count report, NOT a semantic evaluator** — it does not claim to prove correctness. Where an expected
+  signal is not observed it emits a closed warning rather than a failure.
+- **New pure module:** `pipeline/guide_quality_report_v2.py` —
+  `build_guide_quality_report_v2(clean_markdown, *, source_coverage_report=None, visual_inclusion_plan=None,
+  table_candidates_manifest=None, table_reconstruction_policy=None, missing_material_context=None,
+  coverage_aware_context=None, full_visual_insertion_enabled=False, max_items=None)` → sanitized report dict
+  (`version`=2/`kind`/`status`/`summary`/`checks`/`warnings`). It scans `clean.md` for: safe page-grounded signals
+  (`page N`, counted + unique), safe Markdown image refs of the fixed `assets/<slug>.png` shape (URLs / data URIs /
+  absolute paths / traversal / backslash / nested paths / schemes all rejected), and a closed set of static app-authored
+  guidance phrases (`Source visual, page`, `Table Reconstruction Guidance`, `Missing Visual and Table Guidance`,
+  `Coverage-Aware Generation Guidance`). It emits one closed *check* per dimension in fixed order — `source_pages`,
+  `visuals`, `tables`, `missing_material`, `coverage` — each with a safe `check_id` (`guide_quality_check_NNNN`), closed
+  `kind`, closed `status` (`passed`/`warning`/`not_applicable`/`unknown`), `observed_count`, `expected_count`, fixed-shape
+  `instruction`, and closed per-check `warnings`. **No `clean.md` excerpt is ever persisted** — the markdown is read for
+  counts only. Missing/empty `clean.md` → safe `skipped`; `max_items`/ceiling → `partial`; malformed artifacts degrade with
+  closed warnings. stdlib-only (no `pipeline`/provider/model/OCR/renderer/FastAPI import).
+- **Integration point:** `pipeline/run_markdown_job.py::run_raw_markdown_pipeline`, right after `_write_guide_lint(job)`
+  (so after `save_clean_md`). `_write_guide_quality_report_v2(job)` reads `clean.md` + the already-written sanitized sibling
+  artifacts (`source_coverage_report.json`, `visual_inclusion_plan.json`, `table_candidates_manifest.json`,
+  `table_reconstruction_policy.json`), rebuilds the Slice 94 missing-material + Slice 95 coverage-aware contexts from those
+  same artifacts via the existing pure builders, and writes the report through `job.save_text(...)`. Same advisory contract
+  as math-verification / guide-lint: never changes status, never blocks the render, never fails the job; a missing/unreadable
+  `clean.md` or any error degrades to a small safe `skipped` artifact (no traceback).
+- **Artifact:** `jobs/<id>/guide_quality_report_v2.json`. New `Job.guide_quality_report_v2_json` property + exact-name
+  `_artifact_path` entry returning `application/json`. **Exact-name download only** — deliberately NOT added to the generic
+  `ARTIFACTS` list, generic UI rows, or export selectors (UI surfacing deferred).
+- **Tests:** `test_scripts/test_guide_quality_report_v2.py` (synthetic clean-Markdown + synthetic artifact dicts only) —
+  100/100 pass; the exact-name server check skips in host Python (FastAPI unavailable) and is covered in Docker.
+
+---
+
+## Slice 95 — **Coverage-aware generation prompt v1**, on `slice95-coverage-aware-generation-prompt`. **COMMITTED `c8d3c02`, merged + pushed to `chrome-renderer-v1`.**
 
 - **Adds a single sanitized coverage-aware generation guidance block that tells the guide generator how to use the
   selected material completely and honestly.** Slice 94 was committed `3264b92`, fast-forward merged, and pushed to trunk

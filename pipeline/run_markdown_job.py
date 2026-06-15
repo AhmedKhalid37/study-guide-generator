@@ -167,6 +167,14 @@ def run_raw_markdown_pipeline(job: Job, *, theme: str, strict_math: bool) -> Job
     # never changes job status, never blocks the render, never fails the job.
     _write_guide_lint(job)
 
+    # Slice 96: persist a per-job guide_quality_report_v2.json sibling artifact that
+    # measures whether the generated clean.md appears to reflect the Slices 82–95
+    # coverage signals. Same advisory contract: it scans clean.md for safe COUNTS
+    # ONLY (no excerpt persisted), reads only the already-sanitized coverage
+    # artifacts, calls no LLM, inspects no PDF/image, reconstructs no table, never
+    # changes job status, never blocks the render, and never fails the job.
+    _write_guide_quality_report_v2(job)
+
     # Last safe checkpoint before the uninterruptible Chromium render: a cancel
     # requested up to here skips the render entirely. Once render_pdf starts we
     # let it finish (no process killing).
@@ -350,6 +358,150 @@ def _write_guide_lint(job: Job) -> None:
             job.save_text(artifact_path, json.dumps(payload, indent=2) + "\n")
         except Exception:
             pass  # writing the degraded artifact must itself never raise
+
+
+def _read_json_artifact(path: Path) -> dict | None:
+    """Best-effort read of an already-sanitized sibling JSON artifact.
+
+    Returns the parsed dict when present and well-formed, else ``None``. Never
+    raises; a missing/unreadable/non-dict artifact simply contributes no signal.
+    """
+    try:
+        if not path.exists():
+            return None
+        data = json.loads(path.read_text(encoding="utf-8", errors="replace"))
+        return data if isinstance(data, dict) else None
+    except Exception:
+        return None
+
+
+def _write_guide_quality_report_v2(job: Job) -> None:
+    """Persist a per-job ``guide_quality_report_v2.json`` sibling artifact (Slice 96).
+
+    Builds the deterministic, sanitized guide quality report
+    (:func:`pipeline.guide_quality_report_v2.build_guide_quality_report_v2`) from the
+    generated ``clean.md`` (scanned for safe COUNTS ONLY — no excerpt is ever
+    persisted) plus the already-sanitized sibling coverage artifacts. The optional
+    missing-material and coverage-aware contexts are rebuilt from those same
+    sanitized artifacts via the existing pure builders so the report can note whether
+    the guide reflected that guidance.
+
+    Same advisory contract as math verification / guide lint:
+
+      * It NEVER fails the job, NEVER changes the visible job status, and NEVER
+        blocks PDF/HTML/DOCX rendering.
+      * It calls no LLM/provider, inspects no PDF/image, OCRs nothing, and
+        reconstructs no table.
+      * A missing/unreadable ``clean.md`` degrades to a safe ``skipped`` report
+        rather than failing the job.
+      * Any unexpected error degrades to a small ``skipped`` artifact carrying a
+        safe message and NO traceback.
+
+    The artifact is reached only by its exact filename (not added to the generic
+    ARTIFACTS list / generic UI rows / export selectors).
+    """
+    artifact_path = job.guide_quality_report_v2_json
+    try:
+        from pipeline.guide_quality_report_v2 import build_guide_quality_report_v2
+        from pipeline.visual_markdown_insertion import is_full_visual_insertion_enabled
+
+        try:
+            clean_markdown = job.clean_md.read_text(encoding="utf-8", errors="replace")
+        except Exception:
+            clean_markdown = None
+
+        source_coverage_report = _read_json_artifact(job.source_coverage_report_json)
+        visual_inclusion_plan = _read_json_artifact(job.visual_inclusion_plan_json)
+        table_candidates_manifest = _read_json_artifact(job.table_candidates_manifest_json)
+        table_reconstruction_policy = _read_json_artifact(job.table_reconstruction_policy_json)
+
+        # Rebuild the Slice 94 missing-material context and the Slice 95 coverage-aware
+        # context from the same sanitized artifacts (pure / degrade-not-fail builders)
+        # so the report can compare observed guidance phrases against expected signals.
+        missing_material_context = _build_missing_material_context_for_report(
+            visual_inclusion_plan, table_candidates_manifest, table_reconstruction_policy
+        )
+        coverage_aware_context = _build_coverage_aware_context_for_report(
+            source_coverage_report,
+            visual_inclusion_plan,
+            table_candidates_manifest,
+            table_reconstruction_policy,
+            missing_material_context,
+        )
+
+        report = build_guide_quality_report_v2(
+            clean_markdown,
+            source_coverage_report=source_coverage_report,
+            visual_inclusion_plan=visual_inclusion_plan,
+            table_candidates_manifest=table_candidates_manifest,
+            table_reconstruction_policy=table_reconstruction_policy,
+            missing_material_context=missing_material_context,
+            coverage_aware_context=coverage_aware_context,
+            full_visual_insertion_enabled=is_full_visual_insertion_enabled(),
+        )
+        job.save_text(artifact_path, json.dumps(report, indent=2) + "\n")
+    except Exception:  # never let the quality report break a job
+        try:
+            payload = {
+                "version": 2,
+                "kind": "guide_quality_report",
+                "status": "skipped",
+                "reason": "report_error",
+                "safe_message": "Guide quality report could not be completed.",
+            }
+            job.save_text(artifact_path, json.dumps(payload, indent=2) + "\n")
+        except Exception:
+            pass  # writing the degraded artifact must itself never raise
+
+
+def _build_missing_material_context_for_report(
+    visual_inclusion_plan: dict | None,
+    table_candidates_manifest: dict | None,
+    table_reconstruction_policy: dict | None,
+) -> dict | None:
+    """Rebuild the sanitized Slice 94 missing-material context (or ``None``)."""
+    try:
+        from pipeline.missing_material_explainer import (
+            build_missing_material_explainer_context,
+        )
+        from pipeline.visual_markdown_insertion import is_full_visual_insertion_enabled
+
+        context = build_missing_material_explainer_context(
+            visual_inclusion_plan,
+            table_candidates_manifest,
+            table_reconstruction_policy,
+            full_visual_insertion_enabled=is_full_visual_insertion_enabled(),
+        )
+        return context if isinstance(context, dict) else None
+    except Exception:
+        return None
+
+
+def _build_coverage_aware_context_for_report(
+    source_coverage_report: dict | None,
+    visual_inclusion_plan: dict | None,
+    table_candidates_manifest: dict | None,
+    table_reconstruction_policy: dict | None,
+    missing_material_context: dict | None,
+) -> dict | None:
+    """Rebuild the sanitized Slice 95 coverage-aware context (or ``None``)."""
+    try:
+        from pipeline.coverage_aware_prompt_context import (
+            build_coverage_aware_prompt_context,
+        )
+        from pipeline.visual_markdown_insertion import is_full_visual_insertion_enabled
+
+        context = build_coverage_aware_prompt_context(
+            source_coverage_report=source_coverage_report,
+            visual_inclusion_plan=visual_inclusion_plan,
+            table_candidates_manifest=table_candidates_manifest,
+            table_reconstruction_policy=table_reconstruction_policy,
+            missing_material_context=missing_material_context,
+            full_visual_insertion_enabled=is_full_visual_insertion_enabled(),
+        )
+        return context if isinstance(context, dict) else None
+    except Exception:
+        return None
         # Log only the exception TYPE - never its message/args, which could echo
         # guide content or a path - so the artifact and logs stay clean.
         print(
