@@ -25,6 +25,7 @@ import {
   Paperclip,
   RefreshCw,
   RotateCcw,
+  ShieldCheck,
   Sparkles,
   X,
   XCircle
@@ -58,6 +59,7 @@ import MathVerificationPanel from "./MathVerificationPanel";
 import GuideLintPanel from "./GuideLintPanel";
 import VisualAdvisoryPanel from "./VisualAdvisoryPanel";
 import MaterialCoveragePanel from "./MaterialCoveragePanel";
+import GuideQualityPanel from "./GuideQualityPanel";
 
 const artifactLinks = [
   { name: "final.pdf", label: "PDF", key: "final_pdf", icon: Download },
@@ -573,6 +575,7 @@ export function JobDetailsDrawer({ open, onClose, loading, error, details, style
     { key: "guide-lint", label: "Guide Lint", icon: FileCheck2 },
     { key: "visual-advisory", label: "Visual Advisory", icon: Images },
     { key: "material-coverage", label: "Material Coverage", icon: Gauge },
+    { key: "guide-quality", label: "Guide Quality", icon: ShieldCheck },
     { key: "quiz", label: "Quiz", icon: BookOpen, disabled: !canEdit },
     { key: "outline", label: "Outline", icon: ListChecks, disabled: !canEdit },
     { key: "sections", label: "Sections", icon: Layers, disabled: !canEdit },
@@ -747,6 +750,10 @@ export function JobDetailsDrawer({ open, onClose, loading, error, details, style
 
           {!loading && !error && manifest && drawerTab === "material-coverage" && (
             <MaterialCoveragePanel jobId={manifest.id} job={manifest} />
+          )}
+
+          {!loading && !error && manifest && drawerTab === "guide-quality" && (
+            <GuideQualityPanel jobId={manifest.id} />
           )}
 
           {!loading && !error && manifest && drawerTab === "outline" && canEdit && (

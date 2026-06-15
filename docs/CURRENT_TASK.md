@@ -5,7 +5,43 @@
 
 ---
 
-## Slice 103 — **Guide Quality QA Gate v1**, on `slice103-guide-quality-qa-gate-v1`. **NOT COMMITTED.**
+## Slice 104 — **JobDetails Guide Quality panel v1**, on `slice104-jobdetails-guide-quality-panel`. **NOT COMMITTED.**
+
+- **Slice 103 was committed `71f5f8c`, fast-forward merged, and pushed to trunk `chrome-renderer-v1`** (flag-only Guide
+  Quality QA Gate). Slice 104 branches from that fresh trunk.
+- **Goal:** surface the existing guide-quality signals in JobDetails as a safe, **read-only / advisory** panel. It is a
+  frontend *visibility* slice — **not** a replacement for evaluation. It only displays the deterministic/advisory signals that
+  already exist (Slices 102/103 + the older coverage/math measurements). It changes **no** generation behavior.
+- **New helper module — `frontend/src/guideQualityDisplay.js`** (pure, React-free). `summarizeGuideQualityQaGate(...)`,
+  `summarizeGuideQualityContractLint(...)`, `summarizeMathVerificationArtifact(...)` (counts only — never claim text /
+  formulas / values), and the composite `summarizeGuideQualityPanelModel({ qaGate, contractLint, guideQualityReportV2,
+  mathVerification, sourceCoverageReport })`. It **reuses** the already-shipped `summarizeSourceCoverage` /
+  `summarizeGuideQualityReportV2` + exact-name constants from `materialCoverageDisplay.js` (single source of truth). Like the
+  backend gate it copies **no string** out of any artifact — only known **non-negative integer counts** and **closed status /
+  kind tokens** validated against in-module allow-lists — so no excerpt / phrase / heading / formula / value / table / caption
+  / OCR / filename / path / source title / image-asset ref / URL / token / raw error can reach the display model, even from a
+  hostile canary. Deterministic; never throws.
+- **New component — `frontend/src/components/GuideQualityPanel.jsx`**, wired into `RecentJobsPanel.jsx` JobDetails drawer as a
+  new **Guide Quality** tab (after Material Coverage). It fetches the five exact-name artifacts on **independent** lifecycles
+  (`guide_quality_qa_gate.json`, `guide_quality_contract_lint.json`, `guide_quality_report_v2.json`, `math_verification.json`,
+  `source_coverage_report.json`); a 404 → "Not available", any other error / non-JSON → calm "Unavailable" (no raw error text
+  or URLs). Older jobs without the artifacts still render. Six sections: Overall QA Gate (status + counts + advisory copy +
+  `blocking:false`), Prompt Contract Lint, Math Verification (counts only), Coverage & Completeness, Quality Checks
+  (closed-kind chips from the gate), and Artifacts (fixed exact-name links; missing → "Not available").
+- **Validated:** new `verify-guide-quality-panel.mjs` passes (all-missing/valid/malformed/hostile-canary/determinism); existing
+  `verify-material-coverage-final-panel.mjs`, `verify-dual-explanation-mode-ui.mjs`, `verify-material-page-selections-ui.mjs`
+  re-run green; FE build + `npm test` green; backend `test_guide_quality_qa_gate.py` (177), `test_guide_quality_contract_lint.py`
+  (83), `test_guide_quality_report_v2.py` (100), `test_source_coverage_report.py` (59), `test_full_material_coverage_release_validation.py`
+  (86) all green; `compileall` clean; Docker `smoke_release.py` **29/0/0** (smoke does not deep-exercise the new panel — relied
+  on the focused FE verify script + backend artifact tests).
+- **Out of scope / unchanged:** no generation/prompt change; no LLM/provider/model/cloud call; no Chandra/Mistral/Gemini; no
+  OCR/PDF/image inspection; no table reconstruction; no render/export change; no figure-insertion / material-selection /
+  visual-filter change; no Ask Guide change; no auto-reject/regenerate; no direct `clean.md` write. Chandra remains blocked by
+  its own live-validation gate. **Slice 104 is NOT committed.**
+
+---
+
+## Slice 103 — **Guide Quality QA Gate v1**, on `slice103-guide-quality-qa-gate-v1`. **Committed `71f5f8c`, merged + pushed to `chrome-renderer-v1`.**
 
 - **Slice 102 was committed `815a0dc`, fast-forward merged, and pushed to trunk `chrome-renderer-v1`** (guide-quality prompt
   contract + flag-only contract lint). Slice 103 branches from that fresh trunk.

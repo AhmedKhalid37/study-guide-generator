@@ -6,35 +6,40 @@
 > stable overview see `PROJECT_CONTEXT.md`; canonical brief is `../CLAUDE.md`.
 
 ## Current position
-- **Working tree:** **Slice 103 (Guide Quality QA Gate v1) — UNCOMMITTED (per instruction)** on branch
-  `slice103-guide-quality-qa-gate-v1` (branched from fresh trunk after Slice 102 was committed/merged/pushed).
-  **Slice 102 is now trunk commit `815a0dc`** (guide-quality prompt contract + flag-only contract lint).
-  - **Why this, why now:** Slice 102 added the central guide-quality prompt contract and a flag-only contract lint. Slice 103
-    adds the post-generation **QA gate** the off-repo quality spec calls for, combining the existing sanitized quality signals
-    into one advisory pass/warning verdict — still **flag-only**, so no usable guide is discarded while the gate is unproven.
-  - **New module `pipeline/guide_quality_qa_gate.py`** (pure, stdlib-only): `build_guide_quality_qa_gate(...)` consumes only
-    already-sanitized dicts — contract lint (Slice 102), guide quality report v2 (Slice 96), source coverage report (Slice 77),
-    numeric math verification (Slice 21) + optional KaTeX `math_validation` fallback — and emits five closed-kind checks
-    (`reasoning_leak`, `required_structure`, `math_verification`, `source_coverage`, `quality_report_v2`). Gate `status`:
-    `passed` / `warning` / `skipped` (all unknown) / `partial` (`max_items` cap). It **copies no string** from inputs — only
-    integer counts + closed tokens; instruction strings are fixed constants — so hostile canaries cannot leak through.
-    `blocking` is **always `False`**.
-  - **Math is summarized, not rerun.** The math verifier already wrote `math_verification.json` earlier in the pipeline; the
-    gate reads its `report.summary` (`total`/`mismatch`): `mismatch>0` → warning, zero claims → `not_applicable`, clean →
-    `passed`. Missing/skipped math artifact → `unknown` + closed `math_verification_artifact_missing`. No formulas/numbers/raw
-    errors stored. Pipeline order didn't force `unknown` — math is written before the gate.
-  - **Artifact wiring:** `Job.guide_quality_qa_gate_json`, `_write_guide_quality_qa_gate(job)` in `run_markdown_job.py` (after
-    contract lint + math verification; reads manifest + the four sibling artifacts via `_read_json_artifact`), exact-name
-    `_artifact_path` route → `application/json`. **Not** in ARTIFACTS / UI / exports. No UI added.
-  - **Validated:** new `test_guide_quality_qa_gate.py` (177) passes; Slice 102 + report-v2 + coverage tests re-run green; FE
-    build + `npm test` + verify scripts green (no FE change); `compileall` clean; Docker `smoke_release.py` **29/0/0**; **live
-    paste-job check** confirmed `guide_quality_qa_gate.json` written + exact-name fetchable (HTTP 200, `status:passed`,
-    `blocking:false`, counts-only, no leaks).
-  - **Out of scope/unchanged:** no LLM/provider/model/cloud call; no provider/model change; no new product features; no prompt
-    change (Slice 102 intact); no Chandra/Mistral/Gemini; no OCR/PDF/image inspection; no table reconstruction; no
-    render/export change; no figure-insertion / material-selection / visual-filter change; no Ask Guide change; no
-    auto-reject/regenerate; no direct `clean.md` write. Chandra remains blocked by its own live-validation gate. **Slice 103
-    is NOT committed.**
+- **Working tree:** **Slice 104 (JobDetails Guide Quality panel v1) — UNCOMMITTED (per instruction)** on branch
+  `slice104-jobdetails-guide-quality-panel` (branched from fresh trunk after Slice 103 was committed/merged/pushed).
+  **Slice 103 is now trunk commit `71f5f8c`** (flag-only Guide Quality QA Gate).
+  - **Why this, why now:** Slices 102/103 created the guide-quality *signals* (prompt contract, flag-only lint, advisory QA
+    gate). Slice 104 makes them **visible** in JobDetails as a safe, read-only panel — a visibility slice, not new evaluation
+    and not generation behavior.
+  - **New helper `frontend/src/guideQualityDisplay.js`** (pure, React-free): `summarizeGuideQualityQaGate`,
+    `summarizeGuideQualityContractLint`, `summarizeMathVerificationArtifact` (counts only — no claim text/formulas/values), and
+    the composite `summarizeGuideQualityPanelModel({...})`. Reuses `summarizeSourceCoverage` / `summarizeGuideQualityReportV2`
+    + exact-name constants from `materialCoverageDisplay.js`. Copies **no string** from artifacts — only non-negative integer
+    counts + closed status/kind tokens validated against in-module allow-lists — so hostile canaries cannot leak through.
+    Deterministic; never throws.
+  - **New component `frontend/src/components/GuideQualityPanel.jsx`**, wired into `RecentJobsPanel.jsx` JobDetails drawer as a
+    new **Guide Quality** tab (after Material Coverage). Fetches five exact-name artifacts on **independent** lifecycles
+    (`guide_quality_qa_gate.json`, `guide_quality_contract_lint.json`, `guide_quality_report_v2.json`, `math_verification.json`,
+    `source_coverage_report.json`); 404 → "Not available", other error/non-JSON → calm "Unavailable" (no raw error/URL). Six
+    sections: Overall QA Gate (status/counts/advisory copy/`blocking:false`), Prompt Contract Lint, Math Verification (counts
+    only), Coverage & Completeness, Quality Checks (closed-kind chips), Artifacts (fixed exact-name links). Older jobs still
+    render.
+  - **Validated:** new `verify-guide-quality-panel.mjs` passes; existing FE verify scripts + build + `npm test` green; backend
+    guide-quality/coverage/material tests re-run green; `compileall` clean; Docker `smoke_release.py` **29/0/0** (smoke does not
+    deep-exercise the panel — relied on the focused FE verify script + backend artifact tests).
+  - **Out of scope/unchanged:** no generation/prompt change; no LLM/provider/model/cloud call; no Chandra/Mistral/Gemini; no
+    OCR/PDF/image inspection; no table reconstruction; no render/export change; no figure-insertion / material-selection /
+    visual-filter change; no Ask Guide change; no auto-reject/regenerate; no direct `clean.md` write. Chandra remains blocked by
+    its own live-validation gate. **Slice 104 is NOT committed.**
+
+### Previously (Slice 103, now trunk `71f5f8c`)
+- **Slice 103 (Guide Quality QA Gate v1)** added `pipeline/guide_quality_qa_gate.py` (pure, stdlib-only) combining the
+  already-sanitized contract lint (Slice 102), guide quality report v2 (Slice 96), source coverage report (Slice 77), and
+  numeric math verification (Slice 21) into one advisory `passed`/`warning`/`skipped`/`partial` gate. Counts + closed tokens
+  only; `blocking` always `False`; math summarized not rerun. Persisted as exact-name `guide_quality_qa_gate.json` via
+  `Job.guide_quality_qa_gate_json` + `_write_guide_quality_qa_gate(job)` + `_artifact_path` route — not in ARTIFACTS / UI /
+  exports. Flag-only; never rejects/regenerates/blocks/fails. No FE was added in Slice 103 (Slice 104 adds the UI).
 
 ### Previously (Slice 102, now trunk `815a0dc`)
 - **Slice 102 (Claude-quality guide prompt contract v1)** added `pipeline/guide_quality_prompt_contract.py` (core rules always

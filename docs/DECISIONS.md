@@ -4562,3 +4562,26 @@ count** fields and a small set of **closed status tokens**, and every `instructi
 constant. This makes leakage impossible by construction — even a hostile canary injected into an input artifact (a filename,
 a formula, a traceback) cannot reach the gate output, because the gate never reads arbitrary strings. Tests prove this with
 canary-laden inputs.
+
+## The JobDetails Guide Quality panel (Slice 104) surfaces the QA gate read-only, summarizes exact-name artifacts, and stays advisory
+**Why guide-quality *visibility* follows the QA gate artifact.** The signals had to exist before they could be shown. Slice 102
+established the prompt contract + flag-only lint, and Slice 103 rolled the lint plus the older coverage/math measurements into
+one advisory QA-gate artifact. Only once that closed, sanitized summary existed was there a single trustworthy thing to
+display. So the order is: contract → lint + measurements → gate (summarize) → **panel (show)**. Building UI earlier would have
+meant either inventing a second summarizer in the frontend or rendering raw, unsanitized measurement artifacts.
+
+**Why the panel summarizes the exact-name artifacts instead of rendering them raw.** The artifacts are reached only by their
+exact filenames and are deliberately kept out of the generic artifact list / exports. The panel mirrors that discipline: it
+fetches each exact-name artifact on its own lifecycle and runs it through pure summarizers (`guideQualityDisplay.js`) that copy
+**no string** out — only non-negative integer counts and closed status/kind tokens validated against in-module allow-lists.
+Rendering the raw JSON in the browser would risk surfacing a guide excerpt, a formula, a numeric value, a filename, a path, or
+a raw verifier error if any upstream sanitizer ever regressed; summarizing to counts + closed tokens makes that impossible by
+construction (proven with canary-laden inputs in `verify-guide-quality-panel.mjs`). The math-verification summary in particular
+reads only the inner `report.summary` counts, never the claim list / expressions / claimed-vs-computed values.
+
+**Why it remains advisory and read-only, and why auto-reject/regenerate is still deferred.** The panel is a *visibility* slice,
+not an evaluation or generation change. It mounts only when its drawer tab is opened, fetches read-only, and exposes the
+gate's `blocking:false` plus calm "advisory deterministic QA signal, not semantic grading" copy. Acting on these heuristic
+signals automatically (rejecting or regenerating a guide) would risk discarding a usable guide over a shallow false positive,
+entangle the UI with job lifecycle, and (for regenerate) trigger a second expensive provider pass — so it stays deferred until
+the advisory gate has been validated against real output, exactly as Slice 103 decided for the gate itself.
