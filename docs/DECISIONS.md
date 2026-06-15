@@ -4215,3 +4215,39 @@ and to emit an honest unreadable note instead.
 in the UI (or persisting it as a downloadable artifact) would broaden scope and add a display/serialization surface for no
 current product need; the context is built in-memory at generation time and appended to the prompt only. A later slice can
 choose to surface it if a need appears.
+
+## Slice 94 — missing diagram/table explainer core (honest "what was missing", never hallucinated)
+
+**Why missing-material explanation follows the table prompt context.** The pipeline now has a clear, layered set of
+already-sanitized signals: the Slice 84 visual inclusion plan (what non-table visuals would be included), and the Slice
+85/92 table reconstruction policy (what should happen to each table). Slice 93 used the table policy to tell the model how
+to reconstruct tables whose contents are in the source text. Slice 94 is the complement: it reads the *same* sanitized
+artifacts to explain what could **not** be included or reconstructed. Building it after (and on top of) the table prompt
+context keeps each concern in its own reviewable slice — reconstruct-what-you-can (Slice 93) vs. honestly-flag-what-you-
+cannot (Slice 94) — and means the explainer only ever sees closed tokens/ints, so it cannot widen the leak surface.
+
+**Why missing explanations must be generic and source-page based.** The whole point of this slice is to be honest about
+material the system could not recover. The only safe anchors for that honesty are the *kind* of item (a closed token like
+`diagram`/`table_like`) and the *page* it was detected on (a verified positive int). The explainer therefore emits per-item
+guidance built purely from those closed values and points the student back at the original source page — it never carries a
+caption, OCR string, table cell, filename, or asset ref, because those would both leak source content and tempt the model
+to "fill in" the missing material. Page-based generic notes give the student a real, checkable pointer without fabricating
+anything.
+
+**Why unavailable diagrams/tables must not be hallucinated.** A detected-but-unreadable table or an un-inserted diagram is
+exactly where an LLM is most likely to invent plausible-looking rows, labels, or diagram details. The guidance is explicit
+and closed: do not invent labels/rows/values/diagram details; for unreadable tables say table-like material was detected on
+page N but its contents were not readable; for un-inserted figures point at the source page. `skip_unsafe` items are never
+surfaced for explanation at all (counted only), so the model is never even asked to describe unsafe material.
+
+**Why full visual surfacing (UI) is deferred.** The explainer is an internal prompt augmentation, not a user-facing
+artifact. It persists no new file and adds no API/UI surface — it is built in-memory at generation time and appended to the
+prompt only when it has something honest to say. Surfacing missing-material notes in the UI (or persisting a downloadable
+artifact) would broaden scope and add a display/serialization surface for no current product need; a later slice can do
+that deliberately if a need appears.
+
+**Why image-only understanding remains deferred until explicitly validated.** Slice 94 deliberately stops at *naming* what
+was missing. Actually reading an image-only table or explaining a diagram from pixels requires real visual understanding
+(OCR or a vision model), a separate higher-risk capability gated behind its own live validation. When full visual insertion
+is enabled, the explainer will not even claim a planned visual "failed" without a closed insertion-failure signal — there is
+no such signal today, so it never invents one. Chandra remains blocked by its own live-validation gate.

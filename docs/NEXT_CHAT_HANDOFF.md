@@ -6,37 +6,48 @@
 > stable overview see `PROJECT_CONTEXT.md`; canonical brief is `../CLAUDE.md`.
 
 ## Current position
-- **Working tree:** **Slice 93 (Table reconstruction prompt-context integration v1) — UNCOMMITTED (per instruction)** on
-  branch `slice93-table-reconstruction-prompt-context` (branched from fresh trunk after Slice 92 was committed/merged/
-  pushed). **Slice 92 is now trunk commit `ea3f321`** (table candidate manifest + reconstruction policy artifacts).
-  - **Purpose:** consume the Slice 92 sanitized table artifacts (`table_candidates_manifest.json` +
-    `table_reconstruction_policy.json`) to append safe, honest table reconstruction guidance to the guide generation
-    prompt. Prompt-context integration, **not** image/table extraction.
-  - **It does NOT** reconstruct tables from images, inspect PDFs/images, OCR, read image bytes, extract table text, call
-    any provider/model/cloud, change material page-selection or visual filtering, change render/export, change figure
-    insertion semantics, or add UI. Tables are still never treated as screenshots.
-  - **No-hallucination rule:** reconstruct/simplify a table only when its contents are present in the provided source
-    text; preserve `headers`/`column_labels`/`row_labels`/`exam_terms`/`numeric_values`/`units` when available; never
-    invent rows/columns/labels/values; `defer`/`skip_unreadable` → honest "detected on page N but not readable" note;
-    `skip_unsafe` excluded entirely.
-  - **New pure module:** `pipeline/table_reconstruction_prompt_context.py` —
-    `build_table_reconstruction_prompt_context(table_candidates_manifest, table_reconstruction_policy, *, max_items=None)`
-    → sanitized context dict (`version`/`kind`/`status`/`summary`/`prompt_block`/`items`/`warnings`). Each actionable
-    policy item → prompt item with closed `action`, positive-int `source_page` (or `None`), closed `preserve` tokens,
-    safe `candidate_id` (`table_candidate_NNNN`), fixed-shape `instruction`. Missing/malformed/skipped → safe `skipped` +
-    empty `prompt_block`; defensive ceiling / `max_items` → `partial`. stdlib-only.
-  - **Integration:** `pipeline/run_llm_job.py::_attach_sources` — after the Slice 92 candidate manifest + policy are
-    written, `_build_table_prompt_block_safely(...)` returns the `prompt_block` only when `status` is completed/partial
-    AND `prompt_item_count > 0`; appended under a `## Table Reconstruction Guidance` heading. Absent/skipped/empty ⇒
-    prompt byte-identical. The policy writer helper now returns the policy dict (no artifact re-read). Degrade-never-fail.
-  - **No change to:** table reconstruction (none), OCR/PDF/image inspection, providers/models/cloud, render/export,
-    figure insertion semantics, material page-selection, visual-manifest filtering, UI, or direct `clean.md` writes.
-  - **Files:** `pipeline/table_reconstruction_prompt_context.py` (new), `pipeline/run_llm_job.py` (import + one local +
-    builder helper + safe append), `test_scripts/test_table_reconstruction_prompt_context.py` (new), three docs.
-  - **Validation:** prompt-context test 108/0; candidate manifest 105/0, policy artifact 39/0, policy core 145/0, coverage
-    E2E 79/0, source coverage 59/0, full insertion v2 81/0, render/export 22/0 host; `compileall` clean; `git diff
-    --check` clean; Docker build + health + `smoke_release.py`. **NOT committed.**
-  - **Next:** Slice 94 — missing diagram/table explainer core. Chandra still blocked by its own live-validation gate.
+- **Working tree:** **Slice 94 (Missing diagram/table explainer core) — UNCOMMITTED (per instruction)** on branch
+  `slice94-missing-visual-table-explainer-core` (branched from fresh trunk after Slice 93 was committed/merged/pushed).
+  **Slice 93 is now trunk commit `774a2e4`** (table reconstruction prompt-context integration).
+  - **Purpose:** when useful visual or table-like material is detected but cannot be inserted or reconstructed, produce
+    safe, honest "what was missing" guidance so the guide can say what kind of item was detected and on which page —
+    without inventing contents. Consumes the Slice 84 visual inclusion plan + Slice 92 table candidate manifest + Slice
+    85/92 table reconstruction policy.
+  - **It does NOT** inspect PDFs/images, OCR, read image bytes, extract table text, reconstruct tables, generate
+    image-derived diagram explanations, call any provider/model/cloud, change render/export, change figure insertion
+    semantics, change visual-manifest filtering, change material page-selection, or add UI. Tables are never screenshots.
+  - **No-hallucination rule:** add an honest note naming the *kind* (closed token) + *page*; never invent labels/rows/
+    values/diagram details. Table `defer`/`skip_unreadable` → unreadable note; `skip_unsafe` → counted only (never
+    surfaced); `reconstruct_with_original`/`simplify_only` → not missing (Slice 93's job). Planned visuals → "not
+    inserted" notes only when full visual insertion is **off**; when **on**, never invents a failure (no failure signal).
+  - **New pure module:** `pipeline/missing_material_explainer.py` —
+    `build_missing_material_explainer_context(visual_inclusion_plan, table_candidates_manifest,
+    table_reconstruction_policy, *, full_visual_insertion_enabled=False, max_items=None)` → sanitized context dict
+    (`version`/`kind`/`status`/`summary`/`items`/`prompt_block`/`warnings`). Items carry safe `item_id`
+    (`missing_material_NNNN`), positive-int `source_page`, closed `material_kind`/`reason`, fixed-shape `instruction`.
+    All-missing/empty → safe `skipped` + empty block; `max_items`/ceiling → `partial`. stdlib-only.
+  - **Integration:** `pipeline/run_llm_job.py::_attach_sources` — after the Slice 93 table block,
+    `_build_missing_material_prompt_block_safely(...)` (reads `is_full_visual_insertion_enabled()`) appends the block
+    under `## Missing Visual and Table Guidance` only when `status` is completed/partial AND `prompt_item_count > 0`;
+    else prompt byte-identical. Inclusion-plan writer helper now returns the plan dict. **No new artifact persisted**
+    (in-memory prompt context only). Degrade-never-fail.
+  - **No change to:** table reconstruction (none), OCR/PDF/image inspection, image-derived diagram explanation (none),
+    providers/models/cloud, render/export, figure insertion semantics, material page-selection, visual-manifest
+    filtering, UI, or direct `clean.md` writes.
+  - **Files:** `pipeline/missing_material_explainer.py` (new), `pipeline/run_llm_job.py` (imports + one local + builder
+    helper + plan-writer returns plan + safe append), `test_scripts/test_missing_material_explainer.py` (new), three docs.
+  - **Validation:** explainer test 121/0; prompt-context 108/0, candidate manifest 105/0, policy artifact 39/0, policy
+    core 145/0, full insertion v2 81/0, render/export 22/0, coverage E2E 79/0 host; `compileall` clean; `git diff --check`
+    clean; Docker build + health + `smoke_release.py`. **NOT committed.**
+  - **Next:** optionally surface missing-material notes in UI / persist an artifact (deferred); image-only understanding
+    stays deferred. Chandra still blocked by its own live-validation gate.
+
+### Prior position (Slice 93 — committed & merged)
+- **Slice 93 (Table reconstruction prompt-context integration v1)** is trunk commit `774a2e4` (ff-merged + pushed). It
+  added `pipeline/table_reconstruction_prompt_context.py` and wired `_build_table_prompt_block_safely(...)` into
+  `run_llm_job::_attach_sources` to append safe, no-hallucination table guidance (reconstruct/simplify only from source
+  text; honest unreadable notes; `skip_unsafe` excluded) — no reconstruction, OCR, provider/model, render/export, figure
+  insertion, material selection, UI, or `clean.md` change.
 
 ### Prior position (Slice 92 — committed & merged)
 - **Slice 92 (Table candidate manifest + reconstruction-policy artifacts)** is trunk commit `ea3f321` (ff-merged +

@@ -5,7 +5,56 @@
 
 ---
 
-## Slice 93 — **Table reconstruction prompt-context integration v1**, on `slice93-table-reconstruction-prompt-context`. **NOT COMMITTED.**
+## Slice 94 — **Missing diagram/table explainer core**, on `slice94-missing-visual-table-explainer-core`. **NOT COMMITTED.**
+
+- **Adds an honest "what was missing" explainer so detected visual/table material that cannot be inserted or
+  reconstructed is acknowledged without inventing its contents.** Slice 93 was committed `774a2e4`, fast-forward merged,
+  and pushed to trunk on `chrome-renderer-v1` (table reconstruction prompt-context integration). Slices 90–91 made full
+  non-table figure insertion safe; Slices 92–93 added the sanitized table artifacts + safe table prompt context. Slice 94
+  consumes the Slice 84 visual inclusion plan + the two Slice 92 table artifacts to plan safe, generic missing-material
+  guidance.
+- **It does NOT** inspect PDFs/images, OCR, read image bytes, extract table text, reconstruct tables, generate
+  image-derived diagram explanations, call any provider/model/cloud, change render/export, change figure insertion
+  semantics, change visual-manifest filtering, change material page-selection, or add UI. Tables are never screenshots.
+- **No-hallucination product rule.** When useful visual or table-like material is detected but unavailable, the guidance
+  tells the model to add a short, honest note naming the *kind* of item and the *page*, and never to invent labels, rows,
+  values, or diagram details. For unreadable/deferred tables it asks for a "table-like material was detected on page N but
+  its contents were not readable" note; for un-inserted figures/diagrams it points the student at the source page.
+- **New pure module:** `pipeline/missing_material_explainer.py` —
+  `build_missing_material_explainer_context(visual_inclusion_plan, table_candidates_manifest,
+  table_reconstruction_policy, *, full_visual_insertion_enabled=False, max_items=None)` → sanitized context dict
+  (`version`/`kind`/`status`/`summary`/`items`/`prompt_block`/`warnings`). Behavior: table policy `defer` →
+  `table_deferred` item, `skip_unreadable` → `table_unreadable` item, `skip_unsafe` → counted only (never surfaced),
+  `reconstruct_with_original`/`simplify_only` → not missing (handled by Slice 93). Planned non-table visuals →
+  `visual_not_inserted` items **only when full visual insertion is disabled**; when enabled, planned visuals are never
+  marked missing (no insertion-failure signal exists, so failure is never invented — a closed warning is recorded). Items
+  carry a safe generated `item_id` (`missing_material_NNNN`), positive-int `source_page`, closed `material_kind`
+  (`diagram`/`figure`/`graph`/`chart`/`table`/`table_like`/`unknown`), closed `reason`, and a fixed-shape `instruction`.
+  Invalid-page items dropped; defensive ceiling / `max_items` → `partial`; all-missing/empty → safe `skipped` + empty
+  block. stdlib-only.
+- **Integration point:** `pipeline/run_llm_job.py::_attach_sources`. After the Slice 93 table prompt context,
+  `_build_missing_material_prompt_block_safely(...)` builds the explainer (reading the full-insertion mode switch via the
+  existing `is_full_visual_insertion_enabled()` env helper) and returns its `prompt_block` only when the context is
+  `completed`/`partial` **and** `prompt_item_count > 0`; appended under a `## Missing Visual and Table Guidance` heading.
+  Absent/skipped/empty ⇒ prompt byte-identical. The inclusion-plan writer helper now returns the plan dict so the builder
+  reuses it (no artifact re-read). No new artifact is persisted (in-memory prompt context only). Degrade-never-fail.
+- **Files changed:** `pipeline/missing_material_explainer.py` (new), `pipeline/run_llm_job.py` (imports + one local +
+  builder helper + plan-writer returns plan + safe append), `test_scripts/test_missing_material_explainer.py` (new), plus
+  the three docs. **No table reconstruction, no OCR/PDF/image inspection, no image-derived diagram explanation, no
+  provider/model/cloud, no render/export, no figure insertion semantics, no material selection / visual filtering, no UI,
+  and no direct `clean.md` write changed.**
+- **Validation (host):** `test_missing_material_explainer` 121/0, `test_table_reconstruction_prompt_context` 108/0,
+  `test_table_candidate_manifest` 105/0, `test_table_reconstruction_policy_artifact` 39/0,
+  `test_table_reconstruction_policy` 145/0, `test_full_visual_insertion_v2` 81/0,
+  `test_full_visual_render_export_validation` 22/0 (DOCX+bundle skip on host), `test_material_coverage_e2e_validation`
+  79/0. `compileall` clean; `git diff --check` clean. **Docker:** build + health + `smoke_release.py`. No-leak sweep
+  clean. **NOT committed.**
+- **Next:** later slices can surface missing-material notes in the UI or persist an artifact if a need appears; image-only
+  understanding stays deferred. Chandra remains blocked by its own live-validation gate.
+
+---
+
+## Slice 93 — **Table reconstruction prompt-context integration v1**, on `slice93-table-reconstruction-prompt-context`. **Committed `774a2e4`, fast-forward merged + pushed to trunk `chrome-renderer-v1`.**
 
 - **Uses the Slice 92 sanitized table artifacts to add safe, honest table reconstruction guidance to the guide
   generation prompt.** Slice 92 was committed `ea3f321`, fast-forward merged, and pushed to trunk on

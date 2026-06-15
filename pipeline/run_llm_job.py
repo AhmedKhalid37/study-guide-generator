@@ -34,6 +34,10 @@ from pipeline.table_reconstruction_policy_artifact import (
 from pipeline.table_reconstruction_prompt_context import (
     build_table_reconstruction_prompt_context,
 )
+from pipeline.missing_material_explainer import (
+    build_missing_material_explainer_context,
+)
+from pipeline.visual_markdown_insertion import is_full_visual_insertion_enabled
 from pipeline.visual_asset_extractor import (
     MAX_FIGURES_PER_JOB,
     extract_local_figures,
@@ -251,6 +255,10 @@ def _attach_sources(
     # when the sanitized candidate/policy artifacts yield actionable table items.
     # Empty by default ⇒ prompt byte-identical to prior behaviour.
     table_prompt_block = ""
+    # Slice 94: safe missing diagram/table explainer guidance appended to the
+    # generation source when detected visual/table material cannot be inserted or
+    # reconstructed. Empty by default ⇒ prompt byte-identical to prior behaviour.
+    missing_material_prompt_block = ""
 
     for index, attachment in enumerate(attachments, start=1):
         safe_name = _safe_filename(attachment.filename, fallback=f"attachment-{index}{attachment.path.suffix}")
@@ -457,7 +465,9 @@ def _attach_sources(
         # and is degrade-not-fail. A missing/skipped/malformed manifest yields a safe
         # skipped plan via the pure planner. No Markdown insertion / render / export /
         # provider wiring this slice — exact-name download only.
-        _write_visual_inclusion_plan_safely(job, visual_manifest_obj)
+        visual_inclusion_plan_obj = _write_visual_inclusion_plan_safely(
+            job, visual_manifest_obj
+        )
         # Slice 92: persist the sanitized TABLE CANDIDATE manifest and the table
         # RECONSTRUCTION POLICY artifact, both derived only from the sanitized
         # manifest we just read. The candidate manifest converts table-like records
@@ -483,6 +493,16 @@ def _attach_sources(
         table_prompt_block = _build_table_prompt_block_safely(
             table_candidates_obj, table_policy_obj
         )
+        # Slice 94: build the sanitized missing diagram/table explainer context from
+        # the visual inclusion plan + the two table artifacts and capture its safe
+        # prompt_block. Pure / degrade-not-fail; it inspects no PDF/image, OCRs
+        # nothing, reconstructs no table, and calls no provider. The block is honest
+        # "what was missing" guidance (no invented contents) appended only when the
+        # context has actionable items, so an absent/skipped/empty context leaves the
+        # prompt byte-identical.
+        missing_material_prompt_block = _build_missing_material_prompt_block_safely(
+            visual_inclusion_plan_obj, table_candidates_obj, table_policy_obj
+        )
 
     if not sections:
         return source_text, {
@@ -501,7 +521,16 @@ def _attach_sources(
         if table_prompt_block
         else ""
     )
-    return source_text.rstrip() + attached_text + table_guidance, {
+    # Slice 94: append the safe missing diagram/table explainer guidance (closed
+    # tokens / page ints / fixed text only — no source/table content). Empty unless
+    # detected material could not be inserted or reconstructed, so unaffected jobs
+    # keep the prior prompt byte-for-byte.
+    missing_material_guidance = (
+        f"\n\n## Missing Visual and Table Guidance\n\n{missing_material_prompt_block}"
+        if missing_material_prompt_block
+        else ""
+    )
+    return source_text.rstrip() + attached_text + table_guidance + missing_material_guidance, {
         "files": files,
         "warnings": _dedupe(warnings),
         "total_extracted_chars": total_chars,
@@ -603,15 +632,20 @@ def _write_source_coverage_report_safely(
 def _write_visual_inclusion_plan_safely(
     job: Job,
     visual_manifest: Any = None,
-) -> None:
-    """Best-effort visual inclusion plan artifact write; never gates generation."""
+) -> dict[str, Any] | None:
+    """Best-effort visual inclusion plan artifact write; never gates generation.
+
+    Returns the built plan dict (so the Slice 94 missing-material explainer can reuse
+    it without re-reading the artifact), or ``None`` on any unexpected failure.
+    """
     try:
-        write_visual_inclusion_plan(job, visual_manifest=visual_manifest)
+        return write_visual_inclusion_plan(job, visual_manifest=visual_manifest)
     except Exception as exc:
         print(
             f"Visual inclusion plan skipped ({type(exc).__name__}); job continues.",
             file=sys.stderr,
         )
+        return None
 
 
 def _write_table_candidates_manifest_safely(
@@ -684,6 +718,47 @@ def _build_table_prompt_block_safely(
     except Exception as exc:
         print(
             f"Table reconstruction prompt context skipped ({type(exc).__name__}); job continues.",
+            file=sys.stderr,
+        )
+        return ""
+
+
+def _build_missing_material_prompt_block_safely(
+    visual_inclusion_plan: Any = None,
+    table_candidates_manifest: Any = None,
+    table_reconstruction_policy: Any = None,
+) -> str:
+    """Best-effort safe missing-material guidance block; never gates generation.
+
+    Returns the sanitized ``prompt_block`` only when the pure explainer core reports
+    a ``completed``/``partial`` context with at least one actionable item; otherwise
+    returns ``""`` so the generation prompt stays byte-identical. Never raises and
+    never inspects a PDF/image / OCRs / reconstructs a table / calls a provider. The
+    full-visual-insertion mode switch is read from the existing env helper so planned
+    visuals are only ever called "missing" when automatic insertion is off.
+    """
+    try:
+        context = build_missing_material_explainer_context(
+            visual_inclusion_plan,
+            table_candidates_manifest,
+            table_reconstruction_policy,
+            full_visual_insertion_enabled=is_full_visual_insertion_enabled(),
+        )
+        if not isinstance(context, dict):
+            return ""
+        if context.get("status") not in ("completed", "partial"):
+            return ""
+        summary = context.get("summary")
+        prompt_item_count = (
+            summary.get("prompt_item_count") if isinstance(summary, dict) else 0
+        )
+        if not isinstance(prompt_item_count, int) or prompt_item_count <= 0:
+            return ""
+        block = context.get("prompt_block")
+        return block if isinstance(block, str) else ""
+    except Exception as exc:
+        print(
+            f"Missing material explainer skipped ({type(exc).__name__}); job continues.",
             file=sys.stderr,
         )
         return ""
