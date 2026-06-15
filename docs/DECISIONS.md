@@ -4533,3 +4533,32 @@ but forcing it onto a deliberately short ("quick") guide would bloat it against 
 is gated on a comprehensive signal — an `exhaustive` depth axis, or a longform/exam generator preset / longform style — while
 the **core** quality rules (no leaked reasoning, no fabricated math, finished examples, shown arithmetic) apply to *every*
 guide because they are about correctness and discipline, not length.
+
+## The guide-quality QA gate (Slice 103) follows the prompt contract/lint, summarizes math, and is flag-only
+**Why the QA gate comes after the prompt contract + lint, not before.** Slice 102 first established *what a good guide is*
+(the prompt contract) and a *low-level lint* that counts contract adherence in the generated `clean.md`. A higher-level QA
+gate is only meaningful once those signals — plus the older coverage/measurement artifacts — exist to roll up. Building the
+gate first would have had nothing trustworthy to combine. So the order is: contract (steer generation) → lint + existing
+measurements (observe the result) → gate (summarize the observations into one verdict).
+
+**Why v1 is flag-only / advisory, not auto-reject or auto-regenerate.** The gate combines several *heuristic* signals
+(substring leak counts, heading-alias structure matching, coverage counts). Acting on them automatically would risk
+discarding a perfectly usable guide over a shallow false positive, would entangle the gate with job lifecycle/cancellation,
+and (for regenerate) could trigger a second expensive provider pass. A deterministic, sanitized **advisory** artifact that
+never changes job status, never blocks render/export, and reports `blocking:false` surfaces the verdict with zero blast
+radius. Auto-reject/regenerate is intentionally deferred until the advisory gate has been validated against real output.
+
+**Why the math verifier is summarized, not rerun.** The existing numeric verifier (`math_verifier`) already runs in the
+pipeline and writes `math_verification.json` before the gate's write point. Re-deriving math correctness in the gate would
+duplicate that logic, risk drift between two checkers, and tempt the gate into parsing formulas/numbers out of guide text —
+exactly what the no-leak rules forbid. So the gate only reads the verifier's existing `report.summary` counts
+(`total`/`mismatch`) and maps them to a check status. A missing/skipped math artifact degrades to `unknown` with a closed
+warning rather than rerunning anything; pipeline order means math status is normally available, so no deeper ordering
+refactor was needed.
+
+**Why no raw formulas, numbers, snippets, or verifier errors are persisted in the gate.** The gate consumes already-sanitized
+dicts but still treats them as untrusted: it copies **no string** out of them, reading only a fixed set of known **integer
+count** fields and a small set of **closed status tokens**, and every `instruction` string in the output is a fixed in-module
+constant. This makes leakage impossible by construction — even a hostile canary injected into an input artifact (a filename,
+a formula, a traceback) cannot reach the gate output, because the gate never reads arbitrary strings. Tests prove this with
+canary-laden inputs.

@@ -4181,6 +4181,15 @@ def _artifact_path(job: Job, artifact_name: str) -> tuple[Path, str]:
         # no PDF/image. Exact-name download only; deliberately NOT in ARTIFACTS,
         # generic UI rows, or export selectors.
         return job.guide_quality_contract_lint_json, "application/json"
+    if artifact_name == "guide_quality_qa_gate.json":
+        # Slice 103: advisory guide-quality QA GATE summary combining the already-
+        # sanitized contract lint, guide quality report v2, source coverage report,
+        # and existing numeric math verification (counts + closed tokens only — no
+        # excerpt/phrase/heading/formula/value/source text). Flag-only (blocking is
+        # always false); reruns no math verification, calls no LLM, inspects no
+        # PDF/image, reconstructs no table. Exact-name download only; deliberately
+        # NOT in ARTIFACTS, generic UI rows, or export selectors.
+        return job.guide_quality_qa_gate_json, "application/json"
 
     artifact = ARTIFACTS.get(artifact_name)
     if artifact is None:

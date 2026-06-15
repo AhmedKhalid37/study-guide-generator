@@ -241,6 +241,22 @@ class Job:
         return self.dir / "guide_quality_contract_lint.json"
 
     @property
+    def guide_quality_qa_gate_json(self) -> Path:
+        # Slice 103: sibling guide-quality QA GATE artifact holding the
+        # deterministic, sanitized advisory gate (pipeline/guide_quality_qa_gate.py)
+        # that combines the already-sanitized contract lint, guide quality report v2,
+        # source coverage report, and existing numeric math verification into one
+        # closed pass/warning/skipped summary (counts + closed tokens only — no
+        # excerpt/phrase/heading/formula/value/source text persisted). Like the other
+        # advisory siblings it never changes job status, inspects no PDF/image, OCRs
+        # nothing, reconstructs no table, calls no LLM/provider, reruns no math
+        # verification, is kept SEPARATE from validation.json, and is reached only by
+        # its exact filename (not added to the generic ARTIFACTS list / generic UI
+        # rows / export selectors). ``blocking`` is always False — it is flag-only and
+        # never gates generation.
+        return self.dir / "guide_quality_qa_gate.json"
+
+    @property
     def assets_dir(self) -> Path:
         # Slice 40: holds locally-cropped figure images (PNG) referenced by the
         # visual-assets manifest's `extracted_figure` records via safe RELATIVE

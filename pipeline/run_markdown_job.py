@@ -183,6 +183,15 @@ def run_raw_markdown_pipeline(job: Job, *, theme: str, strict_math: bool) -> Job
     # status, never blocks the render, and never fails the job.
     _write_guide_quality_contract_lint(job)
 
+    # Slice 103: persist a per-job guide_quality_qa_gate.json sibling artifact. It
+    # combines the already-sanitized contract lint, guide quality report v2, source
+    # coverage report, and the existing numeric math verification (written just above)
+    # into one advisory pass/warning/skipped summary (counts + closed tokens only).
+    # Same advisory contract: it calls no LLM, reruns no math verification, inspects
+    # no PDF/image, reconstructs no table, never changes job status, never blocks the
+    # render, and never fails the job. ``blocking`` is always false (flag-only v1).
+    _write_guide_quality_qa_gate(job)
+
     # Last safe checkpoint before the uninterruptible Chromium render: a cancel
     # requested up to here skips the render entirely. Once render_pdf starts we
     # let it finish (no process killing).
@@ -521,6 +530,74 @@ def _write_guide_quality_contract_lint(job: Job) -> None:
                 "status": "skipped",
                 "reason": "lint_error",
                 "safe_message": "Guide quality contract lint could not be completed.",
+            }
+            job.save_text(artifact_path, json.dumps(payload, indent=2) + "\n")
+        except Exception:
+            pass  # writing the degraded artifact must itself never raise
+
+
+def _write_guide_quality_qa_gate(job: Job) -> None:
+    """Persist a per-job ``guide_quality_qa_gate.json`` sibling artifact (Slice 103).
+
+    Builds the deterministic, sanitized, advisory guide-quality QA gate
+    (:func:`pipeline.guide_quality_qa_gate.build_guide_quality_qa_gate`) by combining
+    the already-written, already-sanitized sibling artifacts: the guide-quality
+    contract lint, the guide quality report v2, the source coverage report, and the
+    existing numeric math verification (``math_verification.json``, written just above
+    in this pipeline). It copies no string out of those artifacts — only known integer
+    counts and closed status tokens — so no excerpt, phrase, heading, formula, value,
+    table content, caption, OCR text, or source text is ever persisted. The
+    ``comprehensive`` flag is inferred from the saved request signals using the same
+    rule the prompt contract / contract lint use.
+
+    Same advisory contract as the other quality siblings:
+
+      * It is FLAG-ONLY — ``blocking`` is always ``False``; it never rewrites,
+        regenerates, rejects, changes the visible job status, blocks the render, or
+        fails the job.
+      * It calls no LLM/provider, reruns no math verification, inspects no PDF/image,
+        OCRs nothing, and reconstructs no table.
+      * Missing/unreadable input artifacts degrade to ``unknown`` checks and a
+        ``skipped``/``partial`` gate, never a failure.
+      * Any unexpected error degrades to a small ``skipped`` artifact carrying a safe
+        message and NO traceback.
+
+    The artifact is reached only by its exact filename (not added to the generic
+    ARTIFACTS list / generic UI rows / export selectors).
+    """
+    artifact_path = job.guide_quality_qa_gate_json
+    try:
+        from pipeline.guide_quality_qa_gate import build_guide_quality_qa_gate
+        from pipeline.guide_quality_prompt_contract import infer_comprehensive
+
+        try:
+            manifest = job.read_manifest()
+        except Exception:
+            manifest = {}
+        comprehensive = infer_comprehensive(
+            manifest.get("output_depth"),
+            manifest.get("generator_preset"),
+            manifest.get("prompt_name"),
+            manifest.get("mode"),
+        )
+
+        gate = build_guide_quality_qa_gate(
+            guide_quality_contract_lint=_read_json_artifact(job.guide_quality_contract_lint_json),
+            guide_quality_report_v2=_read_json_artifact(job.guide_quality_report_v2_json),
+            source_coverage_report=_read_json_artifact(job.source_coverage_report_json),
+            math_verification=_read_json_artifact(job.math_verification_json),
+            math_validation=_read_json_artifact(job.logs_dir / "validation.json"),
+            comprehensive=comprehensive,
+        )
+        job.save_text(artifact_path, json.dumps(gate, indent=2) + "\n")
+    except Exception:  # never let the QA gate break a job
+        try:
+            payload = {
+                "version": 1,
+                "kind": "guide_quality_qa_gate",
+                "status": "skipped",
+                "reason": "gate_error",
+                "safe_message": "Guide quality QA gate could not be completed.",
             }
             job.save_text(artifact_path, json.dumps(payload, indent=2) + "\n")
         except Exception:

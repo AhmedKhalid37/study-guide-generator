@@ -5,7 +5,46 @@
 
 ---
 
-## Slice 102 — **Claude-quality guide prompt contract v1**, on `slice102-guide-quality-prompt-contract`. **NOT COMMITTED.**
+## Slice 103 — **Guide Quality QA Gate v1**, on `slice103-guide-quality-qa-gate-v1`. **NOT COMMITTED.**
+
+- **Slice 102 was committed `815a0dc`, fast-forward merged, and pushed to trunk `chrome-renderer-v1`** (guide-quality prompt
+  contract + flag-only contract lint). Slice 103 branches from that fresh trunk.
+- **Goal:** add a higher-level *advisory* QA gate that combines the already-sanitized quality signals into one closed
+  pass/warning/skipped summary. It addresses the off-repo quality spec's post-generation QA/coverage-gate direction while
+  staying **flag-only / advisory** in v1 — it does **not** reject, regenerate, block render/export, or fail jobs. `blocking`
+  is always `False`.
+- **New module — `pipeline/guide_quality_qa_gate.py`** (pure, stdlib-only). `build_guide_quality_qa_gate(...)` consumes only
+  already-sanitized input dicts — the guide-quality **contract lint** (Slice 102), the **guide quality report v2** (Slice 96),
+  the **source coverage report** (Slice 77), and the existing numeric **math verification** (Slice 21; `math_verification.json`)
+  — plus an optional KaTeX `math_validation` fallback. It emits five closed-kind checks: `reasoning_leak`,
+  `required_structure` (comprehensive only; `not_applicable` otherwise), `math_verification`, `source_coverage`, and
+  `quality_report_v2`. Gate `status` rolls up to `passed` / `warning` / `skipped` (all signals unknown) / `partial`
+  (defensive `max_items` cap). It **copies no string** out of its inputs — only known **integer counts** and **closed
+  tokens**; every instruction string is a fixed in-module constant, so no excerpt/phrase/heading/formula/value/table/
+  caption/OCR/filename/path/raw-error can pass through even from a hostile canary.
+- **Math handling — summarized, not rerun.** The existing math verifier already runs and writes `math_verification.json`
+  earlier in the pipeline; the gate only reads its `report.summary` (`total`/`mismatch`): a non-zero `mismatch` → `warning`,
+  zero claims → `not_applicable`, clean → `passed`. A missing/skipped math artifact → `unknown` with the closed warning
+  `math_verification_artifact_missing` (the KaTeX `validation.json` is consulted only as a presence-only fallback). No
+  formulas/numbers/raw verifier errors are ever stored. Deeper pipeline-ordering integration was **not** needed — math
+  verification is written before the gate, so math status is available, not forced to `unknown`.
+- **Artifact wiring:** `Job.guide_quality_qa_gate_json`, a `_write_guide_quality_qa_gate(job)` writer in `run_markdown_job.py`
+  (after the contract lint + math verification; reads the manifest to infer `comprehensive` and the four sibling artifacts via
+  the existing `_read_json_artifact`), and an exact-name `_artifact_path` route → `application/json`. Reached only by exact
+  filename — deliberately **not** in the generic ARTIFACTS list / generic UI rows / export selectors. No UI added.
+- **Validation:** new `test_guide_quality_qa_gate.py` (177) passes; Slice 102 prompt/lint/integration + report-v2 + coverage
+  tests re-run green; FE verify scripts + build + `npm test` green (no FE change); `compileall` clean; Docker
+  `smoke_release.py` 29/0/0; **live paste-job check** confirmed `guide_quality_qa_gate.json` is written, exact-name fetchable
+  (HTTP 200, `application/json`), `status:passed`, `blocking:false`, counts-only, no leaks.
+- **Out of scope / unchanged:** no LLM/provider/model/cloud call; no provider/model change; no new product features (no
+  active recall / mnemonics / question banks / solve paths); no prompt change (Slice 102 left intact); no Chandra/Mistral/
+  Gemini; no OCR/PDF/image inspection; no table reconstruction; no render/export change; no figure-insertion / material-
+  selection / visual-filter change; no Ask Guide change; no auto-reject/regenerate; no direct `clean.md` write. Chandra
+  remains blocked by its own live-validation gate. **Slice 103 is NOT committed.**
+
+---
+
+## Slice 102 — **Claude-quality guide prompt contract v1**, on `slice102-guide-quality-prompt-contract`. **Committed `815a0dc`, merged + pushed to `chrome-renderer-v1`.**
 
 - **New phase:** before returning to the picked study features (active recall etc.), this slice starts a guide-*quality*
   correction phase. Its product requirements come from an off-repo quality-fix spec; only the **distilled rules** are

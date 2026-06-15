@@ -6,37 +6,41 @@
 > stable overview see `PROJECT_CONTEXT.md`; canonical brief is `../CLAUDE.md`.
 
 ## Current position
-- **Working tree:** **Slice 102 (Claude-quality guide prompt contract v1) — UNCOMMITTED (per instruction)** on branch
-  `slice102-guide-quality-prompt-contract` (branched from fresh trunk after Slice 101 was committed/merged/pushed).
-  **Slice 101 is now trunk commit `89f8532`** (~100 MB attachment support; also folded in two unrelated provider-icon SVG
-  refreshes per operator instruction).
-  - **Why this, why now:** before returning to the picked study features (active recall etc.), a guide-*quality* correction
-    phase begins. Requirements come from an **off-repo** quality-fix spec; only the distilled rules are implemented — no real
-    spec evidence quotes, source deck names, or output/reference filenames are copied into the repo.
-  - **Central prompt contract `pipeline/guide_quality_prompt_contract.py`** (pure, stdlib-only): safe request signals →
-    deterministic, leak-free `prompt_block`. **Core rules always** (silent ambiguity resolution; no leaked reasoning/
-    uncertainty; no fabricated math; finish examples; show all arithmetic; numeric consistency; define terms; per-formula
-    plain English; intuition blocks; reference data in labelled tables; confident exam-tutor voice; ⚠️ EXAM ALERT). The full
-    **13-section structural contract** is added only for comprehensive/long guides (`infer_comprehensive`: `quick` opts out,
-    `exhaustive` opts in, else longform/exam preset `claude_exam/review/cram` or style `master_longform`/`exam_cram`; explicit
-    bool overrides).
-  - **Integration `pipeline/run_llm_job.py`:** one `_build_guide_quality_prompt_block_safely(...)` appends the block under a
-    single `## Guide Quality Contract` heading, after the dual-explanation block; degrades to `""` (byte-identical prompt) on
-    failure. Applies to every guide generation; **Ask Guide untouched**. Styles/presets left unchanged — the contract is
-    **centralized** and states it **takes precedence** over weaker instructions.
-  - **Flag-only lint `pipeline/guide_quality_contract_lint.py`** (pure, stdlib-only): scans generated `clean.md` for **safe
-    counts only** (reasoning-leak signatures, required-section presence by alias, exam-alert/table counts; worked-example/
-    arithmetic/consistency deferred — deep math stays with the existing verifier). **Stores no excerpt/phrase/heading/number.**
-    Never rejects/regenerates/fails a job. Persisted as exact-name `guide_quality_contract_lint.json` via
-    `Job.guide_quality_contract_lint_json` + `_write_guide_quality_contract_lint(job)` (in `run_markdown_job.py`) +
-    `_artifact_path` route — **not** in ARTIFACTS / UI / exports. No UI added.
-  - **Validated:** new tests 76 + 83 + 24 pass; existing prompt/coverage tests green; FE build + `npm test` green (no FE
-    change); `compileall` clean; Docker `smoke_release.py` **29/0/0**; live check confirmed the contract block is appended to
-    a generated job's prompt and the lint artifact is written + served (HTTP 200, no leaks).
-  - **Out of scope/unchanged:** no active recall or other picked features; no extra LLM/provider/model/cloud call; no
-    provider/model change; no Chandra/Mistral/Gemini; no OCR/PDF/image inspection; no table reconstruction; no render/export
-    change; no figure-insertion / material-selection / visual-filter change; no Ask Guide change; no direct `clean.md` write.
-    Chandra remains blocked by its own live-validation gate. **Slice 102 is NOT committed.**
+- **Working tree:** **Slice 103 (Guide Quality QA Gate v1) — UNCOMMITTED (per instruction)** on branch
+  `slice103-guide-quality-qa-gate-v1` (branched from fresh trunk after Slice 102 was committed/merged/pushed).
+  **Slice 102 is now trunk commit `815a0dc`** (guide-quality prompt contract + flag-only contract lint).
+  - **Why this, why now:** Slice 102 added the central guide-quality prompt contract and a flag-only contract lint. Slice 103
+    adds the post-generation **QA gate** the off-repo quality spec calls for, combining the existing sanitized quality signals
+    into one advisory pass/warning verdict — still **flag-only**, so no usable guide is discarded while the gate is unproven.
+  - **New module `pipeline/guide_quality_qa_gate.py`** (pure, stdlib-only): `build_guide_quality_qa_gate(...)` consumes only
+    already-sanitized dicts — contract lint (Slice 102), guide quality report v2 (Slice 96), source coverage report (Slice 77),
+    numeric math verification (Slice 21) + optional KaTeX `math_validation` fallback — and emits five closed-kind checks
+    (`reasoning_leak`, `required_structure`, `math_verification`, `source_coverage`, `quality_report_v2`). Gate `status`:
+    `passed` / `warning` / `skipped` (all unknown) / `partial` (`max_items` cap). It **copies no string** from inputs — only
+    integer counts + closed tokens; instruction strings are fixed constants — so hostile canaries cannot leak through.
+    `blocking` is **always `False`**.
+  - **Math is summarized, not rerun.** The math verifier already wrote `math_verification.json` earlier in the pipeline; the
+    gate reads its `report.summary` (`total`/`mismatch`): `mismatch>0` → warning, zero claims → `not_applicable`, clean →
+    `passed`. Missing/skipped math artifact → `unknown` + closed `math_verification_artifact_missing`. No formulas/numbers/raw
+    errors stored. Pipeline order didn't force `unknown` — math is written before the gate.
+  - **Artifact wiring:** `Job.guide_quality_qa_gate_json`, `_write_guide_quality_qa_gate(job)` in `run_markdown_job.py` (after
+    contract lint + math verification; reads manifest + the four sibling artifacts via `_read_json_artifact`), exact-name
+    `_artifact_path` route → `application/json`. **Not** in ARTIFACTS / UI / exports. No UI added.
+  - **Validated:** new `test_guide_quality_qa_gate.py` (177) passes; Slice 102 + report-v2 + coverage tests re-run green; FE
+    build + `npm test` + verify scripts green (no FE change); `compileall` clean; Docker `smoke_release.py` **29/0/0**; **live
+    paste-job check** confirmed `guide_quality_qa_gate.json` written + exact-name fetchable (HTTP 200, `status:passed`,
+    `blocking:false`, counts-only, no leaks).
+  - **Out of scope/unchanged:** no LLM/provider/model/cloud call; no provider/model change; no new product features; no prompt
+    change (Slice 102 intact); no Chandra/Mistral/Gemini; no OCR/PDF/image inspection; no table reconstruction; no
+    render/export change; no figure-insertion / material-selection / visual-filter change; no Ask Guide change; no
+    auto-reject/regenerate; no direct `clean.md` write. Chandra remains blocked by its own live-validation gate. **Slice 103
+    is NOT committed.**
+
+### Previously (Slice 102, now trunk `815a0dc`)
+- **Slice 102 (Claude-quality guide prompt contract v1)** added `pipeline/guide_quality_prompt_contract.py` (core rules always
+  + 13-section structural contract for comprehensive/long guides) appended once as a `## Guide Quality Contract` block in
+  `run_llm_job.py`, plus the flag-only `pipeline/guide_quality_contract_lint.py` writing exact-name
+  `guide_quality_contract_lint.json`. Centralized (no preset/style body edits); leak-free; Ask Guide untouched.
 
 ### Previously (Slice 101, now trunk `89f8532`)
 - **Slice 101 (~100 MB attachment support)** raised the per-attachment ceiling to an env-tunable default (`GUIDEFORGE_MAX_ATTACHMENT_MB`,
