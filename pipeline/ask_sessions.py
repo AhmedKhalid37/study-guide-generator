@@ -21,7 +21,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Callable
 
-from pipeline import ask_context, ask_inventory
+from pipeline import ask_context, ask_coverage_grounding, ask_inventory
 from pipeline.ask_lexical import lexical_terms
 from pipeline.job_manager import JOBS_DIR, Job
 from pipeline.llm_client import LLMProviderError, MissingLLMConfigError, generate_chat_completion
@@ -521,11 +521,26 @@ For calculations or formulas, show steps and check the final answer.
 For exam advice, mark high-confidence points versus uncertain points."""
 
 
+# Slice 98: framing for the injected coverage grounding block. The grounding is
+# meta-context (closed counts/statuses about how the guide was built), never a
+# citable source and never course content.
+COVERAGE_GROUNDING_RULES = (
+    "The following material coverage summary is internal meta-context about how "
+    "this guide was built. Use it only to answer questions about coverage, "
+    "figures, tables, exclusions, and completeness, and answer those with the "
+    "counts and statuses below. It is not a citable source: do not cite it, do not "
+    "treat it as course content, and do not answer factual course questions from "
+    "it. If a figure or table is reported unavailable, say so rather than inventing "
+    "its contents."
+)
+
+
 def assemble_prompt(
     *,
     question: str,
     retrieved_chunks: list[dict[str, Any]],
     recent_history: list[dict[str, Any]],
+    coverage_grounding_text: str | None = None,
 ) -> tuple[list[dict[str, str]], list[str], list[dict[str, Any]]]:
     citation_labels: list[str] = []
     metadata: list[dict[str, Any]] = []
@@ -549,10 +564,25 @@ def assemble_prompt(
         used_history_tokens += tokens
         recent_lines.append(f"{role}: {content}")
 
+    # Slice 98: inject the sanitized Ask coverage grounding (meta-context about how
+    # the guide was built) into the model-facing system preamble only. It is NOT a
+    # citable source — it carries no chunk text and no citation label — so it never
+    # widens the citation contract, and course-content answers still come from the
+    # retrieved guide/source chunks below.
+    grounding_block = ""
+    if isinstance(coverage_grounding_text, str) and coverage_grounding_text.strip():
+        grounding_block = (
+            "\n\n"
+            + COVERAGE_GROUNDING_RULES
+            + "\n\n"
+            + coverage_grounding_text.strip()
+        )
+
     system = (
         f"{ANSWER_RULES}\n\n"
         "Available citation labels for this turn:\n"
         + ("\n".join(f"- {label}" for label in citation_labels) if citation_labels else "- none")
+        + grounding_block
     )
     # Local thinking-style llama-server models may otherwise spend the whole Ask
     # response budget in hidden reasoning. This marker is model-facing only; it is
@@ -614,6 +644,49 @@ def _provider_error_response(
         "local_model": safe_status,
         "error": {"category": category, "message": _redact_text(message)},
     }
+
+
+def _read_artifact_json(path: Path) -> dict[str, Any] | None:
+    """Read a sanitized exact-name coverage artifact, or ``None`` if absent/corrupt.
+
+    Total: never raises. The artifacts are produced by the Slice 84/92/96 writers
+    and are already sanitized (closed counts/statuses only); this is just a safe
+    read-only loader so a missing or malformed artifact degrades to no grounding.
+    """
+    try:
+        if not path.exists() or not path.is_file():
+            return None
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return None
+    return data if isinstance(data, dict) else None
+
+
+def build_coverage_grounding_for_job(job: Job) -> dict[str, Any]:
+    """Build the sanitized Ask coverage grounding dict for ``job`` (total/safe).
+
+    Reads the job's safe page-selection fields from the manifest plus the five
+    already-sanitized exact-name coverage artifacts, then delegates to the pure
+    :func:`pipeline.ask_coverage_grounding.build_ask_coverage_grounding`. Never
+    raises; on any read error the underlying builder degrades to a ``skipped``
+    grounding with an empty ``grounding_text``.
+    """
+    try:
+        manifest = job.read_manifest()
+    except Exception:
+        manifest = {}
+    job_fields = {
+        "material_page_selection": manifest.get("material_page_selection"),
+        "material_page_selections": manifest.get("material_page_selections"),
+    }
+    return ask_coverage_grounding.build_ask_coverage_grounding(
+        job=job_fields,
+        source_coverage_report=_read_artifact_json(job.source_coverage_report_json),
+        visual_inclusion_plan=_read_artifact_json(job.visual_inclusion_plan_json),
+        table_candidates_manifest=_read_artifact_json(job.table_candidates_manifest_json),
+        table_reconstruction_policy=_read_artifact_json(job.table_reconstruction_policy_json),
+        guide_quality_report_v2=_read_artifact_json(job.guide_quality_report_v2_json),
+    )
 
 
 def answer_message(
@@ -688,8 +761,16 @@ def answer_message(
     query = " ".join([item.get("content", "") for item in recent_history[-2:] if item.get("role") == "user"])
     query = f"{query} {question}".strip()
     retrieved = retrieve_chunks(index, query)
+    # Slice 98: sanitized coverage grounding (meta-context only). Total/degrade-safe;
+    # an absent/skipped grounding yields an empty string and leaves the prompt
+    # unchanged. Never a citable source — injected into the system preamble only.
+    grounding = build_coverage_grounding_for_job(job)
+    coverage_grounding_text = grounding.get("grounding_text") if isinstance(grounding, dict) else ""
     messages, citation_labels, chunk_meta = assemble_prompt(
-        question=question, retrieved_chunks=retrieved, recent_history=recent_history
+        question=question,
+        retrieved_chunks=retrieved,
+        recent_history=recent_history,
+        coverage_grounding_text=coverage_grounding_text,
     )
 
     try:

@@ -6,37 +6,51 @@
 > stable overview see `PROJECT_CONTEXT.md`; canonical brief is `../CLAUDE.md`.
 
 ## Current position
-- **Working tree:** **Slice 97 (JobDetails Material Coverage final panel) — UNCOMMITTED (per instruction)** on branch
-  `slice97-jobdetails-material-coverage-final-panel` (branched from fresh trunk after Slice 96 was committed/merged/pushed).
-  **Slice 96 is now trunk commit `2fc6d95`** (added `guide_quality_report_v2.json`).
-  - **Purpose:** upgrade the existing JobDetails "Material Coverage" tab into the final read-only coverage dashboard for
-    this phase. It shows a safe view: material selections, source coverage, visual planning/insertion signals, table
-    candidate/policy signals, missing-material guidance, and guide quality report v2 checks. **Frontend display slice
-    only** — counts/statuses/checks only, no backend generation change.
-  - **It reads safe exact-name artifacts only:** `source_coverage_report.json`, `visual_inclusion_plan.json`,
-    `table_candidates_manifest.json`, `table_reconstruction_policy.json`, `guide_quality_report_v2.json` (each fetched
-    independently; 404 = "Not available", non-404/network/non-JSON = calm "Unavailable", raw error/URL never surfaced,
-    older jobs still render). It does **not** expose source text, table text, captions, OCR, filenames, paths, image refs,
-    or asset refs.
-  - **It does NOT** change backend extraction/OCR, inspect PDFs/images, reconstruct tables, add table text extraction,
-    change prompts, change render/export, change figure insertion semantics, change material page-selection logic, change
-    visual-manifest filtering, add UI controls beyond read-only display, or add/call any provider/model/cloud (no
-    Chandra/Mistral/Gemini). No backend route added — the exact-name route already exists via `_artifact_path`.
-  - **New helpers (`frontend/src/materialCoverageDisplay.js`):** `summarizeTableCandidatesManifest`,
-    `summarizeTableReconstructionPolicy`, `summarizeGuideQualityReportV2`, and composite
-    `buildMaterialCoverageFinalModel({ job, sourceCoverageReport, visualInclusionPlan, tableCandidatesManifest,
-    tableReconstructionPolicy, guideQualityReportV2 })`. Slice 88 `buildMaterialCoverageDisplayModel` preserved (the final
-    builder extends it). All helpers tolerate missing/malformed input, never throw, emit closed status/check tokens +
-    non-negative int counts only, surface no raw artifact warnings/source detail/refs/URLs/errors, never surface the
-    report's `instruction`/`check_id`, and are deterministic.
-  - **UI:** `MaterialCoveragePanel.jsx` fetches the three new artifacts + builds the final model + renders 7 sections
-    (selections / source coverage / figures & diagrams / tables / missing material / guide quality v2 / fixed exact-name
-    artifact links), keeping the Slice 89 "what this means" notes. `RecentJobsPanel.jsx` unchanged (tab already wired).
-    Layout-only CSS added (`.sg-artifact-links`, `.sg-artifact-link-row`, `.sg-coverage-checks`). Honest copy: "Full
-    insertion may be off for older/default jobs…", "Tables are not inserted as screenshots…", screenshot-insert shows
-    "Not used" (always 0), "This is deterministic signal checking, not semantic grading."
-  - **Tests:** new `frontend/scripts/verify-material-coverage-final-panel.mjs` (in `npm test`); reran the three older
-    material-coverage scripts. **Slice 97 is NOT committed.** Chandra remains blocked by its own live-validation gate.
+- **Working tree:** **Slice 98 (Ask Guide coverage grounding upgrade) — UNCOMMITTED (per instruction)** on branch
+  `slice98-ask-guide-coverage-grounding` (branched from fresh trunk after Slice 97 was committed/merged/pushed).
+  **Slice 97 is now trunk commit `e6e91df`** (finalized the JobDetails Material Coverage panel).
+  - **Purpose:** make **Ask Your Guide** aware of the same safe coverage signals the guide + JobDetails already use, so a
+    user can ask coverage/meta questions ("were any pages excluded?", "did the guide include all figures?", "were tables
+    reconstructed?", "why is a diagram missing?", "can I trust the coverage?") and get honest, closed answers. **Ask Guide
+    grounding/context slice — counts/statuses only**; course content still comes from the guide/source chunks + citations.
+  - **New pure module `pipeline/ask_coverage_grounding.py`** (stdlib-only; imports nothing from `pipeline`, no
+    provider/model/OCR/renderer/FastAPI/frontend): `build_ask_coverage_grounding(*, job, source_coverage_report,
+    visual_inclusion_plan, table_candidates_manifest, table_reconstruction_policy, guide_quality_report_v2, max_items)` →
+    `{version, kind:"ask_coverage_grounding", status, summary, grounding_text, items, warnings}`. Reads inputs for
+    decisions only (never echoes a raw field), emits only closed tokens / ints / `None` / bools / fixed strings +
+    `ask_grounding_NNNN` ids, degrades to `skipped` on malformed/missing input, never raises. Item kinds:
+    `material_selection`, `source_coverage`, `visual_coverage`, `table_policy`, `missing_material`, `guide_quality`.
+  - **It reads safe exact-name artifacts + safe job page-selection fields only:** `source_coverage_report.json`,
+    `visual_inclusion_plan.json`, `table_candidates_manifest.json`, `table_reconstruction_policy.json`,
+    `guide_quality_report_v2.json`, plus the job manifest's `material_page_selection` / `material_page_selections`. It does
+    **not** expose source text, table text, captions, OCR, filenames, paths, image refs, asset refs, raw artifact
+    warnings, raw URLs, or raw errors.
+  - **Integration = Ask Guide model-facing context preamble (not an indexed/citable chunk).** In
+    `pipeline/ask_sessions.py`: `build_coverage_grounding_for_job(job)` (reads manifest selection fields + the five
+    artifacts via a total/degrade-safe `_read_artifact_json`) → pure builder; `answer_message` threads
+    `coverage_grounding_text` into `assemble_prompt`, which injects it into the **system** message after `ANSWER_RULES` +
+    the citation-label list, framed by a new `COVERAGE_GROUNDING_RULES` ("internal meta-context, not citable, not course
+    content"). No chunk text / citation label added → citation contract unchanged; absent/skipped grounding → empty string
+    → prompt byte-identical.
+  - **It does NOT** change backend extraction/OCR, inspect PDFs/images/OCR, reconstruct tables, add table text extraction,
+    change render/export, change figure insertion semantics, change material page-selection logic, change visual-manifest
+    filtering, change providers/models, add UI (no copy/status tweak was needed), or add/call any provider/model/cloud (no
+    Chandra/Mistral/Gemini). **Preserved:** direct-answer guard, empty-response guard, `/no_think` (model-facing only),
+    citation rules/validation. No direct `clean.md` write. Chandra remains blocked by its own live-validation gate.
+  - **Tests:** new `test_scripts/test_ask_coverage_grounding.py` (synthetic dicts; missing/empty → skipped, malformed →
+    safe degrade, per-signal summaries, count coercion, `max_items`→partial, deterministic ids, deep-walk no-leak sweep,
+    hostile status not echoed, stdlib-only purity guard, + a guarded `ask_sessions` integration section). Reran the
+    existing ask suite (`test_ask_context_inventory`, `test_ask_context_prepare`, `test_ask_lexical_hygiene`,
+    `test_ask_local_chat`, `test_ask_retrieval_relevance`) + the coverage-artifact regressions. **Slice 98 is NOT
+    committed.**
+
+### Previously (Slice 97, now trunk `e6e91df`)
+- **Slice 97 (JobDetails Material Coverage final panel)** upgraded the JobDetails "Material Coverage" tab into the final
+  read-only coverage dashboard: new helpers in `frontend/src/materialCoverageDisplay.js`
+  (`summarizeTableCandidatesManifest`, `summarizeTableReconstructionPolicy`, `summarizeGuideQualityReportV2`, composite
+  `buildMaterialCoverageFinalModel`), `MaterialCoveragePanel.jsx` rendering 7 safe sections (selections / source coverage /
+  figures & diagrams / tables / missing material / guide quality v2 / fixed exact-name artifact links), new verify script
+  `verify-material-coverage-final-panel.mjs`. Frontend display only, counts/statuses/checks, no backend generation change.
 
 ### Previously (Slice 96, now trunk `2fc6d95`)
 - **Slice 96 (Guide quality report v2)** added a deterministic, sanitized `guide_quality_report_v2.json` (new

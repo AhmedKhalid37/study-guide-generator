@@ -4365,3 +4365,40 @@ re-plan, toggle insertion) would reach back into generation/render behaviour tha
 and would turn a safe inspection view into a mutation path. Keeping it read-only display-only means Slice 97 changes
 nothing about extraction, OCR, visual filtering/planning, table policy, figure insertion, rendering, exports, prompts, or
 providers — it only shows what already happened. Chandra remains blocked by its own live-validation gate.
+
+---
+
+## Slice 98 — Ask Guide coverage grounding upgrade
+
+**Why Ask Guide needs coverage grounding after the JobDetails final panel.** Slices 82–97 made the generated guide and the
+JobDetails panel coverage-aware, but Ask Your Guide still answered only from `clean.md` (and optional source) chunks. A
+user can reasonably ask Ask Guide meta questions — "were any pages excluded?", "did the guide include all figures?", "were
+tables reconstructed?", "why is a diagram missing?", "can I trust the coverage?" — that the guide chunks alone cannot
+answer honestly, because the coverage facts live in the sibling artifacts, not in the prose. Slice 98 closes that gap by
+giving the local answer model the same safe coverage signals (counts/statuses) it already shows in JobDetails, so coverage
+answers are grounded in the deterministic artifacts instead of being guessed from prose or refused.
+
+**Why coverage grounding is meta-context, not course-content evidence.** The grounding describes *how the guide was built*
+(which pages were included/excluded, how many source pages were unreadable, how many visuals were planned vs. observed, how
+many table candidates/policy actions exist, how many missing-material notes and quality warnings there are) — it is not
+itself course content and carries no source text. It is therefore injected into the model-facing **system preamble**, not
+added to the lexical/context index, and is explicitly marked "not a citable source, not course content." If it were an
+indexed/citable chunk it could be retrieved in place of real content and cited as if it were the user's material, widening
+the citation contract and letting a coverage sentence masquerade as an answer. Keeping it out of the index preserves the
+existing citation behaviour exactly: course answers still come from guide/source chunks with their real citation labels.
+
+**Why unavailable visuals/tables must not be guessed.** The grounding repeatedly tells the model that tables are not
+screenshots (a table may be reconstructed only from available source text, never invented), that figure labels/captions
+must not be invented, and that an unavailable diagram or table should be reported as unavailable rather than fabricated.
+This mirrors the generation-side coverage rules (Slices 93–95) so Ask Guide cannot "helpfully" hallucinate a missing figure
+or table when a user asks about it — the honest answer ("it was not included / could not be reconstructed") is the correct
+one, and the grounding makes that the modelled behaviour.
+
+**Why raw artifacts are summarised before entering Ask Guide context.** The five exact-name artifacts are sanitized at
+write time, but the grounding builder re-guards anyway: it reads each artifact and the job's page-selection fields **for
+decisions only** and emits a closed structure (fixed tokens, non-negative ints, `None`, bools, fixed instruction strings,
+and `ask_grounding_NNNN` ids) plus a `grounding_text` built only from those — never a raw field, status string, warning,
+filename, path, caption, table text, OCR text, image/asset ref, URL, token, or exception. Anything entering the local
+model's prompt is a leakage surface (it can be echoed back into a chat answer and saved to history), so summarising to
+counts/statuses keeps the injected context provably leak-safe and stable across future artifact revisions, while still
+answering the coverage/meta questions the user actually asks. Chandra remains blocked by its own live-validation gate.

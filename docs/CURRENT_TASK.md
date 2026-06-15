@@ -5,7 +5,53 @@
 
 ---
 
-## Slice 97 — **JobDetails Material Coverage final panel**, on `slice97-jobdetails-material-coverage-final-panel`. **NOT COMMITTED.**
+## Slice 98 — **Ask Guide coverage grounding upgrade**, on `slice98-ask-guide-coverage-grounding`. **NOT COMMITTED.**
+
+- **Slice 97 was committed `e6e91df`, fast-forward merged, and pushed to trunk on `chrome-renderer-v1`** (it finalized the
+  JobDetails Material Coverage panel). Slice 98 branches from that fresh trunk.
+- **Goal:** make **Ask Your Guide** aware of the same safe coverage signals that Slices 82–97 gave the guide + JobDetails.
+  When a user asks Ask Guide a coverage/meta question ("were any pages excluded?", "did the guide include all figures?",
+  "were tables reconstructed?", "why is a diagram missing?", "can I trust the coverage?"), the local answer model now has a
+  short, sanitized **coverage grounding** block in its context, derived from the already-sanitized exact-name artifacts +
+  the job's safe page-selection fields. **Counts/statuses only.** Course content still comes from the guide/source chunks.
+- **New pure module `pipeline/ask_coverage_grounding.py`** — stdlib-only, imports nothing from `pipeline` and no
+  provider/model/OCR/renderer/FastAPI/frontend. `build_ask_coverage_grounding(*, job, source_coverage_report,
+  visual_inclusion_plan, table_candidates_manifest, table_reconstruction_policy, guide_quality_report_v2, max_items)`
+  returns `{version, kind:"ask_coverage_grounding", status (completed/partial/skipped), summary, grounding_text, items,
+  warnings}`. It reads every input **for decisions only** (never echoes a raw field), emits only closed tokens / ints /
+  `None` / bools / fixed instruction strings + `ask_grounding_NNNN` item ids, degrades to a safe `skipped` on any
+  malformed/missing input, and never raises. `summary` carries `has_material_page_selections`, `source_count`,
+  `unreadable_page_count`, `planned_visual_count`, `observed_safe_figure_ref_count`, `table_candidate_count`,
+  `table_policy_item_count`, `missing_material_signal_count`, `quality_warning_count`, `grounding_item_count`.
+- **Closed signal item kinds:** `material_selection`, `source_coverage`, `visual_coverage`, `table_policy`,
+  `missing_material`, `guide_quality`. The `grounding_text` always opens with a meta-context disclaimer ("not course
+  content"; use only for coverage/figure/table/completeness questions; not a citable source) and closes with "these are
+  deterministic signal checks, not semantic proof" + "do not invent figure/table details; if unavailable, say so."
+- **Integration point = Ask Guide model-facing context preamble (not an indexed/citable chunk).** In
+  `pipeline/ask_sessions.py`: `build_coverage_grounding_for_job(job)` reads the job manifest's `material_page_selection` /
+  `material_page_selections` + the five exact-name artifacts (via a total/degrade-safe `_read_artifact_json`) and calls the
+  pure builder; `answer_message` calls it and threads `coverage_grounding_text` into `assemble_prompt`, which injects it
+  into the **system** message after the existing `ANSWER_RULES` + citation-label list, framed by a new
+  `COVERAGE_GROUNDING_RULES` constant that states it is internal meta-context, not citable, not course content. The
+  grounding is **not** added to the lexical/context index and carries no chunk text or citation label, so the citation
+  contract is unchanged. An absent/skipped grounding yields an empty string → the prompt is byte-identical to before.
+- **Preserved:** the direct-answer guard (`Answer directly in normal assistant content.`), the empty-response guard
+  (`provider_empty_response`), `/no_think` (`LOCAL_THINKING_MODEL_CONTROL`, model-facing in the user message only), and all
+  citation rules/validation. No provider/model/cloud call, no figure-insertion / material-selection / visual-filter /
+  render / export change, no table reconstruction, no PDF/image/OCR inspection, no direct `clean.md` write. Chandra remains
+  blocked by its own live-validation gate.
+- **Tests:** new `test_scripts/test_ask_coverage_grounding.py` (synthetic dicts only) — missing/empty → skipped; malformed
+  → safe degrade with closed warnings; per-signal summaries (selection active/inactive, source coverage, visual planned +
+  observed safe figure refs, table candidate/policy, missing-material, guide-quality warnings); count coercion; `max_items`
+  ceiling → partial; deterministic ids/serialization; a deep-walk no-leak sweep (no filename/path/title/text/OCR/caption/
+  table-text/image-ref/asset-ref/base64/data-URI/URL/token/argv/socket/model-path/raw-exception); hostile status not
+  echoed; stdlib-only purity guard; and a guarded `ask_sessions` integration section (grounding injected into system, not a
+  citation label, `/no_think` + direct-answer + citation contract preserved, empty grounding → no block). Reran the
+  existing ask suite + the coverage-artifact regressions. **Slice 98 is NOT committed.**
+
+---
+
+## Slice 97 — **JobDetails Material Coverage final panel**, on `slice97-jobdetails-material-coverage-final-panel`. **COMMITTED `e6e91df` → trunk `chrome-renderer-v1`.**
 
 - **Upgrades the existing JobDetails "Material Coverage" tab into the final read-only coverage dashboard for the current
   material-coverage phase.** Slice 96 was committed `2fc6d95`, fast-forward merged, and pushed to trunk on
