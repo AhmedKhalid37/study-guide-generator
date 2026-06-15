@@ -22,13 +22,34 @@
 
 export const SOURCE_COVERAGE_ARTIFACT = "source_coverage_report.json";
 export const VISUAL_INCLUSION_PLAN_ARTIFACT = "visual_inclusion_plan.json";
+// Slice 97 — exact-name artifacts surfaced in the final Material Coverage panel.
+export const TABLE_CANDIDATES_MANIFEST_ARTIFACT = "table_candidates_manifest.json";
+export const TABLE_RECONSTRUCTION_POLICY_ARTIFACT = "table_reconstruction_policy.json";
+export const GUIDE_QUALITY_REPORT_V2_ARTIFACT = "guide_quality_report_v2.json";
 
 const SOURCE_COVERAGE_KIND = "source_coverage_report";
 const VISUAL_INCLUSION_PLAN_KIND = "visual_inclusion_plan";
+const TABLE_CANDIDATES_KIND = "table_candidates_manifest";
+const TABLE_POLICY_KIND = "table_reconstruction_policy";
+const GUIDE_QUALITY_KIND = "guide_quality_report";
 
 // Closed status vocabularies. Anything else degrades to "unknown".
 const COVERAGE_STATUSES = new Set(["completed", "partial", "skipped", "unreadable", "unknown"]);
 const PLAN_STATUSES = new Set(["completed", "partial", "skipped", "unknown"]);
+const TABLE_STATUSES = new Set(["completed", "partial", "skipped", "unknown"]);
+const REPORT_STATUSES = new Set(["completed", "partial", "skipped", "unknown"]);
+// Per-check status vocabulary owned by guide_quality_report_v2.
+const CHECK_STATUSES = new Set(["passed", "warning", "not_applicable", "unknown"]);
+
+// Closed set of guide-quality check kinds (fixed emission order in the report). Any
+// other kind in the report is ignored; an absent kind degrades to "unknown".
+const GUIDE_QUALITY_CHECK_KINDS = [
+  "source_pages",
+  "visuals",
+  "tables",
+  "missing_material",
+  "coverage",
+];
 
 // Safe positional attachment key: "attachment_<index>" only. The backend envelope
 // already strips filenames/paths/titles, but we re-guard here so a hostile key can
@@ -213,6 +234,180 @@ export function buildMaterialCoverageDisplayModel({
     artifacts: {
       sourceCoverageReportAvailable: Boolean(sourceCoverageReport),
       visualInclusionPlanAvailable: Boolean(visualInclusionPlan),
+    },
+  };
+}
+
+// --- Table candidates manifest (Slice 92 artifact) -------------------------
+//
+// Reads the already-sanitized table_candidates_manifest.json for COUNTS ONLY. The
+// manifest never carries table text / captions / source detail, but we re-guard
+// here: only closed status tokens and non-negative integer counts ride out, and a
+// wrong/missing kind degrades to a safe "malformed" view.
+export function summarizeTableCandidatesManifest(manifest) {
+  if (!isRecord(manifest) || manifest.kind !== TABLE_CANDIDATES_KIND) {
+    return {
+      state: "malformed",
+      status: "unknown",
+      tone: "warn",
+      sourceCount: 0,
+      candidateCount: 0,
+      tableLikeCandidateCount: 0,
+      skippedNonTableCount: 0,
+      unsafeOrIncompleteSkippedCount: 0,
+      pagesWithTableCandidates: 0,
+    };
+  }
+  const status = safeStatus(manifest.status, TABLE_STATUSES);
+  const summary = isRecord(manifest.summary) ? manifest.summary : {};
+  return {
+    state: status === "skipped" ? "skipped" : "available",
+    status,
+    tone: statusTone(status),
+    sourceCount: nonNegativeInteger(summary.source_count),
+    candidateCount: nonNegativeInteger(summary.candidate_count),
+    tableLikeCandidateCount: nonNegativeInteger(summary.table_like_candidate_count),
+    skippedNonTableCount: nonNegativeInteger(summary.skipped_non_table_count),
+    unsafeOrIncompleteSkippedCount: nonNegativeInteger(summary.unsafe_or_incomplete_skipped_count),
+    pagesWithTableCandidates: nonNegativeInteger(summary.page_count_with_table_candidates),
+  };
+}
+
+// --- Table reconstruction policy (Slice 92 artifact) -----------------------
+//
+// Reads the already-sanitized table_reconstruction_policy.json for COUNTS ONLY. The
+// policy never inserts a table as a screenshot, so `screenshotInsertCount` is always
+// 0 by construction; we surface it so the panel can prove "not used".
+export function summarizeTableReconstructionPolicy(policy) {
+  if (!isRecord(policy) || policy.kind !== TABLE_POLICY_KIND) {
+    return {
+      state: "malformed",
+      status: "unknown",
+      tone: "warn",
+      candidateCount: 0,
+      policyItemCount: 0,
+      reconstructWithOriginalCount: 0,
+      simplifyOnlyCount: 0,
+      deferCount: 0,
+      skipUnreadableCount: 0,
+      skipUnsafeCount: 0,
+      screenshotInsertCount: 0,
+    };
+  }
+  const status = safeStatus(policy.status, TABLE_STATUSES);
+  const summary = isRecord(policy.summary) ? policy.summary : {};
+  return {
+    state: status === "skipped" ? "skipped" : "available",
+    status,
+    tone: statusTone(status),
+    candidateCount: nonNegativeInteger(summary.candidate_count),
+    policyItemCount: nonNegativeInteger(summary.policy_item_count),
+    reconstructWithOriginalCount: nonNegativeInteger(summary.reconstruct_with_original_count),
+    simplifyOnlyCount: nonNegativeInteger(summary.simplify_only_count),
+    deferCount: nonNegativeInteger(summary.defer_count),
+    skipUnreadableCount: nonNegativeInteger(summary.skip_unreadable_count),
+    skipUnsafeCount: nonNegativeInteger(summary.skip_unsafe_count),
+    // Always 0 by policy design; re-clamped here so a tampered value cannot show > 0.
+    screenshotInsertCount: nonNegativeInteger(summary.screenshot_insert_count),
+  };
+}
+
+// --- Guide quality report v2 (Slice 96 artifact) ---------------------------
+//
+// Reads the already-sanitized guide_quality_report_v2.json. This is the final
+// observable signal for missing-material and coverage-aware behaviour. It emits only
+// closed report/check status tokens and non-negative integer counts — the report's
+// own `instruction` strings and `check_id`s are NOT surfaced (counts/statuses only).
+// `safeImageRefCount` is the observed figure-ref count the report measured in the
+// generated guide; we never expose the refs themselves.
+export function summarizeGuideQualityReportV2(report) {
+  const blankChecks = () => {
+    const out = {};
+    for (const kind of GUIDE_QUALITY_CHECK_KINDS) out[kind] = "unknown";
+    return out;
+  };
+  if (!isRecord(report) || report.kind !== GUIDE_QUALITY_KIND) {
+    return {
+      state: "malformed",
+      status: "unknown",
+      tone: "warn",
+      guidePresent: false,
+      warningCount: 0,
+      sourcePageSignalCount: 0,
+      safeImageRefCount: 0,
+      plannedVisualCount: 0,
+      tableCandidateCount: 0,
+      tablePolicyItemCount: 0,
+      missingMaterialItemCount: 0,
+      coverageSignalCount: 0,
+      checks: blankChecks(),
+    };
+  }
+  const status = safeStatus(report.status, REPORT_STATUSES);
+  const summary = isRecord(report.summary) ? report.summary : {};
+  const checks = blankChecks();
+  if (Array.isArray(report.checks)) {
+    for (const entry of report.checks) {
+      if (!isRecord(entry)) continue;
+      const kind = typeof entry.kind === "string" ? entry.kind.trim().toLowerCase() : "";
+      if (Object.prototype.hasOwnProperty.call(checks, kind)) {
+        checks[kind] = safeStatus(entry.status, CHECK_STATUSES);
+      }
+    }
+  }
+  return {
+    state: status === "skipped" ? "skipped" : "available",
+    status,
+    tone: statusTone(status),
+    guidePresent: summary.guide_present === true,
+    warningCount: nonNegativeInteger(summary.warning_count),
+    sourcePageSignalCount: nonNegativeInteger(summary.source_page_signal_count),
+    safeImageRefCount: nonNegativeInteger(summary.safe_image_ref_count),
+    plannedVisualCount: nonNegativeInteger(summary.planned_visual_count),
+    tableCandidateCount: nonNegativeInteger(summary.table_candidate_count),
+    tablePolicyItemCount: nonNegativeInteger(summary.table_policy_item_count),
+    missingMaterialItemCount: nonNegativeInteger(summary.missing_material_item_count),
+    coverageSignalCount: nonNegativeInteger(summary.coverage_signal_count),
+    checks,
+  };
+}
+
+// --- Composite FINAL display model (Slice 97) ------------------------------
+//
+// Extends the Slice 88 model with the table candidate/policy and guide-quality
+// summaries so JobDetails can render the final read-only coverage dashboard. Each
+// new artifact may be null (not fetched yet, 404, or unavailable) — in that case the
+// section reports a calm "unavailable" state and is never treated as an error. The
+// Slice 88 `tablePolicy` static note is preserved for backward compatibility.
+export function buildMaterialCoverageFinalModel({
+  job = null,
+  sourceCoverageReport = null,
+  visualInclusionPlan = null,
+  tableCandidatesManifest = null,
+  tableReconstructionPolicy = null,
+  guideQualityReportV2 = null,
+} = {}) {
+  const base = buildMaterialCoverageDisplayModel({
+    job,
+    sourceCoverageReport,
+    visualInclusionPlan,
+  });
+  return {
+    ...base,
+    tableCandidates: tableCandidatesManifest
+      ? summarizeTableCandidatesManifest(tableCandidatesManifest)
+      : { state: "unavailable", status: "unavailable", tone: "neutral" },
+    tableReconstructionPolicy: tableReconstructionPolicy
+      ? summarizeTableReconstructionPolicy(tableReconstructionPolicy)
+      : { state: "unavailable", status: "unavailable", tone: "neutral" },
+    guideQuality: guideQualityReportV2
+      ? summarizeGuideQualityReportV2(guideQualityReportV2)
+      : { state: "unavailable", status: "unavailable", tone: "neutral" },
+    artifacts: {
+      ...base.artifacts,
+      tableCandidatesManifestAvailable: Boolean(tableCandidatesManifest),
+      tableReconstructionPolicyAvailable: Boolean(tableReconstructionPolicy),
+      guideQualityReportV2Available: Boolean(guideQualityReportV2),
     },
   };
 }

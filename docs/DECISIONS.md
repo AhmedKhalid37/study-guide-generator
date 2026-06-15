@@ -4331,3 +4331,37 @@ the Builder result panel / JobDetails / exports would add display + serializatio
 to present "warning" vs "passed" honestly) for no current need. Keeping it exact-name-only lets the signal exist and be
 inspected now, while a later slice can deliberately design any UI presentation if a need appears. Chandra remains blocked
 by its own live-validation gate.
+
+## Slice 97 — JobDetails Material Coverage becomes the final read-only panel for this phase (2026-06-15)
+Slices 87–96 built the backend material-coverage foundation (material page selections, source coverage, the non-table
+visual inclusion plan, table candidate/policy artifacts, missing-material guidance, the coverage-aware generation prompt,
+and finally the `guide_quality_report_v2.json` measurement). Slice 97 closes the phase on the **display** side: it upgrades
+the existing Slice 88/89 JobDetails "Material Coverage" tab into the final read-only dashboard that summarises all of those
+safe exact-name artifacts in one place. Slice 96 was committed `2fc6d95`, fast-forward merged, and pushed to trunk first.
+
+**Why the final panel follows guide quality report v2.** The guide quality report is the last and most synthesised signal
+in the chain: it already reconciles the per-dimension coverage artifacts against what the generated guide actually shows
+(observed figure refs, page signals, guidance phrases). Building the JobDetails panel *after* it means the panel can use
+the report as the single observable read-out for the missing-material and coverage-aware behaviour (which are otherwise
+in-memory prompt contexts with no persisted artifact), instead of re-deriving those signals in the frontend. The panel
+therefore presents the same closed checks the report computed rather than inventing a parallel scoring scheme.
+
+**Why exact-name artifacts are summarised rather than raw-displayed.** Each artifact is sanitized at write time, but the
+frontend still re-guards: the new `summarize*` helpers read each artifact for closed status tokens and non-negative integer
+counts only, and the composite `buildMaterialCoverageFinalModel` emits a view model with no raw artifact warning text, no
+filenames/paths, no table text/captions/OCR, no image/asset refs, no raw URLs/errors, and crucially **not** the guide
+quality report's per-check `instruction` strings or `check_id`s. Raw-displaying an artifact would couple the UI to internal
+field shapes and risk echoing any future field that carries source-derived text; summarising to counts/statuses keeps the
+display provably leak-safe and stable across artifact revisions.
+
+**Why missing older-job artifacts are calm "unavailable" states.** Older jobs (and non-PDF / no-material jobs) never wrote
+these artifacts, so a 404 is the normal case, not an error. Each artifact is fetched on an independent lifecycle and a 404
+maps to "Not available" while a network/non-JSON failure maps to a calm "Unavailable" — the panel always renders, never
+blocks on one missing artifact, and never surfaces a raw error or URL. This keeps the dashboard honest for the whole job
+history rather than only for jobs generated after this phase.
+
+**Why the UI stays read-only.** The panel is a diagnostic surface, not a control surface. Adding controls (re-run,
+re-plan, toggle insertion) would reach back into generation/render behaviour that this phase deliberately did not change,
+and would turn a safe inspection view into a mutation path. Keeping it read-only display-only means Slice 97 changes
+nothing about extraction, OCR, visual filtering/planning, table policy, figure insertion, rendering, exports, prompts, or
+providers — it only shows what already happened. Chandra remains blocked by its own live-validation gate.

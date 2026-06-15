@@ -3204,6 +3204,13 @@ details.sg-mdl-helper > summary::-webkit-details-marker { display: none; }
 .sg-artifact-link:hover { text-decoration: underline; }
 .sg-artifact-link svg { flex: none; }
 
+/* Slice 97: final Material Coverage panel — fixed exact-name artifact link rows +
+   guide-quality check chips. Layout only; no per-job source detail rides through. */
+.sg-artifact-links { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
+.sg-artifact-link-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; font-size: 12.5px; }
+.sg-artifact-link-label { color: var(--text-dim); }
+.sg-coverage-checks { display: flex; flex-wrap: wrap; gap: 6px; }
+
 /* scrollable code / log / markdown block */
 .sg-pre {
   max-height: 280px; overflow: auto; margin: 0;

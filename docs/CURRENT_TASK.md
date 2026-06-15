@@ -5,7 +5,50 @@
 
 ---
 
-## Slice 96 — **Guide quality report v2**, on `slice96-guide-quality-report-v2`. **NOT COMMITTED.**
+## Slice 97 — **JobDetails Material Coverage final panel**, on `slice97-jobdetails-material-coverage-final-panel`. **NOT COMMITTED.**
+
+- **Upgrades the existing JobDetails "Material Coverage" tab into the final read-only coverage dashboard for the current
+  material-coverage phase.** Slice 96 was committed `2fc6d95`, fast-forward merged, and pushed to trunk on
+  `chrome-renderer-v1` (it added `guide_quality_report_v2.json`). Slice 97 is a **frontend display slice only**: it reads
+  safe **exact-name** artifacts and shows counts/statuses/checks. It changes no backend generation behavior.
+- **It does NOT** change backend extraction/OCR, inspect PDFs/images, reconstruct tables, add table text extraction,
+  change prompts, change render/export, change figure insertion semantics, change material page-selection logic, change
+  visual-manifest filtering, add provider/model/cloud code, or call Chandra/Mistral/Gemini. Chandra remains blocked by its
+  own live-validation gate. No backend route was added (the exact-name route already exists via `_artifact_path`).
+- **Artifacts fetched (exact-name, independent fetch lifecycle each):** `source_coverage_report.json`,
+  `visual_inclusion_plan.json`, `table_candidates_manifest.json`, `table_reconstruction_policy.json`,
+  `guide_quality_report_v2.json`. A 404 = "Not available"; any non-404/network/non-JSON = calm "Unavailable"; raw error
+  text / raw URL is never surfaced; older jobs with missing artifacts still render the panel.
+- **Panel sections (counts/statuses only):** (1) Material selections — active/inactive + attachments-with-exclusions +
+  global selection; (2) Source coverage — sources / total / covered / embedded-text / OCR / unreadable; (3) Figures and
+  diagrams — planned non-table count + observed safe figure-ref count (from `guide_quality_report_v2`) + visual check
+  status, with honest "full insertion may be off for older/default jobs" copy; (4) Tables — table-candidate count + policy
+  item count + reconstruct/simplify/defer/unreadable/unsafe counts + screenshot-insert shown as "Not used" (always 0),
+  with "tables are not inserted as screenshots" copy; (5) Missing material — missing-material check status + item count;
+  (6) Guide quality v2 — report status + per-check (source_pages/visuals/tables/missing_material/coverage) statuses +
+  warning count + "deterministic signal checking, not semantic grading" copy; (7) Artifacts — fixed exact-name links only
+  (calm "Not available" when missing). Slice 89 "what this means" notes retained.
+- **Helper changes (`frontend/src/materialCoverageDisplay.js`):** new `summarizeTableCandidatesManifest(manifest)`,
+  `summarizeTableReconstructionPolicy(policy)`, `summarizeGuideQualityReportV2(report)`, and composite
+  `buildMaterialCoverageFinalModel({ job, sourceCoverageReport, visualInclusionPlan, tableCandidatesManifest,
+  tableReconstructionPolicy, guideQualityReportV2 })`. The Slice 88 `buildMaterialCoverageDisplayModel` is preserved and
+  still used (the final builder extends it). Every helper tolerates missing/malformed input, never throws, emits closed
+  status/check tokens + non-negative integer counts only, surfaces no raw artifact warnings/source detail/filenames/paths/
+  table text/captions/OCR text/image-asset refs/raw URLs/raw errors, and is deterministic. The report's `instruction`
+  strings and `check_id`s are never surfaced (counts/statuses only).
+- **`MaterialCoveragePanel.jsx`** fetches the three new exact-name artifacts independently (existing source/visual fetches
+  unchanged), builds the final model, and renders the 7 sections. **`RecentJobsPanel.jsx` was NOT changed** — the tab was
+  already wired with `jobId`/`job`. Minor layout-only CSS added in `design-system.css` (`.sg-artifact-links`,
+  `.sg-artifact-link-row`, `.sg-coverage-checks`).
+- **Tests:** new `frontend/scripts/verify-material-coverage-final-panel.mjs` (wired into `npm test` + a `test:` script) —
+  covers all-missing → calm unavailable, valid manifest/policy/report summaries, screenshot-insert = 0/"not used", check
+  statuses without image refs, malformed degrade, hostile canaries stripped (deep-walk), fixed exact-name links, legacy
+  Slice 88/89 behavior, determinism. Reran `verify-material-page-selections-ui`, `verify-material-coverage-display`,
+  `verify-material-coverage-warnings`. **Slice 97 is NOT committed.**
+
+---
+
+## Slice 96 — **Guide quality report v2**, on `slice96-guide-quality-report-v2`. **COMMITTED `2fc6d95`, merged + pushed to `chrome-renderer-v1`.**
 
 - **Adds a deterministic, sanitized `guide_quality_report_v2.json` that measures whether the generated guide appears to
   reflect the Slices 82–95 coverage signals.** Slice 95 was committed `c8d3c02`, fast-forward merged, and pushed to trunk

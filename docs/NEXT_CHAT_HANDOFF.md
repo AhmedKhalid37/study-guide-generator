@@ -6,33 +6,47 @@
 > stable overview see `PROJECT_CONTEXT.md`; canonical brief is `../CLAUDE.md`.
 
 ## Current position
-- **Working tree:** **Slice 96 (Guide quality report v2) — UNCOMMITTED (per instruction)** on branch
-  `slice96-guide-quality-report-v2` (branched from fresh trunk after Slice 95 was committed/merged/pushed).
-  **Slice 95 is now trunk commit `c8d3c02`** (coverage-aware generation prompt context).
-  - **Purpose:** after a guide is generated, write a deterministic, sanitized `guide_quality_report_v2.json` that
-    measures whether the generated `clean.md` appears to reflect the Slices 82–95 coverage signals. It scans `clean.md`
-    for **safe counts only** (page-grounded signals; safe `assets/<slug>.png` image refs; a closed set of static
-    app-authored guidance phrases) and compares them against the already-sanitized coverage artifacts. It is an honest
-    signal/count report, **not** a semantic evaluator: a not-observed expected signal is a closed warning, not a failure.
-  - **It does NOT** call an LLM, change prompts, change extraction/OCR, inspect PDFs/images, read image bytes, reconstruct
-    tables, extract table text, add UI, change render/export, change figure insertion semantics, change material
-    page-selection logic, change visual-manifest filtering, or add/call any provider/model/cloud (no Chandra/Mistral/Gemini).
-  - **New pure module:** `pipeline/guide_quality_report_v2.py` —
-    `build_guide_quality_report_v2(clean_markdown, *, source_coverage_report=None, visual_inclusion_plan=None,
-    table_candidates_manifest=None, table_reconstruction_policy=None, missing_material_context=None,
-    coverage_aware_context=None, full_visual_insertion_enabled=False, max_items=None)` → sanitized report dict
-    (`version`=2/`kind`/`status`/`summary`/`checks`/`warnings`). One closed check per dimension in fixed order —
-    `source_pages`, `visuals`, `tables`, `missing_material`, `coverage` — each with a safe `check_id`
-    (`guide_quality_check_NNNN`), closed `status` (`passed`/`warning`/`not_applicable`/`unknown`), `observed_count`,
-    `expected_count`. **No `clean.md` excerpt is ever persisted.** Missing/empty guide → safe `skipped`; `max_items`/ceiling
-    → `partial`. stdlib-only.
-  - **Integration:** `pipeline/run_markdown_job.py::run_raw_markdown_pipeline`, after `_write_guide_lint(job)` (post
-    `save_clean_md`). `_write_guide_quality_report_v2(job)` reads `clean.md` + the sanitized sibling coverage artifacts,
-    rebuilds the Slice 94/95 contexts from those artifacts, and writes via `job.save_text(...)`. Advisory: never changes
-    status / blocks render / fails the job; any error or missing `clean.md` degrades to a safe `skipped` artifact.
-  - **Artifact:** `jobs/<id>/guide_quality_report_v2.json` via new `Job.guide_quality_report_v2_json` + exact-name
-    `_artifact_path` (`application/json`). **Exact-name download only** — NOT in generic ARTIFACTS / UI rows / export
-    selectors (UI surfacing deferred). Chandra remains blocked by its own live-validation gate.
+- **Working tree:** **Slice 97 (JobDetails Material Coverage final panel) — UNCOMMITTED (per instruction)** on branch
+  `slice97-jobdetails-material-coverage-final-panel` (branched from fresh trunk after Slice 96 was committed/merged/pushed).
+  **Slice 96 is now trunk commit `2fc6d95`** (added `guide_quality_report_v2.json`).
+  - **Purpose:** upgrade the existing JobDetails "Material Coverage" tab into the final read-only coverage dashboard for
+    this phase. It shows a safe view: material selections, source coverage, visual planning/insertion signals, table
+    candidate/policy signals, missing-material guidance, and guide quality report v2 checks. **Frontend display slice
+    only** — counts/statuses/checks only, no backend generation change.
+  - **It reads safe exact-name artifacts only:** `source_coverage_report.json`, `visual_inclusion_plan.json`,
+    `table_candidates_manifest.json`, `table_reconstruction_policy.json`, `guide_quality_report_v2.json` (each fetched
+    independently; 404 = "Not available", non-404/network/non-JSON = calm "Unavailable", raw error/URL never surfaced,
+    older jobs still render). It does **not** expose source text, table text, captions, OCR, filenames, paths, image refs,
+    or asset refs.
+  - **It does NOT** change backend extraction/OCR, inspect PDFs/images, reconstruct tables, add table text extraction,
+    change prompts, change render/export, change figure insertion semantics, change material page-selection logic, change
+    visual-manifest filtering, add UI controls beyond read-only display, or add/call any provider/model/cloud (no
+    Chandra/Mistral/Gemini). No backend route added — the exact-name route already exists via `_artifact_path`.
+  - **New helpers (`frontend/src/materialCoverageDisplay.js`):** `summarizeTableCandidatesManifest`,
+    `summarizeTableReconstructionPolicy`, `summarizeGuideQualityReportV2`, and composite
+    `buildMaterialCoverageFinalModel({ job, sourceCoverageReport, visualInclusionPlan, tableCandidatesManifest,
+    tableReconstructionPolicy, guideQualityReportV2 })`. Slice 88 `buildMaterialCoverageDisplayModel` preserved (the final
+    builder extends it). All helpers tolerate missing/malformed input, never throw, emit closed status/check tokens +
+    non-negative int counts only, surface no raw artifact warnings/source detail/refs/URLs/errors, never surface the
+    report's `instruction`/`check_id`, and are deterministic.
+  - **UI:** `MaterialCoveragePanel.jsx` fetches the three new artifacts + builds the final model + renders 7 sections
+    (selections / source coverage / figures & diagrams / tables / missing material / guide quality v2 / fixed exact-name
+    artifact links), keeping the Slice 89 "what this means" notes. `RecentJobsPanel.jsx` unchanged (tab already wired).
+    Layout-only CSS added (`.sg-artifact-links`, `.sg-artifact-link-row`, `.sg-coverage-checks`). Honest copy: "Full
+    insertion may be off for older/default jobs…", "Tables are not inserted as screenshots…", screenshot-insert shows
+    "Not used" (always 0), "This is deterministic signal checking, not semantic grading."
+  - **Tests:** new `frontend/scripts/verify-material-coverage-final-panel.mjs` (in `npm test`); reran the three older
+    material-coverage scripts. **Slice 97 is NOT committed.** Chandra remains blocked by its own live-validation gate.
+
+### Previously (Slice 96, now trunk `2fc6d95`)
+- **Slice 96 (Guide quality report v2)** added a deterministic, sanitized `guide_quality_report_v2.json` (new
+  `pipeline/guide_quality_report_v2.py`) measuring whether the generated `clean.md` reflects the Slices 82–95 coverage
+  signals — scans `clean.md` for **safe counts only** (page-grounded signals; safe `assets/<slug>.png` refs; a closed set
+  of static app-authored guidance phrases), compares against the sanitized coverage artifacts, emits one closed check per
+  dimension (`source_pages`/`visuals`/`tables`/`missing_material`/`coverage`). **No `clean.md` excerpt persisted.** Written
+  after `_write_guide_lint` (post `save_clean_md`) via `job.save_text(...)`; advisory (never changes status / blocks render
+  / fails the job). Artifact reached by exact filename only (new `Job.guide_quality_report_v2_json` + `_artifact_path`),
+  NOT in generic ARTIFACTS / UI rows / export selectors. Committed `2fc6d95`, merged + pushed.
 
 ### Previously (Slice 95, now trunk `c8d3c02`)
 - **Slice 95 (Coverage-aware generation prompt v1)** added a single sanitized coverage-aware generation guidance block
