@@ -4402,3 +4402,37 @@ filename, path, caption, table text, OCR text, image/asset ref, URL, token, or e
 model's prompt is a leakage surface (it can be echoed back into a chat answer and saved to history), so summarising to
 counts/statuses keeps the injected context provably leak-safe and stable across future artifact revisions, while still
 answering the coverage/meta questions the user actually asks. Chandra remains blocked by its own live-validation gate.
+
+---
+
+## Slice 99 — Explain like I'm 10 / Exam answer mode follows coverage/grounding work (2026-06-15)
+
+**Why a study-quality feature follows the coverage/grounding phase.** Slices 82–98 made generation and Ask Guide *honest
+about coverage* — what material was included, what was missing, what could not be reconstructed. With that foundation in
+place, the next useful lever for a student is comprehension and exam readiness, not more coverage plumbing. Dual explanation
+mode asks the generator to explain difficult / exam-important concepts twice — a beginner-friendly "Explain it simply" pass
+that builds intuition, and a formal "Exam answer" pass that is the version to memorise and write. It composes on top of the
+coverage-aware guidance (Slice 95) rather than competing with it: the same generation prompt now carries both "use the
+selected material completely and honestly" and "for the hard parts, teach it twice."
+
+**Why it is optional and default-off.** The two-layer format is valuable for difficult concepts but adds length and is not
+wanted for every guide or every style. Forcing it on would bloat simple guides and change every existing user's output.
+Making it an opt-in Builder toggle (default off) means a default/unchanged request produces a byte-identical generation
+prompt — the field is omitted from the payload when off (matching the visual-pilot opt-in convention), parsed as `False` on
+both the JSON and multipart request paths, and persisted as a plain boolean. Existing jobs, retries, and rerenders are
+unaffected unless the operator deliberately turns it on.
+
+**Why it is prompt-context based rather than an extra LLM pass.** The simple + exam-ready explanations are produced inside
+the **normal single generation call** by appending a short, fixed guidance block to the prompt — there is no second model
+call, no new provider/model code, and no change to provider/model selection. An extra pass would double cost/latency, add a
+new failure mode, and risk drifting from the source the first pass already grounded on. Keeping it as one deterministic,
+source-only prompt block (a pure stdlib module that reads no source text and never raises) means the feature is cheap,
+testable offline, and cannot leak document content into an artifact or the prompt.
+
+**Why both explanation modes must stay source-grounded and non-hallucinated.** A beginner-friendly analogy is exactly where
+a model is tempted to invent a tidy-but-wrong example, and an "exam answer" that is fabricated is worse than none. So the
+guidance block explicitly forbids inventing facts, examples, labels, table values, diagram details, or citations, and tells
+the generator to state what is missing instead of guessing when the source does not support a formal answer. This mirrors
+the generation-side coverage rules (Slices 93–95): the honest "the source doesn't cover this" is the correct output, and
+the dual-mode instruction must never become a license to hallucinate two confident answers instead of one. Chandra remains
+blocked by its own live-validation gate.

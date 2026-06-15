@@ -7,7 +7,7 @@
     "dev": "vite",
     "build": "vite build",
     "preview": "vite preview",
-    "test": "node scripts/verify-shortcut-status.mjs && node scripts/verify-shortcut-repair.mjs && node scripts/verify-shortcut-activation.mjs && node scripts/verify-shortcut-form.mjs && node scripts/verify-local-model-status.mjs && node scripts/verify-local-model-command.mjs && node scripts/verify-local-model-library.mjs && node scripts/verify-ask-guide.mjs && node scripts/verify-style-compare.mjs && node scripts/verify-math-verification.mjs && node scripts/verify-guide-lint.mjs && node scripts/verify-job-details-visual-advisory.mjs && node scripts/verify-visual-pilot-opt-in.mjs && node scripts/verify-material-page-selections-ui.mjs && node scripts/verify-material-coverage-display.mjs && node scripts/verify-material-coverage-warnings.mjs && node scripts/verify-material-coverage-final-panel.mjs",
+    "test": "node scripts/verify-shortcut-status.mjs && node scripts/verify-shortcut-repair.mjs && node scripts/verify-shortcut-activation.mjs && node scripts/verify-shortcut-form.mjs && node scripts/verify-local-model-status.mjs && node scripts/verify-local-model-command.mjs && node scripts/verify-local-model-library.mjs && node scripts/verify-ask-guide.mjs && node scripts/verify-style-compare.mjs && node scripts/verify-math-verification.mjs && node scripts/verify-guide-lint.mjs && node scripts/verify-job-details-visual-advisory.mjs && node scripts/verify-visual-pilot-opt-in.mjs && node scripts/verify-material-page-selections-ui.mjs && node scripts/verify-material-coverage-display.mjs && node scripts/verify-material-coverage-warnings.mjs && node scripts/verify-material-coverage-final-panel.mjs && node scripts/verify-dual-explanation-mode-ui.mjs",
     "test:shortcut-status": "node scripts/verify-shortcut-status.mjs",
     "test:shortcut-repair": "node scripts/verify-shortcut-repair.mjs",
     "test:shortcut-activation": "node scripts/verify-shortcut-activation.mjs",
@@ -25,7 +25,8 @@
     "test:material-page-selections-ui": "node scripts/verify-material-page-selections-ui.mjs",
     "test:material-coverage-display": "node scripts/verify-material-coverage-display.mjs",
     "test:material-coverage-warnings": "node scripts/verify-material-coverage-warnings.mjs",
-    "test:material-coverage-final-panel": "node scripts/verify-material-coverage-final-panel.mjs"
+    "test:material-coverage-final-panel": "node scripts/verify-material-coverage-final-panel.mjs",
+    "test:dual-explanation-mode-ui": "node scripts/verify-dual-explanation-mode-ui.mjs"
   },
   "dependencies": {
     "@fontsource-variable/inter": "^5.2.8",

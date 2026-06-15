@@ -271,6 +271,13 @@ class LLMJobRequest(BaseModel):
     # (and re-coerced to False downstream), so a payload can never force it true
     # past the master switch. Persisted as the job option visual_markdown_image_pilot.
     enable_visual_references: bool = False
+    # Slice 99: per-job opt-in for "Explain like I'm 10 / Exam answer" dual
+    # explanation mode. Default False ⇒ unchanged output / byte-identical prompt.
+    # When true, generation is asked to add a short beginner-friendly "Explain it
+    # simply" block plus a formal "Exam answer" block for difficult or exam-important
+    # concepts. Pydantic coerces non-bool inputs; persisted as job option
+    # dual_explanation_mode. No provider/model change and no extra LLM call.
+    dual_explanation_mode: bool = False
 
 
 class OutlineGenerateRequest(BaseModel):
@@ -2043,6 +2050,7 @@ async def create_llm_job(request: Request) -> dict[str, Any]:
             material_page_selection=material_page_selection,
             material_page_selections=material_page_selections,
             enable_visual_references=llm_request.enable_visual_references,
+            dual_explanation_mode=llm_request.dual_explanation_mode,
         )
     except MissingLLMConfigError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
@@ -3465,6 +3473,10 @@ async def _parse_llm_request(request: Request) -> tuple[LLMJobRequest, list[Atta
             # This is still only the per-job half of the gate; the global env master
             # switch is enforced server-side in apply_visual_markdown_pilot.
             "enable_visual_references": _form_bool(form, "enable_visual_references", False),
+            # Slice 99: dual-explanation opt-in on the multipart (attachments) path
+            # too — parity with the JSON LLMJobRequest default. Absent ⇒ False ⇒
+            # byte-identical prompt.
+            "dual_explanation_mode": _form_bool(form, "dual_explanation_mode", False),
         }
         outline_raw = _form_text(form, "outline")
         if outline_raw:

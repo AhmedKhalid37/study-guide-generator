@@ -5,7 +5,45 @@
 
 ---
 
-## Slice 98 — **Ask Guide coverage grounding upgrade**, on `slice98-ask-guide-coverage-grounding`. **NOT COMMITTED.**
+## Slice 99 — **Explain like I'm 10 / Exam answer mode v1**, on `slice99-dual-explanation-mode`. **NOT COMMITTED.**
+
+- **Slice 98 was committed `9f9d838`, fast-forward merged, and pushed to trunk on `chrome-renderer-v1`** (it added Ask
+  Guide coverage grounding). Slice 99 branches from that fresh trunk.
+- **Goal:** an optional study-quality generation mode that asks the guide generator to explain difficult / exam-important
+  concepts **two ways** — a beginner-friendly "Explain it simply" block plus a formal "Exam answer" block — so a student
+  can understand the concept and then learn the version to write in the exam. **Default off.** Missing/false ⇒ generation
+  prompt is byte-identical to before.
+- **New pure module `pipeline/dual_explanation_prompt_context.py`** — stdlib-only, imports nothing from `pipeline` and no
+  provider/model/OCR/renderer/FastAPI/frontend. `build_dual_explanation_prompt_context(enabled, *, max_items=None)` returns
+  `{version, kind:"dual_explanation_prompt_context", status (completed/skipped), summary{enabled, prompt_item_count},
+  prompt_block, warnings}`. Only a real `True` enables; `None`/`False` ⇒ normal off; any other type ⇒ off + closed
+  `enabled_not_bool` warning. `max_items` is a defensive ceiling only. The `prompt_block` is a fixed, deterministic,
+  source-grounded instruction (two companion blocks; concise; no invented facts/examples/labels/table values/diagram
+  details/citations; say what's missing instead of guessing). Never raises; reads no source text.
+- **Prompt integration = `run_llm_job.py`** via `_build_dual_explanation_prompt_block_safely(enabled)`, appended to the
+  generation source under the `## Dual Explanation Mode` heading **after** the Slice 93/94/95 attachment guidance blocks.
+  Applies to every generation (paste or attachment). Disabled ⇒ empty block ⇒ prompt byte-equivalent. Composes safely with
+  the Slice 95 coverage-aware guidance.
+- **Request field `dual_explanation_mode: bool` (default False)** wired into BOTH `/api/jobs/llm` paths: the JSON
+  `LLMJobRequest` model (pydantic-coerced) and the multipart `_parse_llm_request` branch (`_form_bool`), and threaded into
+  the `run_llm_job(...)` call. Persisted in the job manifest as `dual_explanation_mode` (mirrors the visual-pilot
+  `visual_markdown_image_pilot` precedent — persisted, not surfaced in the public job-details DTO).
+- **Frontend:** new pure helper `frontend/src/dualExplanationOptIn.js` (`DUAL_EXPLANATION_PAYLOAD_KEY`/`_LABEL`/`_HELPER`,
+  `dualExplanationPayloadFields`) + a Builder toggle ("Explain difficult concepts two ways" with helper copy) in the
+  `source === "llm"` options area. Default off; the field is sent only when true (omitted otherwise, matching the
+  visual-pilot convention), so a default request stays byte-equivalent. Does not touch `page_selections` /
+  `material_page_selections`.
+- **Tests:** `test_dual_explanation_prompt_context.py` (91, pure: disabled/enabled/malformed/max_items/determinism/no-leak/
+  import-hygiene + run_llm_job integration helper), `test_dual_explanation_request.py` (JSON+multipart parse, manifest
+  persistence, prompt-block presence/absence, hostile-value no-leak; skips without FastAPI),
+  `frontend/scripts/verify-dual-explanation-mode-ui.mjs` (payload helper + static BuilderWorkspace wiring).
+- **Out of scope / unchanged:** no extra LLM/provider/model/cloud call; no provider/model selection change; no PDF/image/
+  OCR inspection; no table reconstruction; no render/export change; no figure-insertion / material-selection / visual-filter
+  change; no Ask Guide change. Chandra remains blocked by its own live-validation gate.
+
+---
+
+## Slice 98 — **Ask Guide coverage grounding upgrade**, on `slice98-ask-guide-coverage-grounding`. **Committed `9f9d838`, merged + pushed to `chrome-renderer-v1`.**
 
 - **Slice 97 was committed `e6e91df`, fast-forward merged, and pushed to trunk on `chrome-renderer-v1`** (it finalized the
   JobDetails Material Coverage panel). Slice 98 branches from that fresh trunk.

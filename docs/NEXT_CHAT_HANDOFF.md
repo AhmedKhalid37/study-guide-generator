@@ -6,10 +6,38 @@
 > stable overview see `PROJECT_CONTEXT.md`; canonical brief is `../CLAUDE.md`.
 
 ## Current position
-- **Working tree:** **Slice 98 (Ask Guide coverage grounding upgrade) — UNCOMMITTED (per instruction)** on branch
-  `slice98-ask-guide-coverage-grounding` (branched from fresh trunk after Slice 97 was committed/merged/pushed).
-  **Slice 97 is now trunk commit `e6e91df`** (finalized the JobDetails Material Coverage panel).
-  - **Purpose:** make **Ask Your Guide** aware of the same safe coverage signals the guide + JobDetails already use, so a
+- **Working tree:** **Slice 99 (Explain like I'm 10 / Exam answer mode v1) — UNCOMMITTED (per instruction)** on branch
+  `slice99-dual-explanation-mode` (branched from fresh trunk after Slice 98 was committed/merged/pushed).
+  **Slice 98 is now trunk commit `9f9d838`** (added Ask Guide coverage grounding).
+  - **Purpose:** an optional study-quality generation mode. When on, the guide generator is asked to explain difficult /
+    exam-important concepts **two ways** — a beginner-friendly "Explain it simply" block + a formal "Exam answer" block —
+    so a student understands the concept and learns the version to write in the exam. **Default off** ⇒ generation prompt
+    byte-identical to before.
+  - **New pure module `pipeline/dual_explanation_prompt_context.py`** (stdlib-only; no provider/model/OCR/renderer/FastAPI/
+    frontend import): `build_dual_explanation_prompt_context(enabled, *, max_items=None)` → `{version,
+    kind:"dual_explanation_prompt_context", status (completed/skipped), summary{enabled, prompt_item_count}, prompt_block,
+    warnings}`. Only real `True` enables; `None`/`False` ⇒ off; other types ⇒ off + closed `enabled_not_bool` warning.
+    Fixed deterministic source-grounded `prompt_block` (two companion blocks; no invented facts/labels/values/citations;
+    say what's missing instead of guessing). Reads no source text; never raises.
+  - **Prompt integration = `run_llm_job.py`** (`_build_dual_explanation_prompt_block_safely`), appended under the
+    `## Dual Explanation Mode` heading after the Slice 93/94/95 attachment guidance, for every generation (paste or
+    attachment). Disabled ⇒ empty ⇒ byte-equivalent. Composes with Slice 95 coverage-aware guidance.
+  - **Request field `dual_explanation_mode: bool` (default False)** wired into BOTH `/api/jobs/llm` paths (JSON
+    `LLMJobRequest` + multipart `_form_bool`) and the `run_llm_job(...)` call; persisted in the job manifest (mirrors the
+    `visual_markdown_image_pilot` precedent — persisted, not in the public job-details DTO).
+  - **Frontend:** pure helper `frontend/src/dualExplanationOptIn.js` + a Builder toggle ("Explain difficult concepts two
+    ways") in the LLM options area; field sent only when true (omitted otherwise); does not touch `page_selections` /
+    `material_page_selections`.
+  - **It does NOT** add an extra LLM/provider/model/cloud call, change provider/model selection, inspect PDFs/images/OCR,
+    reconstruct tables, change render/export, change figure-insertion / material-selection / visual-filter logic, or change
+    Ask Guide behaviour. No direct `clean.md` write. Chandra remains blocked by its own live-validation gate.
+  - **Tests:** `test_dual_explanation_prompt_context.py` (91 pure), `test_dual_explanation_request.py` (JSON+multipart parse
+    / manifest persistence / prompt-block presence-absence / no-leak; skips without FastAPI),
+    `frontend/scripts/verify-dual-explanation-mode-ui.mjs`. **Slice 99 is NOT committed.**
+
+### Previously (Slice 98, now trunk `9f9d838`)
+- **Slice 98 (Ask Guide coverage grounding upgrade)** made **Ask Your Guide** aware of the same safe coverage signals the
+  guide + JobDetails already use, so a
     user can ask coverage/meta questions ("were any pages excluded?", "did the guide include all figures?", "were tables
     reconstructed?", "why is a diagram missing?", "can I trust the coverage?") and get honest, closed answers. **Ask Guide
     grounding/context slice — counts/statuses only**; course content still comes from the guide/source chunks + citations.
@@ -41,8 +69,8 @@
     safe degrade, per-signal summaries, count coercion, `max_items`→partial, deterministic ids, deep-walk no-leak sweep,
     hostile status not echoed, stdlib-only purity guard, + a guarded `ask_sessions` integration section). Reran the
     existing ask suite (`test_ask_context_inventory`, `test_ask_context_prepare`, `test_ask_lexical_hygiene`,
-    `test_ask_local_chat`, `test_ask_retrieval_relevance`) + the coverage-artifact regressions. **Slice 98 is NOT
-    committed.**
+    `test_ask_local_chat`, `test_ask_retrieval_relevance`) + the coverage-artifact regressions. **Committed `9f9d838`,
+    fast-forward merged + pushed to `chrome-renderer-v1`.**
 
 ### Previously (Slice 97, now trunk `e6e91df`)
 - **Slice 97 (JobDetails Material Coverage final panel)** upgraded the JobDetails "Material Coverage" tab into the final

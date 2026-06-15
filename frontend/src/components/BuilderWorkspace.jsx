@@ -71,6 +71,11 @@ import {
   visualPilotReadinessNote,
   visualPilotPayloadFields
 } from "../visualPilotOptIn";
+import {
+  DUAL_EXPLANATION_LABEL,
+  DUAL_EXPLANATION_HELPER,
+  dualExplanationPayloadFields
+} from "../dualExplanationOptIn";
 import { presetCompat, presetModelLabel, providerIconFor, providerLabelFor } from "../presetMeta";
 import {
   buildMaterialPageSelections,
@@ -272,6 +277,10 @@ export default function BuilderWorkspace({
   // could actually produce + insert a figure, and disabled-with-a-calm-note
   // otherwise. visualPilotNote holds that calm explanation ("" when ready).
   const [enableVisualReferences, setEnableVisualReferences] = useState(false);
+  // Slice 99: per-job opt-in for "Explain like I'm 10 / Exam answer" dual
+  // explanation mode. Default off ⇒ field omitted from the payload ⇒ unchanged
+  // generation behaviour. No server-capability gate (unlike the visual pilot).
+  const [dualExplanationMode, setDualExplanationMode] = useState(false);
   const [visualPilotReady, setVisualPilotReady] = useState(false);
   const [visualPilotNote, setVisualPilotNote] = useState("");
   const [attachments, setAttachments] = useState([]);
@@ -650,6 +659,7 @@ export default function BuilderWorkspace({
         strictMath,
         qwenThinking,
         enableVisualReferences,
+        dualExplanationMode,
         outlineEnabled,
         outlineSections
       }),
@@ -665,6 +675,7 @@ export default function BuilderWorkspace({
       strictMath,
       qwenThinking,
       enableVisualReferences,
+      dualExplanationMode,
       outlineEnabled,
       outlineSections
     ]
@@ -799,6 +810,7 @@ export default function BuilderWorkspace({
         strictMath,
         qwenThinking,
         enableVisualReferences,
+        dualExplanationMode,
         attachments,
         length,
         includeSections,
@@ -1203,6 +1215,8 @@ export default function BuilderWorkspace({
               setStrictMath={setStrictMath}
               enableVisualReferences={enableVisualReferences}
               setEnableVisualReferences={setEnableVisualReferences}
+              dualExplanationMode={dualExplanationMode}
+              setDualExplanationMode={setDualExplanationMode}
               visualPilotReady={visualPilotReady}
               visualPilotNote={visualPilotNote}
               attachments={attachments}
@@ -1660,6 +1674,8 @@ function BuilderComposer({
   setStrictMath,
   enableVisualReferences,
   setEnableVisualReferences,
+  dualExplanationMode = false,
+  setDualExplanationMode,
   visualPilotReady = false,
   visualPilotNote = "",
   attachments,
@@ -1793,6 +1809,17 @@ function BuilderComposer({
           {!visualPilotReady && visualPilotNote && (
             <p className="sg-note">{visualPilotNote}</p>
           )}
+          {/* Slice 99: per-job opt-in for "Explain like I'm 10 / Exam answer" dual
+              explanation mode. Default off; when on, generation adds a short
+              beginner-friendly explanation plus a formal exam-ready answer for
+              difficult / exam-important concepts. No server gate; the field is sent
+              only when on (default request stays byte-equivalent). */}
+          <Toggle
+            label={DUAL_EXPLANATION_LABEL}
+            checked={dualExplanationMode === true}
+            onChange={setDualExplanationMode}
+          />
+          <p className="sg-note">{DUAL_EXPLANATION_HELPER}</p>
         </div>
       )}
 
@@ -3508,6 +3535,7 @@ export function buildBuilderPayload({
   strictMath,
   qwenThinking,
   enableVisualReferences = false,
+  dualExplanationMode = false,
   attachments,
   length,
   includeSections = {},
@@ -3543,6 +3571,7 @@ export function buildBuilderPayload({
         strictMath,
         qwenThinking,
         enableVisualReferences,
+        dualExplanationMode,
         attachments,
         length,
         includeSections,
@@ -3578,6 +3607,7 @@ export function buildLlmPayload({
   strictMath,
   qwenThinking,
   enableVisualReferences = false,
+  dualExplanationMode = false,
   attachments = [],
   length,
   includeSections = {},
@@ -3625,6 +3655,9 @@ export function buildLlmPayload({
     // default/opted-out request stays byte-equivalent to before this slice. The
     // backend env master switch still gates whether it has any effect.
     ...visualPilotPayloadFields(enableVisualReferences),
+    // Slice 99: only send the per-job dual-explanation opt-in when actually on, so a
+    // default/opted-out request stays byte-equivalent to before this slice.
+    ...dualExplanationPayloadFields(dualExplanationMode),
     attachments
   };
 }

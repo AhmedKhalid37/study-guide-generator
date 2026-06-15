@@ -40,6 +40,9 @@ from pipeline.missing_material_explainer import (
 from pipeline.coverage_aware_prompt_context import (
     build_coverage_aware_prompt_context,
 )
+from pipeline.dual_explanation_prompt_context import (
+    build_dual_explanation_prompt_context,
+)
 from pipeline.visual_markdown_insertion import is_full_visual_insertion_enabled
 from pipeline.visual_asset_extractor import (
     MAX_FIGURES_PER_JOB,
@@ -84,6 +87,7 @@ def run_llm_job(
     material_page_selection: dict[str, Any] | None = None,
     material_page_selections: dict[str, Any] | None = None,
     enable_visual_references: bool = False,
+    dual_explanation_mode: bool = False,
 ) -> Job:
     resolved_config = config or LLMConfig.from_env()
     job = Job.create(
@@ -128,6 +132,12 @@ def run_llm_job(
             # existing/non-opted-in job byte-identical. The env switch still wins —
             # this flag alone never enables insertion.
             "visual_markdown_image_pilot": bool(enable_visual_references),
+            # Slice 99: per-job opt-in for "Explain like I'm 10 / Exam answer" dual
+            # explanation mode. Coerced to a strict bool here; default False keeps
+            # every existing/non-opted-in job's prompt byte-identical. When True it
+            # only appends a fixed, source-grounded guidance block to the generation
+            # prompt (no provider/model change, no extra LLM call).
+            "dual_explanation_mode": bool(dual_explanation_mode),
             "theme": theme,
             "strict_math": strict_math,
             "provider": resolved_config.provider,
@@ -158,6 +168,19 @@ def run_llm_job(
                 page_selections=page_selections,
                 material_page_selection=material_page_selection,
                 material_page_selections=material_page_selections,
+            )
+
+        # Slice 99: append the optional "Explain like I'm 10 / Exam answer" dual
+        # explanation guidance. Applies to every generation (paste or attachment)
+        # and composes after the Slice 93/94/95 attachment guidance blocks. Default
+        # off ⇒ empty block ⇒ prompt byte-identical to prior behaviour.
+        dual_explanation_block = _build_dual_explanation_prompt_block_safely(
+            dual_explanation_mode
+        )
+        if dual_explanation_block:
+            augmented_source = (
+                augmented_source.rstrip()
+                + f"\n\n## Dual Explanation Mode\n\n{dual_explanation_block}"
             )
 
         source_path = job.input_dir / "source.txt"
@@ -880,6 +903,36 @@ def _build_coverage_aware_prompt_block_safely(
     except Exception as exc:
         print(
             f"Coverage-aware prompt context skipped ({type(exc).__name__}); job continues.",
+            file=sys.stderr,
+        )
+        return ""
+
+
+def _build_dual_explanation_prompt_block_safely(enabled: Any = False) -> str:
+    """Best-effort safe dual-explanation guidance block; never gates generation.
+
+    Returns the fixed, source-grounded ``prompt_block`` only when the pure builder
+    reports a ``completed`` context with at least one prompt item; otherwise returns
+    ``""`` so the generation prompt stays byte-identical. Never raises, inspects no
+    PDF/image, OCRs nothing, reconstructs no table, and calls no provider/model.
+    """
+    try:
+        context = build_dual_explanation_prompt_context(enabled)
+        if not isinstance(context, dict):
+            return ""
+        if context.get("status") != "completed":
+            return ""
+        summary = context.get("summary")
+        prompt_item_count = (
+            summary.get("prompt_item_count") if isinstance(summary, dict) else 0
+        )
+        if not isinstance(prompt_item_count, int) or prompt_item_count <= 0:
+            return ""
+        block = context.get("prompt_block")
+        return block if isinstance(block, str) else ""
+    except Exception as exc:
+        print(
+            f"Dual explanation prompt context skipped ({type(exc).__name__}); job continues.",
             file=sys.stderr,
         )
         return ""
