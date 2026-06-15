@@ -4496,3 +4496,40 @@ size guard is a *byte-count* decision, so a stub `UploadFile` streaming zero-fil
 exercise the exact same code path without persisting anything. The backend test streams a 100 MB stub (temp file removed
 after), the frontend verify uses pure size metadata, and the one live container check used a throwaway sparse `.pdf`
 (HTTP 200, not 413) that was deleted immediately — no large fixture, binary, or source content enters git.
+
+## Guide-quality prompt correction was prioritized before more feature work (Slice 102)
+After the emergency 100 MB slice, the next pick was a guide-*quality* contract rather than the next study feature (active
+recall). **Why:** a study feature adds a new capability, but the existing guides were already falling short of the
+human-authored reference standard on discipline and depth — leaked model reasoning, unfinished worked examples, hidden
+arithmetic, occasional fabricated/inconsistent math, missing consolidation sections. Those defects undermine every guide the
+app produces *today*, including ones future features would build on. Fixing the generation contract is the highest
+perceived-quality gain for the least effort (the prompt is the lever), so it comes first; active recall and the rest of the
+picked list resume from clean trunk afterwards.
+
+**Why the spec's evidence was distilled into rules instead of copied into the repo.** The motivating quality-fix spec lives
+outside the repo and contains real evidence: source deck names, app-output and reference PDF filenames, and verbatim quoted
+passages / arithmetic from private documents. Copying any of that into repo docs, tests, prompts, or artifacts would violate
+the no-leak invariants (real filenames, source text, table/figure content). So only the **generic directives** were encoded
+— "never leak reasoning", "finish every example", "show all arithmetic", the section skeleton — none of which reference a
+specific document. Tests use synthetic canaries and leak-detection regexes, never the spec's real values.
+
+**Why the prompt contract is centralized instead of duplicated across styles.** The same quality rules must hold for every
+guide regardless of which generator preset or style is selected. Pasting them into each built-in preset body
+(`prompts/study_guide_prompts.md`) and every style would mean N copies to keep in sync, risk drift, and touch the
+load-bearing, model-tuned preset prompts. Instead the contract is one pure module appended as a single `## Guide Quality
+Contract` block that explicitly **takes precedence over weaker or conflicting instructions** above it. One source of truth,
+no preset-body edits, and it overrides rather than fights existing language.
+
+**Why the QA gate is flag-only in v1 instead of auto-regenerate/reject.** The spec allows reject+regenerate *or* flag. An
+auto-reject loop would: spend a second (expensive, possibly provider) generation pass; risk discarding a usable guide over a
+shallow false-positive (e.g. a legitimate "?" in a mock question, or a heading phrased outside the alias set); and entangle
+the lint with job lifecycle/cancellation. For a first cut, a deterministic **flag-only** report (advisory sibling artifact,
+never changes job status, never blocks render) is the safe choice — it surfaces the signal without the blast radius. The deep
+math/consistency checks are deferred to the existing math verifier and a later slice rather than faked here.
+
+**Why comprehensive/long guides get the full structural contract but short ones do not.** The 13-section skeleton (Big
+Picture, formula sheet, cheat sheets, mock exam, cram sheet, etc.) is what makes a *comprehensive* exam guide study-ready,
+but forcing it onto a deliberately short ("quick") guide would bloat it against the user's intent. So the structural contract
+is gated on a comprehensive signal — an `exhaustive` depth axis, or a longform/exam generator preset / longform style — while
+the **core** quality rules (no leaked reasoning, no fabricated math, finished examples, shown arithmetic) apply to *every*
+guide because they are about correctness and discipline, not length.

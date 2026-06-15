@@ -175,6 +175,14 @@ def run_raw_markdown_pipeline(job: Job, *, theme: str, strict_math: bool) -> Job
     # changes job status, never blocks the render, and never fails the job.
     _write_guide_quality_report_v2(job)
 
+    # Slice 102: persist a per-job guide_quality_contract_lint.json sibling artifact.
+    # It scans the generated clean.md for safe COUNTS ONLY (reasoning-leak signatures,
+    # required-section presence, exam-alert/table counts — no excerpt/phrase/heading/
+    # number persisted) and is flag-only: same advisory contract as the others — it
+    # calls no LLM, inspects no PDF/image, reconstructs no table, never changes job
+    # status, never blocks the render, and never fails the job.
+    _write_guide_quality_contract_lint(job)
+
     # Last safe checkpoint before the uninterruptible Chromium render: a cancel
     # requested up to here skips the render entirely. Once render_pdf starts we
     # let it finish (no process killing).
@@ -448,6 +456,71 @@ def _write_guide_quality_report_v2(job: Job) -> None:
                 "status": "skipped",
                 "reason": "report_error",
                 "safe_message": "Guide quality report could not be completed.",
+            }
+            job.save_text(artifact_path, json.dumps(payload, indent=2) + "\n")
+        except Exception:
+            pass  # writing the degraded artifact must itself never raise
+
+
+def _write_guide_quality_contract_lint(job: Job) -> None:
+    """Persist a per-job ``guide_quality_contract_lint.json`` sibling artifact (Slice 102).
+
+    Builds the deterministic, sanitized, flag-only guide-quality contract lint
+    (:func:`pipeline.guide_quality_contract_lint.build_guide_quality_contract_lint_report`)
+    from the generated ``clean.md`` (scanned for safe COUNTS ONLY — no excerpt,
+    phrase, heading text, table content, formula, example, or number is ever
+    persisted). The ``comprehensive`` flag is inferred from the job's saved request
+    signals (depth axis / generator preset / style) using the same rule the prompt
+    contract uses, so the structural checks match what the guide was asked to be.
+
+    Same advisory contract as math verification / guide lint / quality report v2:
+
+      * It is FLAG-ONLY — it never rewrites, regenerates, rejects, changes the
+        visible job status, blocks the render, or fails the job.
+      * It calls no LLM/provider, inspects no PDF/image, OCRs nothing, and
+        reconstructs no table.
+      * A missing/unreadable ``clean.md`` degrades to a safe ``skipped`` report.
+      * Any unexpected error degrades to a small ``skipped`` artifact carrying a
+        safe message and NO traceback.
+
+    The artifact is reached only by its exact filename (not added to the generic
+    ARTIFACTS list / generic UI rows / export selectors).
+    """
+    artifact_path = job.guide_quality_contract_lint_json
+    try:
+        from pipeline.guide_quality_contract_lint import (
+            build_guide_quality_contract_lint_report,
+        )
+        from pipeline.guide_quality_prompt_contract import infer_comprehensive
+
+        try:
+            clean_markdown = job.clean_md.read_text(encoding="utf-8", errors="replace")
+        except Exception:
+            clean_markdown = None
+
+        try:
+            manifest = job.read_manifest()
+        except Exception:
+            manifest = {}
+        comprehensive = infer_comprehensive(
+            manifest.get("output_depth"),
+            manifest.get("generator_preset"),
+            manifest.get("prompt_name"),
+            manifest.get("mode"),
+        )
+
+        report = build_guide_quality_contract_lint_report(
+            clean_markdown, comprehensive=comprehensive
+        )
+        job.save_text(artifact_path, json.dumps(report, indent=2) + "\n")
+    except Exception:  # never let the contract lint break a job
+        try:
+            payload = {
+                "version": 1,
+                "kind": "guide_quality_contract_lint",
+                "status": "skipped",
+                "reason": "lint_error",
+                "safe_message": "Guide quality contract lint could not be completed.",
             }
             job.save_text(artifact_path, json.dumps(payload, indent=2) + "\n")
         except Exception:

@@ -6,30 +6,43 @@
 > stable overview see `PROJECT_CONTEXT.md`; canonical brief is `../CLAUDE.md`.
 
 ## Current position
-- **Working tree:** **Slice 101 (EMERGENCY ~100 MB guide attachment support) — UNCOMMITTED (per instruction)** on branch
-  `slice101-large-attachment-100mb-support` (branched from fresh trunk after Slice 100 was committed/merged/pushed).
-  **Slice 100 is now trunk commit `fbff55d`** (Full Material Coverage E2E release validation).
-  - **Why this, why now:** the planned Slice 101 active recall was **paused** for an emergency need — letting the app accept
-    and generate a guide from an attachment around **100 MB**. This slice only raises the upload ceiling; it adds no study
-    feature and changes no generation/OCR/render/export/material-selection behaviour.
-  - **Backend (`api/server.py`):** new `_resolve_max_attachment_mb()` reads `GUIDEFORGE_MAX_ATTACHMENT_MB` (default
-    **150 MB**), degrading any missing/invalid/out-of-range value to the default (floor 100 MB, cap 1024 MB).
-    `MAX_LLM_ATTACHMENT_BYTES` is derived from it, so the preflight + multipart-attachment paths share one ceiling.
-    **15 MB → 150 MB.** Oversize now returns **413** with a **generic, filename-free** detail. The guard was already
-    chunked (1 MiB reads, rejects before full buffering) — no whole-file-in-memory read added.
-  - **Frontend:** new pure helper `frontend/src/uploadLimits.js` mirrors the 150 MB default (100 MB = "large file"
-    threshold). The Builder had **no** client-side size check before; it now pre-flights by `file.size` only, drops
-    over-ceiling files with calm generic copy, and shows *"Large files may take longer to process."* No page/material
-    selection payload changed.
-  - **Tests:** `test_scripts/test_large_attachment_limits.py` (resolution matrix + 100 MB stub stream accepted, no committed
-    fixture; oversize → 413 generic) and `frontend/scripts/verify-large-attachment-upload-limit.mjs`; `test_pdf_preflight.py`
-    oversize assertion updated 400→413.
-  - **Validated:** frontend build + `npm test` green; new backend test 24/24 + preflight 25/25 in Docker; `smoke_release.py`
-    29/0/0; **live ~100 MB sparse-file upload → HTTP 200 (not 413), `max_upload_mb` 150** (temp file deleted, never
-    committed).
-  - **Limitations:** app-level caps only — a future reverse proxy / web-server body cap must be aligned separately; very
-    large guides can still hit provider context limits / longer extraction time. Chandra remains blocked by its own
-    live-validation gate. **Slice 101 is NOT committed.**
+- **Working tree:** **Slice 102 (Claude-quality guide prompt contract v1) — UNCOMMITTED (per instruction)** on branch
+  `slice102-guide-quality-prompt-contract` (branched from fresh trunk after Slice 101 was committed/merged/pushed).
+  **Slice 101 is now trunk commit `89f8532`** (~100 MB attachment support; also folded in two unrelated provider-icon SVG
+  refreshes per operator instruction).
+  - **Why this, why now:** before returning to the picked study features (active recall etc.), a guide-*quality* correction
+    phase begins. Requirements come from an **off-repo** quality-fix spec; only the distilled rules are implemented — no real
+    spec evidence quotes, source deck names, or output/reference filenames are copied into the repo.
+  - **Central prompt contract `pipeline/guide_quality_prompt_contract.py`** (pure, stdlib-only): safe request signals →
+    deterministic, leak-free `prompt_block`. **Core rules always** (silent ambiguity resolution; no leaked reasoning/
+    uncertainty; no fabricated math; finish examples; show all arithmetic; numeric consistency; define terms; per-formula
+    plain English; intuition blocks; reference data in labelled tables; confident exam-tutor voice; ⚠️ EXAM ALERT). The full
+    **13-section structural contract** is added only for comprehensive/long guides (`infer_comprehensive`: `quick` opts out,
+    `exhaustive` opts in, else longform/exam preset `claude_exam/review/cram` or style `master_longform`/`exam_cram`; explicit
+    bool overrides).
+  - **Integration `pipeline/run_llm_job.py`:** one `_build_guide_quality_prompt_block_safely(...)` appends the block under a
+    single `## Guide Quality Contract` heading, after the dual-explanation block; degrades to `""` (byte-identical prompt) on
+    failure. Applies to every guide generation; **Ask Guide untouched**. Styles/presets left unchanged — the contract is
+    **centralized** and states it **takes precedence** over weaker instructions.
+  - **Flag-only lint `pipeline/guide_quality_contract_lint.py`** (pure, stdlib-only): scans generated `clean.md` for **safe
+    counts only** (reasoning-leak signatures, required-section presence by alias, exam-alert/table counts; worked-example/
+    arithmetic/consistency deferred — deep math stays with the existing verifier). **Stores no excerpt/phrase/heading/number.**
+    Never rejects/regenerates/fails a job. Persisted as exact-name `guide_quality_contract_lint.json` via
+    `Job.guide_quality_contract_lint_json` + `_write_guide_quality_contract_lint(job)` (in `run_markdown_job.py`) +
+    `_artifact_path` route — **not** in ARTIFACTS / UI / exports. No UI added.
+  - **Validated:** new tests 76 + 83 + 24 pass; existing prompt/coverage tests green; FE build + `npm test` green (no FE
+    change); `compileall` clean; Docker `smoke_release.py` **29/0/0**; live check confirmed the contract block is appended to
+    a generated job's prompt and the lint artifact is written + served (HTTP 200, no leaks).
+  - **Out of scope/unchanged:** no active recall or other picked features; no extra LLM/provider/model/cloud call; no
+    provider/model change; no Chandra/Mistral/Gemini; no OCR/PDF/image inspection; no table reconstruction; no render/export
+    change; no figure-insertion / material-selection / visual-filter change; no Ask Guide change; no direct `clean.md` write.
+    Chandra remains blocked by its own live-validation gate. **Slice 102 is NOT committed.**
+
+### Previously (Slice 101, now trunk `89f8532`)
+- **Slice 101 (~100 MB attachment support)** raised the per-attachment ceiling to an env-tunable default (`GUIDEFORGE_MAX_ATTACHMENT_MB`,
+  default **150 MB**; 15 MB → 150 MB), shared across the preflight + multipart paths, with a generic filename-free **413** on
+  oversize and a matching client-side guard (`frontend/src/uploadLimits.js`). It also folded in two unrelated provider-icon
+  SVG refreshes (operator instruction). Live ~100 MB upload returned HTTP 200.
 
 ### Previously (Slice 100, now trunk `fbff55d`)
 - **Slice 100 (Full Material Coverage E2E release validation)** added a deterministic, synthetic, validation-only release

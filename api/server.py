@@ -4174,6 +4174,13 @@ def _artifact_path(job: Job, artifact_name: str) -> tuple[Path, str]:
         # name download only; deliberately NOT in ARTIFACTS, generic UI rows, or
         # export selectors.
         return job.guide_quality_report_v2_json, "application/json"
+    if artifact_name == "guide_quality_contract_lint.json":
+        # Slice 102: guide-quality contract LINT report derived from the generated
+        # clean.md (scanned for safe COUNTS ONLY — no excerpt/phrase/heading/table/
+        # number persisted). Flag-only; calls no LLM, reconstructs no table, inspects
+        # no PDF/image. Exact-name download only; deliberately NOT in ARTIFACTS,
+        # generic UI rows, or export selectors.
+        return job.guide_quality_contract_lint_json, "application/json"
 
     artifact = ARTIFACTS.get(artifact_name)
     if artifact is None:

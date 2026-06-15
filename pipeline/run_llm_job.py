@@ -43,6 +43,9 @@ from pipeline.coverage_aware_prompt_context import (
 from pipeline.dual_explanation_prompt_context import (
     build_dual_explanation_prompt_context,
 )
+from pipeline.guide_quality_prompt_contract import (
+    build_guide_quality_prompt_contract,
+)
 from pipeline.visual_markdown_insertion import is_full_visual_insertion_enabled
 from pipeline.visual_asset_extractor import (
     MAX_FIGURES_PER_JOB,
@@ -181,6 +184,26 @@ def run_llm_job(
             augmented_source = (
                 augmented_source.rstrip()
                 + f"\n\n## Dual Explanation Mode\n\n{dual_explanation_block}"
+            )
+
+        # Slice 102: append the Claude-quality guide prompt contract. Applies to
+        # every guide generation (paste or attachment) and composes last so its
+        # rules — which explicitly take precedence over weaker instructions above —
+        # are the final directives the model reads. Core rules always; the full
+        # structural contract only for comprehensive/long guides (depth axis /
+        # longform preset / longform style). Pure, source-grounded, leak-free; on
+        # any failure it returns "" so the prompt stays byte-identical.
+        guide_quality_block = _build_guide_quality_prompt_block_safely(
+            output_depth=output_depth,
+            difficulty=difficulty,
+            preset_id=generator_preset,
+            style_id=prompt_name,
+            mode=mode,
+        )
+        if guide_quality_block:
+            augmented_source = (
+                augmented_source.rstrip()
+                + f"\n\n## Guide Quality Contract\n\n{guide_quality_block}"
             )
 
         source_path = job.input_dir / "source.txt"
@@ -933,6 +956,49 @@ def _build_dual_explanation_prompt_block_safely(enabled: Any = False) -> str:
     except Exception as exc:
         print(
             f"Dual explanation prompt context skipped ({type(exc).__name__}); job continues.",
+            file=sys.stderr,
+        )
+        return ""
+
+
+def _build_guide_quality_prompt_block_safely(
+    *,
+    output_depth: Any = None,
+    difficulty: Any = None,
+    preset_id: Any = None,
+    style_id: Any = None,
+    mode: Any = None,
+) -> str:
+    """Best-effort safe guide-quality contract block; never gates generation (Slice 102).
+
+    Returns the deterministic, leak-free ``prompt_block`` only when the pure builder
+    reports a ``completed`` context with at least one prompt item; otherwise returns
+    ``""`` so the generation prompt stays byte-identical. Never raises, inspects no
+    PDF/image, OCRs nothing, reconstructs no table, and calls no provider/model.
+    """
+    try:
+        context = build_guide_quality_prompt_contract(
+            output_depth=output_depth,
+            difficulty=difficulty,
+            preset_id=preset_id,
+            style_id=style_id,
+            mode=mode,
+        )
+        if not isinstance(context, dict):
+            return ""
+        if context.get("status") != "completed":
+            return ""
+        summary = context.get("summary")
+        prompt_item_count = (
+            summary.get("prompt_item_count") if isinstance(summary, dict) else 0
+        )
+        if not isinstance(prompt_item_count, int) or prompt_item_count <= 0:
+            return ""
+        block = context.get("prompt_block")
+        return block if isinstance(block, str) else ""
+    except Exception as exc:
+        print(
+            f"Guide quality prompt contract skipped ({type(exc).__name__}); job continues.",
             file=sys.stderr,
         )
         return ""

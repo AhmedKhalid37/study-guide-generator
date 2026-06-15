@@ -5,7 +5,53 @@
 
 ---
 
-## Slice 101 — **EMERGENCY: ~100 MB guide attachment support**, on `slice101-large-attachment-100mb-support`. **NOT COMMITTED.**
+## Slice 102 — **Claude-quality guide prompt contract v1**, on `slice102-guide-quality-prompt-contract`. **NOT COMMITTED.**
+
+- **New phase:** before returning to the picked study features (active recall etc.), this slice starts a guide-*quality*
+  correction phase. Its product requirements come from an off-repo quality-fix spec; only the **distilled rules** are
+  implemented here — no real spec evidence quotes, source deck names, or output/reference filenames are copied into the
+  repo.
+- **Slice 101 was committed `89f8532`, fast-forward merged, and pushed to trunk on `chrome-renderer-v1`** (~100 MB
+  attachment support; it also folded in two unrelated provider-icon SVG refreshes per operator instruction). Slice 102
+  branches from that fresh trunk.
+- **Central prompt contract — `pipeline/guide_quality_prompt_contract.py`** (pure, stdlib-only). `build_guide_quality_prompt_contract(...)`
+  turns safe request signals (depth axis / difficulty / generator preset / style id / mode, or an explicit `comprehensive`
+  bool) into a deterministic, leak-free `prompt_block`. **Core rules always** (resolve ambiguity silently; no leaked
+  reasoning/uncertainty; no fabricated math; finish examples; show all arithmetic; numeric consistency; define terms;
+  per-formula plain-English; intuition blocks; reference data in labelled tables; confident exam-tutor voice; ⚠️ EXAM
+  ALERT). The **full 13-section structural contract** is added only for comprehensive/long guides. `infer_comprehensive(...)`:
+  `quick` depth opts out, `exhaustive` opts in, else any longform/exam generator preset (`claude_exam/review/cram`) or
+  longform style (`master_longform`, `exam_cram`) opts in; explicit bool overrides.
+- **Integration — `pipeline/run_llm_job.py`:** a single new `_build_guide_quality_prompt_block_safely(...)` appends the block
+  under one `## Guide Quality Contract` heading, composing **after** the dual-explanation block so its precedence note is the
+  last thing the model reads. Applies to every guide generation (paste + attachments); on any failure it returns `""` so the
+  prompt stays byte-identical. **Ask Guide is untouched.**
+- **Styles/presets unchanged.** The contract is kept **centralized** (one appended block) rather than duplicating long text
+  across `prompts/study_guide_prompts.md` / styles; the block states it **takes precedence over weaker/conflicting**
+  instructions, so it overrides without editing the load-bearing preset bodies.
+- **Flag-only lint — `pipeline/guide_quality_contract_lint.py`** (pure, stdlib-only). `build_guide_quality_contract_lint_report(clean_markdown, comprehensive=..., max_items=...)`
+  scans the generated `clean.md` for **safe COUNTS ONLY**: reasoning-leak signatures, required-section presence (by heading
+  alias), exam-alert and table counts, and shallow **deferred** worked-example / arithmetic / consistency signals (deep math
+  verification stays with the existing math verifier; deep numeric-consistency is deferred and never stores a value). It
+  stores **no excerpt** — never the matched phrase, heading text, table content, formula, example, or any number. Checks use
+  closed `check_id`/`kind`/`status`. It is **flag-only**: it never rejects/regenerates and never fails the job.
+- **Artifact wiring:** `Job.guide_quality_contract_lint_json`, a `_write_guide_quality_contract_lint(job)` writer in
+  `run_markdown_job.py` (after the v2 report; reads the manifest to infer `comprehensive`), and an exact-name
+  `_artifact_path` route → `application/json`. Reached only by exact filename — deliberately **not** added to the generic
+  ARTIFACTS list, generic UI rows, or export selectors. No UI added.
+- **Validation:** new tests `test_guide_quality_prompt_contract.py` (76), `test_guide_quality_contract_lint.py` (83),
+  `test_guide_quality_contract_integration.py` (24) all pass; existing prompt/coverage tests re-run green; frontend
+  build + `npm test` green (no FE change); `compileall` clean; Docker `smoke_release.py` 29/0/0; live check confirmed the
+  `## Guide Quality Contract` block is appended to a generated job's prompt and the `guide_quality_contract_lint.json`
+  artifact is written and served (HTTP 200, no leaks).
+- **Out of scope / unchanged:** no active recall or other picked features; no extra LLM/provider/model/cloud call; no
+  provider/model selection change; no Chandra/Mistral/Gemini; no OCR/PDF/image inspection; no table reconstruction; no
+  render/export change; no figure-insertion / material-selection / visual-manifest-filter change; no Ask Guide change; no
+  direct `clean.md` write. Chandra remains blocked by its own live-validation gate. **Slice 102 is NOT committed.**
+
+---
+
+## Slice 101 — **EMERGENCY: ~100 MB guide attachment support**, on `slice101-large-attachment-100mb-support`. **Committed `89f8532`, merged + pushed to `chrome-renderer-v1`.**
 
 - **Reprioritized:** Slice 101 active recall was **paused**. The immediate need is letting the app accept and generate a
   guide from an attachment around **100 MB**. This slice raises the upload ceiling only — it adds no study features, no

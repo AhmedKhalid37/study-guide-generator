@@ -228,6 +228,19 @@ class Job:
         return self.dir / "guide_quality_report_v2.json"
 
     @property
+    def guide_quality_contract_lint_json(self) -> Path:
+        # Slice 102: sibling guide-quality contract LINT artifact holding the
+        # deterministic, sanitized flag-only report
+        # (pipeline/guide_quality_contract_lint.py), derived from the generated
+        # clean.md (scanned for safe COUNTS ONLY — no excerpt/phrase/heading/table/
+        # number persisted). Like the other advisory siblings it never changes job
+        # status, inspects no PDF/image, OCRs nothing, reconstructs no table, calls
+        # no LLM/provider, is kept SEPARATE from validation.json, and is reached only
+        # by its exact filename (not added to the generic ARTIFACTS list / generic UI
+        # rows / export selectors). It is flag-only and never gates generation.
+        return self.dir / "guide_quality_contract_lint.json"
+
+    @property
     def assets_dir(self) -> Path:
         # Slice 40: holds locally-cropped figure images (PNG) referenced by the
         # visual-assets manifest's `extracted_figure` records via safe RELATIVE
