@@ -5,7 +5,52 @@
 
 ---
 
-## Slice 94 — **Missing diagram/table explainer core**, on `slice94-missing-visual-table-explainer-core`. **NOT COMMITTED.**
+## Slice 95 — **Coverage-aware generation prompt v1**, on `slice95-coverage-aware-generation-prompt`. **NOT COMMITTED.**
+
+- **Adds a single sanitized coverage-aware generation guidance block that tells the guide generator how to use the
+  selected material completely and honestly.** Slice 94 was committed `3264b92`, fast-forward merged, and pushed to trunk
+  on `chrome-renderer-v1` (missing visual/table explainer core). Slices 82–94 established the layered coverage signals
+  (included/excluded pages, source coverage, planned visuals, table candidate/policy, table prompt context, missing-material
+  context). Slice 95 is the summarising capstone on top.
+- **It does NOT** change extraction/OCR, inspect PDFs/images, read image bytes, reconstruct tables, extract table text,
+  add UI, change render/export, change figure insertion semantics, change material page-selection logic, change
+  visual-manifest filtering, or add/call any provider/model/cloud (no Chandra/Mistral/Gemini). Chandra remains blocked by
+  its own live-validation gate.
+- **Product rule.** The block instructs the LLM to focus only on included material, never rely on excluded pages/slides,
+  treat source-coverage gaps as constraints (mentioned generically and page-based), connect explanations to inserted
+  figures, reconstruct/simplify tables only when source text supports it, and add honest missing-material notes instead of
+  inventing diagram labels, captions, table rows/cells, or numeric values. It SUMMARISES which closed coverage signals are
+  active — it never repeats the per-item Slice 93/94 detail.
+- **New pure module:** `pipeline/coverage_aware_prompt_context.py` —
+  `build_coverage_aware_prompt_context(*, job_request=None, source_coverage_report=None, visual_inclusion_plan=None,
+  table_candidates_manifest=None, table_reconstruction_policy=None, table_prompt_context=None, missing_material_context=None,
+  full_visual_insertion_enabled=False, max_items=None)` → sanitized context dict
+  (`version`/`kind`/`status`/`summary`/`prompt_block`/`items`/`warnings`). It reads each input for **decisions only** (counts
+  + a page-selection-active bool) and emits one closed *signal item* per active coverage signal, in fixed order:
+  `included_page` (page exclusions active), `source_gap` (unreadable pages > 0), `visual_plan` (planned visuals > 0),
+  `table_policy` (table candidates/policy items > 0), `missing_material` (missing-material items > 0). Items carry a safe
+  generated `item_id` (`coverage_context_NNNN`), `source_page` `None` (signals are aggregate, not page-anchored), closed
+  `kind`, and a fixed-shape `instruction`. Defensive ceiling / `max_items` → `partial`; all-inactive/empty/missing/malformed
+  → safe `skipped` + empty block. stdlib-only.
+- **Integration point:** `pipeline/run_llm_job.py::_attach_sources`. After the Slice 93 table block and Slice 94
+  missing-material block, `_build_coverage_aware_prompt_block_safely(...)` builds the context from the page-selection
+  envelope (`{material_page_selection, material_page_selections}`) + the captured source coverage report + the visual
+  inclusion plan + the two table artifacts + the Slice 94 missing-material context, and returns its `prompt_block` only when
+  the context is `completed`/`partial` **and** `prompt_item_count > 0`; appended under a `## Coverage-Aware Generation
+  Guidance` heading. The source-coverage writer helper now returns its report dict so counts are reused (no artifact
+  re-read). Absent/skipped/empty ⇒ prompt byte-identical. No new artifact is persisted (in-memory prompt context only).
+  Degrade-never-fail.
+- **Tests:** `test_scripts/test_coverage_aware_prompt_context.py` (synthetic dicts only) — missing/malformed/all-inactive →
+  skipped+empty; page-selection active/inactive (global + per-attachment `attachments`); source coverage / visual / table /
+  missing-material counts summarized; signal ordering + deterministic `coverage_context_NNNN` ids; defensive `max_items`;
+  hostile-canary strip + full no-leak scan; closed-kind tokens; page None-or-positive-int; stdlib-only import hygiene; and
+  the run_llm_job helper (none/inactive → empty, actionable → guidance, no raw Slice 93/94 block duplication, no leak).
+- **Validation:** `compileall` clean; the Slice 95 test plus the rerun Slice 90–94 + source-coverage suites all pass;
+  Docker build + `/api/health` + `smoke_release.py` green. `git diff --check` clean. **Slice 95 is NOT committed.**
+
+---
+
+## Slice 94 — **Missing diagram/table explainer core**, on `slice94-missing-visual-table-explainer-core`. **Committed `3264b92`, fast-forward merged + pushed to `chrome-renderer-v1`.**
 
 - **Adds an honest "what was missing" explainer so detected visual/table material that cannot be inserted or
   reconstructed is acknowledged without inventing its contents.** Slice 93 was committed `774a2e4`, fast-forward merged,

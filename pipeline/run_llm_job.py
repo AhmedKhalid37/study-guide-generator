@@ -37,6 +37,9 @@ from pipeline.table_reconstruction_prompt_context import (
 from pipeline.missing_material_explainer import (
     build_missing_material_explainer_context,
 )
+from pipeline.coverage_aware_prompt_context import (
+    build_coverage_aware_prompt_context,
+)
 from pipeline.visual_markdown_insertion import is_full_visual_insertion_enabled
 from pipeline.visual_asset_extractor import (
     MAX_FIGURES_PER_JOB,
@@ -259,6 +262,12 @@ def _attach_sources(
     # generation source when detected visual/table material cannot be inserted or
     # reconstructed. Empty by default ⇒ prompt byte-identical to prior behaviour.
     missing_material_prompt_block = ""
+    # Slice 95: single sanitized coverage-aware generation guidance block summarising
+    # included/excluded material, source coverage, planned visuals, table policy, and
+    # missing-material signals. Empty by default ⇒ prompt byte-identical to prior
+    # behaviour. Captured here; the source coverage report obj is captured below.
+    coverage_prompt_block = ""
+    source_coverage_report_obj: dict[str, Any] | None = None
 
     for index, attachment in enumerate(attachments, start=1):
         safe_name = _safe_filename(attachment.filename, fallback=f"attachment-{index}{attachment.path.suffix}")
@@ -438,7 +447,7 @@ def _attach_sources(
         # fails the job. Written exactly when the manifest is written; non-PDF jobs
         # with no extraction metadata simply omit these artifacts (no call here).
         visual_manifest_obj = _read_visual_manifest_for_scoring(job)
-        _write_source_coverage_report_safely(
+        source_coverage_report_obj = _write_source_coverage_report_safely(
             job,
             {
                 "version": 2,
@@ -503,6 +512,27 @@ def _attach_sources(
         missing_material_prompt_block = _build_missing_material_prompt_block_safely(
             visual_inclusion_plan_obj, table_candidates_obj, table_policy_obj
         )
+        # Slice 95: build the single sanitized coverage-aware generation guidance
+        # block from the page-selection envelope + the source coverage report + the
+        # visual/table artifacts + the Slice 94 missing-material context. Pure /
+        # degrade-not-fail; it inspects no PDF/image, OCRs nothing, reconstructs no
+        # table, and calls no provider. It SUMMARISES which closed coverage signals
+        # are active (it never repeats the per-item Slice 93/94 detail), and is
+        # appended only when it has actionable signals, so an absent/skipped/empty
+        # context leaves the prompt byte-identical.
+        coverage_prompt_block = _build_coverage_aware_prompt_block_safely(
+            {
+                "material_page_selection": material_page_selection,
+                "material_page_selections": material_page_selections,
+            },
+            source_coverage_report_obj,
+            visual_inclusion_plan_obj,
+            table_candidates_obj,
+            table_policy_obj,
+            _build_missing_material_context_safely(
+                visual_inclusion_plan_obj, table_candidates_obj, table_policy_obj
+            ),
+        )
 
     if not sections:
         return source_text, {
@@ -530,7 +560,16 @@ def _attach_sources(
         if missing_material_prompt_block
         else ""
     )
-    return source_text.rstrip() + attached_text + table_guidance + missing_material_guidance, {
+    # Slice 95: append the single sanitized coverage-aware generation guidance block
+    # (closed tokens / counts / fixed text only — no source/table content) after the
+    # per-item table and missing-material blocks. Empty unless at least one coverage
+    # signal is active, so unaffected jobs keep the prior prompt byte-for-byte.
+    coverage_guidance = (
+        f"\n\n## Coverage-Aware Generation Guidance\n\n{coverage_prompt_block}"
+        if coverage_prompt_block
+        else ""
+    )
+    return source_text.rstrip() + attached_text + table_guidance + missing_material_guidance + coverage_guidance, {
         "files": files,
         "warnings": _dedupe(warnings),
         "total_extracted_chars": total_chars,
@@ -614,19 +653,26 @@ def _write_source_coverage_report_safely(
     extraction_metadata: Any,
     *,
     visual_manifest: Any = None,
-) -> None:
-    """Best-effort source coverage artifact write; never gates generation."""
+) -> dict[str, Any] | None:
+    """Best-effort source coverage artifact write; never gates generation.
+
+    Returns the built (sanitized) report dict so the Slice 95 coverage-aware prompt
+    context can reuse its counts without re-reading the artifact, or ``None`` on any
+    unexpected failure.
+    """
     try:
-        write_source_coverage_report(
+        report = write_source_coverage_report(
             job,
             extraction_metadata,
             visual_manifest=visual_manifest,
         )
+        return report if isinstance(report, dict) else None
     except Exception as exc:
         print(
             f"Source coverage report skipped ({type(exc).__name__}); job continues.",
             file=sys.stderr,
         )
+        return None
 
 
 def _write_visual_inclusion_plan_safely(
@@ -759,6 +805,81 @@ def _build_missing_material_prompt_block_safely(
     except Exception as exc:
         print(
             f"Missing material explainer skipped ({type(exc).__name__}); job continues.",
+            file=sys.stderr,
+        )
+        return ""
+
+
+def _build_missing_material_context_safely(
+    visual_inclusion_plan: Any = None,
+    table_candidates_manifest: Any = None,
+    table_reconstruction_policy: Any = None,
+) -> dict[str, Any] | None:
+    """Best-effort missing-material context dict; never gates generation.
+
+    Returns the sanitized Slice 94 explainer context dict (reused as a Slice 95
+    coverage signal so the coverage block can note that missing-material guidance is
+    active) or ``None`` on any unexpected failure. Pure / degrade-not-fail; inspects
+    no PDF/image, OCRs nothing, reconstructs no table, calls no provider.
+    """
+    try:
+        context = build_missing_material_explainer_context(
+            visual_inclusion_plan,
+            table_candidates_manifest,
+            table_reconstruction_policy,
+            full_visual_insertion_enabled=is_full_visual_insertion_enabled(),
+        )
+        return context if isinstance(context, dict) else None
+    except Exception as exc:
+        print(
+            f"Missing material context skipped ({type(exc).__name__}); job continues.",
+            file=sys.stderr,
+        )
+        return None
+
+
+def _build_coverage_aware_prompt_block_safely(
+    job_request: Any = None,
+    source_coverage_report: Any = None,
+    visual_inclusion_plan: Any = None,
+    table_candidates_manifest: Any = None,
+    table_reconstruction_policy: Any = None,
+    missing_material_context: Any = None,
+) -> str:
+    """Best-effort safe coverage-aware guidance block; never gates generation.
+
+    Returns the sanitized ``prompt_block`` only when the pure builder reports a
+    ``completed``/``partial`` context with at least one active coverage signal;
+    otherwise returns ``""`` so the generation prompt stays byte-identical. The block
+    SUMMARISES the coverage rules + which closed signals are active — it never repeats
+    the per-item Slice 93/94 detail. Never raises and never inspects a PDF/image /
+    OCRs / reconstructs a table / calls a provider.
+    """
+    try:
+        context = build_coverage_aware_prompt_context(
+            job_request=job_request,
+            source_coverage_report=source_coverage_report,
+            visual_inclusion_plan=visual_inclusion_plan,
+            table_candidates_manifest=table_candidates_manifest,
+            table_reconstruction_policy=table_reconstruction_policy,
+            missing_material_context=missing_material_context,
+            full_visual_insertion_enabled=is_full_visual_insertion_enabled(),
+        )
+        if not isinstance(context, dict):
+            return ""
+        if context.get("status") not in ("completed", "partial"):
+            return ""
+        summary = context.get("summary")
+        prompt_item_count = (
+            summary.get("prompt_item_count") if isinstance(summary, dict) else 0
+        )
+        if not isinstance(prompt_item_count, int) or prompt_item_count <= 0:
+            return ""
+        block = context.get("prompt_block")
+        return block if isinstance(block, str) else ""
+    except Exception as exc:
+        print(
+            f"Coverage-aware prompt context skipped ({type(exc).__name__}); job continues.",
             file=sys.stderr,
         )
         return ""

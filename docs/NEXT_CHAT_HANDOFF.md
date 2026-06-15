@@ -6,41 +6,52 @@
 > stable overview see `PROJECT_CONTEXT.md`; canonical brief is `../CLAUDE.md`.
 
 ## Current position
-- **Working tree:** **Slice 94 (Missing diagram/table explainer core) — UNCOMMITTED (per instruction)** on branch
-  `slice94-missing-visual-table-explainer-core` (branched from fresh trunk after Slice 93 was committed/merged/pushed).
-  **Slice 93 is now trunk commit `774a2e4`** (table reconstruction prompt-context integration).
-  - **Purpose:** when useful visual or table-like material is detected but cannot be inserted or reconstructed, produce
-    safe, honest "what was missing" guidance so the guide can say what kind of item was detected and on which page —
-    without inventing contents. Consumes the Slice 84 visual inclusion plan + Slice 92 table candidate manifest + Slice
-    85/92 table reconstruction policy.
-  - **It does NOT** inspect PDFs/images, OCR, read image bytes, extract table text, reconstruct tables, generate
-    image-derived diagram explanations, call any provider/model/cloud, change render/export, change figure insertion
-    semantics, change visual-manifest filtering, change material page-selection, or add UI. Tables are never screenshots.
-  - **No-hallucination rule:** add an honest note naming the *kind* (closed token) + *page*; never invent labels/rows/
-    values/diagram details. Table `defer`/`skip_unreadable` → unreadable note; `skip_unsafe` → counted only (never
-    surfaced); `reconstruct_with_original`/`simplify_only` → not missing (Slice 93's job). Planned visuals → "not
-    inserted" notes only when full visual insertion is **off**; when **on**, never invents a failure (no failure signal).
-  - **New pure module:** `pipeline/missing_material_explainer.py` —
-    `build_missing_material_explainer_context(visual_inclusion_plan, table_candidates_manifest,
-    table_reconstruction_policy, *, full_visual_insertion_enabled=False, max_items=None)` → sanitized context dict
-    (`version`/`kind`/`status`/`summary`/`items`/`prompt_block`/`warnings`). Items carry safe `item_id`
-    (`missing_material_NNNN`), positive-int `source_page`, closed `material_kind`/`reason`, fixed-shape `instruction`.
-    All-missing/empty → safe `skipped` + empty block; `max_items`/ceiling → `partial`. stdlib-only.
-  - **Integration:** `pipeline/run_llm_job.py::_attach_sources` — after the Slice 93 table block,
-    `_build_missing_material_prompt_block_safely(...)` (reads `is_full_visual_insertion_enabled()`) appends the block
-    under `## Missing Visual and Table Guidance` only when `status` is completed/partial AND `prompt_item_count > 0`;
-    else prompt byte-identical. Inclusion-plan writer helper now returns the plan dict. **No new artifact persisted**
-    (in-memory prompt context only). Degrade-never-fail.
-  - **No change to:** table reconstruction (none), OCR/PDF/image inspection, image-derived diagram explanation (none),
-    providers/models/cloud, render/export, figure insertion semantics, material page-selection, visual-manifest
-    filtering, UI, or direct `clean.md` writes.
-  - **Files:** `pipeline/missing_material_explainer.py` (new), `pipeline/run_llm_job.py` (imports + one local + builder
-    helper + plan-writer returns plan + safe append), `test_scripts/test_missing_material_explainer.py` (new), three docs.
-  - **Validation:** explainer test 121/0; prompt-context 108/0, candidate manifest 105/0, policy artifact 39/0, policy
-    core 145/0, full insertion v2 81/0, render/export 22/0, coverage E2E 79/0 host; `compileall` clean; `git diff --check`
-    clean; Docker build + health + `smoke_release.py`. **NOT committed.**
-  - **Next:** optionally surface missing-material notes in UI / persist an artifact (deferred); image-only understanding
-    stays deferred. Chandra still blocked by its own live-validation gate.
+- **Working tree:** **Slice 95 (Coverage-aware generation prompt v1) — UNCOMMITTED (per instruction)** on branch
+  `slice95-coverage-aware-generation-prompt` (branched from fresh trunk after Slice 94 was committed/merged/pushed).
+  **Slice 94 is now trunk commit `3264b92`** (missing visual/table explainer core).
+  - **Purpose:** a single sanitized coverage-aware generation guidance block telling the generator to use the selected
+    material completely and honestly — focus only on included pages, never rely on excluded pages/slides, treat source
+    coverage gaps as constraints, connect explanations to inserted figures, reconstruct/simplify tables only from source
+    text, and add honest missing-material notes (no hallucinated labels/rows/cells/values/captions). It SUMMARISES which
+    closed coverage signals are active; it never repeats the per-item Slice 93/94 detail.
+  - **It does NOT** change extraction/OCR, inspect PDFs/images, read image bytes, reconstruct tables, extract table text,
+    add UI, change render/export, change figure insertion semantics, change material page-selection logic, change
+    visual-manifest filtering, or add/call any provider/model/cloud (no Chandra/Mistral/Gemini).
+  - **New pure module:** `pipeline/coverage_aware_prompt_context.py` —
+    `build_coverage_aware_prompt_context(*, job_request=None, source_coverage_report=None, visual_inclusion_plan=None,
+    table_candidates_manifest=None, table_reconstruction_policy=None, table_prompt_context=None,
+    missing_material_context=None, full_visual_insertion_enabled=False, max_items=None)` → sanitized context dict
+    (`version`/`kind`/`status`/`summary`/`prompt_block`/`items`/`warnings`). Emits one closed signal item per active
+    signal in fixed order — `included_page`, `source_gap`, `visual_plan`, `table_policy`, `missing_material` — each with a
+    safe `item_id` (`coverage_context_NNNN`), `source_page` `None` (aggregate, not page-anchored), closed `kind`,
+    fixed-shape `instruction`. All-inactive/empty/missing/malformed → safe `skipped` + empty block; `max_items`/ceiling →
+    `partial`. stdlib-only.
+  - **Integration:** `pipeline/run_llm_job.py::_attach_sources` — after the Slice 93 table block + Slice 94 missing block,
+    `_build_coverage_aware_prompt_block_safely(...)` builds the context from `{material_page_selection,
+    material_page_selections}` + the captured source coverage report + visual inclusion plan + the two table artifacts +
+    the Slice 94 missing-material context, and appends the block under `## Coverage-Aware Generation Guidance` only when
+    `status` is completed/partial AND `prompt_item_count > 0`; else prompt byte-identical. The source-coverage writer
+    helper now returns its report dict (counts reused, no re-read). **No new artifact persisted** (in-memory only).
+    Degrade-never-fail.
+  - **No change to:** extraction/OCR, table reconstruction (none), PDF/image inspection, providers/models/cloud,
+    render/export, figure insertion semantics, material page-selection, visual-manifest filtering, UI, or direct
+    `clean.md` writes.
+  - **Files:** `pipeline/coverage_aware_prompt_context.py` (new), `pipeline/run_llm_job.py` (imports + two locals + two
+    builder helpers + source-coverage writer returns report + safe append), `test_scripts/test_coverage_aware_prompt_context.py`
+    (new), three docs.
+  - **Validation:** coverage test 106/0; explainer 121/0, prompt-context 108/0, candidate manifest 105/0, policy artifact
+    39/0, policy core 145/0, full insertion v2 81/0, render/export 22/0, coverage E2E 79/0, source coverage 59/0 host;
+    `compileall` clean; `git diff --check` clean; Docker build + health + `smoke_release.py`. **NOT committed.**
+  - **Next:** optionally surface coverage/missing-material notes in UI / persist an artifact (deferred); image-only
+    understanding stays deferred. Chandra still blocked by its own live-validation gate.
+
+### Prior position (Slice 94 — committed & merged)
+- **Slice 94 (Missing diagram/table explainer core)** is trunk commit `3264b92` (ff-merged + pushed). It added
+  `pipeline/missing_material_explainer.py` and wired `_build_missing_material_prompt_block_safely(...)` into
+  `run_llm_job::_attach_sources` to append honest "what was missing" guidance (kind + page only; `defer`/`skip_unreadable`
+  → unreadable note; `skip_unsafe` counted only; planned visuals flagged only when full insertion is off) under
+  `## Missing Visual and Table Guidance` — no reconstruction, OCR/PDF/image inspection, provider/model, render/export,
+  figure insertion, material selection, UI, or `clean.md` change.
 
 ### Prior position (Slice 93 — committed & merged)
 - **Slice 93 (Table reconstruction prompt-context integration v1)** is trunk commit `774a2e4` (ff-merged + pushed). It

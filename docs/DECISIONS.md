@@ -4251,3 +4251,41 @@ was missing. Actually reading an image-only table or explaining a diagram from p
 (OCR or a vision model), a separate higher-risk capability gated behind its own live validation. When full visual insertion
 is enabled, the explainer will not even claim a planned visual "failed" without a closed insertion-failure signal — there is
 no such signal today, so it never invents one. Chandra remains blocked by its own live-validation gate.
+
+## Slice 95 — coverage-aware generation prompt v1 (summarise coverage rules; never leak source or hallucinate)
+
+**Why coverage-aware prompt context follows the visual/table/missing-material foundations.** By Slice 94 the pipeline had a
+complete, layered set of already-sanitized coverage signals: which material pages are included/excluded (page-selection
+envelopes), what source coverage exists (Slice 84 source coverage report), which non-table visuals are planned (Slice 84
+visual inclusion plan), which table-like candidates exist and what should happen to them (Slices 92/85), and the Slice
+93/94 table and missing-material prompt contexts. Slice 95 is the natural capstone: a *single* short block that summarises
+how to use all of that material completely and honestly. Building it last means it consumes only closed, already-sanitized
+signals from the slices beneath it instead of re-deriving anything from raw sources — it cannot widen the leak surface, and
+each lower concern stays in its own reviewable slice.
+
+**Why the guidance must be sanitized and page/count based.** The whole value of this block is telling the generator *how*
+to treat the selected material without ever handing it (or the rendered guide) raw source content. So the builder reads
+every input for **decisions only** — non-negative counts and a single "page selections are active" boolean — and emits a
+fixed, closed instruction per active signal. It carries no filename, path, source title, caption, OCR string, table cell,
+image/asset ref, page text, or raw warning; the signal items are aggregate (their `source_page` is `None`) precisely
+because the block is a *summary of rules*, not a per-page transcript. Counts and closed signal tokens give the model enough
+to act correctly while remaining impossible to reverse into source content.
+
+**Why excluded pages must not be relied on.** Material coverage controls let the operator deliberately drop pages/slides
+from a source. If the generator then leaned on excluded pages it would both contradict the operator's selection and risk
+surfacing material they intentionally removed. The guidance is therefore explicit and closed: use only the included
+material and available source text, and do not rely on pages or slides excluded by the coverage controls — coverage gaps
+are mentioned only generically and page-based, never filled with invented content.
+
+**Why unavailable visuals/tables must not be hallucinated.** A planned-but-uninserted figure or a detected-but-unreadable
+table is exactly where an LLM is most tempted to invent plausible labels, rows, cells, captions, or numbers. The coverage
+block reinforces the Slice 93/94 contract at the summary level: reconstruct or simplify a table only when its contents are
+present in the provided source text; connect explanations to inserted figures only when figures are actually present; and
+otherwise add a short honest missing-material note rather than guessing. It never claims a figure was inserted or that one
+failed — it only summarises which signals are active.
+
+**Why UI surfacing remains deferred.** Like the Slice 93/94 contexts, Slice 95 is an internal prompt augmentation, not a
+user-facing artifact. It persists no new file and adds no API/UI surface — it is built in-memory at generation time and
+appended only when at least one coverage signal is active. Surfacing a coverage summary in the UI (or persisting a
+downloadable artifact) would broaden scope and add a display/serialization surface for no current product need; a later
+slice can do that deliberately if a need appears. Chandra remains blocked by its own live-validation gate.
