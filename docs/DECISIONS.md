@@ -4636,3 +4636,26 @@ canaries; they must not persist real private values.
 beginner scaffolding and worked-example completeness stay `unknown` with `score:null` and unsupported confidence. This keeps
 the rubric honest: deterministic counts can be scored, but semantic teaching quality still requires a future evaluator or a
 separate validated signal. A release checkpoint should guard that boundary instead of weakening it.
+
+## Slice 107 surfaces the rubric score through the Guide Quality panel without changing backend artifacts
+**Why the rubric becomes a panel section now.** Slice 105 deliberately emitted `guide_quality_rubric_score.json` as an
+exact-name advisory artifact but kept it out of generic artifact rows and UI until the guide-quality phase had a release
+checkpoint. Slice 106 supplied that checkpoint. Slice 107 therefore surfaces the existing artifact in the already-established
+Guide Quality panel instead of adding a new backend artifact, changing schemas, or creating a second scoring path.
+
+**Why the frontend summarizes, not renders, the artifact.** The rubric artifact is already sanitized, but the UI still treats
+it as untrusted. `guideQualityDisplay.js` reads only non-negative integer summary counts and a closed allow-list of axis
+`kind`/`status`/`confidence`/`score` tokens. It does not copy raw warnings, reasons, descriptions, signals, instructions, or
+any arbitrary artifact string. Unknown axis kinds are dropped; hostile statuses and confidence values degrade to closed
+fallbacks. This keeps the panel safe even if an upstream artifact regresses or a hostile canary appears in raw JSON.
+
+**Why unsupported semantic axes stay visible as unsupported.** The panel shows semantic axes such as beginner scaffolding and
+worked-example completeness as `unknown` / `score:null` / `unsupported` when that is what the rubric reports. It does not map
+those axes to fake scores or hide them. That preserves the Slice 105 boundary: deterministic counts can be surfaced, but
+semantic teaching quality still needs a separate validated signal.
+
+**Why the operator validation record is docs-only and closed-vocabulary.** The closeout phase needs a place to record manual
+operator review without committing private guide content. `docs/GUIDE_QUALITY_OPERATOR_VALIDATION.md` provides a closed-token
+template and explicitly forbids guide snippets, source text, formulas, filenames, paths, OCR/table/caption text, images,
+provider payloads, uploaded quality-spec evidence quotes, and uploaded quality-spec filenames. Since no non-private operator
+sample was supplied in this slice, the recorded status is honestly `not_run` rather than fabricated.

@@ -40,12 +40,14 @@ export {
 export const GUIDE_QUALITY_QA_GATE_ARTIFACT = "guide_quality_qa_gate.json";
 export const GUIDE_QUALITY_CONTRACT_LINT_ARTIFACT = "guide_quality_contract_lint.json";
 export const MATH_VERIFICATION_ARTIFACT = "math_verification.json";
+export const GUIDE_QUALITY_RUBRIC_SCORE_ARTIFACT = "guide_quality_rubric_score.json";
 
 // Fixed, human-readable labels for the Artifacts section (never a raw URL/path).
 export const GUIDE_QUALITY_ARTIFACT_LABELS = Object.freeze([
   { artifact: GUIDE_QUALITY_QA_GATE_ARTIFACT, label: "Guide Quality QA Gate" },
   { artifact: GUIDE_QUALITY_CONTRACT_LINT_ARTIFACT, label: "Guide Quality Contract Lint" },
   { artifact: GUIDE_QUALITY_REPORT_V2_ARTIFACT, label: "Guide Quality Report v2" },
+  { artifact: GUIDE_QUALITY_RUBRIC_SCORE_ARTIFACT, label: "Guide Quality Rubric Score" },
   { artifact: MATH_VERIFICATION_ARTIFACT, label: "Math Verification" },
   { artifact: SOURCE_COVERAGE_ARTIFACT, label: "Source Coverage Report" },
 ]);
@@ -54,6 +56,7 @@ export const GUIDE_QUALITY_ARTIFACT_LABELS = Object.freeze([
 const GATE_KIND = "guide_quality_qa_gate";
 const LINT_KIND = "guide_quality_contract_lint";
 const MATH_KIND = "math_verification";
+const RUBRIC_KIND = "guide_quality_rubric_score";
 
 const GATE_STATUSES = new Set(["passed", "warning", "skipped", "partial"]);
 const GATE_CHECK_KINDS = new Set([
@@ -65,6 +68,21 @@ const GATE_CHECK_KINDS = new Set([
 ]);
 const GATE_CHECK_STATUSES = new Set(["passed", "warning", "unknown", "not_applicable"]);
 const MATH_STATUSES = new Set(["completed", "skipped"]);
+const RUBRIC_STATUSES = new Set(["completed", "partial", "skipped"]);
+const RUBRIC_AXIS_STATUSES = new Set(["passed", "warning", "unknown", "not_applicable"]);
+const RUBRIC_CONFIDENCE_VALUES = new Set(["deterministic", "advisory", "unsupported"]);
+const RUBRIC_AXIS_KINDS = new Set([
+  "reasoning_hygiene",
+  "required_structure",
+  "exam_focus",
+  "reference_tables",
+  "math_verification",
+  "source_coverage",
+  "coverage_signal_alignment",
+  "visual_table_honesty",
+  "beginner_scaffolding",
+  "worked_example_completeness",
+]);
 
 // --- Pure local helpers (no string ever copied from input) -------------------
 function isRecord(value) {
@@ -239,6 +257,63 @@ export function summarizeMathVerificationArtifact(math) {
 }
 
 // =============================================================================
+// Rubric score (guide_quality_rubric_score.json) — closed axes + counts only
+// =============================================================================
+export function summarizeGuideQualityRubricScore(rubric) {
+  const empty = {
+    state: "malformed",
+    status: "skipped",
+    tone: "warn",
+    blocking: false,
+    advisory: true,
+    scoreTotal: 0,
+    scorePossible: 0,
+    knownAxisCount: 0,
+    unknownAxisCount: 0,
+    warningAxisCount: 0,
+    rubricAxisCount: 0,
+    axes: [],
+  };
+  if (!isRecord(rubric) || rubric.kind !== RUBRIC_KIND) {
+    return empty;
+  }
+  const status = safeToken(rubric.status, RUBRIC_STATUSES, "skipped");
+  const summary = isRecord(rubric.summary) ? rubric.summary : {};
+  const axes = [];
+  if (Array.isArray(rubric.axes)) {
+    for (const entry of rubric.axes) {
+      if (!isRecord(entry)) continue;
+      const kind = safeToken(entry.kind, RUBRIC_AXIS_KINDS, null);
+      if (kind === null) continue;
+      const score = entry.score === 0 || entry.score === 1 || entry.score === 2 ? entry.score : null;
+      axes.push({
+        kind,
+        status: safeToken(entry.status, RUBRIC_AXIS_STATUSES, "unknown"),
+        confidence: safeToken(entry.confidence, RUBRIC_CONFIDENCE_VALUES, "unsupported"),
+        score,
+      });
+    }
+  }
+
+  const warningAxisCount = nonNegativeInteger(summary.warning_axis_count);
+  return {
+    state: status === "skipped" ? "skipped" : "available",
+    status,
+    tone: warningAxisCount > 0 ? "bad" : status === "completed" ? "good" : "warn",
+    // The rubric artifact is advisory-only by contract. Do not echo a hostile true.
+    blocking: false,
+    advisory: true,
+    scoreTotal: nonNegativeInteger(summary.score_total),
+    scorePossible: nonNegativeInteger(summary.score_possible),
+    knownAxisCount: nonNegativeInteger(summary.known_axis_count),
+    unknownAxisCount: nonNegativeInteger(summary.unknown_axis_count),
+    warningAxisCount,
+    rubricAxisCount: nonNegativeInteger(summary.rubric_axis_count),
+    axes,
+  };
+}
+
+// =============================================================================
 // Composite panel model
 // =============================================================================
 //
@@ -252,12 +327,14 @@ export function summarizeGuideQualityPanelModel({
   guideQualityReportV2 = null,
   mathVerification = null,
   sourceCoverageReport = null,
+  rubricScore = null,
 } = {}) {
   const gate = qaGate === null ? null : summarizeGuideQualityQaGate(qaGate);
   const lint = contractLint === null ? null : summarizeGuideQualityContractLint(contractLint);
   const math = mathVerification === null ? null : summarizeMathVerificationArtifact(mathVerification);
   const reportV2 = guideQualityReportV2 === null ? null : summarizeGuideQualityReportV2(guideQualityReportV2);
   const coverage = sourceCoverageReport === null ? null : summarizeSourceCoverage(sourceCoverageReport);
+  const rubric = rubricScore === null ? null : summarizeGuideQualityRubricScore(rubricScore);
 
   // Additional safe count not exposed by summarizeSourceCoverage: number of fully
   // unreadable sources. Read directly as a non-negative integer (no string copied).
@@ -282,6 +359,9 @@ export function summarizeGuideQualityPanelModel({
     unreadableSourceCount,
     guideQualityReportV2: reportV2 === null ? null : reportV2,
     guideQualityReportV2Available: reportV2 !== null,
+    // Rubric score section.
+    rubricScore: rubric === null ? unavailable() : rubric,
+    rubricScoreAvailable: rubric !== null,
     // Quality-check chips come from the QA gate's closed-kind checks.
     qualityChecks: gate === null ? [] : gate.checks,
     // Fixed exact-name artifact links (labels only — never a raw URL).

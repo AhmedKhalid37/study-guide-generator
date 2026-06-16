@@ -5,6 +5,7 @@ import {
   GUIDE_QUALITY_QA_GATE_ARTIFACT,
   GUIDE_QUALITY_CONTRACT_LINT_ARTIFACT,
   GUIDE_QUALITY_REPORT_V2_ARTIFACT,
+  GUIDE_QUALITY_RUBRIC_SCORE_ARTIFACT,
   MATH_VERIFICATION_ARTIFACT,
   SOURCE_COVERAGE_ARTIFACT,
   summarizeGuideQualityPanelModel,
@@ -41,6 +42,31 @@ const CHECK_STATUS_LABEL = {
   warning: "Warning",
   unknown: "Unknown",
   not_applicable: "Not applicable",
+};
+
+const RUBRIC_STATUS_LABEL = {
+  completed: "Completed",
+  partial: "Partial",
+  skipped: "Skipped",
+};
+
+const RUBRIC_AXIS_LABEL = {
+  reasoning_hygiene: "Reasoning hygiene",
+  required_structure: "Required structure",
+  exam_focus: "Exam focus",
+  reference_tables: "Reference tables",
+  math_verification: "Math verification",
+  source_coverage: "Source coverage",
+  coverage_signal_alignment: "Coverage signal alignment",
+  visual_table_honesty: "Visual/table honesty",
+  beginner_scaffolding: "Beginner scaffolding",
+  worked_example_completeness: "Worked example completeness",
+};
+
+const RUBRIC_CONFIDENCE_LABEL = {
+  deterministic: "Deterministic",
+  advisory: "Advisory",
+  unsupported: "Unsupported",
 };
 
 function toneClass(tone) {
@@ -113,7 +139,8 @@ export default function GuideQualityPanel({ jobId }) {
       fetchArtifactOrNull(jobId, GUIDE_QUALITY_REPORT_V2_ARTIFACT),
       fetchArtifactOrNull(jobId, MATH_VERIFICATION_ARTIFACT),
       fetchArtifactOrNull(jobId, SOURCE_COVERAGE_ARTIFACT),
-    ]).then(([qaGate, contractLint, guideQualityReportV2, mathVerification, sourceCoverageReport]) => {
+      fetchArtifactOrNull(jobId, GUIDE_QUALITY_RUBRIC_SCORE_ARTIFACT),
+    ]).then(([qaGate, contractLint, guideQualityReportV2, mathVerification, sourceCoverageReport, rubricScore]) => {
       if (cancelled) return;
       const model = summarizeGuideQualityPanelModel({
         qaGate,
@@ -121,6 +148,7 @@ export default function GuideQualityPanel({ jobId }) {
         guideQualityReportV2,
         mathVerification,
         sourceCoverageReport,
+        rubricScore,
       });
       setState({ loading: false, model });
     });
@@ -144,6 +172,7 @@ export default function GuideQualityPanel({ jobId }) {
   const math = model.mathVerification;
   const coverage = model.sourceCoverage;
   const reportV2 = model.guideQualityReportV2;
+  const rubric = model.rubricScore;
 
   return (
     <div className="sg-tab-stack">
@@ -189,7 +218,65 @@ export default function GuideQualityPanel({ jobId }) {
         )}
       </section>
 
-      {/* 2. Prompt contract lint */}
+      {/* 2. Rubric score */}
+      <section>
+        <div className="sg-head-row">
+          <div>
+            <h3>Rubric score</h3>
+            <p className="sg-hint">
+              This rubric is deterministic and advisory. Unsupported semantic axes stay unknown instead of being fake-scored.
+            </p>
+          </div>
+          {model.rubricScoreAvailable && rubric.state !== "malformed" ? (
+            <span className={`sg-tag ${toneClass(rubric.tone)}`}>
+              <StatusIcon tone={rubric.tone} />
+              {RUBRIC_STATUS_LABEL[rubric.status] || "Skipped"}
+            </span>
+          ) : (
+            <span className="sg-tag sg-tag-amber">
+              <AlertTriangle />
+              Not available
+            </span>
+          )}
+        </div>
+        {model.rubricScoreAvailable && rubric.state !== "malformed" ? (
+          <>
+            <div className="sg-grid-3" style={{ marginTop: 12 }}>
+              <QualityTile label="Score" value={`${rubric.scoreTotal}/${rubric.scorePossible}`} />
+              <QualityTile label="Known axes" value={String(rubric.knownAxisCount)} />
+              <QualityTile label="Unknown axes" value={String(rubric.unknownAxisCount)} tone={rubric.unknownAxisCount ? "warn" : "neutral"} />
+              <QualityTile label="Warning axes" value={String(rubric.warningAxisCount)} tone={rubric.warningAxisCount ? "warn" : "neutral"} />
+              <QualityTile label="Rubric axes" value={String(rubric.rubricAxisCount)} />
+              <QualityTile label="Blocking" value={rubric.blocking ? "Yes" : "No"} />
+            </div>
+            {rubric.axes.length > 0 ? (
+              <ul className="sg-mathv-list" style={{ marginTop: 10 }}>
+                {rubric.axes.map((axis, index) => (
+                  <li key={`${axis.kind}-${index}`} className="sg-mathv-claim">
+                    <div className="sg-mathv-claim-head">
+                      <span className={`sg-tag ${checkStatusTagClass(axis.status)}`}>
+                        <CheckStatusIcon status={axis.status} />
+                        {CHECK_STATUS_LABEL[axis.status] || "Unknown"}
+                      </span>
+                      <span className="sg-mathv-id">{RUBRIC_AXIS_LABEL[axis.kind] || "Rubric axis"}</span>
+                      <span className="sg-tag sg-tag-slate">{RUBRIC_CONFIDENCE_LABEL[axis.confidence] || "Unsupported"}</span>
+                      <span className="sg-tag sg-tag-slate">{axis.score === null ? "Score n/a" : `Score ${axis.score}`}</span>
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <p className="sg-hint" style={{ marginTop: 10 }}>No rubric axes are available for this job.</p>
+            )}
+          </>
+        ) : (
+          <NotAvailableNotice>
+            No guide-quality rubric score is available for this job. Older jobs may not include one.
+          </NotAvailableNotice>
+        )}
+      </section>
+
+      {/* 3. Prompt contract lint */}
       <section>
         <div className="sg-head-row">
           <h3>Prompt contract lint</h3>
@@ -228,7 +315,7 @@ export default function GuideQualityPanel({ jobId }) {
         )}
       </section>
 
-      {/* 3. Math verification */}
+      {/* 4. Math verification */}
       <section>
         <div className="sg-head-row">
           <h3>Math verification</h3>
@@ -263,7 +350,7 @@ export default function GuideQualityPanel({ jobId }) {
         )}
       </section>
 
-      {/* 4. Coverage / completeness signals */}
+      {/* 5. Coverage / completeness signals */}
       <section>
         <div className="sg-head-row">
           <h3>Coverage &amp; completeness</h3>
@@ -311,7 +398,7 @@ export default function GuideQualityPanel({ jobId }) {
         )}
       </section>
 
-      {/* 5. Quality checks (closed-kind chips from the QA gate) */}
+      {/* 6. Quality checks (closed-kind chips from the QA gate) */}
       <section>
         <h3>Quality checks</h3>
         {model.qualityChecks.length === 0 ? (
@@ -333,7 +420,7 @@ export default function GuideQualityPanel({ jobId }) {
         )}
       </section>
 
-      {/* 6. Artifacts (fixed exact-name links) */}
+      {/* 7. Artifacts (fixed exact-name links) */}
       <section>
         <h3>Artifacts</h3>
         <div className="sg-stack" style={{ marginTop: 10 }}>
@@ -379,6 +466,7 @@ function artifactIsAvailable(artifact, model) {
   if (artifact === GUIDE_QUALITY_QA_GATE_ARTIFACT) return model.qaGateAvailable;
   if (artifact === GUIDE_QUALITY_CONTRACT_LINT_ARTIFACT) return model.contractLintAvailable;
   if (artifact === GUIDE_QUALITY_REPORT_V2_ARTIFACT) return model.guideQualityReportV2Available;
+  if (artifact === GUIDE_QUALITY_RUBRIC_SCORE_ARTIFACT) return model.rubricScoreAvailable;
   if (artifact === MATH_VERIFICATION_ARTIFACT) return model.mathVerificationAvailable;
   if (artifact === SOURCE_COVERAGE_ARTIFACT) return model.sourceCoverageAvailable;
   return false;
