@@ -4610,3 +4610,29 @@ so Slice 105 uses only distilled concepts and reads only existing sanitized JSON
 PDFs/images/OCR, captions, table text, provider payloads, or `clean.md`; it copies no raw warnings, instructions, formulas,
 source text, filenames, paths, URLs, or tracebacks into the artifact. Counts are coerced to non-negative integers, strings are
 reduced to allow-listed tokens for decisions only, and emitted axis ids/statuses/reasons/warnings are closed vocabularies.
+
+## Slice 106 validates the guide-quality correction phase without changing product behavior
+**Why a release checkpoint follows the rubric score.** Slices 102-105 now form a small guide-quality correction phase:
+generation receives a fixed prompt contract, the finished guide is linted for contract signals, those signals roll into an
+advisory QA gate, the frontend summarizes the gate safely, and the backend emits an advisory rubric score. Each piece had
+focused tests, but the release risk is in their composition: a renamed count field, an accidental raw string copy, a second
+prompt append point, or a fake score for an unsupported semantic axis could slip through local tests. Slice 106 adds one
+synthetic release checkpoint that walks the real helpers in order and proves the phase still coheres.
+
+**Why this is validation-only.** A release-validation slice should not move the product target while it is measuring it. The
+new harness adds no production code, no prompt text, no generation behavior, no UI behavior, no renderer/exporter change, no
+Ask Guide behavior, and no provider/model/cloud call. It simply assembles synthetic safe inputs, invokes the already-shipped
+pure builders, invokes the existing frontend pure-helper verifier, and checks the exact-name artifact route wiring where the
+host environment can import FastAPI.
+
+**Why the no-leak sweep is broad and synthetic.** The guide-quality phase exists because private uploaded quality evidence
+was distilled into generic rules; that evidence must never enter repo docs, tests, prompts, or artifacts. The release harness
+therefore uses fake canaries for the prohibited categories (credentials, auth headers, paths, URLs, OCR/provider payloads,
+base64/data URIs, formulas, numeric claim text, source/guide/table/caption text, quality-spec evidence strings/filenames,
+tracebacks, and raw exception text) and deep-scans generated stage outputs. Tests may name prohibited categories and use fake
+canaries; they must not persist real private values.
+
+**Why unsupported semantic axes remain unsupported in the checkpoint.** The harness intentionally asserts that axes such as
+beginner scaffolding and worked-example completeness stay `unknown` with `score:null` and unsupported confidence. This keeps
+the rubric honest: deterministic counts can be scored, but semantic teaching quality still requires a future evaluator or a
+separate validated signal. A release checkpoint should guard that boundary instead of weakening it.

@@ -6,38 +6,42 @@
 > stable overview see `PROJECT_CONTEXT.md`; canonical brief is `../CLAUDE.md`.
 
 ## Current position
-- **Working tree:** **Slice 105 (Guide Quality Rubric Score v1) — UNCOMMITTED (per instruction)** on branch
-  `slice105-guide-quality-rubric-score-v1` (branched from fresh trunk after Slice 104 was committed/merged/pushed).
-  **Slice 104 is now trunk commit `d5acd12`** (JobDetails Guide Quality panel v1).
-  - **Why this, why now:** Slices 102/103 created deterministic guide-quality signals, and Slice 104 surfaced them in
-    JobDetails. Slice 105 adds a backend-only scorecard artifact, `guide_quality_rubric_score.json`, so those signals can be
-    read as a closed rubric without claiming semantic grading that deterministic checks cannot prove.
-  - **New module `pipeline/guide_quality_rubric_score.py`** (pure, stdlib-only): `build_guide_quality_rubric_score(...)`
-    consumes only already-sanitized sibling artifacts (`guide_quality_qa_gate.json`, `guide_quality_contract_lint.json`,
-    `guide_quality_report_v2.json`, `source_coverage_report.json`, `math_verification.json`, optional `validation.json`,
-    `visual_inclusion_plan.json`, `table_candidates_manifest.json`, `table_reconstruction_policy.json`). It reads no
-    `clean.md`, source documents, PDFs/images/OCR, captions, table text, or provider payloads.
-  - **Artifact shape:** `{version:1, kind:"guide_quality_rubric_score", status, blocking:false, summary, axes, warnings}`.
-    Axes are closed ids/kinds only: `reasoning_hygiene`, `required_structure`, `exam_focus`, `reference_tables`,
-    `math_verification`, `source_coverage`, `coverage_signal_alignment`, `visual_table_honesty`, `beginner_scaffolding`,
-    `worked_example_completeness`. Scores are `0`/`1`/`2`/`null`; unsupported semantic axes stay `unknown` with
-    `score:null`, `confidence:"unsupported"`, and a closed reason instead of fake scoring.
-  - **Wiring:** `Job.guide_quality_rubric_score_json`, `_write_guide_quality_rubric_score(job)` immediately after the QA gate
-    writer in `run_markdown_job.py`, and exact-name `_artifact_path` support in `api/server.py` returning
-    `application/json`. It is **not** in generic `ARTIFACTS`, generic UI rows, export selectors, or the Slice 104 Guide
-    Quality panel.
-  - **Validated:** `test_guide_quality_rubric_score.py` (63), `test_guide_quality_qa_gate.py` (177),
-    `test_guide_quality_contract_lint.py` (83), `test_guide_quality_report_v2.py` (100), `test_source_coverage_report.py`
-    (59), `test_full_material_coverage_release_validation.py` (86), `compileall api pipeline`, and `git diff --check` passed.
-    Frontend regression passed (`verify-guide-quality-panel.mjs`, `verify-material-coverage-final-panel.mjs`,
-    `npm run build`, `npm test`). Docker validation passed (`docker compose build`, `docker compose up -d --force-recreate`,
-    health, `smoke_release.py` 29/0/0, `docker compose ps` healthy). A live synthetic paste job produced
-    `guide_quality_rubric_score.json`; exact-name fetch returned HTTP 200 / `application/json`, `blocking:false`, with no
-    synthetic snippet/formula/path/filename/data-URI/base64 leak.
-  - **Out of scope/unchanged:** no prompt/generation change; no LLM/provider/model/cloud call; no Chandra/Mistral/Gemini; no
-    OCR/PDF/image inspection; no table reconstruction; no render/export change; no frontend UI change; no Ask Guide change;
-    no auto-reject/regenerate; no direct `clean.md` read/write. Chandra remains blocked by its own live-validation gate.
-    **Slice 105 is NOT committed.**
+- **Working tree:** **Slice 106 (Guide Quality release validation) — UNCOMMITTED (per instruction)** on branch
+  `slice106-guide-quality-release-validation`, branched from fresh `chrome-renderer-v1` after Slice 105 was committed,
+  fast-forward merged, and pushed. **Slice 105 is trunk commit `10041b7`**.
+  - **Why this, why now:** Slices 102-105 created the guide-quality prompt contract, contract lint, advisory QA gate,
+    frontend panel model, and advisory rubric score. Slice 106 adds a deterministic synthetic release checkpoint proving
+    those pieces compose in order and remain leak-free, advisory-only, deterministic, and honest about unsupported semantic
+    axes.
+  - **New harness:** `test_scripts/test_guide_quality_release_validation.py` (validation-only). It calls the real helpers
+    directly: prompt contract + `run_llm_job` safe prompt block, contract lint, source coverage, guide quality report v2, QA
+    gate, rubric score, and the existing Node `verify-guide-quality-panel.mjs`. It does not add production behavior.
+  - **Stages covered:** Slice 102 prompt contract presence/uniqueness and fixed directives; Slice 102 contract-lint counts
+    and closed statuses; Slice 103 QA-gate composition with math summarized from `math_verification`; Slice 105 rubric score
+    total consistency, `blocking:false`, and unsupported semantic axes left `unknown`/`score:null`; Slice 104 frontend panel
+    pure display model through the existing verifier; exact-name route support skipped calmly if FastAPI imports are
+    unavailable.
+  - **No-leak sweep:** synthetic canaries cover provider keys, Authorization/Bearer headers, companion tokens, socket paths,
+    host/model/mmproj/executable paths, raw argv, URLs, OCR dumps, provider payloads, data URIs, base64-looking blobs, image
+    bytes, private document/source text, guide excerpts, formulas, numeric claim text, source captions, table text, uploaded
+    quality-spec evidence strings/filenames, tracebacks, and raw exception text. Generated stage outputs are deeply scanned.
+  - **Validation performed:** `test_guide_quality_release_validation.py` passed (234/0; exact-name route coverage skipped
+    with a closed host-dependency reason in this environment). Existing backend guide-quality/source coverage regressions,
+    `test_full_material_coverage_release_validation.py`, `compileall api pipeline`, and `git diff --check` passed. Frontend
+    verifier scripts, `npm run build`, and `npm test` passed. Docker checkpoint passed: `docker compose build`,
+    `docker compose up -d --force-recreate`, health `{"ok":true}`, `smoke_release.py` 29/0/0, and `docker compose ps`
+    healthy.
+  - **Out of scope/unchanged:** no production-code change so far; no generation prompt/behavior change; no LLM/provider/
+    model/cloud calls; no Chandra/Mistral/Gemini; no OCR/PDF/image/table/render/export/Ask Guide changes; no JobDetails UI
+    behavior change; no direct `clean.md` writes. Chandra remains blocked by its own live-validation gate. **Slice 106 is NOT
+    committed.**
+
+### Previously (Slice 105, now trunk `10041b7`)
+- **Slice 105 (Guide Quality Rubric Score v1)** added `pipeline/guide_quality_rubric_score.py`, `Job.guide_quality_rubric_score_json`,
+  `_write_guide_quality_rubric_score(job)` after the QA gate writer, and exact-name `_artifact_path` support for
+  `guide_quality_rubric_score.json`. It is advisory-only (`blocking:false`), not in generic artifact rows/UI/export selectors,
+  and unsupported semantic axes stay `unknown`/`score:null`. No generation/prompt/render/export/Ask Guide behavior changed.
+  Committed `10041b7`, fast-forward merged, and pushed to `chrome-renderer-v1`.
 
 ### Previously (Slice 104, now trunk `d5acd12`)
 - **Slice 104 (JobDetails Guide Quality panel v1)** added `frontend/src/guideQualityDisplay.js` plus

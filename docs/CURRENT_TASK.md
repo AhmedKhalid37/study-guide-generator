@@ -5,7 +5,53 @@
 
 ---
 
-## Slice 105 — **Guide Quality Rubric Score v1**, on `slice105-guide-quality-rubric-score-v1`. **NOT COMMITTED.**
+## Slice 106 — **Guide Quality release validation**, on `slice106-guide-quality-release-validation`. **NOT COMMITTED.**
+
+- **Slice 105 was committed `10041b7`, fast-forward merged, and pushed to trunk `chrome-renderer-v1`** (Guide Quality
+  Rubric Score v1). Slice 106 branches from fresh trunk after that push.
+- **Goal:** add a deterministic, synthetic, validation-only release checkpoint proving the guide-quality correction phase
+  coheres end to end. It validates the Slice 102 prompt contract and contract lint, Slice 103 QA gate, Slice 104 frontend
+  panel model, Slice 105 rubric score, exact-name artifact route coverage where host dependencies allow, composition order,
+  advisory-only/blocking semantics, unsupported semantic axes, determinism, input non-mutation, and a broad no-leak sweep.
+- **New harness — `test_scripts/test_guide_quality_release_validation.py`**. It exercises real helpers directly:
+  `build_guide_quality_prompt_contract`, `run_llm_job._build_guide_quality_prompt_block_safely`,
+  `build_guide_quality_contract_lint_report`, `build_source_coverage_report`, `build_guide_quality_report_v2`,
+  `build_guide_quality_qa_gate`, `build_guide_quality_rubric_score`, and the existing Node
+  `frontend/scripts/verify-guide-quality-panel.mjs`. It uses synthetic canaries only; no real PDFs/images/DOCX/ZIPs,
+  runtime artifacts, generated guides, eval JSONs, traces, private filenames, private source text, or quality-spec evidence
+  are persisted.
+- **Stages validated:** prompt contract presence/uniqueness and core directives; contract-lint closed counts/statuses and
+  safe malformed-input degradation; QA gate rollup from sanitized artifacts with math summarized from `math_verification`;
+  rubric score consistency, `blocking:false`, advisory status, and unsupported semantic axes left `unknown`/`score:null`;
+  frontend Guide Quality panel pure model via the existing verifier; exact-name route support skipped calmly if FastAPI
+  imports are unavailable. Static guards also confirm `clean.md` still flows through `JobManager.save_clean_md`, the rubric
+  writer stays after the QA gate, the prompt append point remains single, and Ask Guide does not reference the guide-quality
+  contract/rubric.
+- **No-leak sweep policy:** the harness seeds synthetic canaries for provider keys, Authorization/Bearer headers, companion
+  tokens, socket paths, host/model/mmproj/executable paths, raw argv, URLs, OCR dumps, provider payloads, data URIs,
+  base64-looking blobs, image bytes, private document/source text, guide excerpts, formulas, numeric claim text, source
+  captions, table text, uploaded quality-spec evidence strings/filenames, tracebacks, and raw exception text. Generated
+  stage outputs are deeply serialized and scanned so those values cannot survive.
+- **Validation performed:** `python test_scripts/test_guide_quality_release_validation.py` passed (234/0; exact-name route
+  coverage skipped with a closed host-dependency reason in this environment). Existing backend regression passed:
+  `test_guide_quality_rubric_score.py` (63/0), `test_guide_quality_qa_gate.py` (177/0),
+  `test_guide_quality_contract_lint.py` (83/0), `test_guide_quality_prompt_contract.py` (76/0),
+  `test_guide_quality_contract_integration.py` (24/0), `test_guide_quality_report_v2.py` (100/0),
+  `test_source_coverage_report.py` (59/0), `test_full_material_coverage_release_validation.py` (86/0),
+  `python -m compileall api pipeline`, and `git diff --check`. Frontend regression passed:
+  `verify-guide-quality-panel.mjs`, `verify-material-coverage-final-panel.mjs`, `verify-dual-explanation-mode-ui.mjs`,
+  `npm run build`, and `npm test`. Docker release checkpoint passed: `docker compose build`,
+  `docker compose up -d --force-recreate`, health `{"ok":true}`, `smoke_release.py` 29/0/0, and `docker compose ps`
+  healthy.
+- **Out of scope / unchanged:** validation-only; no production code change so far; no generation prompts or generation
+  behavior changed; no LLM/provider/model/cloud calls; no Chandra/Mistral/Gemini; no extraction/OCR/PDF/image handling
+  change; no table reconstruction; no figure insertion/material selection/visual filtering change; no JobDetails UI
+  behavior change; no render/export change; no Ask Guide change; no auto-reject/regenerate; no direct `clean.md` writes.
+  Chandra remains blocked by its own live-validation gate. **Slice 106 is NOT committed.**
+
+---
+
+## Slice 105 — **Guide Quality Rubric Score v1**, on `slice105-guide-quality-rubric-score-v1`. **Committed `10041b7`, merged + pushed to `chrome-renderer-v1`.**
 
 - **Slice 104 was committed `d5acd12`, fast-forward merged, and pushed to trunk `chrome-renderer-v1`** (JobDetails Guide
   Quality panel v1). Slice 105 branches from fresh trunk after that push.
@@ -40,7 +86,7 @@
 - **Out of scope / unchanged:** no prompt/generation change; no LLM/provider/model/cloud call; no Chandra/Mistral/Gemini; no
   OCR/PDF/image inspection; no table reconstruction; no render/export change; no frontend UI change; no Ask Guide change; no
   auto-reject/regenerate; no direct `clean.md` read or write. Chandra remains blocked by its own live-validation gate.
-  **Slice 105 is NOT committed.**
+  The artifact remains advisory-only (`blocking:false`) and no generation/prompt/render/export/Ask Guide behavior changed.
 
 ---
 
