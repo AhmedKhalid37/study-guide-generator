@@ -6,36 +6,45 @@
 > stable overview see `PROJECT_CONTEXT.md`; canonical brief is `../CLAUDE.md`.
 
 ## Current position
-- **Working tree:** **Slice 107 (Guide Quality closeout panel rubric + operator checklist) — UNCOMMITTED (per instruction)**
-  on branch `slice107-guide-quality-closeout`, branched from fresh `chrome-renderer-v1` after Slice 106 was committed,
-  fast-forward merged, and pushed. **Slice 106 is trunk commit `d34b39e`**.
-  - **Part 0 completed:** Slice 106 was committed as `d34b39e`, fast-forward merged to `chrome-renderer-v1`, and pushed with
-    a normal `git push` (no force-push). It had no production-code changes and remained synthetic/validation-only. The Slice
+- **Working tree:** **Slice 108 (Quality Safety Eval Harness Skeleton) — UNCOMMITTED (per instruction)** on branch
+  `slice108-quality-safety-eval-harness-skeleton`, branched from fresh `chrome-renderer-v1` after Slice 107 was committed,
+  fast-forward merged, and pushed. **Slice 107 is trunk commit `03cacc7`**.
+  - **Part 0 completed:** Slice 107 was committed as `03cacc7`, fast-forward merged to `chrome-renderer-v1`, and pushed with
+    a normal `git push` (no force-push). It changed docs plus frontend Guide Quality panel/display/verifier files only; no
+    backend production-code files changed. No generation/prompt/provider/render/export/Ask Guide behavior changed. The Slice
     60 trace stash remains parked and untouched.
-  - **Why this, why now:** Slices 102-106 close the guide-quality correction phase technically. Slice 107 makes the existing
-    Slice 105 rubric score visible in the JobDetails Guide Quality panel and adds a safe operator-validation checklist/report
-    format before returning to the picked study-intelligence features.
-  - **Frontend display:** `frontend/src/guideQualityDisplay.js` adds `GUIDE_QUALITY_RUBRIC_SCORE_ARTIFACT` and
-    `summarizeGuideQualityRubricScore(rubric)`. The helper emits only allow-listed top-level statuses, non-negative counts,
-    and closed axis `kind`/`status`/`confidence`/`score` values; it drops unknown axis kinds and never copies raw warnings,
-    reasons, descriptions, guide/source text, formulas, filenames, paths, URLs, OCR/table/caption text, image refs, or tokens.
-  - **Panel behavior:** `GuideQualityPanel.jsx` independently fetches `guide_quality_rubric_score.json` alongside the five
-    existing guide-quality artifacts. Missing/404/non-JSON/network failures become calm Not available states. A new Rubric
-    score section shows advisory status, `blocking:false`, score totals, known/unknown/warning/rubric axis counts, and closed
-    axis rows only. The Artifacts section includes the fixed exact-name label **Guide Quality Rubric Score**.
-  - **Operator checklist:** `docs/GUIDE_QUALITY_OPERATOR_VALIDATION.md` defines a closed-vocabulary manual-review report.
-    Current status is `guide_quality_operator_validation: not_run` with
-    `reason: non_private_operator_sample_not_supplied`; no completed validation was fabricated.
-  - **Validation performed:** frontend `verify-guide-quality-panel.mjs`, `verify-material-coverage-final-panel.mjs`,
-    `verify-dual-explanation-mode-ui.mjs`, `npm run build`, and `npm test` passed. Backend release/rubric/QA-gate/contract
-    lint/report-v2/source-coverage regressions passed, as did `compileall api pipeline` and `git diff --check`. Docker
-    validation passed: build, recreate, health `{"ok":true}`, `smoke_release.py` 29/0/0, and `docker compose ps` healthy.
-    Optional exact-name fetch of `guide_quality_rubric_score.json` on a smoke-generated synthetic job returned HTTP 200 /
-    `application/json`, `blocking:false`, and no leak-pattern hits.
-  - **Out of scope/unchanged:** no generation/prompt behavior; no backend artifact generation or schema changes; no
-    LLM/provider/model/cloud calls; no Chandra/Mistral/Gemini; no OCR/PDF/image/table/render/export/Ask Guide changes; no
-    figure insertion/material selection/visual filtering changes; no direct `clean.md` writes. Chandra remains blocked by
-    its own live-validation gate. **Slice 107 is NOT committed.**
+  - **Why this, why now:** this starts the **Quality Safety Unit** phase from the eval/fact-sheet/verifier plan. The
+    scoreboard must exist before prompt tuning, repair, fact sheets, canonical fixtures, recompute verification, or production
+    leak gating, so Slice 108 adds measurement only.
+  - **New pure module:** `pipeline/quality_safety_eval_harness.py` exposes fixture loading,
+    `run_quality_safety_layer1_checks(...)`, an in-memory regression record builder, and a small wrapper. It is stdlib-only,
+    deterministic, offline, synthetic-fixture based, and persists no runtime eval JSONL/output by default.
+  - **Fixture behavior:** malformed fixture input never raises; optional fields are tolerated; expected topics, numeric
+    labels, lecture ids, and titles are sanitized synthetic ids; invalid numeric targets/minimum counts/tier targets degrade
+    with closed warnings only. Unknown `source_quality` becomes a closed token.
+  - **Layer-1 checks:** leaked reasoning, numeric correctness against fixture values, worked-answer completeness, expected
+    topic coverage, and mock/practice question count. Reports store counts, closed ids/statuses/warnings, numeric floats, and
+    safe fixture labels/topics only. They store no candidate snippets, formulas, source text, OCR/table/caption text,
+    filenames, paths, URLs, provider payloads, or generated guide output.
+  - **Regression record shape:** `quality_safety_regression_record` keeps `overall_10` nullable and separate from
+    `shippable`, copies safe Layer-1 report data, records warnings/blocking failures, and marks regression for shippable
+    true→false, newly failed blocking checks, or an `overall_10` drop greater than 0.3.
+  - **Tests:** `test_scripts/test_quality_safety_eval_harness.py` is synthetic-only and covers fixture loader behavior, all
+    Layer-1 checks, regression record semantics, deterministic serialization, no-leak sweep, wrapper output, and import
+    hygiene. Slice 108 remains uncommitted.
+  - **Out of scope/unchanged:** no What the Lecturer Skipped mode, no study-intelligence feature, no fact-sheet schema, no
+    canonical fixtures, no recompute verifier, no production leak gate, no repair loop, no Layer-2 LLM judge, no real golden
+    fixtures, no frontend UI, no API routes, no generic artifact list entries, no export selectors, no provider/model/cloud
+    calls, no generation prompts, no request schema, no Builder UI, no Ask Guide, no OCR/PDF/image/table/render/export
+    behavior, and no direct `clean.md` writes. Chandra remains blocked by its own live-validation gate.
+
+### Previously (Slice 107, now trunk `03cacc7`)
+- **Slice 107 (Guide Quality closeout panel rubric + operator checklist)** surfaced the existing
+  `guide_quality_rubric_score.json` artifact in the JobDetails Guide Quality panel and added
+  `docs/GUIDE_QUALITY_OPERATOR_VALIDATION.md`, a docs-only closed-vocabulary manual-review record. It changed frontend
+  display/panel/verifier files and docs only. No backend production-code files changed; no generation/prompt/provider/
+  render/export/OCR/table/visual/Ask Guide behavior changed. Committed `03cacc7`, fast-forward merged, and pushed to
+  `chrome-renderer-v1`.
 
 ### Previously (Slice 106, now trunk `d34b39e`)
 - **Slice 106 (Guide Quality release validation)** added `test_scripts/test_guide_quality_release_validation.py`, a

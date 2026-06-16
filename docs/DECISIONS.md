@@ -4659,3 +4659,21 @@ operator review without committing private guide content. `docs/GUIDE_QUALITY_OP
 template and explicitly forbids guide snippets, source text, formulas, filenames, paths, OCR/table/caption text, images,
 provider payloads, uploaded quality-spec evidence quotes, and uploaded quality-spec filenames. Since no non-private operator
 sample was supplied in this slice, the recorded status is honestly `not_run` rather than fabricated.
+
+## Slice 108 starts quality-safety eval with a deterministic synthetic skeleton
+**Why the scoreboard comes before tuning or repair.** The Quality Safety Unit phase starts with an offline deterministic
+scoreboard rather than prompt changes, repair loops, fact-sheet schemas, canonical fixtures, or recompute verification. The
+system needs a stable way to measure leaked reasoning, fixture-numeric mismatch, missing topic coverage, shallow worked-answer
+incompleteness, and too-few mock questions before any generation behavior is tuned.
+
+**Why fixtures are synthetic only.** This first harness uses sanitized synthetic fixture ids, synthetic numeric targets, and
+synthetic hostile canaries only. It must not commit real source deck filenames, reference filenames, uploaded quality-spec
+filenames, private source text, guide snippets, OCR/table/caption text, formulas, paths, URLs, provider payloads, generated
+guides, runtime artifacts, or eval outputs. The loader degrades malformed inputs with closed warnings and never copies raw
+hostile strings into warnings.
+
+**Why no LLM judge or repair loop is added yet.** The repair and leak-gating stages must not be allowed to polish wrong
+answers into confident wrongness. Slice 108 therefore measures only: deterministic Layer-1 checks produce safe counts,
+closed statuses/warnings, and an in-memory regression record shape with nullable quality score and separate shippability. LLM
+judge scoring, fact sheets, canonical fixtures, recompute verification, production leak gates, and section repair remain
+future explicit slices.

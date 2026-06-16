@@ -5,7 +5,48 @@
 
 ---
 
-## Slice 107 — **Guide Quality closeout panel rubric + operator checklist**, on `slice107-guide-quality-closeout`. **NOT COMMITTED.**
+## Slice 108 — **Quality Safety Eval Harness Skeleton**, on `slice108-quality-safety-eval-harness-skeleton`. **NOT COMMITTED.**
+
+- **Part 0 completed:** Slice 107 was committed as `03cacc7`, fast-forward merged to trunk `chrome-renderer-v1`, and pushed
+  with a normal `git push` (no force-push). Slice 107 changed docs plus frontend Guide Quality panel/display/verifier files
+  only; no backend production-code files changed. It changed no generation, prompt, provider/model/cloud, render/export,
+  OCR/table/visual, request schema, API, or Ask Guide behavior. The parked Slice 60 trace stash remains untouched.
+- **Phase:** this starts the new **Quality Safety Unit** phase. The external eval/fact-sheet plan called this a revised Slice
+  106, but this repo already has Slices 106 and 107, so the work is tracked here as Slice 108.
+- **Goal:** add a deterministic, offline, synthetic eval harness skeleton that measures candidate guide Markdown without
+  changing generation. The harness loads small synthetic fixture specs, runs Layer-1 deterministic checks, and builds an
+  in-memory regression record shape suitable for future JSONL output.
+- **New module:** `pipeline/quality_safety_eval_harness.py` is pure stdlib-only and exposes
+  `load_quality_safety_fixture_spec(data)`, `run_quality_safety_layer1_checks(candidate_markdown, fixture_spec, *,
+  max_items=None)`, `build_quality_safety_regression_record(...)`, and `run_quality_safety_eval(...)`. It persists no runtime
+  eval outputs by default and does not write files.
+- **Synthetic fixture behavior:** the loader tolerates malformed input, normalizes counts defensively, degrades unknown
+  `source_quality` to a closed token, drops invalid expected topics/numeric targets/tier targets with closed warnings, and
+  never copies arbitrary raw source strings into warnings. Fixture identifiers are sanitized synthetic ids only.
+- **Layer-1 checks:** deterministic checks cover leaked reasoning signals, numeric correctness against fixture values,
+  shallow worked-answer completeness, expected-topic coverage, and mock/practice question count. Reports contain only closed
+  check ids/statuses/warnings, counts, numeric floats, and safe synthetic fixture labels/topics; no candidate snippets are
+  stored. Leaked reasoning, numeric mismatch, and unresolved worked-answer signals are blocking failures; coverage below 90%
+  and too few mock questions are advisory warnings in this skeleton.
+- **Regression record:** `build_quality_safety_regression_record(...)` returns a deterministic
+  `quality_safety_regression_record` dict with metadata defaults, `overall_10:null` unless supplied, shippability separate
+  from score, safe Layer-1 data, warnings/blocking failures, optional deltas, and regression detection for shippable
+  true→false, newly failed blocking checks, or an `overall_10` drop greater than 0.3.
+- **Tests:** `test_scripts/test_quality_safety_eval_harness.py` uses only synthetic fixtures and synthetic hostile canaries.
+  It covers loader degradation/determinism/no-leak behavior, all five Layer-1 checks, regression record semantics, wrapper
+  output, no-leak sweep, and import hygiene. No real deck/reference filenames, uploaded quality-spec filenames, private
+  content, snippets, paths, OCR text, table text, captions, formulas, provider payloads, generated guides, runtime artifacts,
+  or eval outputs are added.
+- **Out of scope / unchanged:** no What the Lecturer Skipped mode, no Active Recall, no Memory Hooks, no Practical Example
+  Generator, no Solve Path Generator, no question-bank coverage, no fact-sheet schema, no canonical fixtures, no recompute
+  verifier, no production leak gate, no repair loop, no Layer-2 LLM judge, no real golden fixtures, no frontend UI, no API
+  routes, no generic artifact list entries, no export selectors, no provider/model/cloud calls, no generation prompts, no
+  request schemas, no Builder UI, no Ask Guide, no OCR/PDF/image/table/render/export behavior, and no direct `clean.md`
+  writes. Chandra remains blocked by its own live-validation gate. **Slice 108 remains NOT committed.**
+
+---
+
+## Slice 107 — **Guide Quality closeout panel rubric + operator checklist**, on `slice107-guide-quality-closeout`. **Committed `03cacc7`, merged + pushed to `chrome-renderer-v1`.**
 
 - **Slice 106 was committed `d34b39e`, fast-forward merged, and pushed to trunk `chrome-renderer-v1`** in Part 0. Push was a
   normal `git push` (no force-push). Slice 106 had no production-code changes: docs plus the synthetic release-validation
@@ -42,7 +83,7 @@
 - **Out of scope / unchanged:** no generation behavior; no prompt behavior; no LLM/provider/model/cloud calls; no backend
   artifact-generation behavior; no existing artifact schema changes; no render/export behavior; no Ask Guide behavior; no
   extraction/OCR/PDF/image handling; no table reconstruction; no figure insertion/material selection/visual filtering.
-  Chandra remains blocked by its own live-validation gate. **Slice 107 is NOT committed.**
+  Chandra remains blocked by its own live-validation gate. Slice 107 was committed, merged, and pushed before Slice 108.
 
 ---
 
