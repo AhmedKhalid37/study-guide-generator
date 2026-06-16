@@ -4585,3 +4585,28 @@ gate's `blocking:false` plus calm "advisory deterministic QA signal, not semanti
 signals automatically (rejecting or regenerating a guide) would risk discarding a usable guide over a shallow false positive,
 entangle the UI with job lifecycle, and (for regenerate) trigger a second expensive provider pass — so it stays deferred until
 the advisory gate has been validated against real output, exactly as Slice 103 decided for the gate itself.
+
+## The guide-quality rubric score (Slice 105) is a deterministic scorecard, not semantic grading
+**Why a rubric score follows the QA gate and panel.** The prompt contract, contract lint, QA gate, and JobDetails panel created
+and surfaced safe guide-quality signals, but they still read as a collection of checks. Slice 105 adds a compact
+`guide_quality_rubric_score.json` artifact that translates those existing signals into closed rubric axes. It does not create a
+new evaluator, and it does not inspect the guide or source material again; it only reorganizes already-sanitized sibling
+artifacts into a scorecard that can be fetched by exact filename.
+
+**Why the artifact is advisory-only and exact-name only.** The score uses shallow deterministic counts and status tokens. Those
+signals are useful for visibility but not strong enough to reject a job or trigger regeneration. So `blocking` is always
+`false`, the writer never changes job status, and render/export continues regardless of score. The artifact is exposed through
+the exact-name route (`guide_quality_rubric_score.json`, `application/json`) but is deliberately not added to generic artifact
+rows, UI panels, or export selectors; UI surfacing can be designed later.
+
+**Why unsupported semantic axes stay unknown.** Some quality requirements, like beginner scaffolding and worked-example
+completeness, require semantic judgment that the existing deterministic artifacts do not safely expose. Scanning `clean.md`
+again would duplicate earlier lints and tempt the slice into persisting snippets or matched text. Instead those axes emit
+`unknown` / `score:null` / `confidence:"unsupported"` with a closed reason. This is more honest than assigning a score from
+weak proxies, and it preserves the no-leak contract.
+
+**Why only existing sanitized artifacts are consumed.** The uploaded quality direction contains private evidence and filenames,
+so Slice 105 uses only distilled concepts and reads only existing sanitized JSON artifacts. It never reads source documents,
+PDFs/images/OCR, captions, table text, provider payloads, or `clean.md`; it copies no raw warnings, instructions, formulas,
+source text, filenames, paths, URLs, or tracebacks into the artifact. Counts are coerced to non-negative integers, strings are
+reduced to allow-listed tokens for decisions only, and emitted axis ids/statuses/reasons/warnings are closed vocabularies.

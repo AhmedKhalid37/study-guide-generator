@@ -257,6 +257,18 @@ class Job:
         return self.dir / "guide_quality_qa_gate.json"
 
     @property
+    def guide_quality_rubric_score_json(self) -> Path:
+        # Slice 105: sibling guide-quality RUBRIC SCORE artifact holding the
+        # deterministic, sanitized advisory scorecard
+        # (pipeline/guide_quality_rubric_score.py). It combines only already-
+        # sanitized sibling artifacts into closed-axis scores, marks unsupported
+        # semantic axes as unknown, copies no snippets/formulas/paths/source text,
+        # calls no LLM/provider, inspects no PDF/image/OCR, reconstructs no table,
+        # changes no job status, and never gates generation/render/export. Exact-
+        # name download only; not added to generic artifact rows or export selectors.
+        return self.dir / "guide_quality_rubric_score.json"
+
+    @property
     def assets_dir(self) -> Path:
         # Slice 40: holds locally-cropped figure images (PNG) referenced by the
         # visual-assets manifest's `extracted_figure` records via safe RELATIVE

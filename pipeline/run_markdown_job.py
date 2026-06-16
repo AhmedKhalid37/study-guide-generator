@@ -192,6 +192,14 @@ def run_raw_markdown_pipeline(job: Job, *, theme: str, strict_math: bool) -> Job
     # render, and never fails the job. ``blocking`` is always false (flag-only v1).
     _write_guide_quality_qa_gate(job)
 
+    # Slice 105: persist a per-job guide_quality_rubric_score.json sibling artifact.
+    # It converts the already-sanitized guide-quality artifacts into a closed,
+    # advisory rubric scorecard. Unsupported semantic axes stay unknown instead of
+    # being fake-scored. Same advisory contract: no LLM/provider/model/cloud calls,
+    # no PDF/image/OCR/table inspection, no prompt/render/export changes, no status
+    # changes, no blocking, and no job failure.
+    _write_guide_quality_rubric_score(job)
+
     # Last safe checkpoint before the uninterruptible Chromium render: a cancel
     # requested up to here skips the render entirely. Once render_pdf starts we
     # let it finish (no process killing).
@@ -598,6 +606,81 @@ def _write_guide_quality_qa_gate(job: Job) -> None:
                 "status": "skipped",
                 "reason": "gate_error",
                 "safe_message": "Guide quality QA gate could not be completed.",
+            }
+            job.save_text(artifact_path, json.dumps(payload, indent=2) + "\n")
+        except Exception:
+            pass  # writing the degraded artifact must itself never raise
+
+
+def _write_guide_quality_rubric_score(job: Job) -> None:
+    """Persist a per-job ``guide_quality_rubric_score.json`` artifact (Slice 105).
+
+    Builds the deterministic, sanitized, advisory rubric score
+    (:func:`pipeline.guide_quality_rubric_score.build_guide_quality_rubric_score`)
+    by combining only already-written sibling JSON artifacts. It copies no strings
+    out of those artifacts: only known counts and closed status tokens influence
+    closed-axis scores. Semantic axes that need human judgment remain unknown.
+
+    Same advisory contract as the other guide-quality siblings:
+
+      * It never rewrites, regenerates, rejects, changes job status, blocks render
+        or export, or fails the job. ``blocking`` is always ``False``.
+      * It calls no LLM/provider/model/cloud service, inspects no PDF/image/OCR,
+        reads no source documents, and reconstructs no table.
+      * Missing/unreadable input artifacts degrade to unknown axes and closed
+        warnings.
+      * Any unexpected error degrades to a small skipped artifact with no raw
+        exception string.
+
+    The artifact is reached only by its exact filename (not added to generic
+    artifact UI rows or export selectors).
+    """
+    artifact_path = job.guide_quality_rubric_score_json
+    try:
+        from pipeline.guide_quality_prompt_contract import infer_comprehensive
+        from pipeline.guide_quality_rubric_score import build_guide_quality_rubric_score
+
+        try:
+            manifest = job.read_manifest()
+        except Exception:
+            manifest = {}
+        comprehensive = infer_comprehensive(
+            manifest.get("output_depth"),
+            manifest.get("generator_preset"),
+            manifest.get("prompt_name"),
+            manifest.get("mode"),
+        )
+
+        score = build_guide_quality_rubric_score(
+            qa_gate=_read_json_artifact(job.guide_quality_qa_gate_json),
+            contract_lint=_read_json_artifact(job.guide_quality_contract_lint_json),
+            guide_quality_report_v2=_read_json_artifact(job.guide_quality_report_v2_json),
+            source_coverage_report=_read_json_artifact(job.source_coverage_report_json),
+            math_verification=_read_json_artifact(job.math_verification_json),
+            validation=_read_json_artifact(job.logs_dir / "validation.json"),
+            visual_inclusion_plan=_read_json_artifact(job.visual_inclusion_plan_json),
+            table_candidates_manifest=_read_json_artifact(job.table_candidates_manifest_json),
+            table_reconstruction_policy=_read_json_artifact(job.table_reconstruction_policy_json),
+            comprehensive=comprehensive,
+        )
+        job.save_text(artifact_path, json.dumps(score, indent=2) + "\n")
+    except Exception:  # never let the rubric score break a job
+        try:
+            payload = {
+                "version": 1,
+                "kind": "guide_quality_rubric_score",
+                "status": "skipped",
+                "blocking": False,
+                "summary": {
+                    "score_total": 0,
+                    "score_possible": 0,
+                    "known_axis_count": 0,
+                    "unknown_axis_count": 0,
+                    "warning_axis_count": 0,
+                    "rubric_axis_count": 0,
+                },
+                "axes": [],
+                "warnings": ["malformed_input_degraded"],
             }
             job.save_text(artifact_path, json.dumps(payload, indent=2) + "\n")
         except Exception:

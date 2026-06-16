@@ -4190,6 +4190,13 @@ def _artifact_path(job: Job, artifact_name: str) -> tuple[Path, str]:
         # PDF/image, reconstructs no table. Exact-name download only; deliberately
         # NOT in ARTIFACTS, generic UI rows, or export selectors.
         return job.guide_quality_qa_gate_json, "application/json"
+    if artifact_name == "guide_quality_rubric_score.json":
+        # Slice 105: advisory guide-quality RUBRIC SCORE summary combining only the
+        # already-sanitized sibling quality artifacts. Closed axes/counts only; no
+        # raw snippets/formulas/paths/source text, no LLM/provider calls, no PDF/
+        # image/OCR inspection, no table reconstruction. Exact-name download only;
+        # deliberately NOT in ARTIFACTS, generic UI rows, or export selectors.
+        return job.guide_quality_rubric_score_json, "application/json"
 
     artifact = ARTIFACTS.get(artifact_name)
     if artifact is None:

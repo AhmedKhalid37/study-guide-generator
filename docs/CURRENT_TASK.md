@@ -5,7 +5,46 @@
 
 ---
 
-## Slice 104 — **JobDetails Guide Quality panel v1**, on `slice104-jobdetails-guide-quality-panel`. **NOT COMMITTED.**
+## Slice 105 — **Guide Quality Rubric Score v1**, on `slice105-guide-quality-rubric-score-v1`. **NOT COMMITTED.**
+
+- **Slice 104 was committed `d5acd12`, fast-forward merged, and pushed to trunk `chrome-renderer-v1`** (JobDetails Guide
+  Quality panel v1). Slice 105 branches from fresh trunk after that push.
+- **Goal:** add a deterministic, sanitized, advisory scorecard artifact named `guide_quality_rubric_score.json`. It converts
+  existing guide-quality signals into closed rubric axes without pretending to semantically grade what deterministic artifacts
+  cannot prove. It is advisory only: `blocking:false`, never rejects/regenerates, never changes job status, never blocks
+  render/export, and never changes prompts/generation/Ask Guide/UI.
+- **New module — `pipeline/guide_quality_rubric_score.py`** (pure, stdlib-only). `build_guide_quality_rubric_score(...)`
+  consumes only already-sanitized sibling artifacts where present: `guide_quality_qa_gate.json`,
+  `guide_quality_contract_lint.json`, `guide_quality_report_v2.json`, `source_coverage_report.json`,
+  `math_verification.json`, `validation.json`, `visual_inclusion_plan.json`, `table_candidates_manifest.json`, and
+  `table_reconstruction_policy.json`. It does **not** read `clean.md`, source documents, PDFs/images/OCR, captions, table
+  text, or provider payloads. It copies no strings from input artifacts except closed tokens used for decisions, and emits
+  only closed axis ids/statuses/reasons/confidence values, counts, booleans, `null`, and closed warnings.
+- **Rubric axes:** `reasoning_hygiene`, `required_structure`, `exam_focus`, `reference_tables`, `math_verification`,
+  `source_coverage`, `coverage_signal_alignment`, `visual_table_honesty`, `beginner_scaffolding`, and
+  `worked_example_completeness`. Deterministic axes score 0/1/2 from safe counts/statuses only. Unsupported semantic axes
+  stay `unknown` with `score:null`, `confidence:"unsupported"`, and
+  `reason:"semantic_axis_not_deterministically_measured"` instead of fake scoring.
+- **Artifact wiring:** `Job.guide_quality_rubric_score_json`, `_write_guide_quality_rubric_score(job)` in
+  `pipeline/run_markdown_job.py` immediately after the Slice 103 QA gate writer, and exact-name `_artifact_path` support in
+  `api/server.py` returning `application/json`. It is deliberately **not** added to generic `ARTIFACTS`, generic UI rows,
+  export selectors, or the Slice 104 Guide Quality panel.
+- **Validation:** `test_guide_quality_rubric_score.py` (63) passes; existing `test_guide_quality_qa_gate.py` (177),
+  `test_guide_quality_contract_lint.py` (83), `test_guide_quality_report_v2.py` (100), `test_source_coverage_report.py` (59),
+  and `test_full_material_coverage_release_validation.py` (86) pass; `compileall api pipeline` and `git diff --check` clean.
+  Frontend regression passed (`verify-guide-quality-panel.mjs`, `verify-material-coverage-final-panel.mjs`,
+  `npm run build`, `npm test`). Docker validation passed (`docker compose build`, `docker compose up -d --force-recreate`,
+  health, `smoke_release.py` 29/0/0, `docker compose ps` healthy). Live synthetic paste-job check confirmed
+  `guide_quality_rubric_score.json` is produced, exact-name fetchable with HTTP 200 / `application/json`, `blocking:false`,
+  and no synthetic snippet/formula/path/filename/data-URI/base64 leak.
+- **Out of scope / unchanged:** no prompt/generation change; no LLM/provider/model/cloud call; no Chandra/Mistral/Gemini; no
+  OCR/PDF/image inspection; no table reconstruction; no render/export change; no frontend UI change; no Ask Guide change; no
+  auto-reject/regenerate; no direct `clean.md` read or write. Chandra remains blocked by its own live-validation gate.
+  **Slice 105 is NOT committed.**
+
+---
+
+## Slice 104 — **JobDetails Guide Quality panel v1**, on `slice104-jobdetails-guide-quality-panel`. **Committed `d5acd12`, merged + pushed to `chrome-renderer-v1`.**
 
 - **Slice 103 was committed `71f5f8c`, fast-forward merged, and pushed to trunk `chrome-renderer-v1`** (flag-only Guide
   Quality QA Gate). Slice 104 branches from that fresh trunk.
@@ -37,7 +76,7 @@
 - **Out of scope / unchanged:** no generation/prompt change; no LLM/provider/model/cloud call; no Chandra/Mistral/Gemini; no
   OCR/PDF/image inspection; no table reconstruction; no render/export change; no figure-insertion / material-selection /
   visual-filter change; no Ask Guide change; no auto-reject/regenerate; no direct `clean.md` write. Chandra remains blocked by
-  its own live-validation gate. **Slice 104 is NOT committed.**
+  its own live-validation gate.
 
 ---
 
