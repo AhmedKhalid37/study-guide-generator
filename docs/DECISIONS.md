@@ -5548,3 +5548,46 @@ compatibility on synthetic fixtures.
 `quality_safety_blocking=false`; `unsupported_methods=degraded_not_extended`;
 `judge_ready=false`; `repair_ready=false`;
 `next_step=operator_structured_numeric_export_validation_harness`.
+
+---
+
+## Numeric infrastructure is frozen; operator export waiver approved synthetic-only; safety floor final gate is next (Slice 138)
+Slice 138 added the operator validation harness
+`test_scripts/validate_quality_safety_operator_structured_numeric_export.py`
+(test + docs only; no production code change) and ran it synthetic-only. This
+closes the Quality Safety numeric infrastructure phase.
+
+**Decisions:**
+- **The numeric infrastructure is now frozen.** Slices 124–137 built a layered
+  numeric chain (extraction records → safe candidates → structured candidates →
+  operator export protocol → pure operator export validator) plus the adapter,
+  safe extractor, mapper, fact-sheet producer, and recompute verifier. **No more
+  numeric schema/bridge layers will be added before the judge path** unless a real
+  blocker appears. Slice 138 deliberately adds *no* new schema/bridge layer — only
+  a harness that drives the existing chain end-to-end.
+- **The operator export numeric waiver is approved synthetic-only.**
+  `operator_numeric_export_waiver=approved_for_safety_floor_finalization_synthetic_only`.
+  The harness proved the full chain works on synthetic fixtures (clean passes,
+  wrong blocks, unsupported stays unverified, malformed fails cleanly, forbidden
+  fields are stripped with no canary leak). **No private/local operator run was
+  performed or committed** (`private_operator_run=not_run`); the optional
+  local/private `--input` mode is implemented but reads only one explicit file,
+  prints closed-vocabulary status only (never the path/raw values/records), and
+  writes nothing. This is sufficient to proceed to safety-floor finalization
+  without a private run, and **does not** unblock the judge (`judge_ready=false`).
+- **The next step is the deterministic safety floor final gate (Slice 139).** The
+  numeric side quest is closed; the remaining deterministic safety work (not a
+  judge, not repair, not blocking generation) is the safety floor final gate.
+
+**Why:** the layered numeric work was a side quest to make confident-wrong numeric
+claims catchable deterministically; it is now complete enough (validator + harness
+proven on synthetic fixtures) that further numeric layering would be speculative.
+Freezing it and recording a synthetic-only waiver lets the project move to the
+deterministic safety floor final gate without reviving judge/repair or committing
+any private material.
+
+`harness_status=ok`; `numeric_infrastructure_frozen=true`;
+`operator_numeric_export_waiver=approved_for_safety_floor_finalization_synthetic_only`;
+`private_operator_run=not_run`; `quality_safety_blocking=false`;
+`judge_ready=false`; `repair_ready=false`;
+`next_step=deterministic_safety_floor_final_gate`.

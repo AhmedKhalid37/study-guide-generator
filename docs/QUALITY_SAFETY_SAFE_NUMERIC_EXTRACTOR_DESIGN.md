@@ -465,3 +465,14 @@ operator-validated candidates, parses no OCR/table/source text, and reads no
 `validator_status=ready`; `validator_wired_into_production=false`;
 `unsupported_methods=degraded_not_extended`; `judge_ready=false`; `repair_ready=false`;
 `next_step=operator_structured_numeric_export_validation_harness`.
+
+## Slice 138 Harness Relationship
+
+Slice 138 added the operator validation harness
+(`test_scripts/validate_quality_safety_operator_structured_numeric_export.py`),
+run synthetic-only. The safe extractor's role is unchanged; the harness only
+drives the existing chain. The numeric infrastructure is now frozen.
+`harness_status=ok`; `numeric_infrastructure_frozen=true`;
+`operator_numeric_export_waiver=approved_for_safety_floor_finalization_synthetic_only`;
+`private_operator_run=not_run`; `judge_ready=false`; `repair_ready=false`;
+`next_step=deterministic_safety_floor_final_gate`.

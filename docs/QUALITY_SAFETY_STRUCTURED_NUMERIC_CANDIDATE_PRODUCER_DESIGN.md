@@ -243,3 +243,24 @@ judge_ready: false
 repair_ready: false
 next_step: operator_structured_numeric_export_validation_harness
 ```
+
+## Slice 138 Harness + Producer Freeze
+
+Slice 138 added the operator validation harness
+(`test_scripts/validate_quality_safety_operator_structured_numeric_export.py`),
+run synthetic-only, which closes the producer infrastructure phase. The selected
+`operator_approved_structured_export` producer v1 stays the hand-authored path;
+**no future automated producer is implemented**. The numeric infrastructure is now
+frozen unless a real blocker appears.
+
+```
+harness_status: ok
+producer_v1: operator_approved_structured_export
+future_automated_producer: not_implemented
+numeric_infrastructure_frozen: true
+operator_numeric_export_waiver: approved_for_safety_floor_finalization_synthetic_only
+private_operator_run: not_run
+judge_ready: false
+repair_ready: false
+next_step: deterministic_safety_floor_final_gate
+```

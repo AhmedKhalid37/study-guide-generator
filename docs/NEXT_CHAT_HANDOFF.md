@@ -6,55 +6,53 @@
 > stable overview see `PROJECT_CONTEXT.md`; canonical brief is `../CLAUDE.md`.
 
 ## Current position
-- **Working tree:** **Slice 137 (Pure Operator Structured Numeric Export Validator v1) — UNCOMMITTED (per instruction)** on branch
-  `slice137-quality-safety-operator-structured-numeric-export-validator-v1`, branched from updated `chrome-renderer-v1` after
-  Slice 136 was committed, fast-forward merged, and pushed. **Slice 136 is trunk commit `eb13ada`**.
-  - **Part 0 completed:** Slice 136 was committed as `eb13ada`, fast-forward merged to `chrome-renderer-v1`, and pushed with a
-    normal `git push` (no force-push). Final trunk status before branching was clean; no docker compose config was run; the Slice
-    60 trace stash remains parked and untouched.
-  - **Slice 137 scope:** pure/unwired implementation. New module
-    `pipeline/quality_safety_operator_structured_numeric_export_validator.py` validates an operator-authored (or synthetic)
-    `quality_safety_structured_numeric_candidates`-like dict against the Slice 136 protocol *before* it may feed the existing
-    adapter → safe extractor → numeric mapper → fact-sheet → recompute path. No production wiring, no route/frontend change, no
-    real/private sidecar validated, no judge, no repair, no blocking gate, no OCR/table/source/`clean.md` parsing, no
-    provider/model/cloud. `quality_safety_job_artifact.py` unchanged (no compatibility bug found).
-  - **Public API:** `validate_operator_structured_numeric_export(payload, *, max_items=None)`,
-    `build_empty_operator_structured_numeric_export_validation(reason="component_missing")`,
-    `operator_export_validation_to_structured_numeric_payload(validation_result)`.
-  - **Output:** `kind=quality_safety_operator_structured_numeric_export_validation`; closed `status`; `source_quality`
-    (`operator_approved|synthetic|unknown`); `summary` with `input/accepted/rejected_candidate_count`,
-    `supported/unsupported_method_count`, `forbidden_field_count`; sanitized forbidden-field-free `structured_numeric_payload`
-    (`kind=quality_safety_structured_numeric_candidates`); closed `warnings`.
-  - **Gate:** require kind; degrade unknown source_quality; accept only numeric/finite/operator_approved-or-computed-provenance
-    candidates with a dict computation+string method; supported methods
-    `weighted_gini`/`total_error`/`amount_of_say`/`softmax`/`cross_entropy`/`forward_pass`. Unsupported methods are degraded (kept,
-    flagged `unsupported_method`, never counted as recomputable/supported). Forbidden fields counted, stripped, never emitted
-    (Slice 133 adapter reused per-candidate). Pure, deterministic, never raises, never mutates caller input, `max_items` caps.
-  - **Downstream proved (synthetic):** validator → adapter → safe extractor → mapper → fact-sheet → recompute all chain; and the
-    re-emitted payload feeds `build_quality_safety_job_artifact_payload(structured_numeric_candidates=...)`. Real-disaster
-    equivalents: `single_confident_wrong_numeric_case` → recompute blocker (not shippable); `clean_real_case` → recompute passes
-    (shippable); `legacy_confused_wrong_case` (unsupported) → partial/unverified, supported variant blocks.
-  - **Validation:** new test `test_scripts/test_quality_safety_operator_structured_numeric_export_validator.py` (422 passed);
-    adapter (177), safe extractor (207), job artifact (753), recompute verifier (99), real-disaster e2e (100) all pass;
-    `compileall` clean; `git diff --check` clean. Docker not run (pure/unwired); no docker compose config run.
-  - **Decision record:** `validator_status=ready`; `validator_wired_into_production=false`; `quality_safety_blocking=false`;
-    `unsupported_methods=degraded_not_extended`; `judge_ready=false`; `repair_ready=false`;
-    `next_step=operator_structured_numeric_export_validation_harness`.
+- **Working tree:** **Slice 138 (Operator Structured Numeric Export Validation Harness / Waiver Decision) — UNCOMMITTED (per
+  instruction)** on branch `slice138-quality-safety-operator-structured-numeric-export-validation-harness`, branched from updated
+  `chrome-renderer-v1` after Slice 137 was committed, fast-forward merged, and pushed. **Slice 137 is trunk commit `763fb4a`**.
+  - **Part 0 completed:** Slice 137 was committed as `763fb4a`, fast-forward merged to `chrome-renderer-v1`, and pushed with a
+    normal `git push` (no force-push; `eb13ada..763fb4a`). Final trunk status before branching was clean; no docker compose config
+    was run; the Slice 60 trace stash remains parked and untouched.
+  - **Slice 138 scope:** test-harness + docs only; **no production code change.** New harness
+    `test_scripts/validate_quality_safety_operator_structured_numeric_export.py` runs the Slice 137 validator end-to-end through
+    the full chain (operator validator → structured adapter → safe extractor → numeric mapper/fact-sheet/recompute → advisory
+    artifact builder) and records a closed-vocabulary result. **No new numeric schema/bridge layer, no production wiring, no
+    route/frontend change, no judge/repair/blocking gate, no provider/model/cloud, no OCR/table/source/`clean.md` parsing, no
+    real/private sidecar committed.** `quality_safety_job_artifact.py`, `run_markdown_job.py`, `api/server.py` unchanged.
+  - **Harness modes:** default **synthetic** mode runs five synthetic cases and exits non-zero on any failure; optional
+    **local/private** mode (`--input <path>`) reads only that one JSON file, never prints the path/raw values/raw records, prints a
+    closed-vocabulary status only, writes nothing, and degrades read/parse failure to a closed `input_read_failed` token. Local
+    path / private JSON / raw values must never be committed.
+  - **Synthetic results:** `35 passed, 0 failed` — clean→recompute passed (shippable); wrong→recompute blocker (not shippable);
+    unsupported→partial/unverified (no false blocker); malformed→failed, no leak; forbidden-field→stripped, no canary leak.
+    Validator (422), adapter (177), safe extractor (207), job artifact (753), recompute verifier (99), real-disaster e2e (100) all
+    still pass; `compileall` clean; `git diff --check` clean. Docker not run (test/docs only); no docker compose config run.
+  - **Waiver decision:** `operator_numeric_export_waiver=approved_for_safety_floor_finalization_synthetic_only`;
+    `private_operator_run=not_run` (the local/private mode is implemented but was not run/committed in this slice).
+  - **Numeric infrastructure is now FROZEN** — no more numeric schema/bridge layers before the judge path unless a real blocker
+    appears.
+  - **Decision record:** `harness_status=ok`; `numeric_infrastructure_frozen=true`;
+    `operator_numeric_export_waiver=approved_for_safety_floor_finalization_synthetic_only`; `private_operator_run=not_run`;
+    `judge_ready=false`; `repair_ready=false`; `next_step=deterministic_safety_floor_final_gate`.
   - **Files changed:** `M docs/CURRENT_TASK.md`, `M docs/DECISIONS.md`, `M docs/NEXT_CHAT_HANDOFF.md`,
-    `M docs/QUALITY_SAFETY_OPERATOR_STRUCTURED_NUMERIC_EXPORT_PROTOCOL.md`,
-    `M docs/QUALITY_SAFETY_STRUCTURED_NUMERIC_CANDIDATE_PRODUCER_DESIGN.md`,
-    `M docs/QUALITY_SAFETY_FUTURE_STRUCTURED_NUMERIC_ARTIFACT_DESIGN.md`, `M docs/QUALITY_SAFETY_OPERATOR_VALIDATION.md`,
-    `M docs/QUALITY_SAFETY_E2E_VALIDATION.md`, `M docs/QUALITY_SAFETY_NUMERIC_EXTRACTION_CONTRACT.md`,
+    `M docs/QUALITY_SAFETY_OPERATOR_STRUCTURED_NUMERIC_EXPORT_PROTOCOL.md`, `M docs/QUALITY_SAFETY_OPERATOR_VALIDATION.md`,
+    `M docs/QUALITY_SAFETY_E2E_VALIDATION.md`, `M docs/QUALITY_SAFETY_STRUCTURED_NUMERIC_CANDIDATE_PRODUCER_DESIGN.md`,
+    `M docs/QUALITY_SAFETY_FUTURE_STRUCTURED_NUMERIC_ARTIFACT_DESIGN.md`, `M docs/QUALITY_SAFETY_NUMERIC_EXTRACTION_CONTRACT.md`,
     `M docs/QUALITY_SAFETY_SAFE_NUMERIC_EXTRACTOR_DESIGN.md`,
-    `?? pipeline/quality_safety_operator_structured_numeric_export_validator.py`,
-    `?? test_scripts/test_quality_safety_operator_structured_numeric_export_validator.py`.
-  - **Next expected slice:** **Slice 138 — Operator Structured Numeric Export Validation Harness** (still pure/unwired; synthetic
-    only; no production wiring; no judge/repair) unless Slice 137 reveals a blocker. Judge baseline stays blocked
-    (`judge_ready=false`).
+    `?? test_scripts/validate_quality_safety_operator_structured_numeric_export.py`.
+  - **Next expected slice:** **Slice 139 — Deterministic Safety Floor Final Gate.** Judge baseline stays blocked
+    (`judge_ready=false`; `repair_ready=false`).
   - **Out of scope/unchanged:** no `api/server.py` change, no routes, no frontend change, no production wiring/sidecar writer, no
     generation/prompt/provider/request-schema/render/export/OCR/table/visual/Ask Guide change, no judge/`overall_10`/repair/
-    blocking gate, no `quality_judge.py`, `nn3.json`, `judge_response_nn3.json`, or `quality.jsonl`. **Slice 137 remains NOT
+    blocking gate, no `quality_judge.py`, `nn3.json`, `judge_response_nn3.json`, or `quality.jsonl`. **Slice 138 remains NOT
     committed.**
+
+### Previously (Slice 137, now trunk `763fb4a`)
+- **Slice 137 (Pure Operator Structured Numeric Export Validator v1)** added the pure/unwired
+  `pipeline/quality_safety_operator_structured_numeric_export_validator.py`, which gates an operator-authored (or synthetic)
+  `quality_safety_structured_numeric_candidates`-like dict against the Slice 136 protocol and re-emits a sanitized,
+  forbidden-field-free payload for the existing adapter → safe extractor → mapper → fact-sheet → recompute chain. Synthetic-only;
+  no production wiring; `quality_safety_job_artifact.py` unchanged. `validator_status=ready`; `judge_ready=false`;
+  `repair_ready=false`; `next_step=operator_structured_numeric_export_validation_harness`.
 
 ### Previously (Slice 136, now trunk `eb13ada`)
 - **Slice 136 (Operator Structured Numeric Export Protocol)** wrote the docs-only operator workflow + closed schema/allowed/

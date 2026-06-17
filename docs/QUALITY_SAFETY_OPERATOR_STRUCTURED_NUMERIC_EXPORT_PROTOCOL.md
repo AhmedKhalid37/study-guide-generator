@@ -290,3 +290,41 @@ judge_ready: false
 repair_ready: false
 next_step: operator_structured_numeric_export_validation_harness
 ```
+
+## Slice 138 Validation Harness + Local/Private Handling
+
+Slice 138 added the operator validation harness
+`test_scripts/validate_quality_safety_operator_structured_numeric_export.py`. It
+runs the Slice 137 validator end-to-end through the full chain (validator →
+adapter → safe extractor → numeric mapper/fact-sheet/recompute → advisory artifact
+builder) and prints a **closed-vocabulary summary only**.
+
+- **Default synthetic mode** runs five synthetic cases and exits non-zero if any
+  expectation fails: `clean_operator_export_case` (recompute passed),
+  `wrong_operator_export_case` (recompute failed_blocking),
+  `unsupported_operator_export_case` (partial/unverified, no false blocker),
+  `malformed_operator_export_case` (failed/warning, no leak),
+  `forbidden_field_operator_export_case` (forbidden fields stripped, no canary
+  leak).
+- **Optional local/private mode** (`--input <path>`) validates exactly one local
+  JSON file the operator authored. It reads only that file, **never prints the
+  path, raw values, or raw records**, prints a closed-vocabulary status only, and
+  **writes nothing**. A read/parse failure degrades to a closed `input_read_failed`
+  token with no path or exception text. The local path and any private JSON / raw
+  value must never be committed — only the closed-vocabulary summary is safe.
+
+```
+harness_status: ok
+harness_module: test_scripts/validate_quality_safety_operator_structured_numeric_export.py
+synthetic_mode: implemented
+local_private_mode: implemented
+local_private_mode_run: not_run
+operator_export_committed: false
+private_sidecar_validated: false
+writes_output_files: false
+operator_numeric_export_waiver: approved_for_safety_floor_finalization_synthetic_only
+numeric_infrastructure_frozen: true
+judge_ready: false
+repair_ready: false
+next_step: deterministic_safety_floor_final_gate
+```

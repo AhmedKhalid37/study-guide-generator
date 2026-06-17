@@ -811,3 +811,31 @@ repair_ready: false
 next_step: operator_structured_numeric_export_validation_harness
 docker_compose_config_run: false
 ```
+
+## Slice 138 — Operator Structured Numeric Export Harness (synthetic)
+
+Slice 138 added `test_scripts/validate_quality_safety_operator_structured_numeric_export.py`
+and exercised the full chain end-to-end with five synthetic cases (validator →
+adapter → safe extractor → numeric mapper/fact-sheet/recompute → advisory artifact
+builder). All synthetic expectations passed (`35 passed, 0 failed`); a wrong
+operator export raises a recompute blocker and goes not-shippable, a clean one
+passes, an unsupported-method export stays unverified with no false blocker, and a
+forbidden-field export is stripped with no canary leak. The local/private mode is
+implemented but was not run; no private sidecar/path/raw value was committed.
+Closed-vocabulary outcome only:
+
+```
+operator_export_harness_status: ok
+input_kind: synthetic_safe
+private_operator_run: not_run
+operator_numeric_export_waiver: approved_for_safety_floor_finalization_synthetic_only
+numeric_infrastructure_frozen: true
+provider_calls: false
+judge_calls: false
+repair_calls: false
+quality_safety_blocking: false
+judge_ready: false
+repair_ready: false
+next_step: deterministic_safety_floor_final_gate
+docker_compose_config_run: false
+```

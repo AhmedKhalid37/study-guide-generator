@@ -1146,3 +1146,37 @@ judge_ready: false
 repair_ready: false
 next_step: operator_structured_numeric_export_validation_harness
 ```
+
+## Slice 138 Operator Validation Harness Results (synthetic, closed-vocabulary)
+
+Slice 138 added `test_scripts/validate_quality_safety_operator_structured_numeric_export.py`
+and ran it in **synthetic mode only**. The local/private `--input` mode is
+implemented but was **not run** as part of this slice, and no private sidecar,
+local path, or raw value was committed. Per-case synthetic outcomes (closed
+tokens only):
+
+```
+clean_operator_export_case:        operator_validator_status=ok      recompute=passed   recompute_blocker=false  shippable=true
+wrong_operator_export_case:        operator_validator_status=ok      recompute=failed   recompute_blocker=true   shippable=false
+unsupported_operator_export_case:  operator_validator_status=warning recompute=unverified recompute_blocker=false (unverified_unsupported_method)
+malformed_operator_export_case:    operator_validator_status=failed  recompute=unknown  recompute_blocker=false  operator_export_created=false
+forbidden_field_operator_export_case: operator_validator_status=warning recompute=passed forbidden_fields_stripped=true no_canary_leak=true
+```
+
+```
+harness_status: ok
+input_kind: synthetic_safe
+private_operator_run: not_run
+local_private_mode: implemented
+operator_export_committed: false
+private_sidecar_validated: false
+writes_output_files: false
+provider_calls: false
+judge_calls: false
+repair_calls: false
+operator_numeric_export_waiver: approved_for_safety_floor_finalization_synthetic_only
+numeric_infrastructure_frozen: true
+judge_ready: false
+repair_ready: false
+next_step: deterministic_safety_floor_final_gate
+```

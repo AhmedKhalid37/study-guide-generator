@@ -322,3 +322,24 @@ judge_ready: false
 repair_ready: false
 next_step: operator_structured_numeric_export_validation_harness
 ```
+
+## Slice 138 Harness Relationship
+
+Slice 138 added the operator validation harness
+(`test_scripts/validate_quality_safety_operator_structured_numeric_export.py`),
+run synthetic-only. The artifact schema is **unchanged**; the sidecar remains a
+job-local, read-only input production never creates and never commits. The numeric
+infrastructure is now frozen — no further schema/bridge layers before the judge
+path.
+
+```yaml
+harness_status: ok
+artifact_schema_changed: false
+sidecar_committed: false
+numeric_infrastructure_frozen: true
+operator_numeric_export_waiver: approved_for_safety_floor_finalization_synthetic_only
+private_operator_run: not_run
+judge_ready: false
+repair_ready: false
+next_step: deterministic_safety_floor_final_gate
+```
