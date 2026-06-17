@@ -183,6 +183,29 @@ def test_fixture_loader() -> None:
     check("fixture deterministic repeated output", first == second)
 
 
+def test_seed_fixture_file_consumption() -> None:
+    fixture_path = REPO / "test_scripts" / "fixtures" / "quality_safety" / "clean_neural_networks_synthetic.json"
+    fixture = load_quality_safety_fixture_spec(json.loads(fixture_path.read_text(encoding="utf-8")))
+    candidate = "\n".join(
+        [
+            "activation function forward pass softmax output cross entropy loss training pipeline",
+            "synthetic_forward_output: 0.86",
+            "synthetic_cross_entropy: 0.56",
+            "## Worked Answer",
+            "Solution: use the synthetic values and finish.",
+            "## Mock Question 1: What is first?",
+            "Answer: activation function.",
+            "## Mock Question 2: What follows?",
+            "Answer: forward pass.",
+            "## Practice Question 3: What loss is used?",
+            "Answer: cross entropy loss.",
+        ]
+    )
+    report = run_quality_safety_layer1_checks(candidate, fixture)
+    check("seed fixture file loads without warnings", fixture["warnings"] == [], str(fixture["warnings"]))
+    check("seed fixture file candidate passes", report["shippable"] is True and report["status"] == "passed", str(report))
+
+
 def test_leaked_reasoning() -> None:
     report = run_quality_safety_layer1_checks(
         "Wait. Actually this is unclear, so we'll trust the value.",
@@ -212,6 +235,18 @@ def test_numeric_correctness() -> None:
     check("numeric wrong fails blocking", numeric_wrong["status"] == "failed" and "numeric_correctness" in wrong["blocking_failures"], str(numeric_wrong))
     check("numeric wrong values only", numeric_wrong["targets"][0]["found_values"] == [0.5, 0.6], str(numeric_wrong))
     check("numeric wrong no snippets", not find_in_serialized(numeric_wrong, "and 0.60"))
+
+    contradiction = run_quality_safety_layer1_checks(
+        "synthetic alpha: 0.205 then synthetic alpha: 0.60",
+        fixture,
+    )
+    numeric_contradiction = report_check(contradiction, "numeric_correctness")
+    target = numeric_contradiction["targets"][0]
+    check("numeric contradiction fails despite correct value", numeric_contradiction["status"] == "failed" and "numeric_correctness" in contradiction["blocking_failures"], str(numeric_contradiction))
+    check("numeric contradiction warning closed", "numeric_contradiction_signal" in contradiction["warnings"], str(contradiction["warnings"]))
+    check("numeric contradiction values only", target["found_values"] == [0.205, 0.6] and target["distinct_value_count"] == 2, str(target))
+    check("numeric contradiction no snippets", not any(find_in_serialized(numeric_contradiction, term) for term in ["then synthetic", "synthetic alpha: 0.205", "synthetic alpha: 0.60"]))
+    check("numeric contradiction no line fields", "line" not in json.dumps(numeric_contradiction, sort_keys=True).lower())
 
     absent = run_quality_safety_layer1_checks("no associated label here", fixture)
     numeric_absent = report_check(absent, "numeric_correctness")
@@ -402,6 +437,7 @@ def test_import_hygiene() -> None:
 
 def run() -> int:
     test_fixture_loader()
+    test_seed_fixture_file_consumption()
     test_leaked_reasoning()
     test_numeric_correctness()
     test_worked_answer_completeness()

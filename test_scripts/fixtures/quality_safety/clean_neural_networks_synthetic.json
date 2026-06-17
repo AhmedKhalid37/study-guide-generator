@@ -1,0 +1,31 @@
+{
+  "version": 1,
+  "kind": "quality_safety_fixture",
+  "lecture_id": "clean_neural_networks_synthetic",
+  "title": "Clean Neural Networks Synthetic Fixture",
+  "source_quality": "clean",
+  "expected_topics": [
+    "activation function",
+    "forward pass",
+    "softmax output",
+    "cross entropy loss",
+    "training pipeline"
+  ],
+  "ground_truth_numerics": [
+    {
+      "label": "synthetic_forward_output",
+      "value": 0.86,
+      "tol": 0.01
+    },
+    {
+      "label": "synthetic_cross_entropy",
+      "value": 0.56,
+      "tol": 0.01
+    }
+  ],
+  "min_mock_questions": 3,
+  "tier_targets": {
+    "premium": 9.5,
+    "local": 9.0
+  }
+}

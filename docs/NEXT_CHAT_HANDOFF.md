@@ -6,37 +6,39 @@
 > stable overview see `PROJECT_CONTEXT.md`; canonical brief is `../CLAUDE.md`.
 
 ## Current position
-- **Working tree:** **Slice 108 (Quality Safety Eval Harness Skeleton) — UNCOMMITTED (per instruction)** on branch
-  `slice108-quality-safety-eval-harness-skeleton`, branched from fresh `chrome-renderer-v1` after Slice 107 was committed,
-  fast-forward merged, and pushed. **Slice 107 is trunk commit `03cacc7`**.
-  - **Part 0 completed:** Slice 107 was committed as `03cacc7`, fast-forward merged to `chrome-renderer-v1`, and pushed with
-    a normal `git push` (no force-push). It changed docs plus frontend Guide Quality panel/display/verifier files only; no
-    backend production-code files changed. No generation/prompt/provider/render/export/Ask Guide behavior changed. The Slice
-    60 trace stash remains parked and untouched.
-  - **Why this, why now:** this starts the **Quality Safety Unit** phase from the eval/fact-sheet/verifier plan. The
-    scoreboard must exist before prompt tuning, repair, fact sheets, canonical fixtures, recompute verification, or production
-    leak gating, so Slice 108 adds measurement only.
-  - **New pure module:** `pipeline/quality_safety_eval_harness.py` exposes fixture loading,
-    `run_quality_safety_layer1_checks(...)`, an in-memory regression record builder, and a small wrapper. It is stdlib-only,
-    deterministic, offline, synthetic-fixture based, and persists no runtime eval JSONL/output by default.
-  - **Fixture behavior:** malformed fixture input never raises; optional fields are tolerated; expected topics, numeric
-    labels, lecture ids, and titles are sanitized synthetic ids; invalid numeric targets/minimum counts/tier targets degrade
-    with closed warnings only. Unknown `source_quality` becomes a closed token.
-  - **Layer-1 checks:** leaked reasoning, numeric correctness against fixture values, worked-answer completeness, expected
-    topic coverage, and mock/practice question count. Reports store counts, closed ids/statuses/warnings, numeric floats, and
-    safe fixture labels/topics only. They store no candidate snippets, formulas, source text, OCR/table/caption text,
-    filenames, paths, URLs, provider payloads, or generated guide output.
-  - **Regression record shape:** `quality_safety_regression_record` keeps `overall_10` nullable and separate from
-    `shippable`, copies safe Layer-1 report data, records warnings/blocking failures, and marks regression for shippable
-    true→false, newly failed blocking checks, or an `overall_10` drop greater than 0.3.
-  - **Tests:** `test_scripts/test_quality_safety_eval_harness.py` is synthetic-only and covers fixture loader behavior, all
-    Layer-1 checks, regression record semantics, deterministic serialization, no-leak sweep, wrapper output, and import
-    hygiene. Slice 108 remains uncommitted.
-  - **Out of scope/unchanged:** no What the Lecturer Skipped mode, no study-intelligence feature, no fact-sheet schema, no
-    canonical fixtures, no recompute verifier, no production leak gate, no repair loop, no Layer-2 LLM judge, no real golden
-    fixtures, no frontend UI, no API routes, no generic artifact list entries, no export selectors, no provider/model/cloud
-    calls, no generation prompts, no request schema, no Builder UI, no Ask Guide, no OCR/PDF/image/table/render/export
-    behavior, and no direct `clean.md` writes. Chandra remains blocked by its own live-validation gate.
+- **Working tree:** **Slice 109 (Quality Safety Seed Fixtures v1) — UNCOMMITTED (per instruction)** on branch
+  `slice109-quality-safety-seed-fixtures-v1`, branched from fresh `chrome-renderer-v1` after Slice 108 was committed,
+  fast-forward merged, and pushed. **Slice 108 is trunk commit `133e8e0`**.
+  - **Part 0 completed:** Slice 108 was committed as `133e8e0`, fast-forward merged to `chrome-renderer-v1`, and pushed with
+    a normal `git push` (no force-push). It added only the offline deterministic Quality Safety eval harness skeleton and
+    synthetic tests. No API/frontend/generation/prompt/request/render/export/OCR/table/visual/Ask Guide behavior changed. No
+    provider/model/cloud calls were added. The Slice 60 trace stash remains parked and untouched.
+  - **Slice 109 scope:** add sanitized synthetic seed fixture specs for the Quality Safety Unit. This is not the real golden
+    corpus; future operator-approved non-private golden data still needs an explicit safe fixture policy.
+  - **Seed fixtures:** `test_scripts/fixtures/quality_safety/clean_neural_networks_synthetic.json` and
+    `test_scripts/fixtures/quality_safety/ambiguous_ensemble_synthetic.json`. They exercise only two Layer-1 deterministic
+    roles: a clean math/NN-like source and an ambiguous ensemble/tree-like source. They contain synthetic ids/topics/numeric
+    targets/minimum question counts/tier targets only.
+  - **Harness hardening in this working tree:** numeric contradiction detection now fails `numeric_correctness` when a
+    candidate prints two or more distinct values for the same fixture label, even if one value is correct. Reports keep only
+    closed statuses/warnings and numeric values/counts; no snippets are stored.
+  - **Tests:** `test_scripts/test_quality_safety_seed_fixtures.py` validates fixture existence, JSON-only/no-binary contents,
+    forbidden field absence, loader compatibility, synthetic pass/fail candidates, deterministic serialization, no-leak
+    sweeps, and import hygiene. `test_scripts/test_quality_safety_eval_harness.py` adds a small seed fixture consumption
+    check and numeric contradiction coverage.
+  - **Out of scope/unchanged:** no LLM judge scoring, fact-sheet schema, canonical fixture matcher, recompute verifier,
+    production leak gate, repair loop, real golden fixtures, source deck PDFs, reference guides, generated guides, runtime
+    eval outputs, evidence quotes, private filenames, real source/reference/uploaded quality-spec filenames, source text,
+    OCR/table/caption text, paths, URLs, image data, provider payloads, formulas copied from private/generated material,
+    frontend UI, API routes, generation prompts, request schemas, render/export/OCR/table/visual behavior, Ask Guide changes,
+    provider/model/cloud calls, or Docker config. Chandra remains blocked by its own live-validation gate.
+
+### Previously (Slice 108, now trunk `133e8e0`)
+- **Slice 108 (Quality Safety Eval Harness Skeleton)** added `pipeline/quality_safety_eval_harness.py` and
+  `test_scripts/test_quality_safety_eval_harness.py`. The harness is stdlib-only, deterministic, offline, synthetic-fixture
+  based, persists no eval JSONL/output by default, and measures leaked reasoning, numeric correctness, worked-answer
+  completeness, expected-topic coverage, and mock/practice question count. It changed no API, frontend, generation, prompt,
+  request schema, render/export/OCR/table/visual, Ask Guide, or provider/model/cloud behavior.
 
 ### Previously (Slice 107, now trunk `03cacc7`)
 - **Slice 107 (Guide Quality closeout panel rubric + operator checklist)** surfaced the existing

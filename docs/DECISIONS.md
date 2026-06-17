@@ -4677,3 +4677,20 @@ answers into confident wrongness. Slice 108 therefore measures only: determinist
 closed statuses/warnings, and an in-memory regression record shape with nullable quality score and separate shippability. LLM
 judge scoring, fact sheets, canonical fixtures, recompute verification, production leak gates, and section repair remain
 future explicit slices.
+
+## Slice 109 seeds quality-safety fixtures with sanitized synthetic specs only
+**Why seed fixtures are JSON specs, not a golden corpus.** The Quality Safety harness needs stable committed inputs so Layer-1
+deterministic checks can run in CI-like validation, but real decks, reference guides, generated guides, uploaded quality-spec
+files, evidence quotes, OCR/table/caption text, paths, URLs, source text, and private filenames must not enter the repo. Slice
+109 therefore adds two sanitized synthetic fixture specs only: one clean math/NN-like fixture and one ambiguous ensemble/
+tree-like fixture. They are not real golden corpus files, and future golden data requires an explicit safe fixture policy.
+
+**Why no production fixture scanner is added.** The committed fixtures are loaded by explicit tests through the existing
+fixture-spec loader. The slice does not add a recursive scanner, runtime artifact writer, app route, export selector, UI, LLM
+judge, fact-sheet schema, canonical matcher, recompute verifier, production leak gate, or repair loop. Keeping fixture use
+path-explicit preserves the no-leak boundary while still giving the harness deterministic seed coverage.
+
+**Why numeric contradictions are blocking.** A candidate that prints two different values for the same fixture label is unsafe
+even if one value happens to match the expected target and no recomputation engine is available. The Layer-1 numeric check
+therefore treats distinct values for the same synthetic quantity as a blocking `numeric_correctness` failure while still
+reporting only numeric values/counts and closed warnings, never candidate snippets.

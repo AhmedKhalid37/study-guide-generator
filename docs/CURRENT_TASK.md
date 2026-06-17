@@ -5,7 +5,40 @@
 
 ---
 
-## Slice 108 — **Quality Safety Eval Harness Skeleton**, on `slice108-quality-safety-eval-harness-skeleton`. **NOT COMMITTED.**
+## Slice 109 — **Quality Safety Seed Fixtures v1**, on `slice109-quality-safety-seed-fixtures-v1`. **NOT COMMITTED.**
+
+- **Part 0 completed:** Slice 108 was committed as `133e8e0`, fast-forward merged to trunk `chrome-renderer-v1`, and pushed
+  with a normal `git push` (no force-push). Slice 108 added only the offline deterministic eval harness skeleton and its
+  synthetic tests. It changed no API route, frontend, generation prompt, request schema, Builder UI, Ask Guide,
+  render/export/OCR/table/visual behavior, runtime artifact writer, provider/model/cloud integration, or Docker config. The
+  parked Slice 60 trace stash remains untouched.
+- **Scope:** Slice 109 adds sanitized synthetic seed fixture specs for the Quality Safety eval harness. This is **not** the
+  real golden corpus. Future operator-approved non-private golden data still needs an explicit safe fixture policy.
+- **Seed fixtures:** `test_scripts/fixtures/quality_safety/clean_neural_networks_synthetic.json` and
+  `test_scripts/fixtures/quality_safety/ambiguous_ensemble_synthetic.json` exercise two Layer-1 deterministic roles only:
+  one clean math/NN-like source and one ambiguous ensemble/tree-like source. They contain synthetic ids/topics/numeric
+  targets/minimum question counts/tier targets only.
+- **Harness hardening:** after review, the numeric check now treats two or more distinct values printed for the same fixture
+  label as a blocking `numeric_correctness` failure, even when one value matches the expected target. Reports still contain
+  only closed statuses/warnings, numeric values/counts, and sanitized fixture labels; they do not store candidate snippets.
+- **Tests:** `test_scripts/test_quality_safety_seed_fixtures.py` validates fixture existence, JSON-only/no-binary contents,
+  forbidden field absence, loader compatibility, synthetic pass/fail candidates, deterministic serialization, no-leak sweeps,
+  and import hygiene. `test_scripts/test_quality_safety_eval_harness.py` adds a small seed-fixture consumption check and
+  numeric contradiction coverage.
+- **Safety boundary:** no source deck PDFs, reference guides, generated guides, runtime eval outputs, evidence quotes, private
+  filenames, real source/reference/uploaded quality-spec filenames, real source text, OCR text, table text, captions, paths,
+  URLs, image data, provider payloads, or formulas copied from private/generated material were added. The fixtures are for
+  Layer-1 deterministic harness testing only.
+- **Out of scope / unchanged:** no LLM judge scoring, no fact-sheet schema, no canonical fixture matcher, no recompute
+  verifier, no production leak gate, no repair loop, no What the Lecturer Skipped mode, no Active Recall or other picked
+  study-intelligence features, no frontend UI, no API routes, no generic artifact list entries, no export selectors, no
+  generation/prompt/request/API/UI/render/export/OCR/table/visual/Ask Guide behavior change, and no provider/model/cloud
+  calls. Docker validation is optional/not required for this offline test-fixture slice unless production runtime changes are
+  made. Chandra remains blocked by its own live-validation gate. **Slice 109 remains NOT committed.**
+
+---
+
+## Slice 108 — **Quality Safety Eval Harness Skeleton**, on `slice108-quality-safety-eval-harness-skeleton`. **Committed `133e8e0`, merged + pushed to `chrome-renderer-v1`.**
 
 - **Part 0 completed:** Slice 107 was committed as `03cacc7`, fast-forward merged to trunk `chrome-renderer-v1`, and pushed
   with a normal `git push` (no force-push). Slice 107 changed docs plus frontend Guide Quality panel/display/verifier files
@@ -42,7 +75,8 @@
   verifier, no production leak gate, no repair loop, no Layer-2 LLM judge, no real golden fixtures, no frontend UI, no API
   routes, no generic artifact list entries, no export selectors, no provider/model/cloud calls, no generation prompts, no
   request schemas, no Builder UI, no Ask Guide, no OCR/PDF/image/table/render/export behavior, and no direct `clean.md`
-  writes. Chandra remains blocked by its own live-validation gate. **Slice 108 remains NOT committed.**
+  writes. Chandra remains blocked by its own live-validation gate. Slice 108 was committed, merged, and pushed before
+  Slice 109.
 
 ---
 

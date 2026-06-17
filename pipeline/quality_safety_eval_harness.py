@@ -50,6 +50,7 @@ REPORT_WARNING_ORDER = (
     "mock_question_count_below_minimum",
     "worked_answer_incomplete_signal",
     "leaked_reasoning_signal",
+    "numeric_contradiction_signal",
     "numeric_mismatch_signal",
     "coverage_below_target",
 )
@@ -402,6 +403,10 @@ def _check_numeric_correctness(
             missing_count += 1
             status = "unknown"
             warnings.add("numeric_target_missing")
+        elif _has_numeric_contradiction(unique_values, tol):
+            fail_count += 1
+            status = "failed"
+            warnings.add("numeric_contradiction_signal")
         elif any(abs(value - expected) <= tol for value in unique_values):
             pass_count += 1
             status = "passed"
@@ -416,6 +421,7 @@ def _check_numeric_correctness(
                 "expected_value": expected,
                 "tolerance": tol,
                 "found_values": unique_values,
+                "distinct_value_count": len(unique_values),
             }
         )
 
@@ -694,6 +700,17 @@ def _dedupe_floats(values: list[float]) -> list[float]:
         seen.add(rounded)
         out.append(float(value))
     return out
+
+
+def _has_numeric_contradiction(values: list[float], tolerance: float) -> bool:
+    if len(values) < 2:
+        return False
+    tol = max(float(tolerance), 1e-12)
+    for idx, left in enumerate(values):
+        for right in values[idx + 1 :]:
+            if not math.isclose(left, right, rel_tol=0.0, abs_tol=tol):
+                return True
+    return False
 
 
 def _is_mock_question_line(line: str) -> bool:
