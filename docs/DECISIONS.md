@@ -4860,3 +4860,18 @@ provider payloads, runtime traces, or private material.
 structured bundle exists, the artifact records component-missing/skipped state for fact-sheet, recompute, and canonical
 signals while still running the safe leak scan against `clean.md` when available. Blocking gates, repair behavior, judge
 scoring, and `overall_10` remain deferred.
+
+## Slice 119 surfaces Quality Safety read-only in the advisory UI
+**Why UI inspection comes before blocking or repair.** The Quality Safety artifact is surfaced read-only and advisory before
+any blocking or repair behavior. This lets operators inspect the deterministic floor on real jobs without changing job
+success/failure semantics, generation prompts, provider requests, render/export behavior, or Ask Guide.
+
+**Why the UI uses a strict display allowlist.** The frontend normalizer for `quality_safety_unified_qa.json` emits only
+closed statuses, components, check ids, severities, verification statuses, warning tokens, booleans/unknowns, non-negative
+counts, deterministic 0-5 axes, and capped blocking rows. It never preserves raw guide/source text, snippets, formulas,
+OCR/table/caption text, paths, filenames, URLs, evidence quotes, provider payloads, runtime traces, or raw nested child
+report fields outside that allowlist.
+
+**Why missing artifacts are calm.** Older jobs or jobs without the Slice 118 artifact show a "not available" state in the
+existing Guide Quality panel. Missing Quality Safety metadata remains advisory UI state only and does not block downloads,
+exports, job status, or any generation flow.

@@ -6,32 +6,29 @@
 > stable overview see `PROJECT_CONTEXT.md`; canonical brief is `../CLAUDE.md`.
 
 ## Current position
-- **Working tree:** **Slice 118 (Quality Safety Advisory Job Artifact v1) — UNCOMMITTED (per instruction)** on branch
-  `slice118-quality-safety-advisory-job-artifact-v1`, branched from fresh `chrome-renderer-v1` after Slice 117 was committed,
-  fast-forward merged, and pushed. **Slice 117 is trunk commit `e389697`**.
-  - **Part 0 completed:** Slice 117 was committed as `e389697`, fast-forward merged to `chrome-renderer-v1`, and pushed with
-    a normal `git push` (no force-push). It added only the pure/unwired fact-sheet producer plus the narrow
-    `computation.tolerance` schema integration fix. Synthetic wrong `weighted_gini` fails via recompute, synthetic clean
-    passes, no production wiring was added in Slice 117, no private material/runtime outputs/provider/model/cloud calls were
-    added, no docker compose config was run, and the Slice 60 trace stash remains parked and untouched.
-  - **Slice 118 scope:** adds `pipeline/quality_safety_job_artifact.py`, a synthetic test suite, an exact-name job path/API
-    download case, and one guarded production writer call in `pipeline/run_markdown_job.py` after `clean.md` exists and
-    before rendering. The exact artifact name is `quality_safety_unified_qa.json`.
-  - **Advisory behavior:** the artifact never blocks job success, never changes job status, never repairs or rewrites guide
-    content, never tunes prompts, never changes provider requests or request schemas, and never calls providers/models/cloud.
-    It does not add judge scoring, `overall_10`, `quality_judge.py`, `nn3.json`, `judge_response_nn3.json`, or
-    `quality.jsonl`.
-  - **Payload/no-leak boundary:** payloads contain `version`, `kind`, `advisory=true`, `status`, `shippable`,
-    `safety_floor_green`, component statuses, deterministic axes, count-only summaries, closed-token blockers/warnings, and
-    nested `quality_safety_unified_qa`. They store no raw guide/source text, snippets, formulas, paths, filenames, URLs,
-    OCR/table/caption text, evidence quotes, provider payloads, runtime traces, or private material.
-  - **Missing extraction behavior:** production uses `clean.md` only as input to safe leak scanning and does not store it.
-    Structured extraction bundles are used only if a safe bundle exists. Missing extraction records closed
-    `component_missing` / skipped state for fact-sheet, recompute, and canonical components; facts are not invented from job
-    content.
-  - **Out of scope/unchanged:** no frontend/UI addition, no generation/prompt/request behavior change, no render/export/OCR/
-    table/visual/Ask Guide behavior change, no provider/model/cloud call, no Chandra gate change, no repair loop, no blocking
-    gate, and no real fixtures/runtime JSON/generated outputs/private material. **Slice 118 remains NOT committed.**
+- **Working tree:** **Slice 119 (Quality Safety Advisory UI Display v1) — UNCOMMITTED (per instruction)** on branch
+  `slice119-quality-safety-advisory-ui-display-v1`, branched from fresh `chrome-renderer-v1` after Slice 118 was committed,
+  fast-forward merged, and pushed. **Slice 118 is trunk commit `c9644aa`**.
+  - **Part 0 completed:** Slice 118 was committed as `c9644aa`, fast-forward merged to `chrome-renderer-v1`, and pushed with
+    a normal `git push` (no force-push). It added advisory production job artifact generation for
+    `quality_safety_unified_qa.json`; the writer remains advisory/non-blocking, writer errors do not fail jobs, no
+    provider/model/cloud call was added, Docker validation passed, no docker compose config was run, and the Slice 60 trace
+    stash remains parked and untouched.
+  - **Slice 119 scope:** surfaces `quality_safety_unified_qa.json` in the existing Guide Quality advisory UI as a read-only
+    Quality Safety section. Missing artifacts degrade calmly to "not available"; no backend artifact generation or API change
+    is required.
+  - **Display/no-leak boundary:** the frontend normalizer uses a strict allowlist and emits only closed statuses/components/
+    check ids/severities/verification statuses/warning tokens, booleans or unknown, non-negative counts, deterministic 0-5
+    axes, and capped blocking rows. It does not display raw guide/source text, snippets, formulas, OCR/table/caption text,
+    paths, filenames, URLs, evidence quotes, provider payloads, runtime traces, or raw nested child report fields.
+  - **Out of scope/unchanged:** no generation/prompt/provider request/request schema/job success/render/export/OCR/table/
+    visual/Ask Guide behavior change, no judge scoring or `overall_10`, no repair loop, no blocking gate, and no
+    `quality_judge.py`, `nn3.json`, `judge_response_nn3.json`, or `quality.jsonl`. **Slice 119 remains NOT committed.**
+
+### Previously (Slice 118, now trunk `c9644aa`)
+- **Slice 118 (Quality Safety Advisory Job Artifact v1)** added `pipeline/quality_safety_job_artifact.py`, a synthetic test
+  suite, an exact-name job path/API download case, and one guarded production writer call after `clean.md` exists and before
+  rendering. The exact artifact name is `quality_safety_unified_qa.json`; it is advisory-only and stores closed signals only.
 
 ### Previously (Slice 117, now trunk `e389697`)
 - **Slice 117 (Quality Safety Fact-Sheet Producer v1)** added the pure/unwired producer that maps sanitized structured

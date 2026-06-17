@@ -41,6 +41,7 @@ export const GUIDE_QUALITY_QA_GATE_ARTIFACT = "guide_quality_qa_gate.json";
 export const GUIDE_QUALITY_CONTRACT_LINT_ARTIFACT = "guide_quality_contract_lint.json";
 export const MATH_VERIFICATION_ARTIFACT = "math_verification.json";
 export const GUIDE_QUALITY_RUBRIC_SCORE_ARTIFACT = "guide_quality_rubric_score.json";
+export const QUALITY_SAFETY_ARTIFACT = "quality_safety_unified_qa.json";
 
 // Fixed, human-readable labels for the Artifacts section (never a raw URL/path).
 export const GUIDE_QUALITY_ARTIFACT_LABELS = Object.freeze([
@@ -48,6 +49,7 @@ export const GUIDE_QUALITY_ARTIFACT_LABELS = Object.freeze([
   { artifact: GUIDE_QUALITY_CONTRACT_LINT_ARTIFACT, label: "Guide Quality Contract Lint" },
   { artifact: GUIDE_QUALITY_REPORT_V2_ARTIFACT, label: "Guide Quality Report v2" },
   { artifact: GUIDE_QUALITY_RUBRIC_SCORE_ARTIFACT, label: "Guide Quality Rubric Score" },
+  { artifact: QUALITY_SAFETY_ARTIFACT, label: "Quality Safety Unified QA" },
   { artifact: MATH_VERIFICATION_ARTIFACT, label: "Math Verification" },
   { artifact: SOURCE_COVERAGE_ARTIFACT, label: "Source Coverage Report" },
 ]);
@@ -83,6 +85,85 @@ const RUBRIC_AXIS_KINDS = new Set([
   "beginner_scaffolding",
   "worked_example_completeness",
 ]);
+const QUALITY_SAFETY_JOB_KIND = "quality_safety_job_artifact";
+const QUALITY_SAFETY_UNIFIED_KIND = "quality_safety_unified_qa";
+const QUALITY_SAFETY_STATUSES = new Set(["passed", "warning", "failed", "skipped", "partial", "unknown", "missing", "unavailable"]);
+const QUALITY_SAFETY_COMPONENTS = ["layer1", "recompute", "canonical", "leak"];
+const QUALITY_SAFETY_COMPONENT_SET = new Set([...QUALITY_SAFETY_COMPONENTS, "unknown"]);
+const QUALITY_SAFETY_SEVERITIES = new Set(["blocking", "warning", "info", "unknown"]);
+const QUALITY_SAFETY_VERIFICATION_STATUSES = new Set([
+  "verified_recompute",
+  "failed_recompute",
+  "verified_canonical",
+  "failed_canonical",
+  "unverified",
+  "not_applicable",
+  "unknown",
+]);
+const QUALITY_SAFETY_AXES = ["accuracy", "coverage", "solved_problem", "clarity"];
+const QUALITY_SAFETY_CHECK_IDS = new Set([
+  "leaked_reasoning",
+  "numeric_correctness",
+  "worked_answer_completeness",
+  "coverage",
+  "mock_question_count",
+  "weighted_gini",
+  "total_error",
+  "amount_of_say",
+  "softmax",
+  "cross_entropy",
+  "forward_pass",
+  "numeric_fact_not_recomputable",
+  "non_numeric_fact_not_applicable",
+  "canonical_fixture_match",
+  "canonical_fixture_mismatch",
+  "canonical_fixture_missing",
+  "canonical_fixture_skipped_by_recompute_verified",
+  "canonical_fixture_skipped_by_recompute_failed",
+  "canonical_fixture_not_applicable",
+  "quality_safety_leak_scan",
+  "unknown",
+  "unknown_check",
+]);
+const QUALITY_SAFETY_WARNING_TOKENS = new Set([
+  "malformed_input_degraded",
+  "component_missing",
+  "component_malformed",
+  "layer1_warning",
+  "numeric_unverified",
+  "canonical_unmatched",
+  "leak_warning",
+  "coverage_warning",
+  "mock_question_warning",
+  "unknown_verification_context",
+  "candidate_markdown_missing",
+  "extraction_bundle_missing",
+  "fact_sheet_component_missing",
+  "recompute_component_missing",
+  "canonical_component_missing",
+  "artifact_write_failed",
+  "component_degraded",
+  "unsafe_metadata_dropped",
+  "max_items_reached",
+  "unknown",
+]);
+const QUALITY_SAFETY_SUMMARY_KEYS = [
+  "blocking_failure_count",
+  "warning_count",
+  "numeric_blocking_failure_count",
+  "leak_blocking_failure_count",
+  "verified_recompute_count",
+  "verified_canonical_count",
+  "failed_recompute_count",
+  "failed_canonical_count",
+  "unverified_fact_count",
+  "unknown_context_leak_count",
+];
+const QUALITY_SAFETY_MAX_FAILURES = 12;
+const QUALITY_SAFETY_MAX_WARNINGS = 12;
+const QUALITY_SAFETY_MAX_FACT_IDS = 6;
+const SAFE_FACT_ID_RE = /^[a-z0-9][a-z0-9._-]{0,48}$/;
+const UNSAFE_FACT_ID_RE = /(private|source|deck|upload|quality|spec|evidence|quote|ocr|caption|table|provider|payload|\.pdf|\.docx|\.zip|\.png|\.jpe?g|\.webp|https?|authorization|bearer|token|secret|base64|data:)/i;
 
 // --- Pure local helpers (no string ever copied from input) -------------------
 function isRecord(value) {
@@ -102,7 +183,7 @@ function safeToken(value, allowed, fallback) {
 
 function statusTone(status) {
   if (status === "passed") return "good";
-  if (status === "warning") return "bad";
+  if (status === "warning" || status === "failed") return "bad";
   return "warn"; // skipped / partial / unknown / not_applicable
 }
 
@@ -314,6 +395,130 @@ export function summarizeGuideQualityRubricScore(rubric) {
 }
 
 // =============================================================================
+// Quality Safety (quality_safety_unified_qa.json) — closed tokens/counts only
+// =============================================================================
+export function normalizeQualitySafetyArtifact(raw) {
+  const empty = {
+    state: "unavailable",
+    artifactStatus: "missing",
+    status: "missing",
+    tone: "warn",
+    advisory: null,
+    shippable: null,
+    safetyFloorGreen: null,
+    componentStatuses: Object.fromEntries(QUALITY_SAFETY_COMPONENTS.map((component) => [component, "unknown"])),
+    axes: Object.fromEntries(QUALITY_SAFETY_AXES.map((axis) => [axis, null])),
+    summary: Object.fromEntries(QUALITY_SAFETY_SUMMARY_KEYS.map((key) => [key, 0])),
+    blockingFailures: [],
+    warningTokens: [],
+  };
+  if (!isRecord(raw)) {
+    return empty;
+  }
+
+  const root = raw.kind === QUALITY_SAFETY_JOB_KIND && isRecord(raw.quality_safety_unified_qa)
+    ? raw.quality_safety_unified_qa
+    : raw;
+  if (!isRecord(root) || root.kind !== QUALITY_SAFETY_UNIFIED_KIND) {
+    return { ...empty, state: "malformed", artifactStatus: "unavailable", status: "unavailable" };
+  }
+
+  const rawSummary = isRecord(root.summary) ? root.summary : {};
+  const jobSummary = isRecord(raw.summary) ? raw.summary : {};
+  const status = safeToken(root.status, QUALITY_SAFETY_STATUSES, "unknown");
+  const componentStatuses = {};
+  const rawComponents = isRecord(root.component_statuses) ? root.component_statuses : {};
+  for (const component of QUALITY_SAFETY_COMPONENTS) {
+    componentStatuses[component] = safeToken(rawComponents[component], QUALITY_SAFETY_STATUSES, "unknown");
+  }
+
+  const rawAxes = isRecord(root.deterministic_axes_0_5) ? root.deterministic_axes_0_5 : {};
+  const axes = {};
+  for (const axis of QUALITY_SAFETY_AXES) {
+    axes[axis] = qualitySafetyAxis(rawAxes[axis]);
+  }
+
+  const summary = {};
+  for (const key of QUALITY_SAFETY_SUMMARY_KEYS) {
+    summary[key] = nonNegativeInteger(rawSummary[key]);
+  }
+  if (summary.warning_count === 0) {
+    summary.warning_count = nonNegativeInteger(jobSummary.quality_safety_warning_count || jobSummary.warning_count);
+  }
+
+  const warningTokens = [];
+  const warningSources = [root.warning_tokens, root.warnings, raw.warning_tokens, raw.warnings];
+  for (const source of warningSources) {
+    if (!Array.isArray(source)) continue;
+    for (const token of source) {
+      if (warningTokens.length >= QUALITY_SAFETY_MAX_WARNINGS) break;
+      const safe = safeToken(token, QUALITY_SAFETY_WARNING_TOKENS, "unknown");
+      if (!warningTokens.includes(safe)) warningTokens.push(safe);
+    }
+  }
+
+  const rawFailures = Array.isArray(root.blocking_failures)
+    ? root.blocking_failures
+    : Array.isArray(raw.blocking_failures)
+      ? raw.blocking_failures
+      : [];
+  const blockingFailures = [];
+  for (const entry of rawFailures) {
+    if (!isRecord(entry) || blockingFailures.length >= QUALITY_SAFETY_MAX_FAILURES) continue;
+    const checkId = safeQualitySafetyCheckId(entry.check_id || entry.id);
+    const row = {
+      component: safeToken(entry.component, QUALITY_SAFETY_COMPONENT_SET, "unknown"),
+      checkId,
+      status: safeToken(entry.status, QUALITY_SAFETY_STATUSES, "unknown"),
+      severity: safeToken(entry.severity, QUALITY_SAFETY_SEVERITIES, "unknown"),
+      verificationStatus: safeToken(entry.verification_status, QUALITY_SAFETY_VERIFICATION_STATUSES, "unknown"),
+    };
+    const count = nonNegativeInteger(entry.count);
+    if (count > 0) row.count = count;
+    const factIds = safeQualitySafetyFactIds(entry.fact_ids);
+    if (factIds.length > 0) row.factIds = factIds;
+    blockingFailures.push(row);
+  }
+
+  return {
+    ...empty,
+    state: "available",
+    artifactStatus: "loaded",
+    status,
+    tone: statusTone(status),
+    advisory: typeof raw.advisory === "boolean" ? raw.advisory : null,
+    shippable: typeof root.shippable === "boolean" ? root.shippable : null,
+    safetyFloorGreen: typeof root.safety_floor_green === "boolean" ? root.safety_floor_green : null,
+    componentStatuses,
+    axes,
+    summary,
+    blockingFailures,
+    warningTokens,
+  };
+}
+
+function qualitySafetyAxis(value) {
+  return Number.isFinite(value) && value >= 0 && value <= 5 ? value : null;
+}
+
+function safeQualitySafetyCheckId(value) {
+  const token = safeToken(value, QUALITY_SAFETY_CHECK_IDS, "unknown");
+  return token === "unknown_check" ? "unknown" : token;
+}
+
+function safeQualitySafetyFactIds(value) {
+  if (!Array.isArray(value)) return [];
+  const ids = [];
+  for (const item of value) {
+    if (ids.length >= QUALITY_SAFETY_MAX_FACT_IDS) break;
+    if (typeof item !== "string") continue;
+    const token = item.trim().toLowerCase();
+    if (SAFE_FACT_ID_RE.test(token) && !UNSAFE_FACT_ID_RE.test(token) && !ids.includes(token)) ids.push(token);
+  }
+  return ids;
+}
+
+// =============================================================================
 // Composite panel model
 // =============================================================================
 //
@@ -328,6 +533,7 @@ export function summarizeGuideQualityPanelModel({
   mathVerification = null,
   sourceCoverageReport = null,
   rubricScore = null,
+  qualitySafetyArtifact = null,
 } = {}) {
   const gate = qaGate === null ? null : summarizeGuideQualityQaGate(qaGate);
   const lint = contractLint === null ? null : summarizeGuideQualityContractLint(contractLint);
@@ -335,6 +541,7 @@ export function summarizeGuideQualityPanelModel({
   const reportV2 = guideQualityReportV2 === null ? null : summarizeGuideQualityReportV2(guideQualityReportV2);
   const coverage = sourceCoverageReport === null ? null : summarizeSourceCoverage(sourceCoverageReport);
   const rubric = rubricScore === null ? null : summarizeGuideQualityRubricScore(rubricScore);
+  const qualitySafety = normalizeQualitySafetyArtifact(qualitySafetyArtifact);
 
   // Additional safe count not exposed by summarizeSourceCoverage: number of fully
   // unreadable sources. Read directly as a non-negative integer (no string copied).
@@ -362,6 +569,9 @@ export function summarizeGuideQualityPanelModel({
     // Rubric score section.
     rubricScore: rubric === null ? unavailable() : rubric,
     rubricScoreAvailable: rubric !== null,
+    // Quality Safety advisory floor section.
+    qualitySafety,
+    qualitySafetyAvailable: qualitySafety.state === "available",
     // Quality-check chips come from the QA gate's closed-kind checks.
     qualityChecks: gate === null ? [] : gate.checks,
     // Fixed exact-name artifact links (labels only — never a raw URL).

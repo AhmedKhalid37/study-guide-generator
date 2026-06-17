@@ -22,12 +22,14 @@ import {
   GUIDE_QUALITY_REPORT_V2_ARTIFACT,
   GUIDE_QUALITY_RUBRIC_SCORE_ARTIFACT,
   MATH_VERIFICATION_ARTIFACT,
+  QUALITY_SAFETY_ARTIFACT,
   SOURCE_COVERAGE_ARTIFACT,
   GUIDE_QUALITY_ARTIFACT_LABELS,
   summarizeGuideQualityQaGate,
   summarizeGuideQualityContractLint,
   summarizeMathVerificationArtifact,
   summarizeGuideQualityRubricScore,
+  normalizeQualitySafetyArtifact,
   summarizeGuideQualityPanelModel,
 } from "../src/guideQualityDisplay.js";
 
@@ -46,6 +48,7 @@ check("qa gate artifact name is exact", GUIDE_QUALITY_QA_GATE_ARTIFACT === "guid
 check("contract lint artifact name is exact", GUIDE_QUALITY_CONTRACT_LINT_ARTIFACT === "guide_quality_contract_lint.json");
 check("report v2 artifact name is exact", GUIDE_QUALITY_REPORT_V2_ARTIFACT === "guide_quality_report_v2.json");
 check("rubric score artifact name is exact", GUIDE_QUALITY_RUBRIC_SCORE_ARTIFACT === "guide_quality_rubric_score.json");
+check("quality safety artifact name is exact", QUALITY_SAFETY_ARTIFACT === "quality_safety_unified_qa.json");
 check("math verification artifact name is exact", MATH_VERIFICATION_ARTIFACT === "math_verification.json");
 check("source coverage artifact name is exact", SOURCE_COVERAGE_ARTIFACT === "source_coverage_report.json");
 
@@ -61,9 +64,14 @@ const CANARY_OCR = "private OCR dump words";
 const CANARY_TABLE = "private table cell";
 const CANARY_CAPTION = "private figure caption";
 const CANARY_SPEC = "uploaded quality spec evidence";
+const CANARY_AUTH = "Authorization: Bearer sk_qualitysafetycanary1234567890";
+const CANARY_DATA_URI = `data:image/png;base64,${"A".repeat(140)}`;
+const CANARY_PROVIDER = "provider payload private marker";
+const CANARY_EVIDENCE = "evidence quote private marker";
 const FORBIDDEN_CANARIES = [
   CANARY_FILENAME, CANARY_TITLE, CANARY_FORMULA, CANARY_VALUE, CANARY_ERROR, CANARY_KEY, CANARY_URL,
-  CANARY_OCR, CANARY_TABLE, CANARY_CAPTION, CANARY_SPEC,
+  CANARY_OCR, CANARY_TABLE, CANARY_CAPTION, CANARY_SPEC, CANARY_AUTH, CANARY_DATA_URI, CANARY_PROVIDER,
+  CANARY_EVIDENCE,
 ];
 
 const KEYLIKE = /(sk-|sk_)[A-Za-z0-9_\-]{16,}/;
@@ -236,6 +244,98 @@ function rubricScore({ status = "completed", warnings = 1, axes } = {}) {
   };
 }
 
+function qualitySafetyUnified({
+  status = "warning",
+  shippable = false,
+  safetyFloorGreen = false,
+  failureCount = 1,
+  warningTokens,
+  axes,
+  components,
+  failures,
+  summary,
+} = {}) {
+  return {
+    version: 1,
+    kind: "quality_safety_unified_qa",
+    status,
+    shippable,
+    safety_floor_green: safetyFloorGreen,
+    component_statuses: components || {
+      layer1: "passed",
+      recompute: "failed",
+      canonical: "skipped",
+      leak: "warning",
+      path: CANARY_FILENAME,
+    },
+    deterministic_axes_0_5: axes || {
+      accuracy: 0,
+      coverage: 5,
+      solved_problem: 4,
+      clarity: 3,
+      raw: CANARY_FORMULA,
+    },
+    summary: summary || {
+      blocking_failure_count: failureCount,
+      warning_count: 2,
+      numeric_blocking_failure_count: 1,
+      leak_blocking_failure_count: 1,
+      verified_recompute_count: 2,
+      verified_canonical_count: 1,
+      failed_recompute_count: 1,
+      failed_canonical_count: 0,
+      unverified_fact_count: 3,
+      unknown_context_leak_count: 1,
+      raw: CANARY_PROVIDER,
+    },
+    blocking_failures: failures || [
+      {
+        component: "recompute",
+        check_id: "weighted_gini",
+        status: "failed",
+        severity: "blocking",
+        verification_status: "failed_recompute",
+        count: 2,
+        fact_ids: ["synthetic.fact_1", CANARY_URL, "../secret", "safe_fact_2"],
+        evidence_quote: CANARY_EVIDENCE,
+      },
+      {
+        component: "leak",
+        check_id: "quality_safety_leak_scan",
+        status: "failed",
+        severity: "blocking",
+        verification_status: "verified_recompute",
+        fact_ids: ["safe_fact_3"],
+        text: CANARY_TITLE,
+      },
+    ],
+    warnings: warningTokens || ["component_missing", "leak_warning", CANARY_KEY],
+    raw_candidate_markdown: CANARY_TITLE,
+    provider_payload: CANARY_PROVIDER,
+  };
+}
+
+function qualitySafetyJobArtifact(overrides = {}) {
+  return {
+    version: 1,
+    kind: "quality_safety_job_artifact",
+    artifact_name: "quality_safety_unified_qa.json",
+    advisory: true,
+    source: "job_runtime",
+    status: "warning",
+    shippable: false,
+    safety_floor_green: false,
+    summary: {
+      quality_safety_warning_count: 2,
+      job_artifact_warning_count: 1,
+      path: CANARY_FILENAME,
+    },
+    warnings: ["extraction_bundle_missing", CANARY_AUTH],
+    quality_safety_unified_qa: qualitySafetyUnified(overrides),
+    job_metadata: { url: CANARY_URL, auth: CANARY_AUTH, data: CANARY_DATA_URI },
+  };
+}
+
 // ============================================================================
 // 1. All artifacts missing → stable model, calm unavailable states
 // ============================================================================
@@ -247,8 +347,9 @@ function rubricScore({ status = "completed", warnings = 1, axes } = {}) {
   check("all-missing: coverage unavailable", model.sourceCoverageAvailable === false && model.sourceCoverage === null);
   check("all-missing: report v2 unavailable", model.guideQualityReportV2Available === false);
   check("all-missing: rubric unavailable", model.rubricScoreAvailable === false && model.rubricScore.state === "unavailable");
+  check("all-missing: quality safety unavailable", model.qualitySafetyAvailable === false && model.qualitySafety.artifactStatus === "missing");
   check("all-missing: no quality checks", model.qualityChecks.length === 0);
-  check("all-missing: 6 fixed artifact links", model.artifactLinks.length === 6);
+  check("all-missing: 7 fixed artifact links", model.artifactLinks.length === 7);
   noLeak("all-missing", model);
 }
 
@@ -364,7 +465,87 @@ function rubricScore({ status = "completed", warnings = 1, axes } = {}) {
 }
 
 // ============================================================================
-// 5. Report v2 + source coverage → coverage / completeness signals
+// 5. Quality Safety advisory artifact → closed tokens/counts/axes only
+// ============================================================================
+{
+  const missing = normalizeQualitySafetyArtifact(null);
+  check("quality safety missing state", missing.state === "unavailable" && missing.artifactStatus === "missing");
+  noLeak("quality safety missing", missing);
+
+  const nested = normalizeQualitySafetyArtifact(qualitySafetyJobArtifact());
+  check("quality safety nested loaded", nested.state === "available" && nested.artifactStatus === "loaded");
+  check("quality safety nested advisory", nested.advisory === true);
+  check("quality safety nested status", nested.status === "warning");
+  check("quality safety nested booleans", nested.shippable === false && nested.safetyFloorGreen === false);
+  check("quality safety component statuses", nested.componentStatuses.layer1 === "passed" && nested.componentStatuses.recompute === "failed" && nested.componentStatuses.leak === "warning");
+  check("quality safety axes", nested.axes.accuracy === 0 && nested.axes.coverage === 5 && nested.axes.solved_problem === 4 && nested.axes.clarity === 3);
+  check("quality safety summary counts", nested.summary.blocking_failure_count === 1 && nested.summary.numeric_blocking_failure_count === 1 && nested.summary.warning_count === 2);
+  check("quality safety blocking rows", nested.blockingFailures.length === 2 && nested.blockingFailures[0].checkId === "weighted_gini");
+  check("quality safety safe fact ids only", JSON.stringify(nested.blockingFailures).includes("synthetic.fact_1") && !JSON.stringify(nested.blockingFailures).includes("secret"));
+  check("quality safety warning tokens closed", nested.warningTokens.every((token) => ["component_missing", "leak_warning", "extraction_bundle_missing", "unknown"].includes(token)));
+  noLeak("quality safety nested", nested);
+
+  const direct = normalizeQualitySafetyArtifact(qualitySafetyUnified({ status: "passed", shippable: true, safetyFloorGreen: true, failureCount: 0, warningTokens: [] }));
+  check("quality safety direct loaded", direct.state === "available" && direct.status === "passed");
+  check("quality safety direct advisory unknown", direct.advisory === null);
+  check("quality safety direct green", direct.shippable === true && direct.safetyFloorGreen === true);
+  noLeak("quality safety direct", direct);
+
+  const failed = normalizeQualitySafetyArtifact(qualitySafetyJobArtifact({
+    status: "failed",
+    failures: [
+      { component: "canonical", check_id: "canonical_fixture_mismatch", status: "failed", severity: "blocking", verification_status: "failed_canonical", count: 4, fact_ids: ["safe.fact"] },
+      { component: CANARY_TITLE, check_id: CANARY_URL, status: CANARY_ERROR, severity: CANARY_KEY, verification_status: CANARY_AUTH, fact_ids: [CANARY_FILENAME] },
+    ],
+  }));
+  check("quality safety failed status", failed.status === "failed");
+  check("quality safety failed row closed", failed.blockingFailures[0].component === "canonical" && failed.blockingFailures[0].checkId === "canonical_fixture_mismatch");
+  check("quality safety hostile row degraded", failed.blockingFailures[1].component === "unknown" && failed.blockingFailures[1].checkId === "unknown" && failed.blockingFailures[1].factIds === undefined);
+  noLeak("quality safety failed", failed);
+
+  const capped = normalizeQualitySafetyArtifact(qualitySafetyJobArtifact({
+    warningTokens: ["component_missing", "leak_warning", "coverage_warning", "mock_question_warning", "unknown_verification_context", "candidate_markdown_missing", "extraction_bundle_missing", "fact_sheet_component_missing", "recompute_component_missing", "canonical_component_missing", "artifact_write_failed", "component_degraded", "unsafe_metadata_dropped", "max_items_reached"],
+    failures: Array.from({ length: 20 }, (_, index) => ({
+      component: "recompute",
+      check_id: "softmax",
+      status: "failed",
+      severity: "blocking",
+      verification_status: "failed_recompute",
+      count: index + 1,
+      fact_ids: Array.from({ length: 12 }, (__, factIndex) => `safe.fact_${index}_${factIndex}`),
+    })),
+  }));
+  check("quality safety warnings capped", capped.warningTokens.length === 12);
+  check("quality safety failures capped", capped.blockingFailures.length === 12);
+  check("quality safety fact ids capped", capped.blockingFailures[0].factIds.length === 6);
+  noLeak("quality safety capped", capped);
+
+  const hostile = normalizeQualitySafetyArtifact(qualitySafetyJobArtifact({
+    status: CANARY_ERROR,
+    components: { layer1: CANARY_ERROR, recompute: "passed", canonical: "not-a-status", leak: "failed" },
+    axes: { accuracy: 9, coverage: -1, solved_problem: CANARY_VALUE, clarity: 2.5 },
+    summary: {
+      blocking_failure_count: -1,
+      warning_count: CANARY_VALUE,
+      numeric_blocking_failure_count: 3.9,
+      leak_blocking_failure_count: true,
+      verified_recompute_count: 2,
+      verified_canonical_count: null,
+      failed_recompute_count: 1,
+      failed_canonical_count: 1,
+      unverified_fact_count: 5,
+      unknown_context_leak_count: 4,
+    },
+  }));
+  check("quality safety invalid status unknown", hostile.status === "unknown");
+  check("quality safety invalid components unknown", hostile.componentStatuses.layer1 === "unknown" && hostile.componentStatuses.canonical === "unknown");
+  check("quality safety axis bounds", hostile.axes.accuracy === null && hostile.axes.coverage === null && hostile.axes.solved_problem === null && hostile.axes.clarity === 2.5);
+  check("quality safety counts non-negative", hostile.summary.blocking_failure_count === 0 && hostile.summary.numeric_blocking_failure_count === 3 && hostile.summary.leak_blocking_failure_count === 0);
+  noLeak("quality safety hostile", hostile);
+}
+
+// ============================================================================
+// 6. Report v2 + source coverage → coverage / completeness signals
 // ============================================================================
 {
   const model = summarizeGuideQualityPanelModel({
@@ -374,6 +555,7 @@ function rubricScore({ status = "completed", warnings = 1, axes } = {}) {
     mathVerification: mathVerification(),
     sourceCoverageReport: sourceCoverage({ status: "partial", unreadablePages: 3, unreadableSources: 1 }),
     rubricScore: rubricScore(),
+    qualitySafetyArtifact: qualitySafetyJobArtifact(),
   });
   check("coverage available", model.sourceCoverageAvailable === true);
   check("coverage unreadable pages", model.sourceCoverage.unreadablePages === 3);
@@ -382,14 +564,16 @@ function rubricScore({ status = "completed", warnings = 1, axes } = {}) {
   check("report v2 warning count", model.guideQualityReportV2.warningCount === 2);
   check("report v2 source page signals", model.guideQualityReportV2.sourcePageSignalCount === 7);
   check("rubric available in composite", model.rubricScoreAvailable === true && model.rubricScore.scoreTotal === 16);
+  check("quality safety available in composite", model.qualitySafetyAvailable === true && model.qualitySafety.status === "warning");
   check("quality checks from gate", model.qualityChecks.length === 5);
   check("artifact links fixed exact-name labels", JSON.stringify(model.artifactLinks) === JSON.stringify(GUIDE_QUALITY_ARTIFACT_LABELS.map((e) => ({ ...e }))));
   check("fixed rubric artifact label appears", model.artifactLinks.some((entry) => entry.artifact === GUIDE_QUALITY_RUBRIC_SCORE_ARTIFACT && entry.label === "Guide Quality Rubric Score"));
+  check("fixed quality safety artifact label appears", model.artifactLinks.some((entry) => entry.artifact === QUALITY_SAFETY_ARTIFACT && entry.label === "Quality Safety Unified QA"));
   noLeak("full model", model);
 }
 
 // ============================================================================
-// 6. Malformed inputs degrade safely (never throw)
+// 7. Malformed inputs degrade safely (never throw)
 // ============================================================================
 for (const bad of [12.5, "string", true, [1, 2, 3], {}, { kind: "wrong" }, null, undefined]) {
   const gate = summarizeGuideQualityQaGate(bad);
@@ -401,10 +585,13 @@ for (const bad of [12.5, "string", true, [1, 2, 3], {}, { kind: "wrong" }, null,
   check(`malformed math (${JSON.stringify(bad)}) → object`, math && typeof math === "object");
   const rubric = summarizeGuideQualityRubricScore(bad);
   check(`malformed rubric (${JSON.stringify(bad)}) → object`, rubric && typeof rubric === "object");
+  const qualitySafety = normalizeQualitySafetyArtifact(bad);
+  check(`malformed quality safety (${JSON.stringify(bad)}) → object`, qualitySafety && typeof qualitySafety === "object");
   noLeak("malformed gate", gate);
   noLeak("malformed lint", lint);
   noLeak("malformed math", math);
   noLeak("malformed rubric", rubric);
+  noLeak("malformed quality safety", qualitySafety);
 }
 {
   // Composite over fully malformed inputs still yields a stable model.
@@ -415,14 +602,15 @@ for (const bad of [12.5, "string", true, [1, 2, 3], {}, { kind: "wrong" }, null,
     mathVerification: true,
     sourceCoverageReport: { kind: "wrong" },
     rubricScore: { kind: "wrong", reason: CANARY_ERROR },
+    qualitySafetyArtifact: { kind: "wrong", raw: CANARY_AUTH },
   });
   check("malformed composite → object", model && typeof model === "object");
-  check("malformed composite 6 artifact links", model.artifactLinks.length === 6);
+  check("malformed composite 7 artifact links", model.artifactLinks.length === 7);
   noLeak("malformed composite", model);
 }
 
 // ============================================================================
-// 7. Hostile canaries in EVERY input do not survive the serialized model
+// 8. Hostile canaries in EVERY input do not survive the serialized model
 // ============================================================================
 {
   const model = summarizeGuideQualityPanelModel({
@@ -432,6 +620,7 @@ for (const bad of [12.5, "string", true, [1, 2, 3], {}, { kind: "wrong" }, null,
     mathVerification: mathVerification({ mismatch: 2, ok: 3 }),
     sourceCoverageReport: sourceCoverage({ status: "unreadable", unreadablePages: 2, unreadableSources: 1 }),
     rubricScore: rubricScore({ warnings: 2 }),
+    qualitySafetyArtifact: qualitySafetyJobArtifact(),
   });
   const flat = JSON.stringify(model);
   for (const canary of FORBIDDEN_CANARIES) {
@@ -439,11 +628,11 @@ for (const bad of [12.5, "string", true, [1, 2, 3], {}, { kind: "wrong" }, null,
   }
   noLeak("hostile model", model);
   // Still produces real signal.
-  check("hostile model still reports counts", model.contractLint.reasoningLeakCount === 2 && model.mathVerification.mismatchCount === 2 && model.rubricScore.warningAxisCount === 2);
+  check("hostile model still reports counts", model.contractLint.reasoningLeakCount === 2 && model.mathVerification.mismatchCount === 2 && model.rubricScore.warningAxisCount === 2 && model.qualitySafety.summary.warning_count === 2);
 }
 
 // ============================================================================
-// 8. Determinism
+// 9. Determinism
 // ============================================================================
 {
   const args = {
@@ -453,6 +642,7 @@ for (const bad of [12.5, "string", true, [1, 2, 3], {}, { kind: "wrong" }, null,
     mathVerification: mathVerification({ mismatch: 1, ok: 4 }),
     sourceCoverageReport: sourceCoverage({ unreadablePages: 1 }),
     rubricScore: rubricScore({ warnings: 1 }),
+    qualitySafetyArtifact: qualitySafetyJobArtifact(),
   };
   const first = JSON.stringify(summarizeGuideQualityPanelModel(args));
   const second = JSON.stringify(summarizeGuideQualityPanelModel(args));

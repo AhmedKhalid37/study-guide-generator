@@ -5,13 +5,28 @@
 
 ---
 
-## Slice 118 — **Quality Safety Advisory Job Artifact v1**, on `slice118-quality-safety-advisory-job-artifact-v1`. **NOT COMMITTED.**
+## Slice 119 — **Quality Safety Advisory UI Display v1**, on `slice119-quality-safety-advisory-ui-display-v1`. **NOT COMMITTED.**
 
-- **Part 0 completed:** Slice 117 was committed as `e389697`, fast-forward merged to trunk `chrome-renderer-v1`, and pushed
-  with a normal `git push` (no force-push). Slice 117 added only the pure/unwired fact-sheet producer and a narrow
-  `computation.tolerance` schema preservation fix. The synthetic single-confident-wrong `weighted_gini` case fails via
-  recompute, the synthetic clean case passes, no production wiring was added, no provider/model/cloud call was added, no
-  docker compose config was run, and the Slice 60 trace stash remains parked and untouched.
+- **Part 0 completed:** Slice 118 was committed as `c9644aa`, fast-forward merged to trunk `chrome-renderer-v1`, and pushed
+  with a normal `git push` (no force-push). Slice 118 added advisory production job artifact generation for the exact artifact
+  name `quality_safety_unified_qa.json`; the writer remains advisory/non-blocking, writer errors do not fail jobs, no
+  provider/model/cloud call was added, Docker validation passed, no docker compose config was run, and the Slice 60 trace
+  stash remains parked and untouched.
+- **Scope:** Slice 119 surfaces `quality_safety_unified_qa.json` in the existing Guide Quality advisory UI. The section is
+  read-only and advisory, degrades calmly when the artifact is missing, and uses a strict frontend display allowlist.
+- **Display boundary:** the UI shows only closed tokens, booleans/unknowns, non-negative counts, component statuses,
+  deterministic 0-5 axes, capped blocking rows, and capped warning tokens. It does not display raw guide/source text,
+  snippets, formulas, OCR/table/caption text, paths, filenames, URLs, evidence quotes, provider payloads, runtime traces, or
+  raw nested child report fields outside the allowlist.
+- **Out of scope / unchanged:** no backend artifact generation change, no API behavior change, no generation/prompt/provider
+  request/request-schema/job-success/render/export/OCR/table/visual/Ask Guide behavior change, no judge scoring,
+  `overall_10`, repair loop, blocking gate, `quality_judge.py`, `nn3.json`, `judge_response_nn3.json`, or `quality.jsonl`.
+  **Slice 119 remains NOT committed.**
+
+---
+
+## Slice 118 — **Quality Safety Advisory Job Artifact v1**, on `slice118-quality-safety-advisory-job-artifact-v1`. **Committed `c9644aa`, merged + pushed to `chrome-renderer-v1`.**
+
 - **Scope:** Slice 118 adds advisory production job artifact generation for the exact artifact name
   `quality_safety_unified_qa.json`. The helper builds a safe payload from existing deterministic Quality Safety modules and
   the job pipeline writes it after `clean.md` exists and before rendering. It is reached by exact filename only, not generic
@@ -31,7 +46,7 @@
 - **Safety boundary:** the artifact stores only closed tokens/counts and safe deterministic report structures. It does not
   store raw guide/source text, snippets, formulas, paths, filenames, URLs, OCR/table/caption text, evidence quotes, provider
   payloads, runtime traces, real PDFs/images/DOCX/PDF/ZIPs, generated guide artifacts, eval JSON outputs, or private
-  material. Tests use synthetic bundles/canaries only. No frontend/UI change was added. **Slice 118 remains NOT committed.**
+  material. Tests use synthetic bundles/canaries only. No frontend/UI change was added.
 
 ---
 

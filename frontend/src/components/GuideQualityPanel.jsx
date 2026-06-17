@@ -7,6 +7,7 @@ import {
   GUIDE_QUALITY_REPORT_V2_ARTIFACT,
   GUIDE_QUALITY_RUBRIC_SCORE_ARTIFACT,
   MATH_VERIFICATION_ARTIFACT,
+  QUALITY_SAFETY_ARTIFACT,
   SOURCE_COVERAGE_ARTIFACT,
   summarizeGuideQualityPanelModel,
 } from "../guideQualityDisplay";
@@ -69,6 +70,45 @@ const RUBRIC_CONFIDENCE_LABEL = {
   unsupported: "Unsupported",
 };
 
+const QUALITY_SAFETY_STATUS_LABEL = {
+  passed: "Passed",
+  warning: "Warning",
+  failed: "Failed",
+  skipped: "Skipped",
+  partial: "Partial",
+  unknown: "Unknown",
+  missing: "Missing",
+  unavailable: "Unavailable",
+};
+
+const QUALITY_SAFETY_COMPONENT_LABEL = {
+  layer1: "Layer 1",
+  recompute: "Recompute",
+  canonical: "Canonical",
+  leak: "Leak",
+  unknown: "Unknown",
+};
+
+const QUALITY_SAFETY_AXIS_LABEL = {
+  accuracy: "Accuracy",
+  coverage: "Coverage",
+  solved_problem: "Solved problem",
+  clarity: "Clarity",
+};
+
+const QUALITY_SAFETY_COUNT_LABEL = {
+  blocking_failure_count: "Blocking failures",
+  warning_count: "Warnings",
+  numeric_blocking_failure_count: "Numeric blockers",
+  leak_blocking_failure_count: "Leak blockers",
+  verified_recompute_count: "Verified recompute",
+  verified_canonical_count: "Verified canonical",
+  failed_recompute_count: "Failed recompute",
+  failed_canonical_count: "Failed canonical",
+  unverified_fact_count: "Unverified facts",
+  unknown_context_leak_count: "Unknown leak context",
+};
+
 function toneClass(tone) {
   if (tone === "good") return "sg-tag-green";
   if (tone === "bad") return "sg-tag-red";
@@ -89,13 +129,13 @@ function StatusIcon({ tone }) {
 
 function checkStatusTagClass(status) {
   if (status === "passed") return "sg-tag-green";
-  if (status === "warning") return "sg-tag-red";
+  if (status === "warning" || status === "failed") return "sg-tag-red";
   return "sg-tag-amber"; // unknown / not_applicable
 }
 
 function CheckStatusIcon({ status }) {
   if (status === "passed") return <CheckCircle2 />;
-  if (status === "warning") return <AlertCircle />;
+  if (status === "warning" || status === "failed") return <AlertCircle />;
   if (status === "not_applicable") return <MinusCircle />;
   return <HelpCircle />;
 }
@@ -140,7 +180,8 @@ export default function GuideQualityPanel({ jobId }) {
       fetchArtifactOrNull(jobId, MATH_VERIFICATION_ARTIFACT),
       fetchArtifactOrNull(jobId, SOURCE_COVERAGE_ARTIFACT),
       fetchArtifactOrNull(jobId, GUIDE_QUALITY_RUBRIC_SCORE_ARTIFACT),
-    ]).then(([qaGate, contractLint, guideQualityReportV2, mathVerification, sourceCoverageReport, rubricScore]) => {
+      fetchArtifactOrNull(jobId, QUALITY_SAFETY_ARTIFACT),
+    ]).then(([qaGate, contractLint, guideQualityReportV2, mathVerification, sourceCoverageReport, rubricScore, qualitySafetyArtifact]) => {
       if (cancelled) return;
       const model = summarizeGuideQualityPanelModel({
         qaGate,
@@ -149,6 +190,7 @@ export default function GuideQualityPanel({ jobId }) {
         mathVerification,
         sourceCoverageReport,
         rubricScore,
+        qualitySafetyArtifact,
       });
       setState({ loading: false, model });
     });
@@ -173,6 +215,7 @@ export default function GuideQualityPanel({ jobId }) {
   const coverage = model.sourceCoverage;
   const reportV2 = model.guideQualityReportV2;
   const rubric = model.rubricScore;
+  const qualitySafety = model.qualitySafety;
 
   return (
     <div className="sg-tab-stack">
@@ -276,7 +319,113 @@ export default function GuideQualityPanel({ jobId }) {
         )}
       </section>
 
-      {/* 3. Prompt contract lint */}
+      {/* 3. Quality Safety advisory floor */}
+      <section>
+        <div className="sg-head-row">
+          <div>
+            <h3>Quality Safety</h3>
+            <p className="sg-hint">Advisory deterministic safety floor; read-only and non-blocking.</p>
+          </div>
+          {model.qualitySafetyAvailable ? (
+            <span className={`sg-tag ${toneClass(qualitySafety.tone)}`}>
+              <StatusIcon tone={qualitySafety.tone} />
+              {QUALITY_SAFETY_STATUS_LABEL[qualitySafety.status] || "Unknown"}
+            </span>
+          ) : (
+            <span className="sg-tag sg-tag-amber">
+              <AlertTriangle />
+              Not available
+            </span>
+          )}
+        </div>
+        {model.qualitySafetyAvailable ? (
+          <>
+            <div className="sg-grid-3" style={{ marginTop: 12 }}>
+              <QualityTile label="Artifact" value={QUALITY_SAFETY_STATUS_LABEL[qualitySafety.artifactStatus] || "Loaded"} />
+              <QualityTile label="Advisory" value={formatQualitySafetyBool(qualitySafety.advisory)} />
+              <QualityTile label="Unified status" value={QUALITY_SAFETY_STATUS_LABEL[qualitySafety.status] || "Unknown"} />
+              <QualityTile label="Shippable" value={formatQualitySafetyBool(qualitySafety.shippable)} />
+              <QualityTile
+                label="Safety floor green"
+                value={formatQualitySafetyBool(qualitySafety.safetyFloorGreen)}
+                tone={qualitySafety.safetyFloorGreen === false ? "warn" : qualitySafety.safetyFloorGreen === true ? "good" : "neutral"}
+              />
+            </div>
+
+            <div className="sg-grid-3" style={{ marginTop: 10 }}>
+              {Object.entries(qualitySafety.componentStatuses).map(([component, status]) => (
+                <QualityTile
+                  key={component}
+                  label={QUALITY_SAFETY_COMPONENT_LABEL[component] || "Component"}
+                  value={QUALITY_SAFETY_STATUS_LABEL[status] || "Unknown"}
+                  tone={status === "passed" ? "good" : status === "failed" || status === "warning" ? "warn" : "neutral"}
+                />
+              ))}
+            </div>
+
+            <div className="sg-grid-3" style={{ marginTop: 10 }}>
+              {Object.entries(qualitySafety.axes).map(([axis, value]) => (
+                <QualityTile
+                  key={axis}
+                  label={QUALITY_SAFETY_AXIS_LABEL[axis] || "Axis"}
+                  value={value === null ? "Unavailable" : `${value}/5`}
+                  tone={value !== null && value >= 4 ? "good" : value !== null && value < 3 ? "warn" : "neutral"}
+                />
+              ))}
+            </div>
+
+            <div className="sg-grid-3" style={{ marginTop: 10 }}>
+              {Object.entries(qualitySafety.summary).map(([key, value]) => (
+                <QualityTile
+                  key={key}
+                  label={QUALITY_SAFETY_COUNT_LABEL[key] || key}
+                  value={String(value)}
+                  tone={value > 0 && (key.includes("failure") || key.includes("failed") || key.includes("warning") || key.includes("unknown")) ? "warn" : "neutral"}
+                />
+              ))}
+            </div>
+
+            {qualitySafety.blockingFailures.length > 0 ? (
+              <ul className="sg-mathv-list" style={{ marginTop: 10 }}>
+                {qualitySafety.blockingFailures.map((failure, index) => (
+                  <li key={`${failure.component}-${failure.checkId}-${index}`} className="sg-mathv-claim">
+                    <div className="sg-mathv-claim-head">
+                      <span className={`sg-tag ${checkStatusTagClass(failure.status)}`}>
+                        <CheckStatusIcon status={failure.status} />
+                        {QUALITY_SAFETY_STATUS_LABEL[failure.status] || "Unknown"}
+                      </span>
+                      <span className="sg-mathv-id">{QUALITY_SAFETY_COMPONENT_LABEL[failure.component] || "Unknown"}</span>
+                      <span className="sg-tag sg-tag-slate">{failure.checkId}</span>
+                      <span className="sg-tag sg-tag-slate">{failure.severity}</span>
+                      <span className="sg-tag sg-tag-slate">{failure.verificationStatus}</span>
+                      {failure.count ? <span className="sg-tag sg-tag-slate">Count {failure.count}</span> : null}
+                      {failure.factIds?.length ? <span className="sg-tag sg-tag-slate">Facts {failure.factIds.join(", ")}</span> : null}
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <p className="sg-hint" style={{ marginTop: 10 }}>No Quality Safety blocking rows are available.</p>
+            )}
+
+            {qualitySafety.warningTokens.length > 0 ? (
+              <div className="sg-mathv-claim-head" style={{ marginTop: 10 }}>
+                {qualitySafety.warningTokens.map((token) => (
+                  <span key={token} className="sg-tag sg-tag-amber">{token}</span>
+                ))}
+              </div>
+            ) : (
+              <p className="sg-hint" style={{ marginTop: 10 }}>No Quality Safety warning tokens are available.</p>
+            )}
+          </>
+        ) : (
+          <NotAvailableNotice>
+            Quality Safety artifact not available yet.
+          </NotAvailableNotice>
+        )}
+      </section>
+
+      {/* 4. Prompt contract lint */}
       <section>
         <div className="sg-head-row">
           <h3>Prompt contract lint</h3>
@@ -315,7 +464,7 @@ export default function GuideQualityPanel({ jobId }) {
         )}
       </section>
 
-      {/* 4. Math verification */}
+      {/* 5. Math verification */}
       <section>
         <div className="sg-head-row">
           <h3>Math verification</h3>
@@ -350,7 +499,7 @@ export default function GuideQualityPanel({ jobId }) {
         )}
       </section>
 
-      {/* 5. Coverage / completeness signals */}
+      {/* 6. Coverage / completeness signals */}
       <section>
         <div className="sg-head-row">
           <h3>Coverage &amp; completeness</h3>
@@ -398,7 +547,7 @@ export default function GuideQualityPanel({ jobId }) {
         )}
       </section>
 
-      {/* 6. Quality checks (closed-kind chips from the QA gate) */}
+      {/* 7. Quality checks (closed-kind chips from the QA gate) */}
       <section>
         <h3>Quality checks</h3>
         {model.qualityChecks.length === 0 ? (
@@ -420,7 +569,7 @@ export default function GuideQualityPanel({ jobId }) {
         )}
       </section>
 
-      {/* 7. Artifacts (fixed exact-name links) */}
+      {/* 8. Artifacts (fixed exact-name links) */}
       <section>
         <h3>Artifacts</h3>
         <div className="sg-stack" style={{ marginTop: 10 }}>
@@ -467,7 +616,14 @@ function artifactIsAvailable(artifact, model) {
   if (artifact === GUIDE_QUALITY_CONTRACT_LINT_ARTIFACT) return model.contractLintAvailable;
   if (artifact === GUIDE_QUALITY_REPORT_V2_ARTIFACT) return model.guideQualityReportV2Available;
   if (artifact === GUIDE_QUALITY_RUBRIC_SCORE_ARTIFACT) return model.rubricScoreAvailable;
+  if (artifact === QUALITY_SAFETY_ARTIFACT) return model.qualitySafetyAvailable;
   if (artifact === MATH_VERIFICATION_ARTIFACT) return model.mathVerificationAvailable;
   if (artifact === SOURCE_COVERAGE_ARTIFACT) return model.sourceCoverageAvailable;
   return false;
+}
+
+function formatQualitySafetyBool(value) {
+  if (value === true) return "True";
+  if (value === false) return "False";
+  return "Unknown";
 }
