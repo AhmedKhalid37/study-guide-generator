@@ -5,7 +5,58 @@
 
 ---
 
-## Slice 110 — **Quality Safety Fact-Sheet Schema v1**, on `slice110-quality-safety-factsheet-schema-v1`. **NOT COMMITTED.**
+## Slice 111 — **Quality Safety Recompute Verifier v1**, on `slice111-quality-safety-recompute-verifier-v1`. **NOT COMMITTED.**
+
+- **Part 0 completed:** Slice 110 was committed as `ff7c971`, fast-forward merged to trunk `chrome-renderer-v1`, and pushed
+  with a normal `git push` (no force-push). Slice 110 added only the unwired Quality Safety fact-record/fact-sheet schema and
+  its synthetic tests. It changed no API route, frontend, generation prompt, request schema, Builder UI, Ask Guide,
+  render/export/OCR/table/visual behavior, runtime artifact writer, provider/model/cloud integration, or Docker config. The
+  parked Slice 60 trace stash remains untouched.
+- **Scope:** Slice 111 adds the unwired Quality Safety **recompute verifier** — the primary numeric truth path. It consumes
+  the Slice 110 fact-sheet/fact-record schema and verifies numeric facts by recomputing their value from structured
+  computation inputs. Canonical fixture matching stays fallback-only and is deferred to Slice 112; this slice implements
+  recompute (step 1 of the runtime hierarchy) only.
+- **Existing `math_verifier.py` inspected, kept separate.** `pipeline/math_verifier.py` (Slice 18/21) is text/guide-oriented:
+  it AST-walks generated Markdown/plain text for inline numeric *claims* (e.g. `2 + 3 = 5`) and produces
+  `math_verification.json`-style output. It is **not** structured-fact-oriented. The Quality Safety verifier instead consumes
+  structured `{method, inputs}` records, so per the slice rules it is a **separate module** with no reuse and no change to
+  `math_verifier.py` or its existing behavior. The new verifier is **not** routed through production math verification.
+- **New pure module:** `pipeline/quality_safety_recompute_verifier.py` is stdlib-only (plus the Slice 110
+  `quality_safety_fact_sheet` import) and exposes `recompute_quality_safety_fact(...)`,
+  `verify_quality_safety_fact_sheet(...)`, and `build_quality_safety_recompute_report(...)`. It reads only caller-supplied
+  dicts, writes no artifacts, reads no source documents or `clean.md`, calls no providers/models/cloud services, never
+  raises, and returns deterministic JSON-serializable dicts with closed-vocabulary tokens only.
+- **Supported recompute methods (v1):** `weighted_gini`, `total_error`, `amount_of_say`, `softmax` (numerically stable),
+  `cross_entropy`, and `forward_pass` (linear, plus tested `relu`/`sigmoid`). Method tolerances: weighted_gini 0.01,
+  total_error 0.005, amount_of_say 0.02, softmax 0.01, cross_entropy 0.01, forward_pass 0.01 (fallback default 1e-6,
+  cap 1.0). Tolerance precedence: explicit arg > computation/fact metadata (if safe) > method default.
+- **Fact-sheet integration behavior:** only numeric facts with a supported computation method are recomputed. Match within
+  tolerance ⇒ `verified` (an `unverified` fact may upgrade to `computed`); mismatch ⇒ `failed` + blocking failure;
+  missing/unsupported/malformed computation ⇒ `unverified` warning (not blocking); non-numeric facts ⇒ `not_applicable`
+  (never failed); `canonical_fixture` facts without computation are **not** recomputed here (Slice 112). Caller input is never
+  mutated and Slice 110 fact `verification_status` values stay in `{verified, unverified, failed}`.
+- **Report schema / blocking:** `kind:"quality_safety_recompute_report"`, version 1, `blocking:true`, closed statuses
+  (`passed/warning/failed/skipped/partial`), summary counts, closed check ids/statuses, `blocking_failures`, and closed
+  warning tokens. Only recomputed mismatch (or an invalid supplied value on a claimed verified/computed fact) is a blocking
+  failure; unsupported method and malformed inputs are non-blocking warnings. Checks store only safe fact id, check id,
+  status, numeric supplied/recomputed/tolerance values, and closed warnings — never snippets, formula strings, raw inputs,
+  paths, URLs, provider payloads, OCR/table/caption text, or raw exception text.
+- **Tests:** `test_scripts/test_quality_safety_recompute_verifier.py` uses synthetic data and synthetic hostile canaries
+  only. It covers empty/malformed behavior, each supported method (pass/mismatch/degrade), provenance/status transitions,
+  Slice 110 schema integration (no mutation, deterministic), Slice 109 synthetic fixture recompute, report shape/status
+  transitions, a no-leak sweep, and import hygiene (99 checks pass).
+- **Out of scope / unchanged:** no canonical fixture matcher, no production leak gate, no repair loop, no runtime artifact
+  writer, no app route, no UI/export selector, no LLM judge, no What the Lecturer Skipped / Active Recall / other picked
+  study-intelligence features, no generation/prompt/request/API/UI/render/export/OCR/table/visual/Ask Guide behavior change,
+  and no provider/model/cloud calls. Docker validation is optional/not required because this is offline/verifier-only.
+- **Safety boundary:** only synthetic fixtures/content were used. No real PDFs/images/DOCX/ZIPs, runtime artifacts, generated
+  guides, eval outputs, source/reference filenames, uploaded quality-spec filenames, evidence quotes, snippets,
+  OCR/table/caption text, paths, URLs, image bytes, formulas copied from private/generated material, or provider payloads
+  were added. **Slice 111 remains NOT committed.**
+
+---
+
+## Slice 110 — **Quality Safety Fact-Sheet Schema v1**, on `slice110-quality-safety-factsheet-schema-v1`. **Committed `ff7c971`, merged + pushed to `chrome-renderer-v1`.**
 
 - **Part 0 completed:** Slice 109 was committed as `2bbd644`, fast-forward merged to trunk `chrome-renderer-v1`, and pushed
   with a normal `git push` (no force-push). Slice 109 added sanitized synthetic seed fixture specs and the forward-fixed
@@ -39,7 +90,7 @@
 - **Safety boundary:** only synthetic fixtures/content were used. No real PDFs/images/DOCX/ZIPs, runtime artifacts,
   generated guides, eval outputs, source/reference filenames, uploaded quality-spec filenames, evidence quotes, snippets,
   OCR/table/caption text, paths, URLs, image bytes, formulas copied from private/generated material, or provider payloads
-  were added. **Slice 110 remains NOT committed.**
+  were added. Slice 110 was committed as `ff7c971`, merged, and pushed before Slice 111.
 
 ---
 

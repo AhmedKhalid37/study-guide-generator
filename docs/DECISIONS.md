@@ -4710,3 +4710,25 @@ future matcher can use them only as fallback, not as a replacement for recompute
 caller-supplied dicts, and returns deterministic JSON-serializable dicts. It does not read source documents or `clean.md`,
 write runtime artifacts, call providers/models/cloud services, inspect OCR/render/export/table/visual data, or copy raw
 paths, URLs, filenames, snippets, evidence quotes, formulas, provider payloads, image data, or hostile strings into output.
+
+## Slice 111 builds the recompute verifier before the canonical fixture matcher
+**Why recompute comes first.** The Quality Safety Unit's runtime hierarchy puts *recompute from structured facts* first and
+*canonical fixture matching* second, as a narrow fallback for cases where structured inputs cannot be recovered. Slice 111
+therefore implements the recompute verifier (`pipeline/quality_safety_recompute_verifier.py`) before the Slice 112 canonical
+matcher. Building in runtime-priority order keeps recompute the general, primary truth path and prevents the fallback from
+accidentally becoming the primary mechanism. The verifier consumes the Slice 110 fact-sheet contract, recomputes numeric
+facts from `{method, inputs}`, and treats only recomputed mismatches (and invalid supplied values on claimed verified/computed
+facts) as blocking; unsupported methods and malformed inputs degrade to non-blocking `unverified` warnings, and
+`canonical_fixture` facts without computation are deliberately left for Slice 112.
+
+**Why the new verifier is separate from `math_verifier.py`.** The existing Slice 18/21 `pipeline/math_verifier.py` is
+text/guide-oriented: it AST-walks generated Markdown/plain text for inline numeric *claims* and produces
+`math_verification.json`-style output. The Quality Safety verifier instead consumes *structured* computation records, a
+fundamentally different input shape. Reusing `math_verifier.py` would have meant bending a tuned text parser to a structured
+purpose and risking its existing behavior. Per the slice rules the new verifier is a separate stdlib module with no reuse,
+`math_verifier.py` is unchanged, and the new path is not routed through production math verification.
+
+**Why it stays offline and no-leak.** The verifier imports only stdlib plus the Slice 110 schema module, never raises, and
+emits only numeric values, counts, closed check ids, closed statuses, and closed warning tokens. It writes no artifacts,
+reads no source documents or `clean.md`, calls no providers/models/cloud, never mutates caller input, and never echoes
+paths, URLs, snippets, formula strings, raw inputs, provider payloads, OCR/table/caption text, or raw exception text.

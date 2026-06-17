@@ -6,36 +6,49 @@
 > stable overview see `PROJECT_CONTEXT.md`; canonical brief is `../CLAUDE.md`.
 
 ## Current position
-- **Working tree:** **Slice 110 (Quality Safety Fact-Sheet Schema v1) — UNCOMMITTED (per instruction)** on branch
-  `slice110-quality-safety-factsheet-schema-v1`, branched from fresh `chrome-renderer-v1` after Slice 109 was committed,
-  fast-forward merged, and pushed. **Slice 109 is trunk commit `2bbd644`**.
-  - **Part 0 completed:** Slice 109 was committed as `2bbd644`, fast-forward merged to `chrome-renderer-v1`, and pushed with
-    a normal `git push` (no force-push). It added sanitized synthetic seed fixture specs and forward-fixed numeric
-    contradiction hardening after pushed Slice 108. No API/frontend/generation/prompt/request/render/export/OCR/table/visual/
-    Ask Guide behavior changed. No provider/model/cloud calls were added. The Slice 60 trace stash remains parked and
-    untouched.
-  - **Slice 110 scope:** add the unwired Quality Safety fact-record/fact-sheet schema only. This schema is the contract for
-    later recompute verifier, canonical fallback, leak scanner coupling, and unified QA artifacts.
-  - **New module:** `pipeline/quality_safety_fact_sheet.py` is pure stdlib-only and exposes
-    `normalize_quality_safety_fact_record(...)`, `normalize_quality_safety_fact_sheet(...)`,
-    `validate_quality_safety_fact_sheet(...)`, and `build_empty_quality_safety_fact_sheet(...)`. It reads only supplied dicts,
-    writes nothing, reads no source documents or `clean.md`, calls no providers/models/cloud services, and returns
-    deterministic JSON-serializable dicts.
-  - **Schema behavior:** fact records use closed type/provenance/status/confidence/computation-method vocabularies, safe
-    deterministic ids/source refs, bounded values/computation inputs, and closed warnings only. Fact sheets use closed
-    status/source-quality values, bounded concepts/facts/notes/examples, non-negative summary counts, and `max_items`
-    partial status semantics.
-  - **Tests:** `test_scripts/test_quality_safety_fact_sheet.py` uses synthetic data and synthetic hostile canaries only. It
-    covers empty/malformed input, computed/unverified/canonical/failed facts, enum downgrades, id/source-ref hardening,
-    string/table/note/example hygiene, bounds, deterministic serialization, synthetic seed-fixture integration, no-leak
-    sweep, and import hygiene.
-  - **Out of scope/unchanged:** no recompute verifier, canonical fixture matcher, production leak gate, repair loop, runtime
-    fact-sheet artifact writer, app route, UI/export selector, LLM judge scoring, What the Lecturer Skipped mode, Active
-    Recall or other picked study-intelligence features, generation/prompt/request/API/UI/render/export/OCR/table/visual/Ask
-    Guide behavior change, provider/model/cloud calls, or Docker config. Only synthetic fixtures/content were used; no real
-    PDFs/images/DOCX/ZIPs, runtime artifacts, generated guides, eval outputs, source/reference filenames, uploaded
-    quality-spec filenames, evidence quotes, snippets, OCR/table/caption text, paths, URLs, image bytes, copied private
-    formulas, or provider payloads were added. Chandra remains blocked by its own live-validation gate.
+- **Working tree:** **Slice 111 (Quality Safety Recompute Verifier v1) — UNCOMMITTED (per instruction)** on branch
+  `slice111-quality-safety-recompute-verifier-v1`, branched from fresh `chrome-renderer-v1` after Slice 110 was committed,
+  fast-forward merged, and pushed. **Slice 110 is trunk commit `ff7c971`**.
+  - **Part 0 completed:** Slice 110 was committed as `ff7c971`, fast-forward merged to `chrome-renderer-v1`, and pushed with
+    a normal `git push` (no force-push). It added only the unwired Quality Safety fact-record/fact-sheet schema and synthetic
+    tests. No API/frontend/generation/prompt/request/render/export/OCR/table/visual/Ask Guide behavior changed. No
+    provider/model/cloud calls were added. The Slice 60 trace stash remains parked and untouched.
+  - **Slice 111 scope:** add the unwired Quality Safety **recompute verifier** — the primary numeric truth path. It consumes
+    the Slice 110 fact-sheet/fact-record schema and verifies numeric facts by recomputing their value from structured
+    computation inputs. **Recompute is primary; canonical fixture matching stays fallback-only and is deferred to Slice 112.**
+  - **`math_verifier.py` inspected, kept separate:** the Slice 18/21 `pipeline/math_verifier.py` is text/guide-oriented (it
+    AST-walks generated Markdown for inline numeric claims). The Quality Safety verifier consumes structured `{method,
+    inputs}` records instead, so it is a separate module — no reuse, no change to `math_verifier.py`, not routed through
+    production math verification.
+  - **New module:** `pipeline/quality_safety_recompute_verifier.py` is pure stdlib-only (plus the Slice 110
+    `quality_safety_fact_sheet` import) and exposes `recompute_quality_safety_fact(...)`,
+    `verify_quality_safety_fact_sheet(...)`, and `build_quality_safety_recompute_report(...)`. It reads only supplied dicts,
+    writes nothing, reads no source documents or `clean.md`, calls no providers/models/cloud services, never raises, and
+    returns deterministic JSON-serializable dicts.
+  - **Supported methods (v1):** `weighted_gini`, `total_error`, `amount_of_say`, `softmax` (stable), `cross_entropy`,
+    `forward_pass` (linear + tested relu/sigmoid). Method tolerances 0.005–0.02 (default 1e-6, cap 1.0); tolerance precedence
+    explicit arg > computation/fact metadata > method default.
+  - **Behavior:** match-in-tolerance ⇒ `verified` (unverified may upgrade to computed); mismatch ⇒ `failed` + blocking;
+    missing/unsupported/malformed computation ⇒ `unverified` warning (non-blocking); non-numeric ⇒ `not_applicable`;
+    canonical_fixture without computation is not recomputed (Slice 112). Caller input never mutated. Report is
+    `quality_safety_recompute_report` v1, `blocking:true`, closed statuses/check-ids/warnings, numeric-only check values.
+  - **Tests:** `test_scripts/test_quality_safety_recompute_verifier.py` (synthetic only, 99 checks) covers empty/malformed,
+    each method, provenance/status transitions, Slice 110 integration (no mutation, deterministic), Slice 109 fixture
+    recompute, report status transitions, no-leak sweep, and import hygiene.
+  - **Out of scope/unchanged:** no canonical fixture matcher, production leak gate, repair loop, runtime artifact writer, app
+    route, UI/export selector, LLM judge, What the Lecturer Skipped / Active Recall or other picked study-intelligence
+    features, generation/prompt/request/API/UI/render/export/OCR/table/visual/Ask Guide behavior change, provider/model/cloud
+    calls, or Docker config. Only synthetic fixtures/content were used; no real PDFs/images/DOCX/ZIPs, runtime artifacts,
+    generated guides, eval outputs, source/reference filenames, uploaded quality-spec filenames, evidence quotes, snippets,
+    OCR/table/caption text, paths, URLs, image bytes, copied private formulas, or provider payloads were added. Chandra
+    remains blocked by its own live-validation gate.
+
+### Previously (Slice 110, now trunk `ff7c971`)
+- **Slice 110 (Quality Safety Fact-Sheet Schema v1)** added `pipeline/quality_safety_fact_sheet.py` and
+  `test_scripts/test_quality_safety_fact_sheet.py` — the unwired fact-record/fact-sheet schema (closed
+  type/provenance/status/confidence/method vocabularies, safe ids/source refs, bounded values, `max_items` partial
+  semantics) that Slice 111+ verification reads. It changed no API, frontend, generation, prompt, request schema,
+  render/export/OCR/table/visual, Ask Guide, or provider/model/cloud behavior.
 
 ### Previously (Slice 109, now trunk `2bbd644`)
 - **Slice 109 (Quality Safety Seed Fixtures v1)** added
