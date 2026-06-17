@@ -5,7 +5,45 @@
 
 ---
 
-## Slice 109 — **Quality Safety Seed Fixtures v1**, on `slice109-quality-safety-seed-fixtures-v1`. **NOT COMMITTED.**
+## Slice 110 — **Quality Safety Fact-Sheet Schema v1**, on `slice110-quality-safety-factsheet-schema-v1`. **NOT COMMITTED.**
+
+- **Part 0 completed:** Slice 109 was committed as `2bbd644`, fast-forward merged to trunk `chrome-renderer-v1`, and pushed
+  with a normal `git push` (no force-push). Slice 109 added sanitized synthetic seed fixture specs and the forward-fixed
+  numeric contradiction hardening after pushed Slice 108. It changed no API route, frontend, generation prompt, request
+  schema, Builder UI, Ask Guide, render/export/OCR/table/visual behavior, runtime artifact writer, provider/model/cloud
+  integration, or Docker config. The parked Slice 60 trace stash remains untouched.
+- **Scope:** Slice 110 adds the unwired Quality Safety fact-record/fact-sheet schema only. The schema is the contract later
+  recompute verification, canonical fallback, leak scanner coupling, and unified QA artifacts will read.
+- **New pure module:** `pipeline/quality_safety_fact_sheet.py` is stdlib-only and exposes
+  `normalize_quality_safety_fact_record(...)`, `normalize_quality_safety_fact_sheet(...)`,
+  `validate_quality_safety_fact_sheet(...)`, and `build_empty_quality_safety_fact_sheet(...)`. It reads only caller-supplied
+  dicts, writes no artifacts, reads no source documents or `clean.md`, calls no providers/models/cloud services, and returns
+  deterministic JSON-serializable dicts only.
+- **Fact records:** normalize to closed fact types (`numeric`, `categorical`, `string`, `table`), provenance
+  (`extracted_high`, `computed`, `canonical_fixture`, `unverified`), verification status (`verified`, `unverified`,
+  `failed`), confidence (`high`, `medium`, `low`, `unsupported`), safe ids/source refs, bounded values, optional safe
+  computation metadata, and closed warnings only. Unknown enums and malformed values downgrade safely; numeric facts with
+  invalid/non-finite values become `null` and unverified.
+- **Fact sheets:** normalize to `kind:"quality_safety_fact_sheet"`, version 1, closed status/source-quality values, safe
+  lecture id, bounded concepts/facts/teaching notes/worked examples, non-negative summary counts, and closed warnings only.
+  `max_items` caps concepts, facts, notes, and examples and marks the sheet `partial` with `max_items_reached`.
+- **Tests:** `test_scripts/test_quality_safety_fact_sheet.py` uses only synthetic data and synthetic hostile canaries. It
+  covers empty/malformed behavior, computed/unverified/canonical/failed facts, enum downgrades, id/source-ref hardening,
+  string/table/note/example hygiene, bounds, deterministic serialization, synthetic seed-fixture integration, no-leak sweep,
+  and import hygiene.
+- **Out of scope / unchanged:** no recompute verifier, no canonical fixture matcher, no production leak gate, no repair loop,
+  no runtime fact-sheet artifact writer, no app route, no UI/export selector, no LLM judge scoring, no What the Lecturer
+  Skipped mode, no Active Recall or other picked study-intelligence features, no generation/prompt/request/API/UI/render/
+  export/OCR/table/visual/Ask Guide behavior change, and no provider/model/cloud calls. Docker validation is optional/not
+  required because this is offline/schema-only and changes no production runtime behavior.
+- **Safety boundary:** only synthetic fixtures/content were used. No real PDFs/images/DOCX/ZIPs, runtime artifacts,
+  generated guides, eval outputs, source/reference filenames, uploaded quality-spec filenames, evidence quotes, snippets,
+  OCR/table/caption text, paths, URLs, image bytes, formulas copied from private/generated material, or provider payloads
+  were added. **Slice 110 remains NOT committed.**
+
+---
+
+## Slice 109 — **Quality Safety Seed Fixtures v1**, on `slice109-quality-safety-seed-fixtures-v1`. **Committed `2bbd644`, merged + pushed to `chrome-renderer-v1`.**
 
 - **Part 0 completed:** Slice 108 was committed as `133e8e0`, fast-forward merged to trunk `chrome-renderer-v1`, and pushed
   with a normal `git push` (no force-push). Slice 108 added only the offline deterministic eval harness skeleton and its
@@ -34,7 +72,8 @@
   study-intelligence features, no frontend UI, no API routes, no generic artifact list entries, no export selectors, no
   generation/prompt/request/API/UI/render/export/OCR/table/visual/Ask Guide behavior change, and no provider/model/cloud
   calls. Docker validation is optional/not required for this offline test-fixture slice unless production runtime changes are
-  made. Chandra remains blocked by its own live-validation gate. **Slice 109 remains NOT committed.**
+  made. Chandra remains blocked by its own live-validation gate. Slice 109 was committed, merged, and pushed before
+  Slice 110.
 
 ---
 

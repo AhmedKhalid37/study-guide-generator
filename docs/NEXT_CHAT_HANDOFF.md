@@ -6,32 +6,45 @@
 > stable overview see `PROJECT_CONTEXT.md`; canonical brief is `../CLAUDE.md`.
 
 ## Current position
-- **Working tree:** **Slice 109 (Quality Safety Seed Fixtures v1) — UNCOMMITTED (per instruction)** on branch
-  `slice109-quality-safety-seed-fixtures-v1`, branched from fresh `chrome-renderer-v1` after Slice 108 was committed,
-  fast-forward merged, and pushed. **Slice 108 is trunk commit `133e8e0`**.
-  - **Part 0 completed:** Slice 108 was committed as `133e8e0`, fast-forward merged to `chrome-renderer-v1`, and pushed with
-    a normal `git push` (no force-push). It added only the offline deterministic Quality Safety eval harness skeleton and
-    synthetic tests. No API/frontend/generation/prompt/request/render/export/OCR/table/visual/Ask Guide behavior changed. No
-    provider/model/cloud calls were added. The Slice 60 trace stash remains parked and untouched.
-  - **Slice 109 scope:** add sanitized synthetic seed fixture specs for the Quality Safety Unit. This is not the real golden
-    corpus; future operator-approved non-private golden data still needs an explicit safe fixture policy.
-  - **Seed fixtures:** `test_scripts/fixtures/quality_safety/clean_neural_networks_synthetic.json` and
-    `test_scripts/fixtures/quality_safety/ambiguous_ensemble_synthetic.json`. They exercise only two Layer-1 deterministic
-    roles: a clean math/NN-like source and an ambiguous ensemble/tree-like source. They contain synthetic ids/topics/numeric
-    targets/minimum question counts/tier targets only.
-  - **Harness hardening in this working tree:** numeric contradiction detection now fails `numeric_correctness` when a
-    candidate prints two or more distinct values for the same fixture label, even if one value is correct. Reports keep only
-    closed statuses/warnings and numeric values/counts; no snippets are stored.
-  - **Tests:** `test_scripts/test_quality_safety_seed_fixtures.py` validates fixture existence, JSON-only/no-binary contents,
-    forbidden field absence, loader compatibility, synthetic pass/fail candidates, deterministic serialization, no-leak
-    sweeps, and import hygiene. `test_scripts/test_quality_safety_eval_harness.py` adds a small seed fixture consumption
-    check and numeric contradiction coverage.
-  - **Out of scope/unchanged:** no LLM judge scoring, fact-sheet schema, canonical fixture matcher, recompute verifier,
-    production leak gate, repair loop, real golden fixtures, source deck PDFs, reference guides, generated guides, runtime
-    eval outputs, evidence quotes, private filenames, real source/reference/uploaded quality-spec filenames, source text,
-    OCR/table/caption text, paths, URLs, image data, provider payloads, formulas copied from private/generated material,
-    frontend UI, API routes, generation prompts, request schemas, render/export/OCR/table/visual behavior, Ask Guide changes,
-    provider/model/cloud calls, or Docker config. Chandra remains blocked by its own live-validation gate.
+- **Working tree:** **Slice 110 (Quality Safety Fact-Sheet Schema v1) — UNCOMMITTED (per instruction)** on branch
+  `slice110-quality-safety-factsheet-schema-v1`, branched from fresh `chrome-renderer-v1` after Slice 109 was committed,
+  fast-forward merged, and pushed. **Slice 109 is trunk commit `2bbd644`**.
+  - **Part 0 completed:** Slice 109 was committed as `2bbd644`, fast-forward merged to `chrome-renderer-v1`, and pushed with
+    a normal `git push` (no force-push). It added sanitized synthetic seed fixture specs and forward-fixed numeric
+    contradiction hardening after pushed Slice 108. No API/frontend/generation/prompt/request/render/export/OCR/table/visual/
+    Ask Guide behavior changed. No provider/model/cloud calls were added. The Slice 60 trace stash remains parked and
+    untouched.
+  - **Slice 110 scope:** add the unwired Quality Safety fact-record/fact-sheet schema only. This schema is the contract for
+    later recompute verifier, canonical fallback, leak scanner coupling, and unified QA artifacts.
+  - **New module:** `pipeline/quality_safety_fact_sheet.py` is pure stdlib-only and exposes
+    `normalize_quality_safety_fact_record(...)`, `normalize_quality_safety_fact_sheet(...)`,
+    `validate_quality_safety_fact_sheet(...)`, and `build_empty_quality_safety_fact_sheet(...)`. It reads only supplied dicts,
+    writes nothing, reads no source documents or `clean.md`, calls no providers/models/cloud services, and returns
+    deterministic JSON-serializable dicts.
+  - **Schema behavior:** fact records use closed type/provenance/status/confidence/computation-method vocabularies, safe
+    deterministic ids/source refs, bounded values/computation inputs, and closed warnings only. Fact sheets use closed
+    status/source-quality values, bounded concepts/facts/notes/examples, non-negative summary counts, and `max_items`
+    partial status semantics.
+  - **Tests:** `test_scripts/test_quality_safety_fact_sheet.py` uses synthetic data and synthetic hostile canaries only. It
+    covers empty/malformed input, computed/unverified/canonical/failed facts, enum downgrades, id/source-ref hardening,
+    string/table/note/example hygiene, bounds, deterministic serialization, synthetic seed-fixture integration, no-leak
+    sweep, and import hygiene.
+  - **Out of scope/unchanged:** no recompute verifier, canonical fixture matcher, production leak gate, repair loop, runtime
+    fact-sheet artifact writer, app route, UI/export selector, LLM judge scoring, What the Lecturer Skipped mode, Active
+    Recall or other picked study-intelligence features, generation/prompt/request/API/UI/render/export/OCR/table/visual/Ask
+    Guide behavior change, provider/model/cloud calls, or Docker config. Only synthetic fixtures/content were used; no real
+    PDFs/images/DOCX/ZIPs, runtime artifacts, generated guides, eval outputs, source/reference filenames, uploaded
+    quality-spec filenames, evidence quotes, snippets, OCR/table/caption text, paths, URLs, image bytes, copied private
+    formulas, or provider payloads were added. Chandra remains blocked by its own live-validation gate.
+
+### Previously (Slice 109, now trunk `2bbd644`)
+- **Slice 109 (Quality Safety Seed Fixtures v1)** added
+  `test_scripts/fixtures/quality_safety/clean_neural_networks_synthetic.json`,
+  `test_scripts/fixtures/quality_safety/ambiguous_ensemble_synthetic.json`, and
+  `test_scripts/test_quality_safety_seed_fixtures.py`. It also hardened numeric correctness so distinct contradictory values
+  for the same synthetic label fail blocking even when one value is correct. Fixtures are sanitized synthetic JSON specs only,
+  not a real golden corpus. It changed no API, frontend, generation, prompt, request schema, render/export/OCR/table/visual,
+  Ask Guide, or provider/model/cloud behavior.
 
 ### Previously (Slice 108, now trunk `133e8e0`)
 - **Slice 108 (Quality Safety Eval Harness Skeleton)** added `pipeline/quality_safety_eval_harness.py` and

@@ -4694,3 +4694,19 @@ path-explicit preserves the no-leak boundary while still giving the harness dete
 even if one value happens to match the expected target and no recomputation engine is available. The Layer-1 numeric check
 therefore treats distinct values for the same synthetic quantity as a blocking `numeric_correctness` failure while still
 reporting only numeric values/counts and closed warnings, never candidate snippets.
+
+## Slice 110 adds an unwired fact-sheet contract before recompute verification
+**Why the schema comes first.** The Quality Safety Unit needs one provenance/status contract before numeric recomputation,
+canonical fallback, leak scanner coupling, or unified QA artifacts are added. Slice 110 therefore defines a pure fact-record
+and fact-sheet schema that normalizes safe ids, concepts, labels, values, provenance, verification status, confidence,
+source refs, computation metadata, summary counts, and closed warnings without wiring any production artifact writer.
+
+**Why recompute remains primary and canonical fixtures stay fallback-only.** The schema can represent both `computed` and
+`canonical_fixture` provenance, but it does not verify, match, repair, or block anything. Later numeric verification should
+consume the same fact-sheet contract and remain the primary truth path. Canonical fixtures are represented distinctly so a
+future matcher can use them only as fallback, not as a replacement for recompute.
+
+**Why the module is offline and no-leak by construction.** The fact-sheet helper imports only stdlib modules, accepts only
+caller-supplied dicts, and returns deterministic JSON-serializable dicts. It does not read source documents or `clean.md`,
+write runtime artifacts, call providers/models/cloud services, inspect OCR/render/export/table/visual data, or copy raw
+paths, URLs, filenames, snippets, evidence quotes, formulas, provider payloads, image data, or hostile strings into output.
