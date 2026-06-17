@@ -510,5 +510,29 @@ invariants are recorded directly.
 }
 ```
 
-Slice 115, Slice 116, Slice 117, Slice 118, Slice 119, Slice 120, Slice 121, and
-Slice 122 are committed. Slice 123 is NOT committed.
+## Slice 124 Numeric Extraction Contract Design (cross-reference)
+
+Slice 124 is design-first and adds **no** operator-runtime validation: it does
+not read private material, run generations, or call providers/models/cloud. It
+records the safe numeric extraction contract
+(`docs/QUALITY_SAFETY_NUMERIC_EXTRACTION_CONTRACT.md`) that a later slice can use
+to close the Slice 123 numeric leg, plus a pure synthetic contract harness. The
+numeric leg remains `not_covered`; `judge_ready`/`repair_ready` remain `false`.
+
+```json
+{
+  "validation_id": "quality_safety_numeric_extraction_contract_design_v1",
+  "slice": "124",
+  "operator_runtime_validation": "not_applicable_design_only",
+  "production_wiring": "none",
+  "contract_doc_added": true,
+  "synthetic_contract_harness_checks": "27_passed",
+  "numeric_fact_sheet_extraction_leg_covered": false,
+  "judge_ready": false,
+  "repair_ready": false,
+  "next_engineering_slice": "pure_numeric_extraction_record_mapper_v1"
+}
+```
+
+Slice 115, Slice 116, Slice 117, Slice 118, Slice 119, Slice 120, Slice 121,
+Slice 122, and Slice 123 are committed. Slice 124 is NOT committed.

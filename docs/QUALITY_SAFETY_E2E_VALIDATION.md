@@ -417,6 +417,32 @@ path (no concept/fact bundle is produced). The next engineering slice should be
 **numeric extraction design** — a safe concept/fact extraction-to-fact-sheet
 mapper that feeds the existing recompute verifier — before any judge/repair work.
 
+## Slice 124 — Numeric Extraction Contract Design (cross-reference)
+
+Slice 124 acts on the Slice 123 finding above. It is **design-first, no
+production wiring**: it defines the safe structured numeric extraction contract
+(`docs/QUALITY_SAFETY_NUMERIC_EXTRACTION_CONTRACT.md`) that a later slice can use
+to feed the existing fact-sheet producer and recompute verifier, and adds a pure
+synthetic contract harness (`test_scripts/test_quality_safety_numeric_extraction_contract.py`,
+27 passed). The numeric leg remains `not_covered` and `judge_ready`/`repair_ready`
+remain `false` — the contract does not claim coverage.
+
+```
+quality_safety_numeric_extraction_contract_design: run
+status: ok
+production_wiring: none
+contract_doc_added: true
+synthetic_contract_harness: 27_passed
+supported_methods: weighted_gini total_error amount_of_say softmax cross_entropy forward_pass
+representability_missing_piece: numeric_extraction
+numeric_fact_sheet_extraction_leg_status: not_covered
+judge_ready: false
+repair_ready: false
+next_step: pure_numeric_extraction_record_mapper_v1
+no_leak_sweep: clean
+docker_compose_config_run: false
+```
+
 ## Non-Goals
 
 - The Slice 122 coverage wiring is advisory transparency only; the numeric /

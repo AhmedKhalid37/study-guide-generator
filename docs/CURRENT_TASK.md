@@ -5,7 +5,55 @@
 
 ---
 
-## Slice 123 — **Real-Disaster E2E with Advisory Coverage Leg**, on `slice123-quality-safety-real-disaster-e2e-coverage-leg`. **NOT COMMITTED.**
+## Slice 124 — **Quality Safety Numeric Extraction Contract Design**, on `slice124-quality-safety-numeric-extraction-contract-design`. **NOT COMMITTED.**
+
+- **Part 0 completed:** Slice 123 was committed as `624a70e`, fast-forward merged to trunk `chrome-renderer-v1`, and pushed
+  with a normal `git push` (no force-push). Slice 123 validated the advisory `quality_safety_unified_qa.json` artifact path
+  and recorded, in closed vocabulary, `structural_coverage_leg_status=covered`,
+  `numeric_fact_sheet_extraction_leg_status=not_covered`, `judge_ready=false`, `repair_ready=false`,
+  `next_step=numeric_extraction_design`. No docker compose config was run, and the Slice 60 trace stash remains parked and
+  untouched.
+- **Scope:** design-first, bounded. Define the safe structured **numeric extraction contract** needed to feed the existing
+  pure fact-sheet producer (`quality_safety_fact_sheet_producer`) and recompute verifier
+  (`quality_safety_recompute_verifier`) so the numeric leg can be closed in a later slice — closing the Slice 123 gap. No
+  production wiring; docs plus one pure synthetic contract harness.
+- **Files changed:** `M docs/CURRENT_TASK.md`, `M docs/DECISIONS.md`, `M docs/NEXT_CHAT_HANDOFF.md`,
+  `M docs/QUALITY_SAFETY_E2E_VALIDATION.md`, `M docs/QUALITY_SAFETY_OPERATOR_VALIDATION.md`,
+  `?? docs/QUALITY_SAFETY_NUMERIC_EXTRACTION_CONTRACT.md`, `?? test_scripts/test_quality_safety_numeric_extraction_contract.py`.
+  No production code changed.
+- **Contract (new doc `docs/QUALITY_SAFETY_NUMERIC_EXTRACTION_CONTRACT.md`):** one *numeric extraction record* shape mapping
+  onto the producer's `computation_records[]` (recomputable) / `numeric_observations[]` (bare) lists. Allowed fields only
+  (`id`, `concept_id`, `label`, `fact_type=numeric`, `value`, `unit`, `provenance`, `confidence`, `source_ref`, `page_ref`,
+  `computation.method`, `computation.inputs`, `tolerance`, `warnings`); a closed **forbidden-field** list (`raw_text`,
+  `source_text`, `guide_text`, `ocr_text`, `table_cells`, `captions`, `formulas_as_text`, `evidence_quotes`, `filenames`,
+  `basenames`, `paths`, `urls`, `provider_payloads`, `runtime_traces`, `raw_exceptions`). Supported-first methods are exactly
+  the verifier's `SUPPORTED_METHODS` (`weighted_gini`, `total_error`, `amount_of_say`, `softmax`, `cross_entropy`,
+  `forward_pass`), each with a schema-level synthetic input shape (no private formulas/examples).
+- **Representability matrix outcome:** all three archetypes (`legacy_confused_wrong_case`,
+  `single_confident_wrong_numeric_case`, `clean_real_case`) are `numeric_fact_representable=true`,
+  `recompute_blocker_possible=true`, `leak_blocker_possible=true`, `artifact_path_ready=false`, sharing one
+  `missing_piece=numeric_extraction`. No schema-level method/source blocker found.
+- **Next recommended slice:** **Slice 125 — Pure Numeric Extraction Record Mapper v1** (pure/unwired contract→bundle mapper,
+  synthetic tests only; no OCR/table parsing, no source/`clean.md` reads, no providers/judge/repair). The contract found no
+  blocker, so Slice 125 is recommended; if a later real-material spike surfaces an unsupported method, recommend a bounded
+  recompute-method extension first instead.
+- **judge_ready=false, repair_ready=false** — unchanged; the numeric leg stays `not_covered` until a real artifact path proves
+  it with safe structured concept/fact data. This slice does **not** claim numeric coverage.
+- **No-leak boundary:** closed-vocabulary docs only; the contract doc and synthetic harness use synthetic ids/labels/methods
+  and illustrative synthetic numbers (with a synthetic canary smuggled into a forbidden field to prove it is stripped). No
+  real source/guide/OCR/table/caption text, copied formulas, numeric prose, evidence quotes, filenames, basenames, paths,
+  URLs, raw artifact JSON, runtime outputs, screenshots, or provider payloads.
+- **Validation:** numeric extraction contract harness 27 passed; fact sheet 61 passed; recompute verifier 99 passed;
+  real-disaster harness 41 passed; `compileall api pipeline test_scripts` OK; `git diff --check` clean; no-leak sweep clean. No
+  docker compose config was run; Docker not required (docs + pure synthetic test only).
+- **Out of scope / unchanged:** no production mapper wired, no OCR/table parsing, no source/`clean.md` read, no routes, no
+  frontend change, no generic artifact selector row, no generation/prompt/provider/request-schema/render/export/OCR/table/
+  visual/Ask Guide change, no judge scoring, `overall_10`, repair loop, or blocking gate; no `quality_judge.py`, `nn3.json`,
+  `judge_response_nn3.json`, or `quality.jsonl`. **Slice 124 remains NOT committed.**
+
+---
+
+## Slice 123 — **Real-Disaster E2E with Advisory Coverage Leg**, on `slice123-quality-safety-real-disaster-e2e-coverage-leg`. **Committed `624a70e`, merged + pushed to `chrome-renderer-v1`.**
 
 - **Part 0 completed:** Slice 122 was committed as `979bb4e`, fast-forward merged to trunk `chrome-renderer-v1`, and pushed
   with a normal `git push` (no force-push). Slice 122 wired the Slice 121 structural-coverage adapter into the advisory
@@ -47,7 +95,7 @@
   `quality_safety_job_artifact.py` / `run_markdown_job.py` / `api/server.py` change, no routes, no frontend change, no generic
   artifact selector row, no generation/prompt/provider/request-schema/render/export/OCR/table/visual/Ask Guide change, no
   judge scoring, `overall_10`, repair loop, or blocking gate; no `quality_judge.py`, `nn3.json`, `judge_response_nn3.json`, or
-  `quality.jsonl`. **Slice 123 remains NOT committed.**
+  `quality.jsonl`. **Committed `624a70e`, merged + pushed to `chrome-renderer-v1`.**
 
 ---
 

@@ -5002,3 +5002,47 @@ recorded honestly as `not_observed` rather than fabricated; only structurally
 guaranteed invariants are asserted. The synthetic-safe Track A harness
 (`test_scripts/validate_quality_safety_real_disaster_e2e.py`) carries the
 artifact-path-exercised observations.
+
+## Slice 124 defines a structured numeric extraction contract and keeps judge/repair gated on it
+**Why structural coverage is not numeric verification evidence.** Slice 123 found
+the numeric fact-sheet extraction leg uncovered through the production artifact
+path. Slice 124 designs the missing input contract (new doc
+`docs/QUALITY_SAFETY_NUMERIC_EXTRACTION_CONTRACT.md`) rather than building a judge
+on top of an uncovered leg. The contract is explicit that structural coverage
+(page/visual/table counts; `numeric_observation_count=0` by construction) is *not*
+recompute evidence and must never be converted into a numeric fact. A numeric
+fact only becomes verifiable when it carries a `value` plus structured
+`computation.inputs` for a method the recompute verifier already supports.
+
+**Why numeric extraction must be structured numeric inputs, not raw text/formula
+capture.** The contract's allowed fields are ids, closed labels, finite numeric
+`value`, closed `provenance`/`confidence`/`unit`/`source_ref`/`page_ref` tokens,
+a closed `computation.method`, and **numeric-only** `computation.inputs`. A
+closed forbidden-field list (`raw_text`, `source_text`, `guide_text`, `ocr_text`,
+`table_cells`, `captions`, `formulas_as_text`, `evidence_quotes`, `filenames`,
+`basenames`, `paths`, `urls`, `provider_payloads`, `runtime_traces`,
+`raw_exceptions`) makes the upstream caller responsible for never emitting raw
+content. This lets the numeric leg be exercised later without ever capturing
+private text — a copied formula string or numeric prose snippet is never the
+contract; structured numbers are.
+
+**Why the supported-first method set is exactly the verifier's.** The contract
+limits supported methods to the recompute verifier's `SUPPORTED_METHODS`
+(`weighted_gini`, `total_error`, `amount_of_say`, `softmax`, `cross_entropy`,
+`forward_pass`), each with a schema-level synthetic input shape. The
+representability matrix shows every real-disaster archetype is numerically
+representable with a possible recompute blocker, sharing one
+`missing_piece=numeric_extraction` — no schema-level method/source blocker — so
+the recommended next step is **Slice 125, a pure/unwired contract→bundle mapper**
+with synthetic tests only. If a later real-material spike surfaces an unsupported
+method, the correct next slice instead becomes a bounded recompute-method
+extension before any mapper wiring.
+
+**Why judge baseline remains blocked.** `judge_ready` and `repair_ready` stay
+`false`. A judge baseline (and repair) remain blocked until the numeric extraction
+leg status is `covered` through a real artifact path — or is explicitly waived —
+because scoring guides whose numbers were never verified would be dishonest. The
+pure synthetic harness `test_scripts/test_quality_safety_numeric_extraction_contract.py`
+proves the contract's synthetic records round-trip through the existing producer
+and recompute verifier (and that forbidden fields are stripped); it adds no
+production wiring and does not claim coverage.
