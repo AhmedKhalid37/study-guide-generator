@@ -622,6 +622,33 @@ no_leak_sweep: clean
 docker_compose_config_run: false
 ```
 
+## Slice 131 — Production Safe Candidate Source Discovery
+
+Slice 131 is docs-only discovery. It inspected existing code/docs and did not run
+operator runtime validation. Closed-vocabulary outcome:
+
+```
+production_safe_candidate_source_discovery: run
+status: partial
+inspection_source: code_only
+existing_production_safe_source_present: false
+sidecar_only_source_present: true
+source_coverage_report_can_feed_candidates: false
+extraction_metadata_can_feed_candidates: false
+visual_inclusion_plan_can_feed_candidates: false
+table_candidates_manifest_can_feed_candidates: false
+table_reconstruction_policy_can_feed_candidates: false
+single_confident_wrong_numeric_case_support: sidecar_or_future_artifact
+clean_real_case_support: sidecar_or_future_artifact
+legacy_confused_wrong_case_support: partial
+operator_waiver_recorded: false
+numeric_fact_sheet_extraction_leg_status: partial
+judge_ready: false
+repair_ready: false
+next_step: future_structured_numeric_artifact_design
+docker_compose_config_run: false
+```
+
 ## Non-Goals
 
 - The Slice 122 coverage wiring is advisory transparency only; the numeric /

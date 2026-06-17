@@ -5305,3 +5305,31 @@ candidates yet, `production_numeric_extractor_present=sidecar_candidate_only`,
 stay `false`. Closing the gap needs a separately-designed production safe-candidate
 source (deriving sanitized candidates from already-sanitized structured artifacts)
 or an explicit operator waiver — not a silent widening.
+
+---
+
+## Existing structured artifacts are not a production safe numeric candidate source (Slice 131)
+Slice 131 inspected the already-produced structured artifacts that the advisory
+Quality Safety path reads today. The decision: **do not derive safe numeric
+candidates from current structural artifacts**.
+
+`source_coverage_report`, `extraction_metadata`, `visual_inclusion_plan`,
+`table_candidates_manifest`, and `table_reconstruction_policy` are useful
+sanitized structure/count/policy surfaces, but they do not contain the required
+numeric candidate shape: finite `value` plus structured `computation.method` and
+numeric `computation.inputs`. Structural coverage is not numeric recompute
+evidence; table count signals and preservation tokens are not cell values or
+method inputs. `quality_safety_unified_qa` is an output artifact and must not be
+used as a recursive candidate source.
+
+The two existing numeric-capable paths remain sidecar-only:
+`quality_safety_numeric_extraction_records.json` and
+`quality_safety_safe_numeric_candidates.json`. They can represent manual/synthetic
+records, but no production component emits them. Therefore Slice 131 records:
+`existing_production_safe_source_present=false`, `sidecar_only_source_present=true`,
+`operator_waiver_recorded=false`, `judge_ready=false`, and `repair_ready=false`.
+
+Next step is **future_structured_numeric_artifact_design**: define a future safe
+structured artifact that an extractor or operator can populate with method-input
+records. A bounded recompute-method extension is separate and only needed when a
+real case requires an unsupported method.

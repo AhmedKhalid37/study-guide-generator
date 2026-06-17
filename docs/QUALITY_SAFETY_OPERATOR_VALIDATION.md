@@ -884,4 +884,41 @@ and is gated on a production safe-candidate source (or an explicit operator waiv
 }
 ```
 
-Slice 130 is NOT committed.
+Slice 130 is committed as `cd3a23b` and merged to `chrome-renderer-v1`.
+
+## Slice 131 Production Safe Candidate Source Discovery (cross-reference)
+
+Slice 131 is docs-only source discovery with **no operator-runtime validation of
+its own**: it reads no private material, runs no generations, scans no job folders,
+writes no artifacts, and calls no providers/models/cloud. It records that no
+existing already-produced structured artifact can safely emit numeric candidate
+records today.
+
+```json
+{
+  "validation_id": "quality_safety_production_safe_candidate_source_discovery",
+  "slice": "131",
+  "operator_runtime_validation": "not_applicable_docs_only_discovery",
+  "existing_production_safe_source_present": false,
+  "sidecar_only_source_present": true,
+  "source_coverage_report_can_feed_candidates": false,
+  "extraction_metadata_can_feed_candidates": false,
+  "visual_inclusion_plan_can_feed_candidates": false,
+  "table_candidates_manifest_can_feed_candidates": false,
+  "table_reconstruction_policy_can_feed_candidates": false,
+  "single_confident_wrong_numeric_case": "sidecar_or_future_artifact",
+  "clean_real_case": "sidecar_or_future_artifact",
+  "legacy_confused_wrong_case": "partial",
+  "operator_waiver_recorded": false,
+  "numeric_fact_sheet_extraction_leg_status": "partial",
+  "judge_ready": false,
+  "repair_ready": false,
+  "next_step": "future_structured_numeric_artifact_design",
+  "raw_text_committed": false,
+  "raw_paths_committed": false,
+  "runtime_outputs_committed": false,
+  "provider_calls": false,
+  "judge_calls": false,
+  "repair_calls": false
+}
+```

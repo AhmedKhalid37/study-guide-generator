@@ -5,7 +5,44 @@
 
 ---
 
-## Slice 130 — **Wire Safe Numeric Extractor into Advisory Artifact Path**, on `slice130-wire-safe-numeric-extractor-advisory-artifact`. **NOT COMMITTED.**
+## Slice 131 — **Production Safe Candidate Source Discovery**, on `slice131-quality-safety-production-safe-candidate-source-discovery`. **NOT COMMITTED.**
+
+- **Part 0 completed:** Slice 130 was committed as `cd3a23b`, fast-forward merged to trunk `chrome-renderer-v1`, and pushed with
+  a normal `git push` (no force-push). Final trunk status before branching was clean; no docker compose config was run; the Slice
+  60 trace stash remains parked and untouched.
+- **Scope:** discovery/design only. Inspect existing code/docs for already-sanitized structured artifacts that could feed
+  `quality_safety_safe_numeric_candidates.json`-compatible records. **No production source adapter, no OCR/table/source parsing,
+  no `clean.md` numeric read, no job-folder scan, no sidecar writes, no provider/model/cloud, no judge, no repair, no blocking.**
+- **New doc:** `docs/QUALITY_SAFETY_PRODUCTION_SAFE_CANDIDATE_SOURCE_DISCOVERY.md` records a closed-vocabulary inventory of
+  `explicit_numeric_records_sidecar`, `safe_numeric_candidates_sidecar`, `source_coverage_report`, `extraction_metadata`,
+  `visual_inclusion_plan`, `table_candidates_manifest`, `table_reconstruction_policy`, `quality_safety_unified_qa`,
+  `future_structured_numeric_artifact`, and `operator_manual_sidecar`.
+- **Discovery result:** no existing already-produced structured artifact safely contains the required numeric candidate shape
+  (`value` plus structured `computation.method` and numeric `computation.inputs`). Structural coverage artifacts contain counts
+  and shape only; table artifacts contain table structure/count/policy tokens but no safe cell values or recomputable method
+  inputs; `quality_safety_unified_qa.json` is an output artifact and not a candidate source.
+- **Existing safe source decision:** the two sidecar paths can represent synthetic/manual candidates, but they are not production
+  sources. `single_confident_wrong_numeric_case` and `clean_real_case` remain representable through sidecars or a future
+  structured numeric artifact; `legacy_confused_wrong_case` remains `partial` unless a supported method is emitted, otherwise a
+  bounded recompute-method extension is required.
+- **Closed-vocabulary outcome:** `existing_production_safe_source_present=false`; `sidecar_only_source_present=true`;
+  `operator_waiver_recorded=false`; `next_step=future_structured_numeric_artifact_design`; `judge_ready=false`;
+  `repair_ready=false`.
+- **Files changed:** `M docs/CURRENT_TASK.md`, `M docs/DECISIONS.md`, `M docs/NEXT_CHAT_HANDOFF.md`,
+  `M docs/QUALITY_SAFETY_SAFE_NUMERIC_EXTRACTOR_DESIGN.md`, `M docs/QUALITY_SAFETY_NUMERIC_EXTRACTION_CONTRACT.md`,
+  `M docs/QUALITY_SAFETY_E2E_VALIDATION.md`, `M docs/QUALITY_SAFETY_OPERATOR_VALIDATION.md`,
+  `?? docs/QUALITY_SAFETY_PRODUCTION_SAFE_CANDIDATE_SOURCE_DISCOVERY.md`.
+- **Next recommended slice:** **Slice 132 — Future Structured Numeric Artifact Design**. Purpose: define a future structured
+  artifact that an extractor or operator can populate with safe method-input records. No production extraction, no OCR/table
+  parsing, no judge.
+- **Out of scope / unchanged:** no production code, no `quality_safety_job_artifact.py` change, no `run_markdown_job.py` change,
+  no `api/server.py` change, no routes, no frontend change, no generation/prompt/provider/request-schema/render/export/OCR/
+  table/visual/Ask Guide change, no judge/`overall_10`/repair/blocking gate, no `quality_judge.py`, `nn3.json`,
+  `judge_response_nn3.json`, or `quality.jsonl`. **Slice 131 remains NOT committed.**
+
+---
+
+## Slice 130 — **Wire Safe Numeric Extractor into Advisory Artifact Path**, on `slice130-wire-safe-numeric-extractor-advisory-artifact`. **Committed `cd3a23b`, merged + pushed to `chrome-renderer-v1`.**
 
 - **Part 0 completed:** Slice 129 was committed as `0bff68c`, fast-forward merged to trunk `chrome-renderer-v1`, and pushed with
   a normal `git push` (no force-push). No docker compose config was run; the Slice 60 trace stash remains parked and untouched.
@@ -52,7 +89,8 @@
   after a proven production candidate source (or waiver) revisit `judge_ready`.
 - **Out of scope / unchanged:** no `api/server.py` change, no routes, no frontend change, no generic artifact selector row, no
   generation/prompt/provider/request-schema/render/export/OCR/table/visual/Ask Guide change, no judge/`overall_10`/repair/blocking
-  gate, no `quality_judge.py`, `nn3.json`, `judge_response_nn3.json`, or `quality.jsonl`. **Slice 130 remains NOT committed.**
+  gate, no `quality_judge.py`, `nn3.json`, `judge_response_nn3.json`, or `quality.jsonl`. **Slice 130 is committed as `cd3a23b`
+  and merged to `chrome-renderer-v1`.**
 
 ---
 

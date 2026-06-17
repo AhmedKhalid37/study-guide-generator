@@ -447,6 +447,33 @@ no_leak_sweep: clean
 docker_compose_config_run: false
 ```
 
+## Slice 131 Source Discovery Status
+
+Slice 131 did not change the numeric extraction contract. It inspected existing
+already-produced structured artifacts as possible production sources for safe
+numeric candidates and found no current source with both finite numeric values and
+structured recompute method inputs.
+
+```
+contract_changed: false
+existing_production_safe_source_present: false
+sidecar_only_source_present: true
+source_coverage_report_candidate_source: false
+extraction_metadata_candidate_source: false
+visual_inclusion_plan_candidate_source: false
+table_candidates_manifest_candidate_source: false
+table_reconstruction_policy_candidate_source: false
+quality_safety_unified_qa_candidate_source: false
+operator_waiver_recorded: false
+judge_ready: false
+repair_ready: false
+next_step: future_structured_numeric_artifact_design
+```
+
+The next contract-adjacent work is a future structured numeric artifact design:
+a bounded schema that an extractor or operator can populate with safe method-input
+records. It must remain separate from structural coverage and table policy counts.
+
 ## Non-Goals (Slice 124)
 
 - Not the judge tranche; no judge, no `overall_10`, no `quality_judge.py`,

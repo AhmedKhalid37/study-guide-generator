@@ -311,3 +311,34 @@ next_step: production_safe_candidate_source_or_operator_waiver
 no_leak_sweep: clean
 docker_compose_config_run: false
 ```
+
+## Slice 131 Production Safe Candidate Source Discovery
+
+Slice 131 inspected existing code/docs for a first production source that could
+emit `quality_safety_safe_numeric_candidates.json`-compatible records without
+reading source/OCR/table/text. Discovery result: no existing already-produced
+structured artifact contains the required safe numeric candidate shape (`value`
+plus structured `computation.method` and numeric `computation.inputs`).
+
+```
+existing_production_safe_source_present: false
+sidecar_only_source_present: true
+source_coverage_report_can_feed_candidates: false
+extraction_metadata_can_feed_candidates: false
+visual_inclusion_plan_can_feed_candidates: false
+table_candidates_manifest_can_feed_candidates: false
+table_reconstruction_policy_can_feed_candidates: false
+single_confident_wrong_numeric_case: representable_via_sidecar_or_future_artifact
+clean_real_case: representable_via_sidecar_or_future_artifact
+legacy_confused_wrong_case: partial
+operator_waiver_recorded: false
+judge_ready: false
+repair_ready: false
+next_step: future_structured_numeric_artifact_design
+docker_compose_config_run: false
+```
+
+Structural coverage artifacts remain counts/shape only and are never converted
+into numeric facts. Table artifacts carry structure/count/policy tokens, not safe
+cell values or recomputable method inputs. A bounded recompute-method extension is
+separate and only needed if a real unsupported method must be verified.
