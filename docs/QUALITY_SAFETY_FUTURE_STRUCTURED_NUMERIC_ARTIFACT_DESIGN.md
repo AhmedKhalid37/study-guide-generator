@@ -284,3 +284,21 @@ The selected producer is operator-authored and closed-schema; it commits no raw
 private material and adds no OCR/table/source/`clean.md` parsing or provider calls.
 The adapter already whitelists `source_quality=operator_approved` and
 `provenance=operator_approved`, so no artifact-schema change is needed.
+
+## Slice 136 Operator Export Protocol Relationship
+
+Slice 136 wrote the operator workflow that produces this artifact (see
+`docs/QUALITY_SAFETY_OPERATOR_STRUCTURED_NUMERIC_EXPORT_PROTOCOL.md`). The artifact
+shape here is unchanged; the protocol only constrains how an operator authors it by
+hand. The `quality_safety_structured_numeric_candidates.json` sidecar remains a
+job-local, read-only input that production never creates, and is never committed.
+
+```yaml
+operator_protocol_status: ready
+operator_export_validator_needed: true
+artifact_schema_changed: false
+sidecar_committed: false
+judge_ready: false
+repair_ready: false
+next_step: pure_operator_export_validator
+```

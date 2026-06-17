@@ -5,7 +5,46 @@
 
 ---
 
-## Slice 135 — **Future Structured Numeric Candidate Producer Design**, on `slice135-quality-safety-structured-numeric-candidate-producer-design`. **NOT COMMITTED.**
+## Slice 136 — **Operator Structured Numeric Export Protocol**, on `slice136-quality-safety-operator-structured-numeric-export-protocol`. **NOT COMMITTED.**
+
+- **Part 0 completed:** Slice 135 was committed as `c96e5f4`, fast-forward merged to trunk `chrome-renderer-v1`, and pushed with
+  a normal `git push` (no force-push). Final trunk status before branching Slice 136 was clean; no docker compose config was run;
+  the Slice 60 trace stash remains parked and untouched.
+- **Scope:** docs/design/protocol-only. New doc `docs/QUALITY_SAFETY_OPERATOR_STRUCTURED_NUMERIC_EXPORT_PROTOCOL.md` defines the
+  exact operator workflow that produces a `quality_safety_structured_numeric_candidates.json`-compatible closed-schema export.
+  **No operator export validator was implemented, no producer was wired, no production code changed, no OCR/table/source/`clean.md`
+  parsing, no provider/model/cloud, no judge, no repair, no blocking gate.**
+- **Operator protocol (closed step list):** `inspect_private_material_locally` → `identify_numeric_claims_with_supported_methods`
+  → `encode_structured_candidate_records` → `run_local_validation_harness` → `inspect_quality_safety_unified_qa_json_locally` →
+  `commit_closed_vocabulary_validation_record_only` → `do_not_commit_sidecar_or_runtime_outputs`.
+- **Schema:** Slice 132/133 closed schema; required `kind=quality_safety_structured_numeric_candidates`,
+  `source_quality=operator_approved`, `provenance=operator_approved|computed`, `fact_type=numeric`; supported methods
+  `weighted_gini`, `total_error`, `amount_of_say`, `softmax`, `cross_entropy`, `forward_pass`; numeric inputs only. Forbidden
+  candidate fields (raw_text / source_text / guide_text / ocr_text / page_text / table_cells / captions / formulas_as_text /
+  evidence_quotes / filenames / basenames / paths / urls / provider_payloads / runtime_traces / raw_exceptions / raw_artifact_json)
+  must never appear.
+- **Privacy handling:** operator may inspect private material **locally only**; never commit source/guide/OCR/page/table/caption
+  text, formulas, evidence quotes, filenames, basenames, paths, URLs, screenshots, runtime artifacts, raw artifact JSON, provider
+  payloads, or the sidecar JSON itself. Only closed-vocabulary records and synthetic fixtures/canaries enter git.
+- **Validation record:** closed-vocabulary template committed (tokens only). `operator_export_committed` is fixed `false`; a real
+  run is `not_observed` until the pure validator (Slice 137) exists.
+- **Decision record:** `operator_protocol_status=ready`; `operator_export_validator_needed=true`;
+  `production_numeric_extractor_present=structured_artifact_sidecar_only`; `numeric_fact_sheet_extraction_leg_status=partial`;
+  `artifact_path_ready=true_for_synthetic_structured_candidates`; `judge_ready=false`; `repair_ready=false`;
+  `next_step=pure_operator_export_validator`.
+- **Next recommended slice:** **Slice 137 — Pure Operator Structured Numeric Export Validator v1** (pure/unwired validator for
+  operator-approved structured-candidate-like dicts; synthetic tests only; no production wiring; no private sidecar commit; no
+  OCR/table/source parsing; no judge/repair).
+- **Files changed:** `M docs/CURRENT_TASK.md`, `M docs/DECISIONS.md`, `M docs/NEXT_CHAT_HANDOFF.md`,
+  `M docs/QUALITY_SAFETY_STRUCTURED_NUMERIC_CANDIDATE_PRODUCER_DESIGN.md`,
+  `M docs/QUALITY_SAFETY_FUTURE_STRUCTURED_NUMERIC_ARTIFACT_DESIGN.md`, `M docs/QUALITY_SAFETY_OPERATOR_VALIDATION.md`,
+  `M docs/QUALITY_SAFETY_E2E_VALIDATION.md`, `M docs/QUALITY_SAFETY_NUMERIC_EXTRACTION_CONTRACT.md`,
+  `M docs/QUALITY_SAFETY_SAFE_NUMERIC_EXTRACTOR_DESIGN.md`,
+  `?? docs/QUALITY_SAFETY_OPERATOR_STRUCTURED_NUMERIC_EXPORT_PROTOCOL.md`. **Slice 136 remains NOT committed.**
+
+---
+
+## Slice 135 — **Future Structured Numeric Candidate Producer Design**, on `slice135-quality-safety-structured-numeric-candidate-producer-design`. **Committed `c96e5f4`, merged + pushed to `chrome-renderer-v1`.**
 
 - **Part 0 completed:** Slice 134 was committed as `244361a`, fast-forward merged to trunk `chrome-renderer-v1`, and pushed with
   a normal `git push` (no force-push). Final trunk status before branching Slice 135 was clean; no docker compose config was run;
@@ -32,7 +71,8 @@
   `M docs/QUALITY_SAFETY_PRODUCTION_SAFE_CANDIDATE_SOURCE_DISCOVERY.md`,
   `M docs/QUALITY_SAFETY_SAFE_NUMERIC_EXTRACTOR_DESIGN.md`, `M docs/QUALITY_SAFETY_NUMERIC_EXTRACTION_CONTRACT.md`,
   `M docs/QUALITY_SAFETY_E2E_VALIDATION.md`, `M docs/QUALITY_SAFETY_OPERATOR_VALIDATION.md`,
-  `?? docs/QUALITY_SAFETY_STRUCTURED_NUMERIC_CANDIDATE_PRODUCER_DESIGN.md`. **Slice 135 remains NOT committed.**
+  `?? docs/QUALITY_SAFETY_STRUCTURED_NUMERIC_CANDIDATE_PRODUCER_DESIGN.md`. **Slice 135 is committed as `c96e5f4` and merged to
+  `chrome-renderer-v1`.**
 
 ---
 

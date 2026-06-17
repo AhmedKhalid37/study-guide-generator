@@ -200,3 +200,27 @@ Purpose:
 If a different decision is later made, the next slice should instead be one of
 `pure_operator_export_validator`, `bounded_recompute_method_extension`, or
 `stop_for_review`, matched to that decision.
+
+## Slice 136 Protocol Status
+
+Slice 136 wrote the operator export protocol for the selected producer (see
+`docs/QUALITY_SAFETY_OPERATOR_STRUCTURED_NUMERIC_EXPORT_PROTOCOL.md`). It is
+docs/design/protocol-only — no operator export validator is implemented and no
+producer is wired.
+
+```
+operator_protocol_status: ready
+operator_export_validator_needed: true
+recommended_producer_v1: operator_approved_structured_export
+production_numeric_extractor_present: structured_artifact_sidecar_only
+numeric_fact_sheet_extraction_leg_status: partial
+artifact_path_ready: true_for_synthetic_structured_candidates
+judge_ready: false
+repair_ready: false
+next_step: pure_operator_export_validator
+```
+
+The protocol fixes the operator workflow, the closed schema, the allowed/forbidden
+values, how private material stays out of git, and the closed-vocabulary validation
+record. A real operator validation record is treated as `not_observed` until the
+pure validator (Slice 137) exists.

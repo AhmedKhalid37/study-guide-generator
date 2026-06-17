@@ -746,6 +746,31 @@ next_step: operator_export_protocol
 docker_compose_config_run: false
 ```
 
+## Slice 136 — Operator Structured Numeric Export Protocol
+
+Slice 136 is docs/design/protocol-only and wrote the operator workflow for the
+selected producer (see
+`docs/QUALITY_SAFETY_OPERATOR_STRUCTURED_NUMERIC_EXPORT_PROTOCOL.md`). No code
+changed and no validation harness changed; the closed-vocabulary outcome is recorded
+for transparency. No real operator run is recorded here — a real run stays
+`not_observed` until the pure validator (Slice 137) exists.
+
+```
+operator_protocol_status: ready
+operator_export_validator_needed: true
+operator_runtime_validation: not_applicable_docs_protocol_only
+single_confident_wrong_numeric_case: expected_recompute_failed_blocking
+clean_real_case: expected_recompute_passed
+legacy_confused_wrong_case: expected_recompute_partial
+production_numeric_extractor_present: structured_artifact_sidecar_only
+numeric_fact_sheet_extraction_leg_status: partial
+artifact_path_ready: true_for_synthetic_structured_candidates
+judge_ready: false
+repair_ready: false
+next_step: pure_operator_export_validator
+docker_compose_config_run: false
+```
+
 ## Non-Goals
 
 - The Slice 122 coverage wiring is advisory transparency only; the numeric /

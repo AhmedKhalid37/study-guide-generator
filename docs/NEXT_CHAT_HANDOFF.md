@@ -6,39 +6,51 @@
 > stable overview see `PROJECT_CONTEXT.md`; canonical brief is `../CLAUDE.md`.
 
 ## Current position
-- **Working tree:** **Slice 135 (Future Structured Numeric Candidate Producer Design) — UNCOMMITTED (per instruction)** on branch
-  `slice135-quality-safety-structured-numeric-candidate-producer-design`, branched from updated `chrome-renderer-v1` after Slice
-  134 was committed, fast-forward merged, and pushed. **Slice 134 is trunk commit `244361a`**.
-  - **Part 0 completed:** Slice 134 was committed as `244361a`, fast-forward merged to `chrome-renderer-v1`, and pushed with a
+- **Working tree:** **Slice 136 (Operator Structured Numeric Export Protocol) — UNCOMMITTED (per instruction)** on branch
+  `slice136-quality-safety-operator-structured-numeric-export-protocol`, branched from updated `chrome-renderer-v1` after Slice
+  135 was committed, fast-forward merged, and pushed. **Slice 135 is trunk commit `c96e5f4`**.
+  - **Part 0 completed:** Slice 135 was committed as `c96e5f4`, fast-forward merged to `chrome-renderer-v1`, and pushed with a
     normal `git push` (no force-push). Final trunk status before branching was clean; no docker compose config was run; the Slice
     60 trace stash remains parked and untouched.
-  - **Slice 135 scope:** docs/design-only. New doc `docs/QUALITY_SAFETY_STRUCTURED_NUMERIC_CANDIDATE_PRODUCER_DESIGN.md` designs
-    the first acceptable producer of `quality_safety_structured_numeric_candidates.json`. No producer implemented, no producer
-    wiring, no production code change, no OCR/table/source/`clean.md` parsing, no provider/model/cloud, no judge, no repair.
-  - **Producer options evaluated:** `operator_approved_structured_export` (**select**),
-    `already_sanitized_structural_artifact_adapter` (reject — Slice 131 found no structural artifact carries numeric method
-    inputs), `model_generated_structured_numeric_export` (defer — needs provider/cloud + raw-text reads),
-    `sidecar_only_operator_waiver` (defer — folded into the selected option as a formalized protocol).
-  - **Recommended producer v1:** `operator_approved_structured_export` — operator authors closed-schema records only; no raw
-    private material in git; explicit manual waiver/gate, not automated extraction. Adapter already whitelists
-    `source_quality=operator_approved` and `provenance=operator_approved`.
-  - **Decision record:** `recommended_producer_v1=operator_approved_structured_export`;
+  - **Slice 136 scope:** docs/design/protocol-only. New doc `docs/QUALITY_SAFETY_OPERATOR_STRUCTURED_NUMERIC_EXPORT_PROTOCOL.md`
+    defines the exact operator workflow producing a `quality_safety_structured_numeric_candidates.json`-compatible closed-schema
+    export. No operator export validator implemented, no producer wired, no production code change, no OCR/table/source/`clean.md`
+    parsing, no provider/model/cloud, no judge, no repair, no blocking gate.
+  - **Operator workflow (closed steps):** `inspect_private_material_locally` →
+    `identify_numeric_claims_with_supported_methods` → `encode_structured_candidate_records` → `run_local_validation_harness` →
+    `inspect_quality_safety_unified_qa_json_locally` → `commit_closed_vocabulary_validation_record_only` →
+    `do_not_commit_sidecar_or_runtime_outputs`.
+  - **Schema:** Slice 132/133 closed schema; required `kind=quality_safety_structured_numeric_candidates`,
+    `source_quality=operator_approved`, `provenance=operator_approved|computed`, `fact_type=numeric`; supported methods
+    `weighted_gini`/`total_error`/`amount_of_say`/`softmax`/`cross_entropy`/`forward_pass`; numeric inputs only; forbidden
+    raw/source/guide/ocr/page/table/caption/formula/quote/filename/basename/path/url/provider/runtime/exception/raw-json fields.
+  - **Privacy:** operator inspects private material locally only; never commits source/guide/OCR/page/table/caption text,
+    formulas, evidence quotes, filenames, basenames, paths, URLs, screenshots, runtime artifacts, raw artifact JSON, provider
+    payloads, or the sidecar itself. Only closed-vocabulary records + synthetic fixtures enter git.
+  - **Decision record:** `operator_protocol_status=ready`; `operator_export_validator_needed=true`;
     `production_numeric_extractor_present=structured_artifact_sidecar_only`; `numeric_fact_sheet_extraction_leg_status=partial`;
     `artifact_path_ready=true_for_synthetic_structured_candidates`; `judge_ready=false`; `repair_ready=false`;
-    `next_step=operator_export_protocol`.
+    `next_step=pure_operator_export_validator`.
   - **Files changed:** `M docs/CURRENT_TASK.md`, `M docs/DECISIONS.md`, `M docs/NEXT_CHAT_HANDOFF.md`,
-    `M docs/QUALITY_SAFETY_FUTURE_STRUCTURED_NUMERIC_ARTIFACT_DESIGN.md`,
-    `M docs/QUALITY_SAFETY_PRODUCTION_SAFE_CANDIDATE_SOURCE_DISCOVERY.md`,
-    `M docs/QUALITY_SAFETY_SAFE_NUMERIC_EXTRACTOR_DESIGN.md`, `M docs/QUALITY_SAFETY_NUMERIC_EXTRACTION_CONTRACT.md`,
-    `M docs/QUALITY_SAFETY_E2E_VALIDATION.md`, `M docs/QUALITY_SAFETY_OPERATOR_VALIDATION.md`,
-    `?? docs/QUALITY_SAFETY_STRUCTURED_NUMERIC_CANDIDATE_PRODUCER_DESIGN.md`. Docs-only; no optional script added.
-  - **Next expected slice:** **Slice 136 — Operator Structured Numeric Export Protocol** (docs/design; defines exact operator
-    workflow + explicit waiver wording; no production code; no judge/repair/prompt tuning). Judge baseline stays blocked
-    (`judge_ready=false`) until an explicit operator waiver is approved.
-  - **Out of scope/unchanged:** no `api/server.py` change, no routes, no frontend change, no production producer/sidecar writer,
-    no generation/prompt/provider/request-schema/render/export/OCR/table/visual/Ask Guide change, no judge/`overall_10`/repair/
-    blocking gate, no `quality_judge.py`, `nn3.json`, `judge_response_nn3.json`, or `quality.jsonl`. **Slice 135 remains NOT
-    committed.**
+    `M docs/QUALITY_SAFETY_STRUCTURED_NUMERIC_CANDIDATE_PRODUCER_DESIGN.md`,
+    `M docs/QUALITY_SAFETY_FUTURE_STRUCTURED_NUMERIC_ARTIFACT_DESIGN.md`, `M docs/QUALITY_SAFETY_OPERATOR_VALIDATION.md`,
+    `M docs/QUALITY_SAFETY_E2E_VALIDATION.md`, `M docs/QUALITY_SAFETY_NUMERIC_EXTRACTION_CONTRACT.md`,
+    `M docs/QUALITY_SAFETY_SAFE_NUMERIC_EXTRACTOR_DESIGN.md`,
+    `?? docs/QUALITY_SAFETY_OPERATOR_STRUCTURED_NUMERIC_EXPORT_PROTOCOL.md`. Docs-only; no optional script added.
+  - **Next expected slice:** **Slice 137 — Pure Operator Structured Numeric Export Validator v1** (pure/unwired validator;
+    synthetic tests only; no production wiring; no private sidecar commit; no OCR/table/source parsing; no judge/repair). Judge
+    baseline stays blocked (`judge_ready=false`).
+  - **Out of scope/unchanged:** no `api/server.py` change, no routes, no frontend change, no production producer/validator/sidecar
+    writer, no generation/prompt/provider/request-schema/render/export/OCR/table/visual/Ask Guide change, no
+    judge/`overall_10`/repair/blocking gate, no `quality_judge.py`, `nn3.json`, `judge_response_nn3.json`, or `quality.jsonl`.
+    **Slice 136 remains NOT committed.**
+
+### Previously (Slice 135, now trunk `c96e5f4`)
+- **Slice 135 (Future Structured Numeric Candidate Producer Design)** chose producer v1
+  `operator_approved_structured_export` for the structured sidecar; rejected `already_sanitized_structural_artifact_adapter`
+  (Slice 131 found no structural artifact carries numeric method inputs); deferred `model_generated_structured_numeric_export`
+  (needs provider/cloud + raw-text reads) and `sidecar_only_operator_waiver` (folded into the selected option). Design-only; no
+  producer implemented. `judge_ready=false`; `repair_ready=false`; `next_step=operator_export_protocol`.
 
 ### Previously (Slice 134, now trunk `244361a`)
 - **Slice 134 (Wire Structured Numeric Candidate Adapter into Advisory Artifact Path)** added advisory/non-blocking wiring: it

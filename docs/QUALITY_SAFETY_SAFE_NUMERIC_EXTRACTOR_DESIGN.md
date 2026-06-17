@@ -442,3 +442,13 @@ extractor's role is unchanged: it remains the pre-record sanitizer for any adapt
 output, including operator-authored candidates. The producer is design-only in
 Slice 135; no producer code exists and no extractor behavior changes.
 `judge_ready=false`; `repair_ready=false`; `next_step=operator_export_protocol`.
+
+## Slice 136 Operator Export Protocol Relationship
+
+Slice 136 wrote the operator workflow that hand-authors the structured sidecar (see
+`docs/QUALITY_SAFETY_OPERATOR_STRUCTURED_NUMERIC_EXPORT_PROTOCOL.md`). The safe
+extractor's role is unchanged: it stays the pre-record sanitizer for operator-
+authored candidates flowing through the adapter, and it parses no OCR/table/source
+text and reads no `clean.md`. No operator export validator is implemented here.
+`operator_protocol_status=ready`; `operator_export_validator_needed=true`;
+`judge_ready=false`; `repair_ready=false`; `next_step=pure_operator_export_validator`.

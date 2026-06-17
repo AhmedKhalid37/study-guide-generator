@@ -572,6 +572,25 @@ repair_ready: false
 next_step: operator_export_protocol
 ```
 
+## Slice 136 Operator Export Protocol Relationship
+
+Slice 136 wrote the operator workflow that hand-authors the structured sidecar (see
+`docs/QUALITY_SAFETY_OPERATOR_STRUCTURED_NUMERIC_EXPORT_PROTOCOL.md`). The numeric
+extraction record contract is still unchanged: the numeric mapper remains the final
+record sanitizer regardless of producer, and operator-authored candidates flow
+through the adapter → safe extractor → mapper path with no new contract. No operator
+export validator is implemented in this slice.
+
+```
+contract_changed: false
+operator_protocol_status: ready
+operator_export_validator_needed: true
+numeric_mapper_remains_final_record_sanitizer: true
+judge_ready: false
+repair_ready: false
+next_step: pure_operator_export_validator
+```
+
 ## Non-Goals (Slice 124)
 
 - Not the judge tranche; no judge, no `overall_10`, no `quality_judge.py`,

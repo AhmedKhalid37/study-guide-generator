@@ -951,6 +951,49 @@ no real numeric values, source text, filenames, paths, or evidence quotes enter 
 }
 ```
 
+## Slice 136 Operator Structured Numeric Export Protocol (template, not a run)
+
+Slice 136 is docs/design/protocol-only and records **no real operator-runtime
+validation**. It defines the operator workflow for the selected producer (see
+`docs/QUALITY_SAFETY_OPERATOR_STRUCTURED_NUMERIC_EXPORT_PROTOCOL.md`). The
+closed-vocabulary validation-record template below may be committed by a future
+slice; it carries tokens only — never real numeric values, source text, filenames,
+paths, or evidence quotes. `operator_export_committed` is fixed `false` (the sidecar
+is never committed), and a real run stays `not_observed` until the pure validator
+(Slice 137) exists.
+
+```
+validation_id: operator_structured_numeric_export_validation
+input_kind: private_local_operator_material | synthetic_safe | not_run
+operator_export_created: true | false | not_observed
+operator_export_committed: false
+artifact_name: quality_safety_structured_numeric_candidates_json
+artifact_path_exercised: true | false | not_observed
+structured_adapter_status: ok | warning | skipped | partial | failed | not_observed
+safe_numeric_extractor_status: ok | warning | skipped | partial | failed | not_observed
+numeric_extraction_status: ok | warning | skipped | partial | failed | not_observed
+recompute_status: passed | failed | skipped | partial | unknown | not_observed
+recompute_blocker_present: true | false | not_observed
+shippable: true | false | not_observed
+safety_floor_green: true | false | not_observed
+raw_text_committed: false
+raw_paths_committed: false
+runtime_outputs_committed: false
+provider_calls: false
+judge_calls: false
+repair_calls: false
+warnings: closed tokens only
+```
+
+```
+operator_protocol_status: ready
+operator_export_validator_needed: true
+operator_runtime_validation: not_applicable_docs_protocol_only
+judge_ready: false
+repair_ready: false
+next_step: pure_operator_export_validator
+```
+
 ## Slice 129 Pure Safe Numeric Extractor v1 (cross-reference)
 
 Slice 129 is a pure/unwired implementation slice with **no operator-runtime

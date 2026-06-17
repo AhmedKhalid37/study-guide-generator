@@ -5467,3 +5467,39 @@ until an explicit operator waiver is approved. Because operator export was
 selected, the next slice (Slice 136 — Operator Structured Numeric Export Protocol)
 designs the operator workflow and explicit waiver wording, not a judge, repair, or
 prompt tuning.
+
+---
+
+## Operator structured numeric export is a manual, closed-schema-only protocol (Slice 136)
+Slice 136 wrote the operator workflow for producing
+`quality_safety_structured_numeric_candidates.json`-compatible records (see
+`docs/QUALITY_SAFETY_OPERATOR_STRUCTURED_NUMERIC_EXPORT_PROTOCOL.md`). It is a
+docs/design/protocol slice only — no operator export validator is implemented, no
+producer is wired, and no production code changes.
+
+**Decisions:**
+- The operator export protocol is **manual / operator-approved and closed-schema
+  only**. The operator authors records by hand using the whitelisted candidate
+  fields and supported methods (`weighted_gini`, `total_error`, `amount_of_say`,
+  `softmax`, `cross_entropy`, `forward_pass`) with numeric inputs only; the export
+  is advisory / non-blocking and is not automated extraction.
+- **Sidecar JSON from private cases must not be committed.** The
+  `quality_safety_structured_numeric_candidates.json` sidecar is a job-local,
+  read-only input that production never creates; only closed-vocabulary validation
+  records and synthetic fixtures/canaries may enter git. No source/guide/OCR/page/
+  table/caption text, formulas, evidence quotes, filenames, basenames, paths,
+  URLs, screenshots, runtime artifacts, raw artifact JSON, or provider payloads are
+  committed.
+- **A pure validator (Slice 137) is required before any real operator validation
+  record can be trusted.** Until that validator exists, a real run is recorded as
+  `not_observed`; `operator_export_committed` is fixed `false`.
+
+**Why:** it keeps the only no-raw-text, no-provider producer safe to operate while
+preventing private material and unverified real-run claims from entering git, and
+keeps Quality Safety advisory and non-blocking.
+
+`operator_protocol_status=ready`; `operator_export_validator_needed=true`;
+`production_numeric_extractor_present=structured_artifact_sidecar_only`;
+`numeric_fact_sheet_extraction_leg_status=partial`;
+`artifact_path_ready=true_for_synthetic_structured_candidates`; `judge_ready=false`;
+`repair_ready=false`; `next_step=pure_operator_export_validator`.
