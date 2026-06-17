@@ -342,3 +342,39 @@ Structural coverage artifacts remain counts/shape only and are never converted
 into numeric facts. Table artifacts carry structure/count/policy tokens, not safe
 cell values or recomputable method inputs. A bounded recompute-method extension is
 separate and only needed if a real unsupported method must be verified.
+
+## Slice 132 Future Structured Numeric Artifact Design
+
+Slice 132 selected `quality_safety_structured_numeric_candidates.json` as the
+future producer-owned structured numeric candidate artifact. It is not the current
+internal safe-candidate sidecar and not the post-candidate records sidecar:
+
+```
+future_artifact: quality_safety_structured_numeric_candidates.json
+current_compatibility_sidecar: quality_safety_safe_numeric_candidates.json
+post_candidate_records_sidecar: quality_safety_numeric_extraction_records.json
+adapter_implemented: false
+producer_implemented: false
+production_wiring_changed: false
+judge_ready: false
+repair_ready: false
+next_step: pure_structured_numeric_candidate_artifact_adapter_v1
+```
+
+The intended future flow is:
+
+```text
+future producer -> quality_safety_structured_numeric_candidates.json
+-> pure adapter/bridge -> quality_safety_safe_numeric_candidates.json-compatible payload
+-> safe numeric extractor -> quality_safety_numeric_extraction_records shape
+-> numeric mapper -> fact-sheet producer -> recompute verifier
+-> advisory quality_safety_unified_qa.json
+```
+
+Allowed future producers are `future_structured_numeric_extractor`,
+`operator_approved_structured_export`, and `synthetic_fixture_generator`.
+Forbidden producers are `raw_ocr_parser_direct_to_numeric`,
+`raw_table_cell_parser_direct_to_numeric`, `clean_md_parser`,
+`provider_payload_parser`, and `source_document_reader`. Supported v1 methods stay
+unchanged: `weighted_gini`, `total_error`, `amount_of_say`, `softmax`,
+`cross_entropy`, `forward_pass`.

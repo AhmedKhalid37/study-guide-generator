@@ -649,6 +649,30 @@ next_step: future_structured_numeric_artifact_design
 docker_compose_config_run: false
 ```
 
+## Slice 132 — Future Structured Numeric Artifact Design
+
+Slice 132 is docs-only design. It does not run operator runtime validation and
+does not change the e2e artifact path.
+
+```
+future_structured_numeric_artifact_design: defined
+future_artifact: quality_safety_structured_numeric_candidates.json
+adapter_implemented: false
+producer_implemented: false
+production_wiring_changed: false
+single_confident_wrong_numeric_case_representable: true
+single_confident_wrong_numeric_case_expected_recompute: failed_blocking
+clean_real_case_representable: true
+clean_real_case_expected_recompute: passed
+legacy_confused_wrong_case_representable: partial
+legacy_confused_wrong_case_expected_recompute: partial
+numeric_fact_sheet_extraction_leg_status: partial
+judge_ready: false
+repair_ready: false
+next_step: pure_structured_numeric_candidate_artifact_adapter_v1
+docker_compose_config_run: false
+```
+
 ## Non-Goals
 
 - The Slice 122 coverage wiring is advisory transparency only; the numeric /

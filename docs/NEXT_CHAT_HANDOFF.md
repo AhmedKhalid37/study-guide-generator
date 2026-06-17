@@ -6,37 +6,50 @@
 > stable overview see `PROJECT_CONTEXT.md`; canonical brief is `../CLAUDE.md`.
 
 ## Current position
-- **Working tree:** **Slice 131 (Production Safe Candidate Source Discovery) — UNCOMMITTED (per instruction)** on branch
-  `slice131-quality-safety-production-safe-candidate-source-discovery`, branched from updated `chrome-renderer-v1` after Slice 130
-  was committed, fast-forward merged, and pushed. **Slice 130 is trunk commit `cd3a23b`**.
-  - **Part 0 completed:** Slice 130 was committed as `cd3a23b`, fast-forward merged to `chrome-renderer-v1`, and pushed with a
-    normal `git push` (no force-push). No docker compose config was run; the Slice 60 trace stash remains parked and untouched.
-  - **Slice 131 scope:** discovery/design only. It inspects existing code/docs for already-sanitized structured artifacts that
-    could feed `quality_safety_safe_numeric_candidates.json`-compatible records. It adds no production source adapter, no
-    OCR/table/source parsing, no `clean.md` numeric read, no job-folder scan, no sidecar writes, no provider/model/cloud, no
-    judge, no repair, and no blocking.
-  - **New doc:** `docs/QUALITY_SAFETY_PRODUCTION_SAFE_CANDIDATE_SOURCE_DISCOVERY.md`.
-  - **Discovery result:** no existing already-produced structured artifact safely contains finite numeric values plus structured
-    `computation.method` and numeric `computation.inputs`. `source_coverage_report` and `extraction_metadata` are structural
-    coverage surfaces; `visual_inclusion_plan` is visual-selection only; `table_candidates_manifest` and
-    `table_reconstruction_policy` carry table structure/count/policy tokens but no safe cell values or recomputable method inputs;
-    `quality_safety_unified_qa` is an output artifact and must not become a recursive candidate source.
-  - **Existing safe source decision:** sidecars can represent manual/synthetic candidates, but no production source emits them.
-    `single_confident_wrong_numeric_case` and `clean_real_case` remain representable through sidecars or a future structured
-    numeric artifact; `legacy_confused_wrong_case` remains partial unless a supported method is emitted.
-  - **Closed-vocabulary outcome:** `existing_production_safe_source_present=false`; `sidecar_only_source_present=true`;
-    `operator_waiver_recorded=false`; `next_step=future_structured_numeric_artifact_design`; `judge_ready=false`;
-    `repair_ready=false`.
+- **Working tree:** **Slice 132 (Future Structured Numeric Artifact Design) — UNCOMMITTED (per instruction)** on branch
+  `slice132-quality-safety-future-structured-numeric-artifact-design`, branched from updated `chrome-renderer-v1` after Slice 131
+  was committed, fast-forward merged, and pushed. **Slice 131 is trunk commit `9db63b1`**.
+  - **Part 0 completed:** Slice 131 was committed as `9db63b1`, fast-forward merged to `chrome-renderer-v1`, and pushed with a
+    normal `git push` (no force-push). Final trunk status before branching was clean; no docker compose config was run; the Slice
+    60 trace stash remains parked and untouched.
+  - **Slice 132 scope:** docs-only design. It defines the future producer-owned structured numeric candidate artifact that can
+    become the first production safe candidate source. It adds no production extractor, no adapter implementation, no
+    OCR/table/source parsing, no `clean.md` numeric read, no sidecar writer, no provider/model/cloud, no judge, no repair, and no
+    blocking.
+  - **New doc:** `docs/QUALITY_SAFETY_FUTURE_STRUCTURED_NUMERIC_ARTIFACT_DESIGN.md`.
+  - **Proposed artifact:** `quality_safety_structured_numeric_candidates.json`.
+  - **Boundary:** allowed future producers are `future_structured_numeric_extractor`, `operator_approved_structured_export`, and
+    `synthetic_fixture_generator`; forbidden producers are `raw_ocr_parser_direct_to_numeric`,
+    `raw_table_cell_parser_direct_to_numeric`, `clean_md_parser`, `provider_payload_parser`, and `source_document_reader`.
+  - **Flow:** future producer -> `quality_safety_structured_numeric_candidates.json` -> pure adapter/bridge ->
+    `quality_safety_safe_numeric_candidates.json`-compatible payload -> Slice 129 safe extractor -> Slice 130 advisory path.
+    Slice 132 does not implement this flow; existing production path remains sidecar-only.
+  - **Target matrix:** `single_confident_wrong_numeric_case=true/failed_blocking/future_producer`; `clean_real_case=true/passed/
+    future_producer`; `legacy_confused_wrong_case=partial/partial/method_extension`.
+  - **Closed-vocabulary outcome:** `structured_numeric_artifact_design=defined`; `adapter_implemented=false`;
+    `producer_implemented=false`; `production_wiring_changed=false`; `judge_ready=false`; `repair_ready=false`.
   - **Files changed:** `M docs/CURRENT_TASK.md`, `M docs/DECISIONS.md`, `M docs/NEXT_CHAT_HANDOFF.md`,
     `M docs/QUALITY_SAFETY_SAFE_NUMERIC_EXTRACTOR_DESIGN.md`, `M docs/QUALITY_SAFETY_NUMERIC_EXTRACTION_CONTRACT.md`,
     `M docs/QUALITY_SAFETY_E2E_VALIDATION.md`, `M docs/QUALITY_SAFETY_OPERATOR_VALIDATION.md`,
-    `?? docs/QUALITY_SAFETY_PRODUCTION_SAFE_CANDIDATE_SOURCE_DISCOVERY.md`.
-  - **Next expected slice:** **Slice 132 — Future Structured Numeric Artifact Design**. Define a future structured artifact that
-    an extractor or operator can populate with safe method-input records. No production extraction, no OCR/table parsing, no judge.
+    `M docs/QUALITY_SAFETY_PRODUCTION_SAFE_CANDIDATE_SOURCE_DISCOVERY.md`,
+    `?? docs/QUALITY_SAFETY_FUTURE_STRUCTURED_NUMERIC_ARTIFACT_DESIGN.md`.
+  - **Next expected slice:** **Slice 133 — Pure Structured Numeric Candidate Artifact Adapter v1**. Pure/unwired adapter from
+    `quality_safety_structured_numeric_candidates.json`-like dicts into
+    `quality_safety_safe_numeric_candidates.json`-compatible payloads; synthetic tests only; no production wiring, parser, judge,
+    or repair.
   - **Out of scope/unchanged:** no production code, no `quality_safety_job_artifact.py` or `run_markdown_job.py` change, no
     `api/server.py` change, no routes, no frontend change, no generation/prompt/provider/request-schema/render/export/OCR/table/
     visual/Ask Guide change, no judge/`overall_10`/repair/blocking gate, no `quality_judge.py`, `nn3.json`,
-    `judge_response_nn3.json`, or `quality.jsonl`. **Slice 131 remains NOT committed.**
+    `judge_response_nn3.json`, or `quality.jsonl`. **Slice 132 remains NOT committed.**
+
+### Previously (Slice 131, now trunk `9db63b1`)
+- **Slice 131 (Production Safe Candidate Source Discovery)** found no existing already-produced structured artifact that safely
+  contains finite numeric values plus structured `computation.method` and numeric `computation.inputs`. Structural coverage,
+  visual-selection, table policy/count artifacts, and `quality_safety_unified_qa` are not candidate sources. Existing
+  numeric-capable paths remain sidecar-only:
+  `quality_safety_numeric_extraction_records.json` and `quality_safety_safe_numeric_candidates.json`.
+  `existing_production_safe_source_present=false`; `sidecar_only_source_present=true`; `judge_ready=false`;
+  `repair_ready=false`; `next_step=future_structured_numeric_artifact_design`.
 
 ### Previously (Slice 130, now trunk `cd3a23b`)
 - **Slice 130 (Wire Safe Numeric Extractor into Advisory Artifact Path)** wired the Slice 129 safe numeric extractor into the

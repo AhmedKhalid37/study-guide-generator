@@ -5333,3 +5333,30 @@ Next step is **future_structured_numeric_artifact_design**: define a future safe
 structured artifact that an extractor or operator can populate with method-input
 records. A bounded recompute-method extension is separate and only needed when a
 real case requires an unsupported method.
+
+---
+
+## Future structured numeric candidates need a producer-owned artifact (Slice 132)
+Slice 132 chooses **`quality_safety_structured_numeric_candidates.json`** as the
+future production-safe source artifact name. It is deliberately distinct from the
+two existing sidecars:
+
+`quality_safety_safe_numeric_candidates.json` remains the current internal,
+read-only compatibility input consumed by the Slice 130 advisory path.
+`quality_safety_numeric_extraction_records.json` remains the explicit
+post-candidate records sidecar. The future structured artifact is producer-owned:
+it can carry producer status, source-quality state, summaries, and bounded
+warnings before a pure adapter converts its candidates into the existing safe
+candidate payload shape.
+
+Allowed future producers are `future_structured_numeric_extractor`,
+`operator_approved_structured_export`, and `synthetic_fixture_generator`.
+Forbidden producers are direct raw OCR/table parsing, `clean.md` parsing, provider
+payload parsing, and source-document reading. This keeps the artifact from
+becoming a raw-content extraction loophole.
+
+Production wiring remains blocked until a pure bridge exists and is separately
+validated. Judge baseline and repair remain blocked:
+`judge_ready=false`, `repair_ready=false`. The next bounded slice is a pure,
+unwired adapter from `quality_safety_structured_numeric_candidates.json`-like dicts
+into `quality_safety_safe_numeric_candidates.json`-compatible payloads.

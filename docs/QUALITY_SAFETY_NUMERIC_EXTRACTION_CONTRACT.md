@@ -474,6 +474,30 @@ The next contract-adjacent work is a future structured numeric artifact design:
 a bounded schema that an extractor or operator can populate with safe method-input
 records. It must remain separate from structural coverage and table policy counts.
 
+## Slice 132 Future Artifact Relationship
+
+Slice 132 defines the future structured artifact relationship without changing the
+Slice 124/125 record contract.
+
+```
+contract_changed: false
+future_artifact: quality_safety_structured_numeric_candidates.json
+current_compatibility_sidecar: quality_safety_safe_numeric_candidates.json
+post_candidate_records_sidecar: quality_safety_numeric_extraction_records.json
+allowed_candidate_fields: slice129_125_candidate_shape
+forbidden_raw_fields_excluded: true
+adapter_implemented: false
+producer_implemented: false
+production_wiring_changed: false
+judge_ready: false
+repair_ready: false
+next_step: pure_structured_numeric_candidate_artifact_adapter_v1
+```
+
+The future artifact must be adapted into the existing safe-candidate payload
+before it can reach the Slice 129 extractor. That adapter is the next bounded
+contract-adjacent slice; no production source or bridge is implemented here.
+
 ## Non-Goals (Slice 124)
 
 - Not the judge tranche; no judge, no `overall_10`, no `quality_judge.py`,

@@ -5,7 +5,56 @@
 
 ---
 
-## Slice 131 — **Production Safe Candidate Source Discovery**, on `slice131-quality-safety-production-safe-candidate-source-discovery`. **NOT COMMITTED.**
+## Slice 132 — **Future Structured Numeric Artifact Design**, on `slice132-quality-safety-future-structured-numeric-artifact-design`. **NOT COMMITTED.**
+
+- **Part 0 completed:** Slice 131 was committed as `9db63b1`, fast-forward merged to trunk `chrome-renderer-v1`, and pushed with
+  a normal `git push` (no force-push). Final trunk status before branching was clean; no docker compose config was run; the Slice
+  60 trace stash remains parked and untouched.
+- **Scope:** design only. Define the future producer-owned structured numeric candidate artifact that can become the first
+  production safe candidate source. **No production extraction, no adapter implementation, no OCR/table/source parsing, no
+  `clean.md` numeric read, no sidecar writes, no provider/model/cloud, no judge, no repair, no prompt tuning, no blocking.**
+- **New doc:** `docs/QUALITY_SAFETY_FUTURE_STRUCTURED_NUMERIC_ARTIFACT_DESIGN.md`.
+- **Proposed artifact:** `quality_safety_structured_numeric_candidates.json`.
+- **Sidecar distinction:** `quality_safety_structured_numeric_candidates.json` is the future producer-owned source artifact;
+  `quality_safety_safe_numeric_candidates.json` remains the current internal read-only compatibility sidecar consumed by the
+  Slice 130 path; `quality_safety_numeric_extraction_records.json` remains the explicit post-candidate records sidecar.
+- **Producer boundary:** allowed future producers are `future_structured_numeric_extractor`,
+  `operator_approved_structured_export`, and `synthetic_fixture_generator`. Forbidden producers are
+  `raw_ocr_parser_direct_to_numeric`, `raw_table_cell_parser_direct_to_numeric`, `clean_md_parser`,
+  `provider_payload_parser`, and `source_document_reader`.
+- **Output contract:** allowed top-level fields are `version`, `kind`, `status`, `source_quality`, `candidates`, `summary`, and
+  `warnings`. Allowed candidate fields match the Slice 129/125 numeric candidate shape: ids/labels, `fact_type=numeric`,
+  `value`, `unit`, safe refs, confidence/provenance, structured `computation.method` + `computation.inputs`, `tolerance`, and
+  closed warnings. Forbidden fields include raw/source/guide/OCR/page/table/caption text, formula strings, evidence quotes,
+  filenames/basenames/paths/URLs, provider payloads, runtime traces, raw exceptions, and raw artifact JSON.
+- **Flow decision:** future producer -> `quality_safety_structured_numeric_candidates.json` -> pure adapter/bridge ->
+  `quality_safety_safe_numeric_candidates.json`-compatible payload -> Slice 129 safe extractor -> Slice 130 advisory path.
+  Slice 132 does not implement this flow; existing production path remains sidecar-only.
+- **Real-disaster target matrix:** `single_confident_wrong_numeric_case` is `future_artifact_representable=true`,
+  `expected_recompute_outcome=failed_blocking`, `missing_piece=future_producer`; `clean_real_case` is
+  `future_artifact_representable=true`, `expected_recompute_outcome=passed`, `missing_piece=future_producer`;
+  `legacy_confused_wrong_case` is `future_artifact_representable=partial`, `expected_recompute_outcome=partial`,
+  `missing_piece=method_extension`.
+- **Closed-vocabulary outcome:** `structured_numeric_artifact_design=defined`; `artifact_name=quality_safety_structured_numeric_candidates.json`;
+  `adapter_implemented=false`; `producer_implemented=false`; `production_wiring_changed=false`; `judge_ready=false`;
+  `repair_ready=false`.
+- **Files changed:** `M docs/CURRENT_TASK.md`, `M docs/DECISIONS.md`, `M docs/NEXT_CHAT_HANDOFF.md`,
+  `M docs/QUALITY_SAFETY_SAFE_NUMERIC_EXTRACTOR_DESIGN.md`, `M docs/QUALITY_SAFETY_NUMERIC_EXTRACTION_CONTRACT.md`,
+  `M docs/QUALITY_SAFETY_E2E_VALIDATION.md`, `M docs/QUALITY_SAFETY_OPERATOR_VALIDATION.md`,
+  `M docs/QUALITY_SAFETY_PRODUCTION_SAFE_CANDIDATE_SOURCE_DISCOVERY.md`,
+  `?? docs/QUALITY_SAFETY_FUTURE_STRUCTURED_NUMERIC_ARTIFACT_DESIGN.md`.
+- **Next recommended slice:** **Slice 133 — Pure Structured Numeric Candidate Artifact Adapter v1**. Purpose: pure/unwired
+  adapter from `quality_safety_structured_numeric_candidates.json`-like dicts into
+  `quality_safety_safe_numeric_candidates.json`-compatible payloads; synthetic tests only; no production wiring, parser, judge,
+  or repair.
+- **Out of scope / unchanged:** no production code, no `quality_safety_job_artifact.py` change, no `run_markdown_job.py` change,
+  no `api/server.py` change, no routes, no frontend change, no generation/prompt/provider/request-schema/render/export/OCR/
+  table/visual/Ask Guide change, no judge/`overall_10`/repair/blocking gate, no `quality_judge.py`, `nn3.json`,
+  `judge_response_nn3.json`, or `quality.jsonl`. **Slice 132 remains NOT committed.**
+
+---
+
+## Slice 131 — **Production Safe Candidate Source Discovery**, on `slice131-quality-safety-production-safe-candidate-source-discovery`. **Committed `9db63b1`, merged + pushed to `chrome-renderer-v1`.**
 
 - **Part 0 completed:** Slice 130 was committed as `cd3a23b`, fast-forward merged to trunk `chrome-renderer-v1`, and pushed with
   a normal `git push` (no force-push). Final trunk status before branching was clean; no docker compose config was run; the Slice
@@ -38,7 +87,7 @@
 - **Out of scope / unchanged:** no production code, no `quality_safety_job_artifact.py` change, no `run_markdown_job.py` change,
   no `api/server.py` change, no routes, no frontend change, no generation/prompt/provider/request-schema/render/export/OCR/
   table/visual/Ask Guide change, no judge/`overall_10`/repair/blocking gate, no `quality_judge.py`, `nn3.json`,
-  `judge_response_nn3.json`, or `quality.jsonl`. **Slice 131 remains NOT committed.**
+  `judge_response_nn3.json`, or `quality.jsonl`. **Slice 131 is committed as `9db63b1` and merged to `chrome-renderer-v1`.**
 
 ---
 

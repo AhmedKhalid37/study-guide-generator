@@ -796,6 +796,39 @@ validation pass remains a separate operator activity.
 }
 ```
 
+## Slice 132 Future Structured Numeric Artifact Design (cross-reference)
+
+Slice 132 is docs-only artifact design with **no operator-runtime validation of
+its own**: it reads no private material, runs no generations, scans no job folders,
+writes no artifacts, and calls no providers/models/cloud. It defines the future
+producer-owned artifact that can later become the first production safe candidate
+source.
+
+```json
+{
+  "validation_id": "quality_safety_future_structured_numeric_artifact_design",
+  "slice": "132",
+  "operator_runtime_validation": "not_applicable_docs_only_design",
+  "future_artifact": "quality_safety_structured_numeric_candidates.json",
+  "adapter_implemented": false,
+  "producer_implemented": false,
+  "production_wiring_changed": false,
+  "single_confident_wrong_numeric_case": "future_artifact_representable",
+  "clean_real_case": "future_artifact_representable",
+  "legacy_confused_wrong_case": "partial",
+  "numeric_fact_sheet_extraction_leg_status": "partial",
+  "judge_ready": false,
+  "repair_ready": false,
+  "next_step": "pure_structured_numeric_candidate_artifact_adapter_v1",
+  "raw_text_committed": false,
+  "raw_paths_committed": false,
+  "runtime_outputs_committed": false,
+  "provider_calls": false,
+  "judge_calls": false,
+  "repair_calls": false
+}
+```
+
 Slice 128 is committed as `8534784` and merged to `chrome-renderer-v1`.
 
 ## Slice 129 Pure Safe Numeric Extractor v1 (cross-reference)

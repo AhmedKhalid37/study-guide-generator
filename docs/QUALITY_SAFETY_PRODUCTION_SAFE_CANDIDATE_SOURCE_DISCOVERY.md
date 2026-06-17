@@ -165,3 +165,42 @@ Slice 132 - Future Structured Numeric Artifact Design
 Purpose: define a future structured artifact that an extractor or operator can
 populate with safe method-input records. No production extraction, no OCR/table
 parsing, no judge.
+
+## Slice 132 Result
+
+Slice 132 selected the future artifact name:
+
+```yaml
+future_artifact: quality_safety_structured_numeric_candidates.json
+adapter_implemented: false
+producer_implemented: false
+production_wiring_changed: false
+judge_ready: false
+repair_ready: false
+next_step: pure_structured_numeric_candidate_artifact_adapter_v1
+```
+
+`quality_safety_structured_numeric_candidates.json` is the future producer-owned
+artifact. It is distinct from the current read-only compatibility sidecar
+`quality_safety_safe_numeric_candidates.json` and the post-candidate records
+sidecar `quality_safety_numeric_extraction_records.json`.
+
+Allowed future producers:
+
+- `future_structured_numeric_extractor`
+- `operator_approved_structured_export`
+- `synthetic_fixture_generator`
+
+Forbidden producers:
+
+- `raw_ocr_parser_direct_to_numeric`
+- `raw_table_cell_parser_direct_to_numeric`
+- `clean_md_parser`
+- `provider_payload_parser`
+- `source_document_reader`
+
+Selected next step: Slice 133 - Pure Structured Numeric Candidate Artifact
+Adapter v1. It should be pure, unwired, synthetic-tested, and should bridge
+`quality_safety_structured_numeric_candidates.json`-like dicts into
+`quality_safety_safe_numeric_candidates.json`-compatible payloads without
+production wiring.
