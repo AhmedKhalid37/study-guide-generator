@@ -260,3 +260,27 @@ next_step: future_structured_numeric_candidate_producer_design_or_operator_waive
 This makes the future artifact path testable with synthetic structured candidates,
 but it does not implement a producer and does not claim complete production
 numeric extraction coverage.
+
+## Slice 135 Producer Design Outcome
+
+Slice 135 chose the first acceptable producer for this artifact. See
+`docs/QUALITY_SAFETY_STRUCTURED_NUMERIC_CANDIDATE_PRODUCER_DESIGN.md` for the full
+options matrix. Design/discovery only — no producer implemented.
+
+```yaml
+recommended_producer_v1: operator_approved_structured_export
+rejected: already_sanitized_structural_artifact_adapter
+deferred: [model_generated_structured_numeric_export, sidecar_only_operator_waiver]
+producer_implemented: false
+production_numeric_extractor_present: structured_artifact_sidecar_only
+numeric_fact_sheet_extraction_leg_status: partial
+artifact_path_ready: true_for_synthetic_structured_candidates
+judge_ready: false
+repair_ready: false
+next_step: operator_export_protocol
+```
+
+The selected producer is operator-authored and closed-schema; it commits no raw
+private material and adds no OCR/table/source/`clean.md` parsing or provider calls.
+The adapter already whitelists `source_quality=operator_approved` and
+`provenance=operator_approved`, so no artifact-schema change is needed.

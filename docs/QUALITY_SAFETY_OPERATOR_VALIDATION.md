@@ -914,6 +914,43 @@ waiver.
 }
 ```
 
+## Slice 135 Future Structured Numeric Candidate Producer Design (cross-reference)
+
+Slice 135 is a docs/design-only slice with **no operator-runtime validation of its
+own**. It selects the producer v1 for `quality_safety_structured_numeric_candidates`
+``.json`` (full matrix in
+`docs/QUALITY_SAFETY_STRUCTURED_NUMERIC_CANDIDATE_PRODUCER_DESIGN.md`). The selected
+`operator_approved_structured_export` is an explicit manual operator waiver/gate —
+not automated production numeric extraction — and is not exercised in this slice.
+Any future real/private operator validation is summarized as closed tokens only;
+no real numeric values, source text, filenames, paths, or evidence quotes enter git.
+
+```json
+{
+  "validation_id": "quality_safety_structured_numeric_producer_design",
+  "slice": "135",
+  "operator_runtime_validation": "not_applicable_docs_design_only",
+  "recommended_producer_v1": "operator_approved_structured_export",
+  "already_sanitized_structural_artifact_adapter": "reject",
+  "model_generated_structured_numeric_export": "defer",
+  "sidecar_only_operator_waiver": "defer",
+  "producer_implemented": false,
+  "production_numeric_extractor_present": "structured_artifact_sidecar_only",
+  "numeric_fact_sheet_extraction_leg_status": "partial",
+  "artifact_path_ready": "true_for_synthetic_structured_candidates",
+  "operator_waiver_recorded": false,
+  "judge_ready": false,
+  "repair_ready": false,
+  "next_step": "operator_export_protocol",
+  "raw_text_committed": false,
+  "raw_paths_committed": false,
+  "runtime_outputs_committed": false,
+  "provider_calls": false,
+  "judge_calls": false,
+  "repair_calls": false
+}
+```
+
 ## Slice 129 Pure Safe Numeric Extractor v1 (cross-reference)
 
 Slice 129 is a pure/unwired implementation slice with **no operator-runtime

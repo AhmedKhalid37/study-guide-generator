@@ -257,3 +257,24 @@ next_step: future_structured_numeric_candidate_producer_design_or_operator_waive
 
 The discovery conclusion remains unchanged: the repo now has an advisory bridge
 for a future structured sidecar, not an existing production source that emits it.
+
+## Slice 135 Producer Decision
+
+Slice 135 selected the producer for the future structured sidecar (full matrix in
+`docs/QUALITY_SAFETY_STRUCTURED_NUMERIC_CANDIDATE_PRODUCER_DESIGN.md`).
+
+```yaml
+recommended_producer_v1: operator_approved_structured_export
+already_sanitized_structural_artifact_adapter: reject
+model_generated_structured_numeric_export: defer
+sidecar_only_operator_waiver: defer
+production_safe_source_present: false
+production_numeric_extractor_present: structured_artifact_sidecar_only
+judge_ready: false
+repair_ready: false
+next_step: operator_export_protocol
+```
+
+This confirms the Slice 131 inventory conclusion: no already-sanitized structural
+artifact carries numeric method inputs, so an operator-authored closed-schema
+export — not an automated structural adapter — is the chosen safe producer.

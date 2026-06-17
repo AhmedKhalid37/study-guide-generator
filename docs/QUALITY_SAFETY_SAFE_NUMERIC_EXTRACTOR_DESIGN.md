@@ -432,3 +432,13 @@ next_step: future_structured_numeric_candidate_producer_design_or_operator_waive
 The safe extractor remains the pre-record sanitizer, and the numeric mapper
 remains the record sanitizer. Slice 134 does not parse raw OCR/table/source text
 or read `clean.md` for numbers.
+
+## Slice 135 Producer Relationship
+
+Slice 135 chose `operator_approved_structured_export` as the producer v1 for the
+structured sidecar that feeds this extractor path (see
+`docs/QUALITY_SAFETY_STRUCTURED_NUMERIC_CANDIDATE_PRODUCER_DESIGN.md`). The safe
+extractor's role is unchanged: it remains the pre-record sanitizer for any adapter
+output, including operator-authored candidates. The producer is design-only in
+Slice 135; no producer code exists and no extractor behavior changes.
+`judge_ready=false`; `repair_ready=false`; `next_step=operator_export_protocol`.

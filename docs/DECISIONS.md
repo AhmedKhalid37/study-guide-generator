@@ -5426,3 +5426,44 @@ repair. Observed synthetic artifact-path outcome:
 `artifact_path_ready=true_for_synthetic_structured_candidates`,
 `production_numeric_extractor_present=structured_artifact_sidecar_only`,
 `judge_ready=false`, and `repair_ready=false`.
+
+---
+
+## Operator-approved structured export is the chosen producer v1 (Slice 135)
+Slice 135 designed the first acceptable producer of
+`quality_safety_structured_numeric_candidates.json` (see
+`docs/QUALITY_SAFETY_STRUCTURED_NUMERIC_CANDIDATE_PRODUCER_DESIGN.md`). It is a
+design/discovery slice only — no producer is implemented and no production code
+changes.
+
+**Selected:** `operator_approved_structured_export`. The operator authors
+closed-schema candidate records using only the whitelisted fields and supported
+methods; no raw private material (numeric values, source text, filenames, paths,
+formulas, evidence quotes) is committed to git. This is an explicit manual
+waiver/gate, **not** automated production numeric extraction, and the project does
+not claim complete production numeric extraction coverage. The Slice 133 adapter
+already whitelists `source_quality=operator_approved` and
+`provenance=operator_approved`, so this producer needs no schema change.
+
+**Rejected / deferred:**
+- `already_sanitized_structural_artifact_adapter` — **rejected**: Slice 131
+  discovery found no already-present structural artifact carries numeric method
+  inputs, and structural `extraction_coverage_*` must never be converted into
+  candidates or numeric facts.
+- `model_generated_structured_numeric_export` — **deferred**: would require
+  provider/cloud calls and reading private source/guide text, conflicting with the
+  no-provider and raw-text-boundary rules; revisit only with a separately designed
+  local-only slice.
+- `sidecar_only_operator_waiver` — **deferred**: the same stance without a
+  protocol; it is folded into `operator_approved_structured_export` as a formalized
+  closed-schema export protocol.
+
+**Why:** it is the only option with no raw-text risk, no provider/cloud calls, and
+a producer the adapter already supports, while keeping Quality Safety advisory and
+non-blocking.
+
+**Judge baseline remains blocked.** `judge_ready=false` and `repair_ready=false`
+until an explicit operator waiver is approved. Because operator export was
+selected, the next slice (Slice 136 — Operator Structured Numeric Export Protocol)
+designs the operator workflow and explicit waiver wording, not a judge, repair, or
+prompt tuning.

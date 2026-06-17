@@ -5,7 +5,38 @@
 
 ---
 
-## Slice 134 — **Wire Structured Numeric Candidate Adapter into Advisory Artifact Path**, on `slice134-wire-structured-numeric-candidate-adapter-advisory-artifact`. **NOT COMMITTED.**
+## Slice 135 — **Future Structured Numeric Candidate Producer Design**, on `slice135-quality-safety-structured-numeric-candidate-producer-design`. **NOT COMMITTED.**
+
+- **Part 0 completed:** Slice 134 was committed as `244361a`, fast-forward merged to trunk `chrome-renderer-v1`, and pushed with
+  a normal `git push` (no force-push). Final trunk status before branching Slice 135 was clean; no docker compose config was run;
+  the Slice 60 trace stash remains parked and untouched.
+- **Scope:** docs/design-only. New doc `docs/QUALITY_SAFETY_STRUCTURED_NUMERIC_CANDIDATE_PRODUCER_DESIGN.md` designs the first
+  acceptable producer of `quality_safety_structured_numeric_candidates.json`. **No producer was implemented, no producer wiring
+  was added, no production code changed, no OCR/table/source/`clean.md` parsing, no provider/model/cloud, no judge, no repair.**
+- **Producer options evaluated (closed vocabulary):** `operator_approved_structured_export` (**select**),
+  `already_sanitized_structural_artifact_adapter` (reject — Slice 131 found no structural artifact carries numeric method
+  inputs), `model_generated_structured_numeric_export` (defer — would require provider/cloud and raw-text reads), and
+  `sidecar_only_operator_waiver` (defer — unprotocolled stance folded into the selected option).
+- **Recommended producer v1:** `operator_approved_structured_export` — operator authors closed-schema records only; no raw
+  private material in git; explicit manual waiver/gate, not automated production extraction. The adapter already whitelists
+  `source_quality=operator_approved` and `provenance=operator_approved`.
+- **Decision record:** `recommended_producer_v1=operator_approved_structured_export`;
+  `production_numeric_extractor_present=structured_artifact_sidecar_only`; `numeric_fact_sheet_extraction_leg_status=partial`;
+  `artifact_path_ready=true_for_synthetic_structured_candidates`; `judge_ready=false`; `repair_ready=false`;
+  `next_step=operator_export_protocol`.
+- **Next recommended slice:** **Slice 136 — Operator Structured Numeric Export Protocol** (docs/design; defines exact operator
+  workflow + explicit waiver wording; no production code; no judge/repair/prompt tuning). Judge baseline stays blocked
+  (`judge_ready=false`) until an explicit operator waiver is approved.
+- **Files changed:** `M docs/CURRENT_TASK.md`, `M docs/DECISIONS.md`, `M docs/NEXT_CHAT_HANDOFF.md`,
+  `M docs/QUALITY_SAFETY_FUTURE_STRUCTURED_NUMERIC_ARTIFACT_DESIGN.md`,
+  `M docs/QUALITY_SAFETY_PRODUCTION_SAFE_CANDIDATE_SOURCE_DISCOVERY.md`,
+  `M docs/QUALITY_SAFETY_SAFE_NUMERIC_EXTRACTOR_DESIGN.md`, `M docs/QUALITY_SAFETY_NUMERIC_EXTRACTION_CONTRACT.md`,
+  `M docs/QUALITY_SAFETY_E2E_VALIDATION.md`, `M docs/QUALITY_SAFETY_OPERATOR_VALIDATION.md`,
+  `?? docs/QUALITY_SAFETY_STRUCTURED_NUMERIC_CANDIDATE_PRODUCER_DESIGN.md`. **Slice 135 remains NOT committed.**
+
+---
+
+## Slice 134 — **Wire Structured Numeric Candidate Adapter into Advisory Artifact Path**, on `slice134-wire-structured-numeric-candidate-adapter-advisory-artifact`. **Committed `244361a`, merged + pushed to `chrome-renderer-v1`.**
 
 - **Part 0 completed:** Slice 133 was committed as `990179c`, fast-forward merged to trunk `chrome-renderer-v1`, and pushed with
   a normal `git push` (no force-push). Final trunk status before branching Slice 134 was clean; no docker compose config was run;
@@ -41,8 +72,8 @@
   validated.
 - **Out of scope / unchanged:** no `api/server.py` change, no routes, no frontend/UI change, no generic artifact listing, no
   generation/prompt/provider/request-schema/render/export/OCR/table/visual/Ask Guide change, no judge/`overall_10`/repair/
-  blocking gate, no `quality_judge.py`, `nn3.json`, `judge_response_nn3.json`, or `quality.jsonl`. **Slice 134 remains NOT
-  committed.**
+  blocking gate, no `quality_judge.py`, `nn3.json`, `judge_response_nn3.json`, or `quality.jsonl`. **Slice 134 is committed as
+  `244361a` and merged to `chrome-renderer-v1`.**
 
 ---
 

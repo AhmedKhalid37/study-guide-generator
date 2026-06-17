@@ -724,6 +724,28 @@ next_step: future_structured_numeric_candidate_producer_design_or_operator_waive
 docker_compose_config_run: false
 ```
 
+## Slice 135 — Structured Numeric Candidate Producer Design
+
+Slice 135 is docs/design-only and chose the producer v1 for the structured sidecar.
+No code changed and no validation harness changed; the closed-vocabulary outcome is
+recorded for transparency (see
+`docs/QUALITY_SAFETY_STRUCTURED_NUMERIC_CANDIDATE_PRODUCER_DESIGN.md`).
+
+```
+recommended_producer_v1: operator_approved_structured_export
+already_sanitized_structural_artifact_adapter: reject
+model_generated_structured_numeric_export: defer
+sidecar_only_operator_waiver: defer
+producer_implemented: false
+production_numeric_extractor_present: structured_artifact_sidecar_only
+numeric_fact_sheet_extraction_leg_status: partial
+artifact_path_ready: true_for_synthetic_structured_candidates
+judge_ready: false
+repair_ready: false
+next_step: operator_export_protocol
+docker_compose_config_run: false
+```
+
 ## Non-Goals
 
 - The Slice 122 coverage wiring is advisory transparency only; the numeric /

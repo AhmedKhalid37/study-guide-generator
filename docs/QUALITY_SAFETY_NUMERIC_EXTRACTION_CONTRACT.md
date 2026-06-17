@@ -552,6 +552,26 @@ Structured candidates can now exercise the advisory recompute path when supplied
 as a synthetic/read-only sidecar. They are not produced by production code in this
 slice and are never derived from structural coverage metadata.
 
+## Slice 135 Producer Relationship
+
+Slice 135 chose `operator_approved_structured_export` as the producer v1 for the
+structured sidecar (full matrix in
+`docs/QUALITY_SAFETY_STRUCTURED_NUMERIC_CANDIDATE_PRODUCER_DESIGN.md`). The numeric
+extraction record contract is unchanged: the numeric mapper remains the final
+record sanitizer regardless of producer. The producer is design-only; no producer
+code exists.
+
+```
+contract_changed: false
+recommended_producer_v1: operator_approved_structured_export
+numeric_mapper_remains_final_record_sanitizer: true
+producer_implemented: false
+production_numeric_extractor_present: structured_artifact_sidecar_only
+judge_ready: false
+repair_ready: false
+next_step: operator_export_protocol
+```
+
 ## Non-Goals (Slice 124)
 
 - Not the judge tranche; no judge, no `overall_10`, no `quality_judge.py`,
