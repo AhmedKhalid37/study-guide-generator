@@ -67,11 +67,14 @@ JOB_WARNINGS = {
     "fact_sheet_component_missing",
     "recompute_component_missing",
     "canonical_component_missing",
+    "extraction_coverage_missing",
+    "extraction_coverage_degraded",
     "artifact_write_failed",
     "component_degraded",
     "unsafe_metadata_dropped",
     "max_items_reached",
 }
+EXTRACTION_COVERAGE_STATUSES = {"ok", "warning", "skipped", "partial", "failed"}
 FORBIDDEN_IMPORT_PARTS = (
     "fastapi",
     "frontend",
@@ -99,6 +102,7 @@ ALLOWED_IMPORTS = {
     "pathlib",
     "typing",
     "pipeline.quality_safety_canonical_matcher",
+    "pipeline.quality_safety_extraction_bundle_adapter",
     "pipeline.quality_safety_fact_sheet_producer",
     "pipeline.quality_safety_leak_scanner",
     "pipeline.quality_safety_recompute_verifier",
@@ -283,6 +287,11 @@ class FakeJob:
         self.dir = root
         self.clean_md = root / "clean.md"
         self.quality_safety_unified_qa_json = root / ARTIFACT_NAME
+        self.source_coverage_report_json = root / "source_coverage_report.json"
+        self.extraction_metadata_json = root / "extraction_metadata.json"
+        self.visual_inclusion_plan_json = root / "visual_inclusion_plan.json"
+        self.table_candidates_manifest_json = root / "table_candidates_manifest.json"
+        self.table_reconstruction_policy_json = root / "table_reconstruction_policy.json"
         self.status = "validating"
         self.fail_write = fail_write
 
@@ -347,6 +356,183 @@ def test_no_leak_sweep() -> None:
     assert_no_canary("hostile job artifact", payload)
 
 
+def synthetic_source_coverage_report() -> dict[str, Any]:
+    return {
+        "version": 1,
+        "kind": "source_coverage_report",
+        "sources": [
+            {"status": "ok", "page_count": 3, "visual_candidate_page_count": 1},
+            {"status": "covered", "page_count": 2, "visual_candidate_page_count": 0},
+        ],
+    }
+
+
+def hostile_source_coverage_report() -> dict[str, Any]:
+    return {
+        "version": 1,
+        "kind": "source_coverage_report",
+        "path": HOSTILE_CANARIES[0],
+        "url": HOSTILE_CANARIES[2],
+        "auth": HOSTILE_CANARIES[3],
+        "data_uri": HOSTILE_CANARIES[4],
+        "sources": [
+            {
+                "status": "ok",
+                "page_count": 2,
+                "visual_candidate_page_count": 1,
+                "basename": HOSTILE_CANARIES[0],
+                "filename": HOSTILE_CANARIES[9],
+                "ocr_text": HOSTILE_CANARIES[5],
+                "table_text": HOSTILE_CANARIES[6],
+                "caption": HOSTILE_CANARIES[7],
+                "formula": HOSTILE_CANARIES[12],
+                "quote": HOSTILE_CANARIES[10],
+            }
+        ],
+    }
+
+
+def hostile_visual_plan() -> dict[str, Any]:
+    return {
+        "status": "ok",
+        "included_count": 2,
+        "caption": HOSTILE_CANARIES[7],
+        "asset_path": HOSTILE_CANARIES[0],
+    }
+
+
+def hostile_table_manifest() -> dict[str, Any]:
+    return {
+        "status": "ok",
+        "candidate_count": 1,
+        "table_text": HOSTILE_CANARIES[6],
+        "provider": HOSTILE_CANARIES[8],
+    }
+
+
+def test_extraction_coverage_skipped_without_metadata() -> None:
+    payload = build_quality_safety_job_artifact_payload(
+        candidate_markdown=candidate_markdown(),
+    )
+    check("coverage status closed", payload["extraction_coverage_status"] in EXTRACTION_COVERAGE_STATUSES)
+    check("coverage skipped without metadata", payload["extraction_coverage_status"] == "skipped")
+    check("coverage missing warning", "extraction_coverage_missing" in payload["warnings"], str(payload["warnings"]))
+    bundle = payload["extraction_coverage_bundle"]
+    check("coverage bundle kind", bundle["kind"] == "quality_safety_extraction_coverage_bundle")
+    check("coverage no records", bundle["coverage_records"] == [])
+    check("coverage numeric obs empty", bundle["numeric_observations"] == [])
+    check("coverage summary numeric 0", payload["extraction_coverage_summary"]["numeric_observation_count"] == 0)
+    assert_job_warnings_closed("coverage skipped", payload)
+    assert_no_canary("coverage skipped", payload)
+
+
+def test_extraction_coverage_populated() -> None:
+    payload = build_quality_safety_job_artifact_payload(
+        candidate_markdown=candidate_markdown(),
+        source_coverage_report=synthetic_source_coverage_report(),
+        visual_inclusion_plan={"status": "ok", "included_count": 2},
+        table_candidates_manifest={"status": "ok", "candidate_count": 1},
+    )
+    bundle = payload["extraction_coverage_bundle"]
+    check("populated kind", bundle["kind"] == "quality_safety_extraction_coverage_bundle")
+    check("populated status closed", payload["extraction_coverage_status"] in EXTRACTION_COVERAGE_STATUSES)
+    check("populated has records", len(bundle["coverage_records"]) >= 2, serialized(bundle["summary"]))
+    summary = payload["extraction_coverage_summary"]
+    check("populated source_count", summary["source_count"] == 2, str(summary))
+    check("populated page_count", summary["page_count"] == 5, str(summary))
+    check("populated numeric_observation_count 0", summary["numeric_observation_count"] == 0)
+    check("populated numeric obs empty", bundle["numeric_observations"] == [])
+    # Structural coverage must never become numeric recompute evidence.
+    check("populated recompute still missing", "recompute_component_missing" in payload["warnings"], str(payload["warnings"]))
+    check("populated fact sheet still missing", "fact_sheet_component_missing" in payload["warnings"], str(payload["warnings"]))
+    # Record ids are synthetic qs_extract_NNNN tokens only.
+    for record in bundle["coverage_records"]:
+        check("populated record id synthetic", record["id"].startswith("qs_extract_"), record["id"])
+    assert_job_warnings_closed("coverage populated", payload)
+    assert_no_canary("coverage populated", payload)
+
+
+def test_extraction_coverage_excludes_hostile_fields() -> None:
+    payload = build_quality_safety_job_artifact_payload(
+        candidate_markdown=candidate_markdown(),
+        source_coverage_report=hostile_source_coverage_report(),
+        extraction_metadata={"sources": [{"page_count": 1, "basename": HOSTILE_CANARIES[0]}]},
+        visual_inclusion_plan=hostile_visual_plan(),
+        table_candidates_manifest=hostile_table_manifest(),
+    )
+    assert_no_canary("coverage hostile fields", payload)
+    bundle = payload["extraction_coverage_bundle"]
+    check("hostile numeric obs empty", bundle["numeric_observations"] == [])
+    check("hostile numeric count 0", payload["extraction_coverage_summary"]["numeric_observation_count"] == 0)
+    assert_job_warnings_closed("coverage hostile", payload)
+
+
+def test_extraction_coverage_does_not_upgrade_safety() -> None:
+    # A wrong-answer recompute case must stay failed/not-shippable even when rich
+    # structural coverage is present.
+    wrong = build_quality_safety_job_artifact_payload(
+        candidate_markdown=candidate_markdown(value=0.5),
+        extraction_bundle=weighted_bundle(claimed=0.5),
+        fixture_spec=fixture_spec(value=0.5),
+        source_coverage_report=synthetic_source_coverage_report(),
+        visual_inclusion_plan={"status": "ok", "included_count": 5},
+        table_candidates_manifest={"status": "ok", "candidate_count": 5},
+    )
+    check("coverage does not upgrade status", wrong["status"] == "failed", serialized(wrong["status"]))
+    check("coverage does not upgrade shippable", wrong["shippable"] is False)
+    check("coverage does not upgrade safety", wrong["safety_floor_green"] is False)
+
+
+def test_extraction_coverage_no_mutation_and_deterministic() -> None:
+    report = synthetic_source_coverage_report()
+    snapshot = json.dumps(report, sort_keys=True)
+    first = build_quality_safety_job_artifact_payload(
+        candidate_markdown=candidate_markdown(),
+        source_coverage_report=report,
+    )
+    second = build_quality_safety_job_artifact_payload(
+        candidate_markdown=candidate_markdown(),
+        source_coverage_report=synthetic_source_coverage_report(),
+    )
+    check("coverage no caller mutation", json.dumps(report, sort_keys=True) == snapshot)
+    check("coverage deterministic", serialized(first) == serialized(second))
+
+
+def test_extraction_coverage_adapter_failure_degrades() -> None:
+    # A dict-shaped but malformed coverage report must not raise and must degrade
+    # to a closed status with closed job warnings.
+    payload = build_quality_safety_job_artifact_payload(
+        candidate_markdown=candidate_markdown(),
+        source_coverage_report={"sources": "not-a-list", "garbage": object().__class__.__name__},
+    )
+    check("adapter failure status closed", payload["extraction_coverage_status"] in EXTRACTION_COVERAGE_STATUSES)
+    check("adapter failure kind", payload["extraction_coverage_bundle"]["kind"] == "quality_safety_extraction_coverage_bundle")
+    assert_job_warnings_closed("adapter failure", payload)
+    assert_no_canary("adapter failure", payload)
+
+
+def test_production_hook_reads_sibling_artifacts() -> None:
+    from pipeline.run_markdown_job import _write_quality_safety_unified_qa
+
+    with tempfile.TemporaryDirectory() as tmp:
+        root = Path(tmp) / "job"
+        root.mkdir()
+        job = FakeJob(root)
+        job.clean_md.write_text(candidate_markdown(), encoding="utf-8")
+        (root / "source_coverage_report.json").write_text(
+            json.dumps(synthetic_source_coverage_report()), encoding="utf-8"
+        )
+        (root / "visual_inclusion_plan.json").write_text(
+            json.dumps({"status": "ok", "included_count": 2}), encoding="utf-8"
+        )
+        _write_quality_safety_unified_qa(job)
+        loaded = json.loads(job.quality_safety_unified_qa_json.read_text(encoding="utf-8"))
+        check("hook coverage status closed", loaded["extraction_coverage_status"] in EXTRACTION_COVERAGE_STATUSES)
+        check("hook coverage has records", len(loaded["extraction_coverage_bundle"]["coverage_records"]) >= 2)
+        check("hook coverage numeric count 0", loaded["extraction_coverage_summary"]["numeric_observation_count"] == 0)
+        assert_no_canary("hook coverage", loaded)
+
+
 def test_import_hygiene() -> None:
     source = (REPO / "pipeline" / "quality_safety_job_artifact.py").read_text(encoding="utf-8")
     tree = ast.parse(source)
@@ -373,6 +559,13 @@ def run() -> int:
     test_artifact_writing()
     test_production_hook_behavior()
     test_no_leak_sweep()
+    test_extraction_coverage_skipped_without_metadata()
+    test_extraction_coverage_populated()
+    test_extraction_coverage_excludes_hostile_fields()
+    test_extraction_coverage_does_not_upgrade_safety()
+    test_extraction_coverage_no_mutation_and_deterministic()
+    test_extraction_coverage_adapter_failure_degrades()
+    test_production_hook_reads_sibling_artifacts()
     test_import_hygiene()
     print(f"\nquality_safety_job_artifact: {PASS} passed, {FAIL} failed")
     return 1 if FAIL else 0

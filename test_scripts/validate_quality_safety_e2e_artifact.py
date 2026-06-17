@@ -150,7 +150,44 @@ def main() -> int:
         check("round-trip advisory preserved", roundtrip.get("advisory") is True)
         check("round-trip no judge/repair/overall-score keys", _no_forbidden_keys(roundtrip))
 
-    # 6. Determinism: identical inputs yield identical serialized payloads.
+    # 6. Slice 122: the advisory structural extraction-coverage leg is absent
+    #    (skipped) in the production-equivalent build above, and present when safe
+    #    synthetic structural metadata is supplied — without inventing numerics or
+    #    upgrading shippable / safety_floor_green.
+    check("coverage status closed (absent)", payload.get("extraction_coverage_status") in {"ok", "warning", "skipped", "partial", "failed"})
+    check("coverage skipped without metadata", payload.get("extraction_coverage_status") == "skipped")
+    check("coverage missing warning recorded", "extraction_coverage_missing" in warnings)
+    absent_bundle = payload.get("extraction_coverage_bundle") or {}
+    check("coverage bundle kind", absent_bundle.get("kind") == "quality_safety_extraction_coverage_bundle")
+    check("coverage numeric observations empty (absent)", absent_bundle.get("numeric_observations") == [])
+
+    with_coverage = build_quality_safety_job_artifact_payload(
+        candidate_markdown=SYNTHETIC_CANDIDATE,
+        source_coverage_report={
+            "sources": [
+                {"status": "ok", "page_count": 2, "visual_candidate_page_count": 1},
+                {"status": "covered", "page_count": 1, "visual_candidate_page_count": 0},
+            ]
+        },
+        visual_inclusion_plan={"status": "ok", "included_count": 1},
+        table_candidates_manifest={"status": "ok", "candidate_count": 1},
+    )
+    cov_bundle = with_coverage.get("extraction_coverage_bundle") or {}
+    cov_summary = with_coverage.get("extraction_coverage_summary") or {}
+    check("coverage present kind", cov_bundle.get("kind") == "quality_safety_extraction_coverage_bundle")
+    check("coverage present records", len(cov_bundle.get("coverage_records") or []) >= 2)
+    check("coverage present numeric observations empty", cov_bundle.get("numeric_observations") == [])
+    check("coverage present numeric count 0", cov_summary.get("numeric_observation_count") == 0)
+    # Structural coverage must not change shippability / safety-floor versus the
+    # same candidate without any structural metadata.
+    baseline = build_quality_safety_job_artifact_payload(candidate_markdown=SYNTHETIC_CANDIDATE)
+    check("coverage does not change shippable", with_coverage.get("shippable") == baseline.get("shippable"))
+    check("coverage does not change safety floor", with_coverage.get("safety_floor_green") == baseline.get("safety_floor_green"))
+    check("coverage keeps recompute honest", "recompute_component_missing" in (with_coverage.get("warnings") or []))
+    check("coverage no judge/repair/overall keys", _no_forbidden_keys(with_coverage))
+    check("coverage no smuggled canary", SYNTHETIC_CANARY not in json.dumps(with_coverage))
+
+    # 7. Determinism: identical inputs yield identical serialized payloads.
     again = build_quality_safety_job_artifact_payload(
         candidate_markdown=SYNTHETIC_CANDIDATE,
         job_metadata={"smuggled": SYNTHETIC_CANARY},

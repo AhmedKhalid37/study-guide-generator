@@ -696,6 +696,26 @@ def _write_guide_quality_rubric_score(job: Job) -> None:
             pass  # writing the degraded artifact must itself never raise
 
 
+def _read_job_json_artifact(job: Job, attr: str) -> dict | None:
+    """Read a safe sibling JSON artifact dict by Job path attribute; never raise.
+
+    Returns ``None`` when the attribute is absent, the file is missing, the JSON
+    is malformed, or the top-level value is not a dict. Read-only; touches only an
+    exact-name artifact the job already produced.
+    """
+    path = getattr(job, attr, None)
+    if path is None:
+        return None
+    try:
+        artifact_path = Path(path)
+        if not artifact_path.exists():
+            return None
+        data = json.loads(artifact_path.read_text(encoding="utf-8"))
+        return data if isinstance(data, dict) else None
+    except Exception:
+        return None
+
+
 def _write_quality_safety_unified_qa(job: Job) -> None:
     """Persist ``quality_safety_unified_qa.json`` as an advisory-only job artifact."""
     artifact_path = job.quality_safety_unified_qa_json
@@ -709,8 +729,18 @@ def _write_quality_safety_unified_qa(job: Job) -> None:
         except Exception:
             clean_markdown = None
 
+        # Slice 122: feed the advisory structural extraction-coverage leg from
+        # already-produced, already-sanitized sibling JSON artifacts (read-only).
+        # This is advisory transparency only — it never feeds the concept/fact
+        # producer, never becomes numeric recompute evidence, and never upgrades
+        # shippable / safety_floor_green.
         payload = build_quality_safety_job_artifact_payload(
             candidate_markdown=clean_markdown,
+            source_coverage_report=_read_job_json_artifact(job, "source_coverage_report_json"),
+            extraction_metadata=_read_job_json_artifact(job, "extraction_metadata_json"),
+            visual_inclusion_plan=_read_job_json_artifact(job, "visual_inclusion_plan_json"),
+            table_candidates_manifest=_read_job_json_artifact(job, "table_candidates_manifest_json"),
+            table_reconstruction_policy=_read_job_json_artifact(job, "table_reconstruction_policy_json"),
         )
         job.save_text(artifact_path, json.dumps(payload, indent=2, sort_keys=True) + "\n")
     except Exception:  # never let the advisory artifact break a job
@@ -752,6 +782,34 @@ def _write_quality_safety_unified_qa(job: Job) -> None:
                 },
                 "blocking_failures": [],
                 "warnings": ["artifact_write_failed"],
+                "extraction_coverage_status": "skipped",
+                "extraction_coverage_summary": {
+                    "source_count": 0,
+                    "page_count": 0,
+                    "selected_page_count": None,
+                    "visual_count": 0,
+                    "table_count": 0,
+                    "coverage_item_count": 0,
+                    "numeric_observation_count": 0,
+                },
+                "extraction_coverage_bundle": {
+                    "version": 1,
+                    "kind": "quality_safety_extraction_coverage_bundle",
+                    "status": "skipped",
+                    "source_quality": "unknown",
+                    "summary": {
+                        "source_count": 0,
+                        "page_count": 0,
+                        "selected_page_count": None,
+                        "visual_count": 0,
+                        "table_count": 0,
+                        "coverage_item_count": 0,
+                        "numeric_observation_count": 0,
+                    },
+                    "coverage_records": [],
+                    "numeric_observations": [],
+                    "warnings": ["component_missing"],
+                },
                 "quality_safety_unified_qa": {
                     "version": 1,
                     "kind": "quality_safety_unified_qa",

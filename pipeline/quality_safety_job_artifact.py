@@ -11,6 +11,10 @@ from pathlib import Path
 from typing import Any
 
 from pipeline.quality_safety_canonical_matcher import build_quality_safety_canonical_match_report
+from pipeline.quality_safety_extraction_bundle_adapter import (
+    build_empty_quality_safety_extraction_coverage_bundle,
+    build_quality_safety_extraction_coverage_bundle_from_artifacts,
+)
 from pipeline.quality_safety_fact_sheet_producer import run_quality_safety_fact_sheet_producer
 from pipeline.quality_safety_leak_scanner import build_quality_safety_leak_report
 from pipeline.quality_safety_recompute_verifier import verify_quality_safety_fact_sheet
@@ -27,6 +31,8 @@ WARNING_ORDER = (
     "fact_sheet_component_missing",
     "recompute_component_missing",
     "canonical_component_missing",
+    "extraction_coverage_missing",
+    "extraction_coverage_degraded",
     "artifact_write_failed",
     "component_degraded",
     "unsafe_metadata_dropped",
@@ -34,6 +40,10 @@ WARNING_ORDER = (
 )
 SAFE_WARNINGS = frozenset(WARNING_ORDER)
 SAFE_STATUSES = frozenset({"passed", "warning", "failed", "skipped", "partial"})
+# Closed status vocabulary for the advisory structural extraction-coverage leg
+# (Slice 122). This is the *structural coverage* bundle from Slice 121, not the
+# concept/fact extraction bundle and not numeric recompute evidence.
+EXTRACTION_COVERAGE_STATUSES = frozenset({"ok", "warning", "skipped", "partial", "failed"})
 
 
 def build_quality_safety_job_artifact_payload(
@@ -43,10 +53,33 @@ def build_quality_safety_job_artifact_payload(
     fixture_spec: Any = None,
     canonical_fixture: Any = None,
     job_metadata: Any = None,
+    source_coverage_report: Any = None,
+    extraction_metadata: Any = None,
+    visual_inclusion_plan: Any = None,
+    table_candidates_manifest: Any = None,
+    table_reconstruction_policy: Any = None,
     max_items: int | None = None,
 ) -> dict[str, Any]:
-    """Return a safe advisory job artifact payload; never raise."""
+    """Return a safe advisory job artifact payload; never raise.
+
+    The optional structural artifacts (``source_coverage_report``,
+    ``extraction_metadata``, ``visual_inclusion_plan``,
+    ``table_candidates_manifest``, ``table_reconstruction_policy``) feed only the
+    Slice 121 *structural coverage* adapter and are surfaced under
+    ``extraction_coverage_*``. They are advisory transparency only: they never
+    feed the concept/fact fact-sheet producer, never become numeric recompute
+    evidence, and never upgrade ``shippable`` / ``safety_floor_green``.
+    """
     warnings: set[str] = set()
+    coverage_bundle = _build_coverage_bundle(
+        source_coverage_report=source_coverage_report,
+        extraction_metadata=extraction_metadata,
+        visual_inclusion_plan=visual_inclusion_plan,
+        table_candidates_manifest=table_candidates_manifest,
+        table_reconstruction_policy=table_reconstruction_policy,
+        max_items=max_items,
+        warnings=warnings,
+    )
     try:
         if job_metadata is not None:
             warnings.add("unsafe_metadata_dropped")
@@ -121,11 +154,11 @@ def build_quality_safety_job_artifact_payload(
         )
         if _has_warning(unified, "max_items_reached"):
             warnings.add("max_items_reached")
-        return _payload(unified, warnings)
+        return _payload(unified, warnings, coverage_bundle)
     except Exception:
         unified = build_quality_safety_unified_qa_report(max_items=max_items)
         warnings.add("component_degraded")
-        return _payload(unified, warnings)
+        return _payload(unified, warnings, coverage_bundle)
 
 
 def write_quality_safety_job_artifact(
@@ -136,6 +169,11 @@ def write_quality_safety_job_artifact(
     fixture_spec: Any = None,
     canonical_fixture: Any = None,
     job_metadata: Any = None,
+    source_coverage_report: Any = None,
+    extraction_metadata: Any = None,
+    visual_inclusion_plan: Any = None,
+    table_candidates_manifest: Any = None,
+    table_reconstruction_policy: Any = None,
     max_items: int | None = None,
 ) -> dict[str, Any]:
     """Write ``quality_safety_unified_qa.json`` under ``job_dir``; never raise."""
@@ -145,6 +183,11 @@ def write_quality_safety_job_artifact(
         fixture_spec=fixture_spec,
         canonical_fixture=canonical_fixture,
         job_metadata=job_metadata,
+        source_coverage_report=source_coverage_report,
+        extraction_metadata=extraction_metadata,
+        visual_inclusion_plan=visual_inclusion_plan,
+        table_candidates_manifest=table_candidates_manifest,
+        table_reconstruction_policy=table_reconstruction_policy,
         max_items=max_items,
     )
     try:
@@ -156,7 +199,11 @@ def write_quality_safety_job_artifact(
         return _with_job_warnings(payload, {"artifact_write_failed"})
 
 
-def _payload(unified_report: Any, warnings: set[str]) -> dict[str, Any]:
+def _payload(
+    unified_report: Any,
+    warnings: set[str],
+    coverage_bundle: Any = None,
+) -> dict[str, Any]:
     unified = unified_report if isinstance(unified_report, dict) else build_quality_safety_unified_qa_report()
     summary = unified.get("summary") if isinstance(unified.get("summary"), dict) else {}
     component_statuses = unified.get("component_statuses") if isinstance(unified.get("component_statuses"), dict) else {}
@@ -164,6 +211,8 @@ def _payload(unified_report: Any, warnings: set[str]) -> dict[str, Any]:
     axes = unified.get("deterministic_axes_0_5") if isinstance(unified.get("deterministic_axes_0_5"), dict) else {}
     ordered_warnings = _ordered(warnings)
     status = unified.get("status") if unified.get("status") in SAFE_STATUSES else "partial"
+    bundle = coverage_bundle if isinstance(coverage_bundle, dict) else build_empty_quality_safety_extraction_coverage_bundle("component_missing")
+    coverage_status = bundle.get("status") if bundle.get("status") in EXTRACTION_COVERAGE_STATUSES else "failed"
     return {
         "version": VERSION,
         "kind": KIND,
@@ -184,7 +233,77 @@ def _payload(unified_report: Any, warnings: set[str]) -> dict[str, Any]:
         },
         "blocking_failures": blocking_failures,
         "warnings": ordered_warnings,
+        "extraction_coverage_status": coverage_status,
+        "extraction_coverage_summary": _coverage_summary(bundle),
+        "extraction_coverage_bundle": bundle,
         "quality_safety_unified_qa": unified,
+    }
+
+
+def _build_coverage_bundle(
+    *,
+    source_coverage_report: Any,
+    extraction_metadata: Any,
+    visual_inclusion_plan: Any,
+    table_candidates_manifest: Any,
+    table_reconstruction_policy: Any,
+    max_items: Any,
+    warnings: set[str],
+) -> dict[str, Any]:
+    """Build the advisory structural-coverage bundle; never raise.
+
+    Records a closed job-artifact warning when the bundle is unavailable or
+    degraded. Structural coverage is *never* treated as numeric recompute
+    evidence and never feeds the concept/fact producer.
+    """
+    have_any = any(
+        isinstance(artifact, dict)
+        for artifact in (
+            source_coverage_report,
+            extraction_metadata,
+            visual_inclusion_plan,
+            table_candidates_manifest,
+            table_reconstruction_policy,
+        )
+    )
+    if not have_any:
+        warnings.add("extraction_coverage_missing")
+        return build_empty_quality_safety_extraction_coverage_bundle("component_missing")
+    try:
+        bundle = build_quality_safety_extraction_coverage_bundle_from_artifacts(
+            source_coverage_report=source_coverage_report,
+            extraction_metadata=extraction_metadata,
+            visual_inclusion_plan=visual_inclusion_plan,
+            table_candidates_manifest=table_candidates_manifest,
+            table_reconstruction_policy=table_reconstruction_policy,
+            max_items=max_items,
+        )
+    except Exception:
+        warnings.add("extraction_coverage_degraded")
+        return build_empty_quality_safety_extraction_coverage_bundle("component_missing")
+    if not isinstance(bundle, dict):
+        warnings.add("extraction_coverage_degraded")
+        return build_empty_quality_safety_extraction_coverage_bundle("component_missing")
+    status = bundle.get("status")
+    if status == "skipped":
+        warnings.add("extraction_coverage_missing")
+    elif status in {"warning", "partial", "failed"}:
+        warnings.add("extraction_coverage_degraded")
+    return bundle
+
+
+def _coverage_summary(bundle: Any) -> dict[str, Any]:
+    summary = bundle.get("summary") if isinstance(bundle, dict) and isinstance(bundle.get("summary"), dict) else {}
+    selected = summary.get("selected_page_count")
+    return {
+        "source_count": _int(summary.get("source_count")),
+        "page_count": _int(summary.get("page_count")),
+        "selected_page_count": selected if isinstance(selected, int) and not isinstance(selected, bool) else None,
+        "visual_count": _int(summary.get("visual_count")),
+        "table_count": _int(summary.get("table_count")),
+        "coverage_item_count": _int(summary.get("coverage_item_count")),
+        # Structural coverage carries no numeric content observations by policy.
+        "numeric_observation_count": 0,
     }
 
 

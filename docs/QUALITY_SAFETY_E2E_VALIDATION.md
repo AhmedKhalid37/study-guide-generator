@@ -290,12 +290,55 @@ Notes (closed tokens only):
   `quality_safety_extraction_bundle` to avoid a name/shape collision (see
   `DECISIONS.md`).
 
+## Adapter Wiring Outcome (Slice 122)
+
+The Slice 121 coverage adapter is now wired into the advisory
+`quality_safety_unified_qa.json` job artifact path. Closed-vocabulary outcome only:
+
+```
+extraction_coverage_wiring: implemented
+wiring_mode: advisory_non_blocking
+artifact_name: quality_safety_unified_qa_json
+artifact_kind: quality_safety_job_artifact
+added_fields: extraction_coverage_status, extraction_coverage_summary, extraction_coverage_bundle
+coverage_bundle_kind: quality_safety_extraction_coverage_bundle
+coverage_status_vocabulary: ok|warning|skipped|partial|failed
+no_metadata_behavior: extraction_coverage_status_skipped
+no_metadata_warning: extraction_coverage_missing
+degraded_warning: extraction_coverage_degraded
+metadata_source: already_produced_safe_sibling_json_artifacts_read_only
+fed_into_concept_fact_producer: false
+fed_into_recompute_verifier: false
+numeric_observations: empty
+numeric_observation_count: 0
+numeric_observations_fabricated: false
+fact_sheet_component_state: component_missing_when_no_concept_bundle
+recompute_component_state: component_missing_when_no_concept_bundle
+canonical_component_state: component_missing_when_no_fixture
+shippable_upgraded_by_coverage: false
+safety_floor_green_upgraded_by_coverage: false
+job_status_changed_by_quality_safety: false
+provider_calls: false
+judge_calls: false
+repair_calls: false
+frontend_changed: false
+routes_changed: false
+hostile_field_exclusion: paths|urls|basenames|filenames|ocr_text|table_cells|captions|formulas|snippets|provider_payloads|authorization|data_uri|base64|raw_exceptions
+deterministic_serialization: true
+caller_input_mutated: false
+job_artifact_tests: 276_passed
+e2e_artifact_harness: 36_passed
+no_leak_sweep: clean
+docker_compose_config_run: false
+```
+
 ## Non-Goals
 
-- The extraction-bundle adapter implemented in Slice 121 is pure/unwired only.
-- Do not wire any adapter into production (deferred to Slice 122).
-- Do not change artifact-writer behavior (the only added code is the synthetic
-  validation harness).
+- The Slice 122 coverage wiring is advisory transparency only; the numeric /
+  recompute extraction leg remains NOT covered (structural counts are not numeric
+  recompute evidence).
+- Do not treat structural coverage as numeric facts, feed it to the concept/fact
+  producer, or let it upgrade `shippable` / `safety_floor_green`.
 - Do not change API routes, frontend display, generation prompts, request
   schemas, provider/model/cloud behavior, render/export/OCR/table/visual behavior,
   or Ask Guide.

@@ -4935,3 +4935,35 @@ not synthesize weighted_gini or any recompute-method inputs from page/coverage
 metadata. The numeric/recompute leg waits for a future slice that records numeric
 content observations. The adapter stays pure/unwired; production wiring is deferred
 to Slice 122.
+
+## Slice 122 wires structural coverage as advisory transparency, separate from the fact/recompute legs
+**Why the coverage bundle is surfaced separately, not fed into the producer.** The
+Slice 121 structural coverage bundle (`quality_safety_extraction_coverage_bundle`)
+carries page/visual/table *counts*, not concept/fact `computation_records` or
+`numeric_observations`. Feeding it to the concept/fact fact-sheet producer would
+either do nothing (no `concepts`) or, worse, invite later code to mistake coverage
+counts for numeric facts. So Slice 122 surfaces it under its own top-level keys in
+`quality_safety_unified_qa.json` — `extraction_coverage_bundle`,
+`extraction_coverage_status`, `extraction_coverage_summary` — and never passes it
+to the producer or the recompute verifier. The fact-sheet / recompute / canonical
+components stay honestly `component_missing` / `skipped` whenever no concept/fact
+extraction bundle exists, even when structural coverage is rich.
+
+**Why structural coverage never upgrades shippability.** `shippable` and
+`safety_floor_green` continue to come solely from the unified QA report (numeric
+recompute + leak + canonical). Structural coverage presence is advisory
+transparency about the extraction *leg*, not evidence that any numeric claim was
+verified, so it must never flip a red/failed result green. A test asserts a wrong
+recompute case stays `failed` / not-shippable even with rich coverage, and that
+adding coverage does not change shippability versus the same candidate without it.
+
+**Why production reads only already-produced safe sibling JSON artifacts.** The
+job already writes sanitized JSON siblings (`source_coverage_report.json`,
+`extraction_metadata.json`, `visual_inclusion_plan.json`,
+`table_candidates_manifest.json`, `table_reconstruction_policy.json`). Slice 122's
+`_write_quality_safety_unified_qa` reads those exact-name artifacts read-only and
+passes them to the adapter; it never reads source files, PDFs/images/DOCX/ZIPs,
+page/OCR/table text, and never scans directories. Missing/malformed siblings
+degrade to the closed `skipped` coverage leg with `extraction_coverage_missing`
+(or `extraction_coverage_degraded`) and never raise — the advisory artifact must
+never break a job.

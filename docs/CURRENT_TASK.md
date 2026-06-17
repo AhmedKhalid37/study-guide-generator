@@ -5,7 +5,54 @@
 
 ---
 
-## Slice 121 — **Pure Extraction-Bundle Adapter v1**, on `slice121-quality-safety-extraction-bundle-adapter-v1`. **NOT COMMITTED.**
+## Slice 122 — **Wire Coverage Adapter into Advisory Artifact**, on `slice122-wire-quality-safety-coverage-adapter-advisory-artifact`. **NOT COMMITTED.**
+
+- **Part 0 completed:** Slice 121 was committed as `b382eed`, fast-forward merged to trunk `chrome-renderer-v1`, and pushed
+  with a normal `git push` (no force-push). Slice 121 added the pure/unwired `quality_safety_extraction_coverage_bundle`
+  adapter; no production behavior changed, no docker compose config was run, and the Slice 60 trace stash remains parked and
+  untouched.
+- **Scope:** wire the Slice 121 structural-coverage adapter into the existing advisory `quality_safety_unified_qa.json` job
+  artifact path. Still **advisory / non-blocking only**. The artifact now carries safe structural coverage metadata when the
+  job already produced the safe sibling JSON artifacts, and degrades to a closed `skipped` coverage leg with the
+  `extraction_coverage_missing` warning when none exist. The deterministic QA behavior, `shippable`, and `safety_floor_green`
+  are unchanged.
+- **Wiring (`pipeline/quality_safety_job_artifact.py`):** `build_quality_safety_job_artifact_payload` /
+  `write_quality_safety_job_artifact` gained optional `source_coverage_report`, `extraction_metadata`,
+  `visual_inclusion_plan`, `table_candidates_manifest`, `table_reconstruction_policy` args (all default `None`). They feed
+  **only** `build_quality_safety_extraction_coverage_bundle_from_artifacts` (Slice 121). When all are absent the bundle is the
+  empty `skipped` bundle and `extraction_coverage_missing` is recorded; on degraded/failed adapter output
+  `extraction_coverage_degraded` is recorded. The coverage bundle **never** feeds the concept/fact fact-sheet producer and is
+  never numeric recompute evidence.
+- **Production reader (`pipeline/run_markdown_job.py`):** `_write_quality_safety_unified_qa` now reads the already-produced,
+  already-sanitized sibling JSON artifacts read-only via a new `_read_job_json_artifact(job, attr)` helper
+  (`source_coverage_report.json`, `extraction_metadata.json`, `visual_inclusion_plan.json`,
+  `table_candidates_manifest.json`, `table_reconstruction_policy.json`) and passes the dicts into the builder. Read-only,
+  never raises; the hardcoded write-failure fallback dict gained matching closed `extraction_coverage_*` fields for shape
+  stability.
+- **Safe fields added to `quality_safety_unified_qa.json`:** `extraction_coverage_status`
+  (`ok|warning|skipped|partial|failed`), `extraction_coverage_summary` (closed counts only: `source_count`, `page_count`,
+  `selected_page_count|null`, `visual_count`, `table_count`, `coverage_item_count`, `numeric_observation_count=0`), and
+  `extraction_coverage_bundle` (the Slice 121 `quality_safety_extraction_coverage_bundle`). All existing fields (`status`,
+  `shippable`, `safety_floor_green`, `component_statuses`, `deterministic_axes_0_5`, `summary`, `blocking_failures`,
+  `warnings`, `quality_safety_unified_qa`) are unchanged. `kind` stays `quality_safety_job_artifact`; `artifact_name` stays
+  `quality_safety_unified_qa.json`; `advisory=true` and `source=job_runtime` unchanged.
+- **Numeric / recompute leg remains NOT covered** — structural coverage is not numeric recompute evidence.
+  `numeric_observations=[]` and `numeric_observation_count=0` always; the fact-sheet / recompute / canonical components stay
+  honestly `component_missing` / `skipped` when no concept/fact extraction bundle exists. Structural coverage never upgrades
+  `shippable` / `safety_floor_green` (proven by test).
+- **Frontend unchanged:** the Slice 119 normalizer is allowlist-based and ignores the new top-level fields; its verify
+  harness still passes. No route, no UI, no generic artifact selector changed.
+- **Validation:** job artifact 276 (was 216); adapter 705; producer 182; unified QA 73; fact sheet 61; recompute verifier 99;
+  E2E artifact harness 36 (was 22); `compileall api pipeline test_scripts` OK; `git diff --check` clean; frontend
+  guide-quality-panel verify OK. No docker compose config was run.
+- **Out of scope / unchanged:** no new routes, no `api/server.py` change, no frontend change, no generic artifact selector
+  row, no generation/prompt/provider/request-schema/render/export/OCR/table/visual/Ask Guide behavior change, no judge
+  scoring, `overall_10`, repair loop, or blocking gate; no `quality_judge.py`, `nn3.json`, `judge_response_nn3.json`, or
+  `quality.jsonl`. **Slice 122 remains NOT committed.**
+
+---
+
+## Slice 121 — **Pure Extraction-Bundle Adapter v1**, on `slice121-quality-safety-extraction-bundle-adapter-v1`. **Committed `b382eed`, merged + pushed to `chrome-renderer-v1`.**
 
 - **Part 0 completed:** Slice 120 was committed as `06deb50`, fast-forward merged to trunk `chrome-renderer-v1`, and pushed
   with a normal `git push` (no force-push). Slice 120 validated the advisory Quality Safety visible path (production build →
@@ -41,8 +88,8 @@
 - **Out of scope / unchanged:** no production job wiring, no `quality_safety_job_artifact.py` / `run_markdown_job.py` /
   `api/server.py` change, no new routes, no frontend change, no generic artifact selector row, no generation/prompt/provider/
   request-schema/render/export/OCR/table/visual/Ask Guide behavior change, no judge scoring, `overall_10`, repair loop, or
-  blocking gate; no `quality_judge.py`, `nn3.json`, `judge_response_nn3.json`, or `quality.jsonl`. **Slice 121 remains NOT
-  committed.**
+  blocking gate; no `quality_judge.py`, `nn3.json`, `judge_response_nn3.json`, or `quality.jsonl`. **Committed `b382eed`,
+  merged + pushed to `chrome-renderer-v1`.**
 
 ---
 
