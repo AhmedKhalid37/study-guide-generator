@@ -243,9 +243,56 @@ adapter_design_status: partial
   `skipped` state already used by the advisory artifact — never an error and never
   a fabricated fact.
 
+## Adapter Implementation Outcome (Slice 121)
+
+The pure/unwired adapter `pipeline/quality_safety_extraction_bundle_adapter.py`
+was implemented from the Slice 120 findings above. Closed-vocabulary outcome only:
+
+```
+quality_safety_extraction_adapter_v1: implemented
+purity: pure_unwired
+output_kind: quality_safety_extraction_coverage_bundle
+preferred_input: source_coverage_report
+secondary_input: extraction_metadata_structural_counts_only
+visual_input: visual_inclusion_plan_counts
+table_input: table_candidates_manifest_and_policy_counts
+first_supported_fact_kinds: structural_count, coverage_presence
+numeric_observations: empty
+numeric_observation_count: 0
+numeric_observations_fabricated: false
+source_basename_echoed: false
+raw_text_echoed: false
+path_or_url_echoed: false
+page_ref_handling: closed_tokens_with_mixed_page_ref_shape_warning
+malformed_input_behavior: degrades_to_skipped_or_warning_never_raises
+caller_input_mutated: false
+deterministic_serialization: true
+producer_compatibility: safe_degradation_empty_or_partial_fact_sheet
+adapter_design_status: ready_for_structural_leg
+production_wiring_status: deferred_to_slice_122
+no_leak_sweep: clean
+provider_calls: false
+judge_calls: false
+repair_calls: false
+warnings: []
+```
+
+Notes (closed tokens only):
+
+- `adapter_design_status=ready_for_structural_leg`: the structural-count /
+  coverage-presence leg that Slice 120 marked feasible is now implemented and
+  tested; the numeric-observation/recompute leg remains out of reach
+  (`numeric_observation_recoverable=no`) and is intentionally not fabricated.
+- `producer_compatibility=safe_degradation_empty_or_partial_fact_sheet`: the
+  coverage bundle carries no `concepts`, so the Slice 117 producer yields an
+  empty/partial fact sheet without raising or leaking — proven by test.
+- `output_kind` is distinct from the producer's concept/fact
+  `quality_safety_extraction_bundle` to avoid a name/shape collision (see
+  `DECISIONS.md`).
+
 ## Non-Goals
 
-- Do not implement the extraction-bundle adapter (Slice 121).
+- The extraction-bundle adapter implemented in Slice 121 is pure/unwired only.
 - Do not wire any adapter into production (deferred to Slice 122).
 - Do not change artifact-writer behavior (the only added code is the synthetic
   validation harness).

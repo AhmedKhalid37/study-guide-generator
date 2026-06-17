@@ -6,39 +6,49 @@
 > stable overview see `PROJECT_CONTEXT.md`; canonical brief is `../CLAUDE.md`.
 
 ## Current position
-- **Working tree:** **Slice 120 (Quality Safety Advisory Artifact E2E + Extraction Metadata Inspection) — UNCOMMITTED (per
-  instruction)** on branch `slice120-quality-safety-e2e-and-extraction-metadata-inspection`, branched from fresh
-  `chrome-renderer-v1` after Slice 119 was committed, fast-forward merged, and pushed. **Slice 119 is trunk commit
-  `91a1134`**.
-  - **Part 0 completed:** Slice 119 was committed as `91a1134`, fast-forward merged to `chrome-renderer-v1`, and pushed with
-    a normal `git push` (no force-push). It surfaced `quality_safety_unified_qa.json` in the existing Guide Quality advisory
-    UI as a read-only, non-blocking section behind a strict display allowlist; no backend artifact generation, API,
-    generation/prompt/provider/request-schema/render/export/OCR/table/visual/Ask Guide behavior changed, no docker compose
-    config was run, and the Slice 60 trace stash remains parked and untouched.
-  - **Slice 120 scope:** docs/operator-validation first. Validated the full advisory Quality Safety visible path (production
-    build → exact-name fetch → read-only UI display) on a synthetic-safe sample, and inspected existing extraction/page
-    metadata to discover what safe structured metadata exists today. Added one synthetic-safe harness
-    (`test_scripts/validate_quality_safety_e2e_artifact.py`, 22/22) and the new record `docs/QUALITY_SAFETY_E2E_VALIDATION.md`.
-    No production behavior changed.
-  - **What was validated (closed tokens):** `status=ok`, `artifact_produced=true`,
-    `artifact_name=quality_safety_unified_qa_json`, `exact_name_fetch=ok`, `ui_display=ok`,
-    `missing_extraction_state=component_missing_skipped`, `artifact_advisory_non_blocking=true`,
-    `job_status_changed_by_quality_safety=false`, `provider_calls=false`, `judge_calls=false`, `repair_calls=false`,
-    `no_leak_sweep=clean`.
-  - **Metadata observed (closed tokens):** `extraction_artifact_present=true`, `page_metadata_present=true`,
-    `visual_metadata_present=true`, `table_metadata_present=true`, `page_ref_shape=mixed`, `leaf_count_recoverable=yes`,
-    `numeric_observation_recoverable=no`, candidate fields are structural counts/tokens only (page/coverage/visual/table
-    counts, extraction mode/status, source/page refs). The raw extraction metadata artifact carries a source basename, so any
-    adapter must read sanitized structural counts only and never carry the basename/paths/text.
-  - **Adapter design status:** **partial** — a structural-count / coverage-presence leg is feasible now (prefer the
-    already-sanitized source coverage report, keyed by a source ref); a numeric-observation/recompute leg is not recoverable
-    from today's metadata. Production wiring deferred to Slice 122.
-  - **Next slice:** **Slice 121 — Pure Extraction-Bundle Adapter v1**, a pure/unwired adapter built from these Slice 120
-    findings (structural-count facts first; missing data → `component_missing`/`skipped`; unsafe fields excluded).
-  - **Out of scope/unchanged:** no adapter implementation, no production wiring, no API route change, no frontend display
-    change, no generic artifact selector row, no generation/prompt/provider/request-schema/render/export/OCR/table/visual/Ask
-    Guide behavior change, no judge scoring or `overall_10`, no repair loop, no blocking gate, and no `quality_judge.py`,
-    `nn3.json`, `judge_response_nn3.json`, or `quality.jsonl`. **Slice 120 remains NOT committed.**
+- **Working tree:** **Slice 121 (Pure Extraction-Bundle Adapter v1) — UNCOMMITTED (per instruction)** on branch
+  `slice121-quality-safety-extraction-bundle-adapter-v1`, branched from fresh `chrome-renderer-v1` after Slice 120 was
+  committed, fast-forward merged, and pushed. **Slice 120 is trunk commit `06deb50`**.
+  - **Part 0 completed:** Slice 120 was committed as `06deb50`, fast-forward merged to `chrome-renderer-v1`, and pushed with a
+    normal `git push` (no force-push). It validated the advisory Quality Safety visible path on a synthetic-safe sample and
+    inspected the existing extraction/page metadata; no production behavior changed, no docker compose config was run, and the
+    Slice 60 trace stash remains parked and untouched.
+  - **Slice 121 scope:** adds a **pure, unwired** adapter `pipeline/quality_safety_extraction_bundle_adapter.py` mapping
+    already-sanitized structural extraction/coverage artifacts into a normalized **structural coverage bundle**, built from
+    Slice 120 findings. Reads only caller-supplied dicts; scans no directories; reads no job folders / source documents /
+    `clean.md`; writes no artifacts; imports stdlib only; calls no providers/models/cloud; never raises; never mutates input.
+  - **Files changed:** `M docs/CURRENT_TASK.md`, `M docs/DECISIONS.md`, `M docs/NEXT_CHAT_HANDOFF.md`,
+    `M docs/QUALITY_SAFETY_E2E_VALIDATION.md`, `?? pipeline/quality_safety_extraction_bundle_adapter.py`,
+    `?? test_scripts/test_quality_safety_extraction_bundle_adapter.py`.
+  - **Public functions:** `normalize_quality_safety_extraction_coverage_bundle(data, *, max_items=None)`,
+    `build_quality_safety_extraction_coverage_bundle_from_artifacts(*, source_coverage_report=None, extraction_metadata=None,
+    visual_inclusion_plan=None, table_candidates_manifest=None, table_reconstruction_policy=None, max_items=None)`,
+    `build_empty_quality_safety_extraction_coverage_bundle(reason="component_missing")`. Output `kind` is the **distinct**
+    `quality_safety_extraction_coverage_bundle` (see `DECISIONS.md` — avoids colliding with the producer's concept/fact
+    `quality_safety_extraction_bundle`).
+  - **Output (closed tokens / counts only):** `summary` (`source_count`, `page_count`, `selected_page_count|null`,
+    `visual_count`, `table_count`, `coverage_item_count`, `numeric_observation_count=0`); `coverage_records[]` with synthetic
+    `qs_extract_NNNN` ids, sanitized `source_*`/`page_*`/`page_range`/`unknown` refs, closed `record_type`/`status`,
+    count-only `counts`, closed `warnings`; `numeric_observations=[]` always.
+  - **Numeric observations intentionally NOT recovered in v1** (`numeric_observation_recoverable=no` from Slice 120) — never
+    fabricated; `numeric_observations_not_recoverable` warning emitted when records exist. **Source basenames/filenames/paths/
+    URLs/titles/OCR/table/caption text/formulas/evidence/provider payloads/traces are never read or echoed.**
+  - **Validation:** adapter tests 705/705; producer 182, job artifact 216, fact sheet 61, recompute verifier 99, unified QA
+    73; `compileall` OK; `git diff --check` clean. No Docker required (pure/unwired); no docker compose config was run.
+  - **Next slice:** **Slice 122 — Wire Adapter into Advisory Artifact** (production wiring deferred to that slice).
+  - **Out of scope/unchanged:** no production job wiring, no `quality_safety_job_artifact.py` / `run_markdown_job.py` /
+    `api/server.py` change, no new routes, no frontend change, no generic artifact selector row, no generation/prompt/provider/
+    request-schema/render/export/OCR/table/visual/Ask Guide behavior change, no judge scoring or `overall_10`, no repair loop,
+    no blocking gate, and no `quality_judge.py`, `nn3.json`, `judge_response_nn3.json`, or `quality.jsonl`. **Slice 121 remains
+    NOT committed.**
+
+### Previously (Slice 120, now trunk `06deb50`)
+- **Slice 120 (Quality Safety Advisory Artifact E2E + Extraction Metadata Inspection)** validated the advisory visible path
+  (production build → exact-name fetch → read-only UI display) on a synthetic-safe sample and inspected existing extraction/
+  page metadata. Closed-token outcome: `page_ref_shape=mixed`, `leaf_count_recoverable=yes`,
+  `numeric_observation_recoverable=no`, `extraction_leg_design_status=partial`; the raw extraction metadata artifact carries a
+  source basename, so the sanitized source coverage report (keyed by a source ref) is the preferred adapter input. Added
+  `test_scripts/validate_quality_safety_e2e_artifact.py` (22/22) and `docs/QUALITY_SAFETY_E2E_VALIDATION.md`.
 
 ### Previously (Slice 119, now trunk `91a1134`)
 - **Slice 119 (Quality Safety Advisory UI Display v1)** surfaced `quality_safety_unified_qa.json` in the existing Guide

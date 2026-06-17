@@ -4901,3 +4901,37 @@ structural-count / coverage-presence facts only and must not invent numeric
 facts; the recompute leg is deferred. Missing or malformed metadata degrades to
 the closed `component_missing` / `skipped` state, never an error and never a
 fabricated fact. Production wiring is deferred to Slice 122.
+
+## Slice 121 extraction-bundle adapter v1 emits a distinct structural-coverage kind
+**Why a distinct kind/name instead of the producer's bundle.** The Slice 117
+fact-sheet producer already owns the kind `quality_safety_extraction_bundle` and a
+function `normalize_quality_safety_extraction_bundle` for a *concept/fact* bundle
+(`concepts` → `computation_records` / `numeric_observations`). Slice 121 needs a
+*structural coverage* bundle (`coverage_records` with counts), which is a different
+shape. Reusing the same kind/function name would collide and conflate two
+incompatible shapes, so the v1 adapter emits the distinct kind
+`quality_safety_extraction_coverage_bundle` and uses `..._coverage_bundle...`
+function names in `pipeline/quality_safety_extraction_bundle_adapter.py`. Passing
+the coverage bundle to the producer degrades safely to an empty/partial fact sheet
+(it carries no `concepts`); that safe degradation is the intended v1 compatibility
+and is proven by test.
+
+**Why the adapter prefers the sanitized source coverage report.** The raw
+extraction metadata artifact carries a source *basename* field, so the adapter
+treats it as a secondary, name-bearing input from which only sanitized structural
+counts/statuses are read. The already-sanitized source coverage report is keyed by
+an integer source ordinal (not a basename) and exposes per-source page/visual
+counts, so it is the preferred input surface. Source basenames, filenames, paths,
+URLs, titles, OCR/table/caption text, formulas, evidence quotes, provider
+payloads, and traces are never read or echoed; the only strings the adapter emits
+are synthetic `qs_extract_NNNN` ids, sanitized `source_*`/`page_*`/`page_range`/
+`unknown` ref tokens, and closed status/warning tokens.
+
+**Why v1 never fabricates numeric observations.** Slice 120 found
+`numeric_observation_recoverable=no`, so the adapter sets `numeric_observations=[]`
+and `numeric_observation_count=0` unconditionally and emits the closed
+`numeric_observations_not_recoverable` warning when coverage records exist. It must
+not synthesize weighted_gini or any recompute-method inputs from page/coverage
+metadata. The numeric/recompute leg waits for a future slice that records numeric
+content observations. The adapter stays pure/unwired; production wiring is deferred
+to Slice 122.

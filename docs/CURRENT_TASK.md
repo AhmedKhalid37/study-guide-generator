@@ -5,7 +5,48 @@
 
 ---
 
-## Slice 120 — **Quality Safety Advisory Artifact E2E + Extraction Metadata Inspection**, on `slice120-quality-safety-e2e-and-extraction-metadata-inspection`. **NOT COMMITTED.**
+## Slice 121 — **Pure Extraction-Bundle Adapter v1**, on `slice121-quality-safety-extraction-bundle-adapter-v1`. **NOT COMMITTED.**
+
+- **Part 0 completed:** Slice 120 was committed as `06deb50`, fast-forward merged to trunk `chrome-renderer-v1`, and pushed
+  with a normal `git push` (no force-push). Slice 120 validated the advisory Quality Safety visible path (production build →
+  exact-name fetch → read-only UI display) on a synthetic-safe sample and inspected the existing extraction/page metadata; no
+  production behavior changed, no docker compose config was run, and the Slice 60 trace stash remains parked and untouched.
+- **Scope:** Slice 121 adds a **pure, unwired** adapter (`pipeline/quality_safety_extraction_bundle_adapter.py`) that maps
+  already-sanitized structural extraction/coverage artifacts into a normalized **structural coverage bundle** the Slice 117
+  fact-sheet producer can be handed later. Built directly from Slice 120 findings. The adapter reads only caller-supplied
+  in-memory dicts, scans no directories, reads no job folders / source documents / `clean.md`, writes no artifacts, calls no
+  providers/models/cloud, imports stdlib only, never raises on malformed input, and never mutates caller input.
+- **Output shape (closed tokens / counts only):** `version=1`, `kind=quality_safety_extraction_coverage_bundle`,
+  `status ∈ {ok,warning,skipped,partial,failed}`, `source_quality ∈ {synthetic,runtime_structural,unknown}`, a `summary`
+  (`source_count`, `page_count`, `selected_page_count|null`, `visual_count`, `table_count`, `coverage_item_count`,
+  `numeric_observation_count=0`), `coverage_records[]` (synthetic `qs_extract_NNNN` ids, sanitized `source_ref`/`page_ref`
+  tokens, closed `record_type`/`status`, count-only `counts`, closed `warnings`), `numeric_observations=[]` always, and a
+  closed top-level `warnings` list.
+- **Preferred input:** the already-sanitized **source coverage report** (keyed by an integer source ordinal, not a basename)
+  is preferred over the raw, name-bearing extraction metadata artifact; visual-inclusion-plan / table-candidate-manifest /
+  table-reconstruction-policy counts are read structurally. **Source basenames, filenames, paths, URLs, titles, OCR/table/
+  caption text, formulas, evidence quotes, provider payloads, and traces are never read or echoed.**
+- **Numeric observations intentionally not recovered in v1:** Slice 120 found `numeric_observation_recoverable=no`, so the
+  adapter never fabricates numeric observations — `numeric_observations=[]` and `numeric_observation_count=0` always, with the
+  closed `numeric_observations_not_recoverable` warning when coverage records exist.
+- **Distinct kind decision:** the Slice 117 producer already owns `kind=quality_safety_extraction_bundle` (a *concept/fact*
+  bundle) and a `normalize_quality_safety_extraction_bundle` function; to avoid a name/shape collision this v1 adapter emits
+  the distinct `quality_safety_extraction_coverage_bundle` kind and `..._coverage_bundle...` function names. Passing the
+  coverage bundle to the producer degrades safely to an empty/partial fact sheet (no `concepts`) — proven by test.
+- **Validation:** `test_scripts/test_quality_safety_extraction_bundle_adapter.py` (705/705) plus regression of the producer
+  (182), job artifact (216), fact sheet (61), recompute verifier (99), and unified QA (73). `python -m compileall api
+  pipeline test_scripts` OK; `git diff --check` clean. No Docker required (pure/unwired); no docker compose config was run.
+- **Production wiring deferred to Slice 122.** No-leak boundary: closed vocabulary, counts only, synthetic ids — no raw text,
+  names, basenames, paths, URLs, OCR/table/caption text, formulas, snippets, evidence quotes, provider payloads, or traces.
+- **Out of scope / unchanged:** no production job wiring, no `quality_safety_job_artifact.py` / `run_markdown_job.py` /
+  `api/server.py` change, no new routes, no frontend change, no generic artifact selector row, no generation/prompt/provider/
+  request-schema/render/export/OCR/table/visual/Ask Guide behavior change, no judge scoring, `overall_10`, repair loop, or
+  blocking gate; no `quality_judge.py`, `nn3.json`, `judge_response_nn3.json`, or `quality.jsonl`. **Slice 121 remains NOT
+  committed.**
+
+---
+
+## Slice 120 — **Quality Safety Advisory Artifact E2E + Extraction Metadata Inspection**, on `slice120-quality-safety-e2e-and-extraction-metadata-inspection`. **Committed `06deb50`, merged + pushed to `chrome-renderer-v1`.**
 
 - **Part 0 completed:** Slice 119 was committed as `91a1134`, fast-forward merged to trunk `chrome-renderer-v1`, and pushed
   with a normal `git push` (no force-push). Slice 119 surfaced `quality_safety_unified_qa.json` in the existing Guide Quality
@@ -35,7 +76,7 @@
 - **Out of scope / unchanged:** no adapter implementation, no production wiring, no API route change, no frontend display
   change, no generic artifact selector row, no generation/prompt/provider/request-schema/render/export/OCR/table/visual/Ask
   Guide behavior change, no judge scoring, `overall_10`, repair loop, or blocking gate; no `quality_judge.py`, `nn3.json`,
-  `judge_response_nn3.json`, or `quality.jsonl`. **Slice 120 remains NOT committed.**
+  `judge_response_nn3.json`, or `quality.jsonl`. **Committed `06deb50`, merged + pushed to `chrome-renderer-v1`.**
 
 ---
 
