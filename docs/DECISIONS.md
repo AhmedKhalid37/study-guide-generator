@@ -4829,3 +4829,18 @@ detection of actual leak phrases, placeholders, unresolved answers, and structur
 tokens/counts/safe fact ids, and the scanner stays unwired and offline. Slice 116 adds no judge, no `overall_10`, no prompt
 tuning, no repair/rewrite/regeneration, no provider/model/cloud call, no production runtime wiring, no fact-sheet producer,
 and no generation/prompt/request/API/UI/render/export/OCR/table/visual/Ask Guide behavior change.
+
+## Slice 117 adds a pure fact-sheet producer after the safety floor proves red and green behavior
+**Why this follows operator validation and leak hardening.** The fact-sheet producer is added after the real-disaster
+operator validation and leak false-positive hardening because the safety floor first had to prove it can both catch failures
+and pass clean material. Slice 115 proved the deterministic floor catches the legacy/confident-wrong failures but exposed a
+clean-case false positive; Slice 116 fixed that blocker.
+
+**Why v1 is pure and unwired.** Slice 117 consumes only sanitized structured extraction bundles and maps them into the Slice
+110 fact-sheet schema. It does not parse real PDFs, read source documents or `clean.md`, scan directories, write job
+artifacts, call providers/models/cloud services, add API/UI/export behavior, or wire into production jobs. Production
+extraction and job wiring come later.
+
+**What ordering is preserved.** The producer creates structured fact-sheet inputs; recompute remains the authoritative first
+numeric truth path, canonical matching remains fallback-only, leak scanning attaches verifier context, and unified QA
+aggregates the reports. Slice 117 does not compute judge scores, `overall_10`, shippability, prompt tuning, or repair.

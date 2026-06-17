@@ -247,4 +247,23 @@ fact-sheet production, judge logic, prompt tuning, repair, providers, or runtime
 - Docker validation is optional for Slice 116 because it changes only an offline Quality Safety helper plus docs/tests; docker
   compose config must not be run.
 
-Slice 115 is committed. Slice 116 is NOT committed.
+## Slice 117 Extraction-Leg Note
+
+```json
+{
+  "validation_id": "quality_safety_extraction_leg_scope_v1",
+  "slice": "117",
+  "extraction_leg_work_started": true,
+  "input_kind": "synthetic_sanitized_extraction_bundle",
+  "production_end_to_end_covered": false,
+  "real_pdf_parsing": false,
+  "clean_md_read": false,
+  "directory_scan": false,
+  "job_artifact_write": false,
+  "production_job_wiring": false,
+  "provider_calls": false,
+  "judge_calls": false
+}
+```
+
+Slice 115 and Slice 116 are committed. Slice 117 is NOT committed.

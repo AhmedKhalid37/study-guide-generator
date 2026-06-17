@@ -6,34 +6,39 @@
 > stable overview see `PROJECT_CONTEXT.md`; canonical brief is `../CLAUDE.md`.
 
 ## Current position
-- **Working tree:** **Slice 116 (Quality Safety Leak Scanner Clean-Case False-Positive Hardening) — UNCOMMITTED (per
-  instruction)** on branch `slice116-quality-safety-leak-false-positive-hardening`, branched from fresh
-  `chrome-renderer-v1` after Slice 115 was committed, fast-forward merged, and pushed. **Slice 115 is trunk commit
-  `92a4fb2`**.
-  - **Part 0 completed:** Slice 115 was committed as `92a4fb2`, fast-forward merged to `chrome-renderer-v1`, and pushed with
-    a normal `git push` (no force-push). It was docs/operator-validation only and recorded the red gate honestly:
-    `clean_real_case=false_positive_leak`, `failure_category=clean_case_false_positive`, and
-    `extraction_leg_covered=false`. No code/tests/runtime outputs/private material/judge/provider/model/cloud calls were
-    added, no docker compose config was run, and the Slice 60 trace stash remains parked and untouched.
-  - **Slice 116 scope:** targeted hardening of the unwired offline leak scanner plus synthetic tests and closed-vocabulary
-    docs. It fixes the clean-case false-positive blocker before fact-sheet production, job wiring, judge scoring, prompt
-    tuning, or repair work.
-  - **Root cause / fix tokens:** `leak_boundary_false_positive`; `technical_weight_term_false_positive`. Fixed leak
-    signatures now use boundary-safe word/phrase matching. Synthetic tests prove clean technical prose about
-    `weighted_gini`, weighted error, neural-network weights, weighted sums, `await`, `actual`, and `factual` produces zero
-    leaks while the major leak phrases and structural uncertainty markers still trigger.
-  - **Closed operator revalidation:** `legacy_confused_wrong_case` remains detected and not shippable.
-    `single_confident_wrong_numeric_case` remains detected by `recompute:weighted_gini` with `contradiction_required=false`
-    and `leak_required=false`. `clean_real_case` now passes with `clean_case_passed=true`, `unified_status=passed`,
-    `shippable=true`, `safety_floor_green=true`, and `blocking_checks=[]`. `extraction_leg_covered=false` remains recorded
-    because fact-sheet production is still not built.
-  - **Out of scope/unchanged:** no fact-sheet producer, production runtime wiring, app route, UI/export selector, generic
-    artifact entry, reference-anchored LLM judge, `quality_judge.py`, `nn3.json`, `judge_response_nn3.json`, `quality.jsonl`,
-    `overall_10`, prompt tuning, repair/rewrite/regeneration, live generation, provider/model/cloud call, Docker config,
-    generation/prompt/request/API/UI/render/export/OCR/table/visual/Ask Guide behavior change, or Chandra gate change.
-    Docs/tests contain no real PDFs/images/DOCX/ZIPs, runtime artifacts, generated guides, eval outputs, source/reference
-    filenames, uploaded quality-spec filenames, evidence quotes, snippets, OCR/table/caption text, paths, URLs, image bytes,
-    copied private formulas, provider payloads, or runtime output JSON. **Slice 116 remains NOT committed.**
+- **Working tree:** **Slice 117 (Quality Safety Fact-Sheet Producer v1) — UNCOMMITTED (per instruction)** on branch
+  `slice117-quality-safety-fact-sheet-producer-v1`, branched from fresh `chrome-renderer-v1` after Slice 116 was committed,
+  fast-forward merged, and pushed. **Slice 116 is trunk commit `0bef077`**.
+  - **Part 0 completed:** Slice 116 was committed as `0bef077`, fast-forward merged to `chrome-renderer-v1`, and pushed with
+    a normal `git push` (no force-push). It fixed `clean_real_case=false_positive_leak`, kept
+    `legacy_confused_wrong_case` detected, kept `single_confident_wrong_numeric_case` detected by
+    `recompute:weighted_gini` without leak/contradiction, and left `extraction_leg_covered=false` recorded for the real
+    operator validation. No private material/runtime outputs/judge/provider/model/cloud calls were added, no docker compose
+    config was run, and the Slice 60 trace stash remains parked and untouched.
+  - **Slice 117 scope:** adds a pure/unwired Quality Safety fact-sheet producer:
+    `pipeline/quality_safety_fact_sheet_producer.py` plus synthetic tests. It maps sanitized structured extraction bundles
+    into the Slice 110 `quality_safety_fact_sheet` schema. It does not parse real PDFs, read source documents or `clean.md`,
+    scan directories, write job artifacts, wire into production jobs, call providers/models/cloud services, or add API/UI/
+    export behavior.
+  - **Runtime ordering preserved:** producer output supplies structured facts; recompute remains first and authoritative;
+    canonical matching remains second/fallback; leak scanner attaches verifier context; unified QA aggregates. The producer
+    itself does not recompute, canonical-match, leak-scan, decide shippability, compute `overall_10`, judge scores, or repair.
+  - **Synthetic proof:** the tests prove a synthetic single-confident-wrong `weighted_gini` extraction bundle is blocked by
+    recompute without leak or contradiction, and a synthetic clean computation-only bundle passes the unified safety floor
+    with `shippable=true` and `safety_floor_green=true`.
+  - **Out of scope/unchanged:** no production runtime wiring, app route, frontend change, generation/prompt/request change,
+    render/export/OCR/table/visual/Ask Guide change, provider/model/cloud call, live generation, judge, `quality_judge.py`,
+    `nn3.json`, `judge_response_nn3.json`, `quality.jsonl`, prompt tuning, repair loop, or Chandra gate change. Tests use
+    synthetic bundles/canaries only and commit no real PDFs/images/DOCX/ZIPs, runtime artifacts, generated guides, eval
+    outputs, source/reference filenames, uploaded quality-spec filenames, evidence quotes, snippets, OCR/table/caption text,
+    paths, URLs, image bytes, copied private formulas, provider payloads, or runtime output JSON. **Slice 117 remains NOT
+    committed.**
+
+### Previously (Slice 116, now trunk `0bef077`)
+- **Slice 116 (Quality Safety Leak Scanner Clean-Case False-Positive Hardening)** changed only the unwired offline leak
+  scanner, synthetic tests, and closed-vocabulary docs. It fixed boundary false positives around clean technical terms such
+  as `weight`, `weighted`, `weighted_gini`, `await`, `actual`, and `factual` while preserving actual leak signatures and
+  structural uncertainty markers.
 
 ### Previously (Slice 115, now trunk `92a4fb2`)
 - **Slice 115 (Quality Safety Real-Disaster Operator Validation)** added `docs/QUALITY_SAFETY_OPERATOR_VALIDATION.md` and

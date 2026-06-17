@@ -552,7 +552,16 @@ def _safe_computation(
         warnings.add("invalid_computation")
     if fact_type == "numeric" and result is not None and safe_result is None:
         warnings.add("invalid_numeric_value")
-    return {"method": method, "inputs": inputs, "result": safe_result}
+    tolerance = value.get("tolerance")
+    safe_tolerance: float | int | None
+    if tolerance is None:
+        safe_tolerance = None
+    else:
+        safe_tolerance = _finite_number(tolerance)
+        if safe_tolerance is None or not (0.0 < float(safe_tolerance) <= 1.0):
+            safe_tolerance = None
+            warnings.add("invalid_computation")
+    return {"method": method, "inputs": inputs, "result": safe_result, "tolerance": safe_tolerance}
 
 
 def _safe_mapping(value: Any, *, max_items: int) -> tuple[dict[str, Any], bool]:
