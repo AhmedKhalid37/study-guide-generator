@@ -23,6 +23,9 @@ from pipeline.quality_safety_numeric_extraction_mapper import (
     map_numeric_extraction_bundle_to_fact_sheet_input,
 )
 from pipeline.quality_safety_recompute_verifier import verify_quality_safety_fact_sheet
+from pipeline.quality_safety_safe_numeric_extractor import (
+    extract_quality_safety_numeric_records_from_candidates,
+)
 from pipeline.quality_safety_unified_qa import build_quality_safety_unified_qa_report
 
 VERSION = 1
@@ -35,6 +38,39 @@ SOURCE = "job_runtime"
 # never created or written in production by this slice — and is never added to the
 # generic artifact/export lists or any UI row.
 NUMERIC_RECORDS_ARTIFACT_NAME = "quality_safety_numeric_extraction_records.json"
+
+# Slice 130: exact-name, job-local *input* sidecar of caller-supplied, already
+# sanitized numeric candidates. It is read-only and optional — never created or
+# written in production by this slice — feeds only the Slice 129 safe numeric
+# extractor, and is never added to the generic artifact/export lists or any UI row.
+# It carries a list of sanitized candidate dicts, or a dict wrapper under a closed
+# ``candidates`` key. It must never carry source/OCR/table/caption text, raw
+# formulas, numeric prose snippets, filenames, basenames, paths, URLs, provider
+# payloads, or raw runtime/artifact JSON; the Slice 125 mapper (the extractor's
+# final sanitizer) strips any such fields regardless.
+SAFE_NUMERIC_CANDIDATES_ARTIFACT_NAME = "quality_safety_safe_numeric_candidates.json"
+
+# Closed status / warning vocabulary for the advisory safe numeric extractor leg
+# (Slice 130). Statuses mirror the Slice 129 extractor payload; ``warnings`` mirror
+# its closed payload-warning set widened by the precedence token raised when an
+# explicit numeric records sidecar supersedes the safe candidates.
+SAFE_EXTRACTOR_STATUSES = frozenset({"ok", "warning", "skipped", "partial", "failed"})
+SAFE_EXTRACTOR_WARNING_ORDER = (
+    "component_missing",
+    "empty_numeric_extraction",
+    "malformed_numeric_extraction_input",
+    "invalid_numeric_record_dropped",
+    "max_items_reached",
+    "superseded_by_explicit_records",
+)
+SAFE_EXTRACTOR_WARNINGS = frozenset(SAFE_EXTRACTOR_WARNING_ORDER)
+SAFE_EXTRACTOR_SUMMARY_KEYS = (
+    "candidate_count",
+    "record_count",
+    "supported_method_count",
+    "unsupported_method_count",
+    "dropped_candidate_count",
+)
 
 WARNING_ORDER = (
     "candidate_markdown_missing",
@@ -80,6 +116,7 @@ def build_quality_safety_job_artifact_payload(
     candidate_markdown: Any = None,
     extraction_bundle: Any = None,
     numeric_extraction_records: Any = None,
+    safe_numeric_candidates: Any = None,
     fixture_spec: Any = None,
     canonical_fixture: Any = None,
     job_metadata: Any = None,
@@ -111,6 +148,21 @@ def build_quality_safety_job_artifact_payload(
     coverage, and degrades to a closed ``component_missing`` / ``skipped`` numeric
     state when absent or malformed. This slice wires no production extractor — the
     sidecar is read only when it already exists.
+
+    ``safe_numeric_candidates`` (Slice 130) is an optional, caller-supplied list of
+    *already-sanitized numeric candidates* (or a dict wrapper carrying one under a
+    closed ``candidates`` key). When present and no explicit
+    ``numeric_extraction_records`` were supplied, the candidates are run through the
+    Slice 129 safe numeric extractor (whose final sanitizer is the Slice 125 mapper)
+    and the resulting records feed the *same* numeric leg as explicit records — so a
+    wrong safe-candidate claim CAN raise a recompute blocker. Precedence is
+    deterministic: explicit ``numeric_extraction_records`` always win; safe
+    candidates are then only summarized (``safe_numeric_extractor_status=skipped``,
+    ``superseded_by_explicit_records``) and never merged. The safe extractor never
+    parses source/OCR/table/caption text, never reads ``clean.md``, never scans job
+    folders, never writes sidecars, and never invents numeric facts from structural
+    coverage. The leg degrades to a closed ``skipped`` / ``failed`` state when the
+    candidate sidecar is absent or malformed.
     """
     warnings: set[str] = set()
     coverage_bundle = _build_coverage_bundle(
@@ -122,8 +174,18 @@ def build_quality_safety_job_artifact_payload(
         max_items=max_items,
         warnings=warnings,
     )
+    # Slice 130: deterministic precedence — explicit numeric records win; safe
+    # candidates feed the numeric leg only when no explicit records were supplied.
+    safe_records, safe_status, safe_summary, safe_warnings = _build_safe_numeric_section(
+        safe_numeric_candidates,
+        explicit_records_present=numeric_extraction_records is not None,
+        max_items=max_items,
+    )
+    effective_numeric_records = numeric_extraction_records
+    if effective_numeric_records is None and safe_records is not None:
+        effective_numeric_records = safe_records
     numeric_bundle = _build_numeric_extraction_bundle(
-        numeric_extraction_records,
+        effective_numeric_records,
         max_items=max_items,
         warnings=warnings,
     )
@@ -207,11 +269,17 @@ def build_quality_safety_job_artifact_payload(
         )
         if _has_warning(unified, "max_items_reached"):
             warnings.add("max_items_reached")
-        return _payload(unified, warnings, coverage_bundle, numeric_bundle)
+        return _payload(
+            unified, warnings, coverage_bundle, numeric_bundle,
+            safe_status=safe_status, safe_summary=safe_summary, safe_warnings=safe_warnings,
+        )
     except Exception:
         unified = build_quality_safety_unified_qa_report(max_items=max_items)
         warnings.add("component_degraded")
-        return _payload(unified, warnings, coverage_bundle, numeric_bundle)
+        return _payload(
+            unified, warnings, coverage_bundle, numeric_bundle,
+            safe_status=safe_status, safe_summary=safe_summary, safe_warnings=safe_warnings,
+        )
 
 
 def write_quality_safety_job_artifact(
@@ -220,6 +288,7 @@ def write_quality_safety_job_artifact(
     candidate_markdown: Any = None,
     extraction_bundle: Any = None,
     numeric_extraction_records: Any = None,
+    safe_numeric_candidates: Any = None,
     fixture_spec: Any = None,
     canonical_fixture: Any = None,
     job_metadata: Any = None,
@@ -234,14 +303,21 @@ def write_quality_safety_job_artifact(
 
     When ``numeric_extraction_records`` is not supplied, the optional read-only
     sidecar ``quality_safety_numeric_extraction_records.json`` is consumed if it
-    already exists under ``job_dir`` (never created here).
+    already exists under ``job_dir`` (never created here). Likewise, when
+    ``safe_numeric_candidates`` is not supplied, the optional read-only sidecar
+    ``quality_safety_safe_numeric_candidates.json`` is consumed if it already exists
+    under ``job_dir`` (never created here). Explicit numeric records take precedence
+    over safe candidates.
     """
     if numeric_extraction_records is None:
         numeric_extraction_records = read_quality_safety_numeric_extraction_records(job_dir)
+    if safe_numeric_candidates is None:
+        safe_numeric_candidates = read_quality_safety_safe_numeric_candidates(job_dir)
     payload = build_quality_safety_job_artifact_payload(
         candidate_markdown=candidate_markdown,
         extraction_bundle=extraction_bundle,
         numeric_extraction_records=numeric_extraction_records,
+        safe_numeric_candidates=safe_numeric_candidates,
         fixture_spec=fixture_spec,
         canonical_fixture=canonical_fixture,
         job_metadata=job_metadata,
@@ -280,11 +356,34 @@ def read_quality_safety_numeric_extraction_records(job_dir: Any) -> Any:
         return None
 
 
+def read_quality_safety_safe_numeric_candidates(job_dir: Any) -> Any:
+    """Read the optional safe numeric candidate sidecar; never raise.
+
+    Returns the parsed list/dict from ``quality_safety_safe_numeric_candidates``
+    ``.json`` under ``job_dir`` when it exists, else ``None``. Read-only: the sidecar
+    is an *input* candidate for the Slice 129 safe numeric extractor and is never
+    created or written here. The returned value is sanitized downstream by the
+    extractor (final sanitizer = Slice 125 mapper); no raw content is trusted.
+    """
+    try:
+        path = Path(job_dir) / SAFE_NUMERIC_CANDIDATES_ARTIFACT_NAME
+        if not path.exists():
+            return None
+        data = json.loads(path.read_text(encoding="utf-8"))
+        return data if isinstance(data, (list, dict)) else None
+    except Exception:
+        return None
+
+
 def _payload(
     unified_report: Any,
     warnings: set[str],
     coverage_bundle: Any = None,
     numeric_bundle: Any = None,
+    *,
+    safe_status: str = "skipped",
+    safe_summary: Any = None,
+    safe_warnings: Any = None,
 ) -> dict[str, Any]:
     unified = unified_report if isinstance(unified_report, dict) else build_quality_safety_unified_qa_report()
     summary = unified.get("summary") if isinstance(unified.get("summary"), dict) else {}
@@ -324,6 +423,9 @@ def _payload(
         "numeric_extraction_summary": _numeric_summary(numeric),
         "numeric_extraction_warnings": _numeric_warnings(numeric),
         "numeric_extraction_bundle": numeric,
+        "safe_numeric_extractor_status": safe_status if safe_status in SAFE_EXTRACTOR_STATUSES else "failed",
+        "safe_numeric_extractor_summary": _safe_summary(safe_summary),
+        "safe_numeric_extractor_warnings": _safe_warnings(safe_warnings),
         "quality_safety_unified_qa": unified,
     }
 
@@ -359,6 +461,84 @@ def _build_numeric_extraction_bundle(
     elif status in {"warning", "partial", "failed"}:
         warnings.add("numeric_extraction_degraded")
     return bundle
+
+
+def _build_safe_numeric_section(
+    safe_numeric_candidates: Any,
+    *,
+    explicit_records_present: bool,
+    max_items: Any,
+) -> tuple[Any, str, dict[str, int], list[str]]:
+    """Run the Slice 129 safe numeric extractor over caller candidates; never raise.
+
+    Returns ``(effective_records, status, summary, warnings)`` where
+    ``effective_records`` is the extractor's ``quality_safety_numeric_extraction``
+    ``_records`` payload (records under a closed ``records`` key, consumed by
+    ``_coerce_numeric_records``) to feed the numeric leg when no explicit records
+    were supplied — else ``None``. When explicit numeric records ARE present they
+    win deterministically: the candidates are still summarized but the safe leg is
+    marked ``skipped`` + ``superseded_by_explicit_records`` and never fed/merged.
+    Structural coverage is never an input here; numeric facts are never fabricated.
+    """
+    if safe_numeric_candidates is None:
+        return None, "skipped", _empty_safe_summary(), []
+    try:
+        payload = extract_quality_safety_numeric_records_from_candidates(
+            _coerce_safe_candidates(safe_numeric_candidates),
+            max_items=max_items,
+        )
+    except Exception:
+        payload = None
+    if not isinstance(payload, dict):
+        return None, "failed", _empty_safe_summary(), ["malformed_numeric_extraction_input"]
+
+    summary = _safe_summary(payload.get("summary"))
+    section_warnings = [w for w in payload.get("warnings", []) if w in SAFE_EXTRACTOR_WARNINGS]
+    status = payload.get("status") if payload.get("status") in SAFE_EXTRACTOR_STATUSES else "failed"
+
+    if explicit_records_present:
+        # Deterministic precedence: explicit numeric records win. The safe leg is
+        # summarized only — never fed into the numeric bundle, never merged.
+        if "superseded_by_explicit_records" not in section_warnings:
+            section_warnings.append("superseded_by_explicit_records")
+        return None, "skipped", summary, _ordered_safe(section_warnings)
+
+    return payload, status, summary, _ordered_safe(section_warnings)
+
+
+def _coerce_safe_candidates(value: Any) -> Any:
+    """Extract a candidates list from a caller value; let the extractor judge rest.
+
+    Accepts a bare list of sanitized candidate dicts, or a dict wrapper carrying one
+    under the closed ``candidates`` key. Any other shape is passed through unchanged
+    so the extractor degrades it to a closed ``failed`` payload.
+    """
+    if isinstance(value, dict):
+        inner = value.get("candidates")
+        if isinstance(inner, list):
+            return inner
+    return value
+
+
+def _empty_safe_summary() -> dict[str, int]:
+    return {key: 0 for key in SAFE_EXTRACTOR_SUMMARY_KEYS}
+
+
+def _safe_summary(summary: Any) -> dict[str, int]:
+    safe = summary if isinstance(summary, dict) else {}
+    return {key: _int(safe.get(key)) for key in SAFE_EXTRACTOR_SUMMARY_KEYS}
+
+
+def _safe_warnings(warnings: Any) -> list[str]:
+    if not isinstance(warnings, list):
+        return []
+    safe = {token for token in warnings if isinstance(token, str) and token in SAFE_EXTRACTOR_WARNINGS}
+    return [token for token in SAFE_EXTRACTOR_WARNING_ORDER if token in safe]
+
+
+def _ordered_safe(warnings: list[str]) -> list[str]:
+    safe = {token for token in warnings if token in SAFE_EXTRACTOR_WARNINGS}
+    return [token for token in SAFE_EXTRACTOR_WARNING_ORDER if token in safe]
 
 
 def _coerce_numeric_records(value: Any) -> Any:

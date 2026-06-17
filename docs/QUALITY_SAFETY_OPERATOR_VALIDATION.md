@@ -837,4 +837,51 @@ and is gated on a future production-wiring slice (Slice 130).
 }
 ```
 
-Slice 129 is NOT committed.
+Slice 129 is committed as `0bff68c` and merged to `chrome-renderer-v1`.
+
+## Slice 130 Wire Safe Numeric Extractor into Advisory Artifact Path (cross-reference)
+
+Slice 130 is an advisory-wiring slice with **no operator-runtime validation of its
+own** beyond the synthetic artifact-path harnesses: production code reads the
+optional candidate sidecar read-only, writes no candidate sidecar, parses no
+OCR/table/source text, reads no `clean.md` numbers, scans no job folders, and calls
+no providers/models/cloud. It edits `pipeline/quality_safety_job_artifact.py` and
+`pipeline/run_markdown_job.py`, extends
+`test_scripts/test_quality_safety_job_artifact.py` and
+`test_scripts/validate_quality_safety_real_disaster_e2e.py`, and updates live docs.
+A real/private operator numeric validation pass remains a separate operator activity
+and is gated on a production safe-candidate source (or an explicit operator waiver).
+
+```json
+{
+  "validation_id": "quality_safety_safe_numeric_extractor_artifact_wiring",
+  "slice": "130",
+  "operator_runtime_validation": "not_applicable_synthetic_artifact_path_only",
+  "safe_numeric_extractor_wired_into_artifact": true,
+  "candidate_input_artifact": "quality_safety_safe_numeric_candidates.json",
+  "candidate_sidecar_written_in_production": false,
+  "precedence": "explicit_numeric_records_over_safe_candidates",
+  "safe_numeric_extractor_artifact_path_status": "ok",
+  "numeric_fact_sheet_extraction_leg_status": "partial",
+  "artifact_path_ready": "true_for_synthetic_candidates",
+  "production_numeric_extractor_present": "sidecar_candidate_only",
+  "single_confident_wrong_numeric_case": "recompute_blocked",
+  "clean_real_case": "recompute_passed",
+  "legacy_confused_wrong_case": "partial",
+  "unsupported_method_candidate": "counted_not_blocked",
+  "structural_coverage_into_candidates": false,
+  "advisory_non_blocking": true,
+  "artifact_name_unchanged": true,
+  "judge_ready": false,
+  "repair_ready": false,
+  "next_step": "production_safe_candidate_source_or_operator_waiver",
+  "raw_text_committed": false,
+  "raw_paths_committed": false,
+  "runtime_outputs_committed": false,
+  "provider_calls": false,
+  "judge_calls": false,
+  "repair_calls": false
+}
+```
+
+Slice 130 is NOT committed.

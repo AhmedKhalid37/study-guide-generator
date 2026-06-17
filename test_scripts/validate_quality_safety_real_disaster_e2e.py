@@ -408,8 +408,85 @@ def main() -> int:
     check("numeric hook: not shippable", numeric_hooked.get("shippable") is False)
     check("numeric hook: no judge/repair/overall keys", _no_forbidden_keys(numeric_hooked))
 
+    # --- Slice 130: safe numeric extractor wired into the advisory artifact ------
+    # A safe numeric *candidate* sidecar feeds the Slice 129 extractor, whose
+    # records drive the same recompute leg through the real artifact path: a clean
+    # candidate verifies, a wrong one blocks. Candidates are SEPARATE from structural
+    # coverage and never fabricated from coverage counts.
+    safe_clean = build_quality_safety_job_artifact_payload(
+        candidate_markdown=candidate_markdown(value=0.2),
+        safe_numeric_candidates=numeric_records(value=0.2),
+        **coverage,
+    )
+    check("safe clean: extractor ok", safe_clean.get("safe_numeric_extractor_status") == "ok", json.dumps(safe_clean.get("safe_numeric_extractor_status")))
+    check("safe clean: recompute passed", safe_clean.get("component_statuses", {}).get("recompute") == "passed", json.dumps(safe_clean.get("component_statuses")))
+    check("safe clean: shippable", safe_clean.get("shippable") is True)
+    check("safe clean: coverage still separate", safe_clean.get("extraction_coverage_summary", {}).get("numeric_observation_count") == 0)
+    check("safe clean: no judge/repair/overall keys", _no_forbidden_keys(safe_clean))
+
+    safe_wrong = build_quality_safety_job_artifact_payload(
+        candidate_markdown=candidate_markdown(value=0.9),
+        safe_numeric_candidates=numeric_records(value=0.9),  # recomputes to 0.2
+        **coverage,
+    )
+    check(
+        "safe wrong: recompute blocker through artifact path",
+        any(
+            item.get("component") == "recompute" and item.get("check_id") == "weighted_gini"
+            for item in safe_wrong.get("blocking_failures") or []
+        ),
+        json.dumps(safe_wrong.get("blocking_failures")),
+    )
+    check("safe wrong: status failed", safe_wrong.get("status") == "failed", json.dumps(safe_wrong.get("status")))
+    check("safe wrong: not shippable", safe_wrong.get("shippable") is False)
+    check("safe wrong: safety floor red", safe_wrong.get("safety_floor_green") is False)
+    check("safe wrong: no judge/repair/overall keys", _no_forbidden_keys(safe_wrong))
+
+    # Precedence: explicit numeric records win over safe candidates deterministically.
+    safe_precedence = build_quality_safety_job_artifact_payload(
+        candidate_markdown=candidate_markdown(value=0.2),
+        numeric_extraction_records=numeric_records(value=0.2),  # explicit, correct
+        safe_numeric_candidates=numeric_records(value=0.9),  # would be wrong
+        **coverage,
+    )
+    check("safe precedence: safe superseded", safe_precedence.get("safe_numeric_extractor_status") == "skipped", json.dumps(safe_precedence.get("safe_numeric_extractor_status")))
+    check(
+        "safe precedence: superseded warning",
+        "superseded_by_explicit_records" in (safe_precedence.get("safe_numeric_extractor_warnings") or []),
+        json.dumps(safe_precedence.get("safe_numeric_extractor_warnings")),
+    )
+    check("safe precedence: explicit correct verifies", safe_precedence.get("component_statuses", {}).get("recompute") == "passed", json.dumps(safe_precedence.get("component_statuses")))
+    check("safe precedence: shippable", safe_precedence.get("shippable") is True)
+
+    # --- Production hook with a safe numeric candidate sidecar present ----------
+    from pipeline.quality_safety_job_artifact import SAFE_NUMERIC_CANDIDATES_ARTIFACT_NAME
+
+    with tempfile.TemporaryDirectory() as tmp:
+        root = Path(tmp) / "job"
+        root.mkdir()
+        job = _FakeJob(root)
+        job.clean_md.write_text(candidate_markdown(value=0.9), encoding="utf-8")
+        (root / SAFE_NUMERIC_CANDIDATES_ARTIFACT_NAME).write_text(
+            json.dumps({"candidates": numeric_records(value=0.9)}), encoding="utf-8"
+        )
+        _write_quality_safety_unified_qa(job)
+        safe_hooked = json.loads(job.quality_safety_unified_qa_json.read_text(encoding="utf-8"))
+
+    check("safe hook: extractor ok", safe_hooked.get("safe_numeric_extractor_status") == "ok", json.dumps(safe_hooked.get("safe_numeric_extractor_status")))
+    check("safe hook: record consumed", safe_hooked.get("safe_numeric_extractor_summary", {}).get("record_count") == 1, json.dumps(safe_hooked.get("safe_numeric_extractor_summary")))
+    check(
+        "safe hook: recompute blocker through production hook",
+        any(item.get("component") == "recompute" for item in safe_hooked.get("blocking_failures") or []),
+        json.dumps(safe_hooked.get("blocking_failures")),
+    )
+    check("safe hook: not shippable", safe_hooked.get("shippable") is False)
+    check("safe hook: no judge/repair/overall keys", _no_forbidden_keys(safe_hooked))
+
     # --- No-leak across every produced payload ---------------------------------
-    blob = json.dumps([clean, wrong, legacy, hooked, numeric_clean, numeric_wrong, numeric_hooked])
+    blob = json.dumps(
+        [clean, wrong, legacy, hooked, numeric_clean, numeric_wrong, numeric_hooked,
+         safe_clean, safe_wrong, safe_precedence, safe_hooked]
+    )
     check("no synthetic canary anywhere", SYNTHETIC_CANARY not in blob)
 
     # --- Closed-vocabulary records for the docs (display only) -----------------
@@ -437,6 +514,11 @@ def main() -> int:
         numeric_clean.get("component_statuses", {}).get("recompute") == "passed"
         and any(item.get("component") == "recompute" for item in numeric_wrong.get("blocking_failures") or []),
     )
+    check(
+        "conclusion: safe extractor wiring verifies clean + blocks wrong through artifact path",
+        safe_clean.get("component_statuses", {}).get("recompute") == "passed"
+        and any(item.get("component") == "recompute" for item in safe_wrong.get("blocking_failures") or []),
+    )
 
     # Closed-vocabulary Slice 126 outcome for the docs (display only).
     print("\nSlice 126 numeric extraction wiring (closed-vocabulary):")
@@ -455,6 +537,31 @@ def main() -> int:
                 "artifact_path_ready_for_synthetic_numeric_records": True,
                 "judge_ready": False,
                 "repair_ready": False,
+            },
+            sort_keys=True,
+        )
+    )
+
+    # Closed-vocabulary Slice 130 outcome for the docs (display only).
+    print("\nSlice 130 safe numeric extractor wiring (closed-vocabulary):")
+    print(
+        "  "
+        + json.dumps(
+            {
+                "safe_numeric_extractor_wired_into_artifact": True,
+                "safe_numeric_candidates_input_artifact": "quality_safety_safe_numeric_candidates.json",
+                "precedence": "explicit_numeric_records_over_safe_candidates",
+                "safe_numeric_extractor_artifact_path_status": "ok",
+                "clean_safe_candidate_recompute": "passed",
+                "wrong_safe_candidate_recompute": "failed_blocking",
+                "safe_extractor_status_without_sidecar": hooked.get("safe_numeric_extractor_status"),
+                "numeric_fact_sheet_extraction_leg_status": "partial",
+                "artifact_path_ready": "true_for_synthetic_candidates",
+                "production_numeric_extractor_present": "sidecar_candidate_only",
+                "structural_coverage_into_candidates": False,
+                "judge_ready": False,
+                "repair_ready": False,
+                "next_step": "production_safe_candidate_source_or_operator_waiver",
             },
             sort_keys=True,
         )

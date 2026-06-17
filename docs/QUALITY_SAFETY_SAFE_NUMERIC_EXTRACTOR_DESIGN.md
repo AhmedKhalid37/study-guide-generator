@@ -264,3 +264,50 @@ next_step: wire_safe_numeric_extractor_into_advisory_artifact_path
 no_leak_sweep: clean
 docker_compose_config_run: false
 ```
+
+## Slice 130 Wiring Status — Safe Numeric Extractor → Advisory Artifact Path
+
+Slice 130 wired the Slice 129 extractor into the advisory
+`quality_safety_unified_qa.json` path. An optional, job-local, **read-only,
+internal** candidate sidecar `quality_safety_safe_numeric_candidates.json` (a list
+of sanitized candidate dicts, or a dict wrapper under a closed `candidates` key)
+feeds `extract_quality_safety_numeric_records_from_candidates`; the resulting
+records run through the existing Slice 126 numeric mapper + producer + recompute
+verifier. `pipeline/quality_safety_job_artifact.py` adds a `safe_numeric_candidates`
+parameter, a read-only reader `read_quality_safety_safe_numeric_candidates`, and
+three new top-level fields (`safe_numeric_extractor_status`,
+`safe_numeric_extractor_summary` counts-only, `safe_numeric_extractor_warnings`
+closed-tokens-only). `pipeline/run_markdown_job.py` reads the candidate sidecar
+read-only in the production hook. No production code writes the sidecar; no
+OCR/table/source parsing; no `clean.md` numeric read; no job-folder scan; numbers
+are never fabricated from structural coverage.
+
+**No-leak boundary.** The Slice 125 mapper remains the final sanitizer — every
+record fed to the recompute leg is mapper output, so forbidden candidate fields
+(source/OCR/table/caption text, raw formulas, filenames, basenames, paths, URLs,
+provider payloads, raw runtime/artifact JSON) are stripped before any artifact
+field is written. The extractor's records are not duplicated at the top level; only
+summary/status/warnings are surfaced. Deterministic precedence: explicit
+`quality_safety_numeric_extraction_records.json` records win; safe candidates are
+summarized only when both are present (`superseded_by_explicit_records`).
+
+```
+artifact_path_status: ready
+wiring: safe_candidate_sidecar -> slice129_extractor -> slice126_numeric_leg
+candidate_input_artifact: quality_safety_safe_numeric_candidates.json
+candidate_sidecar_written_in_production: false
+precedence: explicit_numeric_records_over_safe_candidates
+surfaced_fields: status_summary_warnings_only
+final_sanitizer: slice125_mapper
+clean_safe_candidate: recompute_passed
+wrong_safe_candidate: recompute_blocked
+unsupported_method_candidate: counted_not_blocked
+structural_coverage_into_candidates: false
+production_numeric_extractor_present: sidecar_candidate_only
+numeric_fact_sheet_extraction_leg_status: partial
+judge_ready: false
+repair_ready: false
+next_step: production_safe_candidate_source_or_operator_waiver
+no_leak_sweep: clean
+docker_compose_config_run: false
+```

@@ -117,7 +117,24 @@ ALLOWED_IMPORTS = {
     "pipeline.quality_safety_leak_scanner",
     "pipeline.quality_safety_numeric_extraction_mapper",
     "pipeline.quality_safety_recompute_verifier",
+    "pipeline.quality_safety_safe_numeric_extractor",
     "pipeline.quality_safety_unified_qa",
+}
+SAFE_EXTRACTOR_STATUSES = {"ok", "warning", "skipped", "partial", "failed"}
+SAFE_EXTRACTOR_WARNINGS = {
+    "component_missing",
+    "empty_numeric_extraction",
+    "malformed_numeric_extraction_input",
+    "invalid_numeric_record_dropped",
+    "max_items_reached",
+    "superseded_by_explicit_records",
+}
+SAFE_EXTRACTOR_SUMMARY_KEYS = {
+    "candidate_count",
+    "record_count",
+    "supported_method_count",
+    "unsupported_method_count",
+    "dropped_candidate_count",
 }
 
 
@@ -825,6 +842,251 @@ def test_production_hook_reads_numeric_sidecar() -> None:
         assert_no_canary("hook numeric", loaded)
 
 
+def assert_safe_shape(name: str, payload: dict[str, Any]) -> None:
+    check(f"{name}: safe status closed", payload["safe_numeric_extractor_status"] in SAFE_EXTRACTOR_STATUSES, str(payload.get("safe_numeric_extractor_status")))
+    summary = payload["safe_numeric_extractor_summary"]
+    check(f"{name}: safe summary keys", set(summary) == SAFE_EXTRACTOR_SUMMARY_KEYS, str(set(summary)))
+    check(
+        f"{name}: safe summary non-negative ints",
+        all(isinstance(v, int) and not isinstance(v, bool) and v >= 0 for v in summary.values()),
+        str(summary),
+    )
+    check(f"{name}: safe warnings closed", all(w in SAFE_EXTRACTOR_WARNINGS for w in payload["safe_numeric_extractor_warnings"]), str(payload["safe_numeric_extractor_warnings"]))
+    check(f"{name}: artifact name unchanged", payload["artifact_name"] == ARTIFACT_NAME)
+    check(f"{name}: advisory", payload["advisory"] is True)
+    assert_job_warnings_closed(name, payload)
+
+
+def safe_candidate(*, method: str = "weighted_gini", value: float = 0.2, rec_id: str = "qs_safe_clean") -> dict[str, Any]:
+    """A sanitized numeric candidate (contract shape) for the safe extractor."""
+    return numeric_record(method=method, value=value, rec_id=rec_id)
+
+
+def test_safe_candidates_missing_degrades() -> None:
+    # No candidate sidecar and no numeric record sidecar => current skipped behavior.
+    payload = build_quality_safety_job_artifact_payload(candidate_markdown=candidate_markdown())
+    assert_safe_shape("safe missing", payload)
+    check("safe missing: status skipped", payload["safe_numeric_extractor_status"] == "skipped", str(payload["safe_numeric_extractor_status"]))
+    check("safe missing: no safe warnings", payload["safe_numeric_extractor_warnings"] == [], str(payload["safe_numeric_extractor_warnings"]))
+    check("safe missing: numeric still skipped", payload["numeric_extraction_status"] == "skipped", str(payload["numeric_extraction_status"]))
+    check("safe missing: candidate_count 0", payload["safe_numeric_extractor_summary"]["candidate_count"] == 0)
+    assert_no_canary("safe missing", payload)
+
+
+def test_safe_candidates_clean_verified() -> None:
+    payload = build_quality_safety_job_artifact_payload(
+        candidate_markdown=candidate_markdown(value=0.2),
+        safe_numeric_candidates=[safe_candidate(value=0.2)],
+    )
+    assert_safe_shape("safe clean", payload)
+    assert_numeric_shape("safe clean numeric", payload)
+    check("safe clean: extractor ok", payload["safe_numeric_extractor_status"] == "ok", str(payload["safe_numeric_extractor_status"]))
+    check("safe clean: candidate_count 1", payload["safe_numeric_extractor_summary"]["candidate_count"] == 1)
+    check("safe clean: record_count 1", payload["safe_numeric_extractor_summary"]["record_count"] == 1)
+    check("safe clean: numeric status ok", payload["numeric_extraction_status"] == "ok", str(payload["numeric_extraction_status"]))
+    check("safe clean: recompute passed", payload["component_statuses"]["recompute"] == "passed", serialized(payload["component_statuses"]))
+    check("safe clean: no recompute blocker", not any(item["component"] == "recompute" for item in payload["blocking_failures"]))
+    check("safe clean: shippable", payload["shippable"] is True)
+    assert_no_canary("safe clean", payload)
+
+
+def test_safe_candidates_wrong_blocks() -> None:
+    payload = build_quality_safety_job_artifact_payload(
+        candidate_markdown=candidate_markdown(value=0.9),
+        safe_numeric_candidates=[safe_candidate(value=0.9, rec_id="qs_safe_confident_wrong")],  # recomputes to 0.2
+    )
+    assert_safe_shape("safe wrong", payload)
+    check("safe wrong: extractor ok", payload["safe_numeric_extractor_status"] == "ok", str(payload["safe_numeric_extractor_status"]))
+    check(
+        "safe wrong: recompute blocker",
+        any(item["component"] == "recompute" and item["check_id"] == "weighted_gini" for item in payload["blocking_failures"]),
+        serialized(payload["blocking_failures"]),
+    )
+    check("safe wrong: status failed", payload["status"] == "failed", str(payload["status"]))
+    check("safe wrong: not shippable", payload["shippable"] is False)
+    check("safe wrong: safety floor red", payload["safety_floor_green"] is False)
+    assert_no_canary("safe wrong", payload)
+
+
+def test_safe_candidates_malformed_degrades() -> None:
+    for label, value in (("string", "not a list"), ("dict-no-candidates", {"version": 1})):
+        payload = build_quality_safety_job_artifact_payload(
+            candidate_markdown=candidate_markdown(),
+            safe_numeric_candidates=value,
+        )
+        assert_safe_shape(f"safe malformed {label}", payload)
+        check(f"safe malformed {label}: status failed", payload["safe_numeric_extractor_status"] == "failed", str(payload["safe_numeric_extractor_status"]))
+        check(
+            f"safe malformed {label}: malformed warning",
+            "malformed_numeric_extraction_input" in payload["safe_numeric_extractor_warnings"],
+            str(payload["safe_numeric_extractor_warnings"]),
+        )
+        # Malformed safe candidates never fabricate a numeric record or a job failure.
+        check(f"safe malformed {label}: numeric skipped", payload["numeric_extraction_status"] == "skipped", str(payload["numeric_extraction_status"]))
+        check(f"safe malformed {label}: kind intact", payload["kind"] == "quality_safety_job_artifact")
+        assert_no_canary(f"safe malformed {label}", payload)
+
+    # Empty candidate list => extractor skipped (empty), no crash.
+    empty = build_quality_safety_job_artifact_payload(candidate_markdown=candidate_markdown(), safe_numeric_candidates=[])
+    assert_safe_shape("safe empty", empty)
+    check("safe empty: status skipped", empty["safe_numeric_extractor_status"] == "skipped", str(empty["safe_numeric_extractor_status"]))
+
+
+def test_safe_candidates_dict_wrapper() -> None:
+    wrapper = {"version": 1, "kind": "quality_safety_safe_numeric_candidates", "candidates": [safe_candidate(value=0.2)]}
+    payload = build_quality_safety_job_artifact_payload(
+        candidate_markdown=candidate_markdown(value=0.2),
+        safe_numeric_candidates=wrapper,
+    )
+    assert_safe_shape("safe wrapper", payload)
+    check("safe wrapper: candidate_count 1", payload["safe_numeric_extractor_summary"]["candidate_count"] == 1)
+    check("safe wrapper: recompute passed", payload["component_statuses"]["recompute"] == "passed", serialized(payload["component_statuses"]))
+
+
+def test_safe_candidates_precedence_explicit_wins() -> None:
+    # Both explicit records (correct) AND safe candidates (wrong) present: explicit
+    # numeric records win deterministically; safe candidates are summarized only.
+    payload = build_quality_safety_job_artifact_payload(
+        candidate_markdown=candidate_markdown(value=0.2),
+        numeric_extraction_records=[numeric_record(value=0.2)],  # explicit, correct
+        safe_numeric_candidates=[safe_candidate(value=0.9, rec_id="qs_safe_loser")],  # would be wrong
+    )
+    assert_safe_shape("precedence", payload)
+    check("precedence: safe skipped (superseded)", payload["safe_numeric_extractor_status"] == "skipped", str(payload["safe_numeric_extractor_status"]))
+    check(
+        "precedence: superseded warning",
+        "superseded_by_explicit_records" in payload["safe_numeric_extractor_warnings"],
+        str(payload["safe_numeric_extractor_warnings"]),
+    )
+    # The explicit (correct) records drove recompute; the wrong candidate was ignored.
+    check("precedence: numeric ok", payload["numeric_extraction_status"] == "ok", str(payload["numeric_extraction_status"]))
+    check("precedence: recompute passed", payload["component_statuses"]["recompute"] == "passed", serialized(payload["component_statuses"]))
+    check("precedence: no recompute blocker from candidate", not any(item["component"] == "recompute" for item in payload["blocking_failures"]))
+    check("precedence: shippable", payload["shippable"] is True)
+    # Safe candidate summary still reflects the supplied candidate count.
+    check("precedence: candidate_count 1", payload["safe_numeric_extractor_summary"]["candidate_count"] == 1)
+    assert_no_canary("precedence", payload)
+
+
+def test_safe_candidates_unsupported_method() -> None:
+    payload = build_quality_safety_job_artifact_payload(
+        candidate_markdown=candidate_markdown(value=0.9),
+        safe_numeric_candidates=[safe_candidate(method="entropy", value=0.9, rec_id="qs_safe_unsupported")],
+    )
+    assert_safe_shape("safe unsupported", payload)
+    check("safe unsupported: counted", payload["safe_numeric_extractor_summary"]["unsupported_method_count"] == 1, serialized(payload["safe_numeric_extractor_summary"]))
+    # An unsupported-method claim must NOT be recompute-blocked (no method to verify).
+    check("safe unsupported: no recompute blocker", not any(item["component"] == "recompute" for item in payload["blocking_failures"]), serialized(payload["blocking_failures"]))
+    assert_no_canary("safe unsupported", payload)
+
+
+def test_safe_candidates_not_fabricated_from_coverage() -> None:
+    # Structural coverage present but no safe candidates => safe leg stays skipped;
+    # structural coverage is never converted into safe candidates/records.
+    payload = build_quality_safety_job_artifact_payload(
+        candidate_markdown=candidate_markdown(),
+        source_coverage_report=synthetic_source_coverage_report(),
+    )
+    assert_safe_shape("safe vs coverage", payload)
+    check("safe vs coverage: safe skipped", payload["safe_numeric_extractor_status"] == "skipped")
+    check("safe vs coverage: no safe records", payload["safe_numeric_extractor_summary"]["record_count"] == 0)
+    check("safe vs coverage: coverage present", payload["extraction_coverage_status"] in EXTRACTION_COVERAGE_STATUSES)
+    check("safe vs coverage: numeric not fabricated", payload["numeric_extraction_status"] == "skipped")
+
+
+def test_safe_candidates_hostile_stripped() -> None:
+    tainted = dict(safe_candidate(value=0.2, rec_id="qs_safe_tainted"))
+    tainted.update(
+        {
+            "raw_text": HOSTILE_CANARIES[11],
+            "source_text": "source text private marker",
+            "ocr_text": HOSTILE_CANARIES[5],
+            "table_cells": [HOSTILE_CANARIES[6]],
+            "captions": HOSTILE_CANARIES[7],
+            "formulas_as_text": HOSTILE_CANARIES[12],
+            "evidence_quotes": HOSTILE_CANARIES[10],
+            "filenames": HOSTILE_CANARIES[9],
+            "basenames": "SYNTHETIC_BASENAME_TOKEN",
+            "paths": HOSTILE_CANARIES[0],
+            "urls": HOSTILE_CANARIES[2],
+            "provider_payloads": HOSTILE_CANARIES[8],
+            "runtime_traces": HOSTILE_CANARIES[3],
+            "raw_artifact_json": "RAW_ARTIFACT_JSON_PRIVATE_MARKER",
+        }
+    )
+    payload = build_quality_safety_job_artifact_payload(
+        candidate_markdown=candidate_markdown(value=0.2),
+        safe_numeric_candidates=[tainted],
+    )
+    assert_safe_shape("safe tainted", payload)
+    # The clean computation still recomputes; no canary survives anywhere.
+    check("safe tainted: recompute passed", payload["component_statuses"]["recompute"] == "passed", serialized(payload["component_statuses"]))
+    assert_no_canary("safe tainted", payload)
+
+
+def test_safe_candidates_no_mutation_and_deterministic() -> None:
+    candidates = [safe_candidate(value=0.2), {"raw_text": HOSTILE_CANARIES[11], "fact_type": "numeric", "value": 1.0}]
+    snapshot = serialized(candidates)
+    first = build_quality_safety_job_artifact_payload(candidate_markdown=candidate_markdown(value=0.2), safe_numeric_candidates=candidates)
+    second = build_quality_safety_job_artifact_payload(candidate_markdown=candidate_markdown(value=0.2), safe_numeric_candidates=[safe_candidate(value=0.2), {"raw_text": HOSTILE_CANARIES[11], "fact_type": "numeric", "value": 1.0}])
+    check("safe: caller input not mutated", serialized(candidates) == snapshot)
+    check("safe: deterministic serialization", serialized(first) == serialized(second))
+    assert_no_canary("safe deterministic", first)
+
+
+def test_safe_candidates_sidecar_read() -> None:
+    from pipeline.quality_safety_job_artifact import (
+        SAFE_NUMERIC_CANDIDATES_ARTIFACT_NAME,
+        read_quality_safety_safe_numeric_candidates,
+    )
+
+    with tempfile.TemporaryDirectory() as tmp:
+        job_dir = Path(tmp) / "job"
+        job_dir.mkdir()
+        # No sidecar yet => None => safe leg skipped.
+        check("safe sidecar absent reads None", read_quality_safety_safe_numeric_candidates(job_dir) is None)
+        absent = write_quality_safety_job_artifact(job_dir, candidate_markdown=candidate_markdown())
+        check("safe sidecar absent: safe skipped", absent["safe_numeric_extractor_status"] == "skipped")
+
+        # Drop a synthetic candidate sidecar; the writer must consume it read-only.
+        (job_dir / SAFE_NUMERIC_CANDIDATES_ARTIFACT_NAME).write_text(
+            json.dumps({"candidates": [safe_candidate(value=0.2)]}), encoding="utf-8"
+        )
+        present = write_quality_safety_job_artifact(job_dir, candidate_markdown=candidate_markdown(value=0.2))
+        check("safe sidecar present: extractor ok", present["safe_numeric_extractor_status"] == "ok", str(present["safe_numeric_extractor_status"]))
+        check("safe sidecar present: recompute passed", present["component_statuses"]["recompute"] == "passed", serialized(present["component_statuses"]))
+        check("safe sidecar present: one record", present["safe_numeric_extractor_summary"]["record_count"] == 1)
+        # The writer must NOT create the candidate sidecar — read-only.
+        check("safe sidecar not created by writer", (job_dir / SAFE_NUMERIC_CANDIDATES_ARTIFACT_NAME).exists())
+        assert_no_canary("safe sidecar present", present)
+
+
+def test_production_hook_reads_safe_candidates_sidecar() -> None:
+    from pipeline.quality_safety_job_artifact import SAFE_NUMERIC_CANDIDATES_ARTIFACT_NAME
+    from pipeline.run_markdown_job import _write_quality_safety_unified_qa
+
+    with tempfile.TemporaryDirectory() as tmp:
+        root = Path(tmp) / "job"
+        root.mkdir()
+        job = FakeJob(root)
+        job.clean_md.write_text(candidate_markdown(value=0.9), encoding="utf-8")
+        (root / SAFE_NUMERIC_CANDIDATES_ARTIFACT_NAME).write_text(
+            json.dumps({"candidates": [safe_candidate(value=0.9, rec_id="qs_safe_hook_wrong")]}), encoding="utf-8"  # wrong vs 0.2
+        )
+        _write_quality_safety_unified_qa(job)
+        loaded = json.loads(job.quality_safety_unified_qa_json.read_text(encoding="utf-8"))
+        check("hook safe: extractor ok", loaded["safe_numeric_extractor_status"] == "ok", str(loaded.get("safe_numeric_extractor_status")))
+        check("hook safe: record consumed", loaded["safe_numeric_extractor_summary"]["record_count"] == 1, serialized(loaded["safe_numeric_extractor_summary"]))
+        check(
+            "hook safe: recompute blocker through production path",
+            any(item.get("component") == "recompute" for item in loaded.get("blocking_failures") or []),
+            serialized(loaded.get("blocking_failures")),
+        )
+        check("hook safe: not shippable", loaded["shippable"] is False)
+        check("hook safe: safety floor red", loaded["safety_floor_green"] is False)
+        assert_no_canary("hook safe", loaded)
+
+
 def test_import_hygiene() -> None:
     source = (REPO / "pipeline" / "quality_safety_job_artifact.py").read_text(encoding="utf-8")
     tree = ast.parse(source)
@@ -871,6 +1133,18 @@ def run() -> int:
     test_numeric_records_no_mutation()
     test_numeric_records_sidecar_read()
     test_production_hook_reads_numeric_sidecar()
+    test_safe_candidates_missing_degrades()
+    test_safe_candidates_clean_verified()
+    test_safe_candidates_wrong_blocks()
+    test_safe_candidates_malformed_degrades()
+    test_safe_candidates_dict_wrapper()
+    test_safe_candidates_precedence_explicit_wins()
+    test_safe_candidates_unsupported_method()
+    test_safe_candidates_not_fabricated_from_coverage()
+    test_safe_candidates_hostile_stripped()
+    test_safe_candidates_no_mutation_and_deterministic()
+    test_safe_candidates_sidecar_read()
+    test_production_hook_reads_safe_candidates_sidecar()
     test_import_hygiene()
     print(f"\nquality_safety_job_artifact: {PASS} passed, {FAIL} failed")
     return 1 if FAIL else 0

@@ -591,6 +591,37 @@ no_leak_sweep: clean
 docker_compose_config_run: false
 ```
 
+## Slice 130 — Safe Numeric Extractor Wired into Advisory Artifact Path
+
+Slice 130 wired the Slice 129 extractor into the advisory artifact path. An
+optional, read-only, internal candidate sidecar
+`quality_safety_safe_numeric_candidates.json` feeds the extractor; its records run
+through the existing Slice 126 numeric mapper + producer + recompute verifier. The
+real-disaster e2e harness exercises this through both
+`build_quality_safety_job_artifact_payload(safe_numeric_candidates=...)` and the
+production hook `_write_quality_safety_unified_qa`. Observed closed-vocabulary
+outcome (synthetic):
+
+```
+safe_numeric_extractor_wired_into_artifact: true
+safe_numeric_candidates_input_artifact: quality_safety_safe_numeric_candidates.json
+candidate_sidecar_written_in_production: false
+precedence: explicit_numeric_records_over_safe_candidates
+safe_numeric_extractor_artifact_path_status: ok
+clean_safe_candidate_recompute: passed
+wrong_safe_candidate_recompute: failed_blocking
+unsupported_method_candidate: counted_not_blocked
+structural_coverage_into_candidates: false
+numeric_fact_sheet_extraction_leg_status: partial
+artifact_path_ready: true_for_synthetic_candidates
+production_numeric_extractor_present: sidecar_candidate_only
+judge_ready: false
+repair_ready: false
+next_step: production_safe_candidate_source_or_operator_waiver
+no_leak_sweep: clean
+docker_compose_config_run: false
+```
+
 ## Non-Goals
 
 - The Slice 122 coverage wiring is advisory transparency only; the numeric /

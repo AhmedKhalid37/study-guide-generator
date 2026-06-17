@@ -421,6 +421,32 @@ no_leak_sweep: clean
 docker_compose_config_run: false
 ```
 
+## Slice 130 Candidate-Sidecar Path Status
+
+Slice 130 wired the extractor into the advisory artifact path via an optional,
+read-only, internal candidate sidecar `quality_safety_safe_numeric_candidates.json`
+(list of sanitized candidate dicts, or a dict wrapper under a closed `candidates`
+key). The contract is unchanged: candidate records become
+`quality_safety_numeric_extraction_records`-shaped records through the Slice 125
+mapper (final sanitizer) and flow into the existing Slice 126 numeric leg. Explicit
+`quality_safety_numeric_extraction_records.json` records take precedence over safe
+candidates. No production code writes either sidecar.
+
+```
+candidate_input_artifact: quality_safety_safe_numeric_candidates.json
+candidate_sidecar_wrapper_key: candidates
+extractor_wired_into_artifact: true
+precedence: explicit_numeric_records_over_safe_candidates
+record_shape: slice124_125_contract_unchanged
+final_sanitizer: slice125_mapper
+contract_changed: false
+candidate_sidecar_written_in_production: false
+judge_ready: false
+repair_ready: false
+no_leak_sweep: clean
+docker_compose_config_run: false
+```
+
 ## Non-Goals (Slice 124)
 
 - Not the judge tranche; no judge, no `overall_10`, no `quality_judge.py`,

@@ -5257,3 +5257,51 @@ extractor path (Slice 129) is not the same as wiring it: `judge_ready`/`repair_r
 stay `false` and production numeric extraction coverage is **not** claimed complete
 until Slice 130 wires the extractor into the advisory artifact path (or an operator
 records an explicit waiver).
+
+---
+
+## Safe numeric extractor advisory wiring uses an optional internal candidate sidecar (Slice 130)
+Slice 130 wired the Slice 129 safe numeric extractor into the advisory
+`quality_safety_unified_qa.json` path (`pipeline/quality_safety_job_artifact.py`,
+`pipeline/run_markdown_job.py`). The load-bearing choices:
+
+**Candidate input artifact name = `quality_safety_safe_numeric_candidates.json`.**
+This is a job-local, **optional, read-only, internal** input sidecar — distinct
+from the Slice 126 *records* sidecar `quality_safety_numeric_extraction_records.json`.
+It carries a list of already-sanitized candidate dicts (or a dict wrapper under a
+closed `candidates` key) and is **never created or written by production code**,
+never added to any generic artifact/export/UI list, and never user-facing. The name
+mirrors the existing `quality_safety_numeric_extraction_records.json` convention so
+the two sidecars read symmetrically. It must never carry source/OCR/table/caption
+text, raw formulas, numeric prose snippets, filenames, basenames, paths, URLs,
+provider payloads, or raw runtime/artifact JSON; the Slice 125 mapper (the
+extractor's final sanitizer) strips any such field regardless.
+
+**Deterministic precedence: explicit records over safe candidates.** When both the
+explicit `quality_safety_numeric_extraction_records.json` records and the safe
+candidate sidecar are present, the explicit records **win** the numeric leg; the
+safe candidates are summarized only (`safe_numeric_extractor_status=skipped`,
+warning `superseded_by_explicit_records`) and are **never merged**. Merging two
+numeric sources risks non-deterministic dedupe and double-counting with no safety
+upside, so the rule is a strict precedence, not a union. Safe candidates feed the
+numeric leg *only* when no explicit records exist.
+
+**Summary/status/warnings surfaced; full extractor payload not inlined.** The
+artifact gains three new top-level fields — `safe_numeric_extractor_status`
+(`ok|warning|skipped|partial|failed`), `safe_numeric_extractor_summary` (counts
+only), `safe_numeric_extractor_warnings` (closed tokens only). The extractor's
+sanitized records are *not* duplicated at the top level; they flow internally into
+the existing `numeric_extraction_bundle`, which stays the **canonical** recompute
+evidence. This keeps the artifact bounded, avoids a second copy of the records, and
+preserves a single source of truth for recompute.
+
+**Advisory and honest.** Wiring stays advisory/non-blocking and changes no artifact
+name/kind (`quality_safety_unified_qa.json`, `kind=quality_safety_job_artifact`,
+`advisory=true`). Structural coverage is never converted into candidates/records;
+candidate presence alone never upgrades `shippable`/`safety_floor_green`; a wrong
+candidate *can* redden them via recompute. Because no production source emits
+candidates yet, `production_numeric_extractor_present=sidecar_candidate_only`,
+`numeric_fact_sheet_extraction_leg_status=partial`, and `judge_ready`/`repair_ready`
+stay `false`. Closing the gap needs a separately-designed production safe-candidate
+source (deriving sanitized candidates from already-sanitized structured artifacts)
+or an explicit operator waiver — not a silent widening.

@@ -723,6 +723,7 @@ def _write_quality_safety_unified_qa(job: Job) -> None:
         from pipeline.quality_safety_job_artifact import (
             build_quality_safety_job_artifact_payload,
             read_quality_safety_numeric_extraction_records,
+            read_quality_safety_safe_numeric_candidates,
         )
 
         try:
@@ -730,12 +731,25 @@ def _write_quality_safety_unified_qa(job: Job) -> None:
         except Exception:
             clean_markdown = None
 
+        artifact_parent = Path(job.quality_safety_unified_qa_json).parent
+
         # Slice 126: optionally consume a safe numeric extraction records sidecar
         # if a future numeric extractor has already dropped it next to the
         # artifact (read-only; never created here). Absent today, so the numeric
         # leg degrades honestly to component_missing/skipped.
         numeric_extraction_records = read_quality_safety_numeric_extraction_records(
-            Path(job.quality_safety_unified_qa_json).parent
+            artifact_parent
+        )
+
+        # Slice 130: optionally consume a safe numeric candidate sidecar (read-only;
+        # never created here). When present (and no explicit numeric records sidecar
+        # exists) its sanitized candidates feed the Slice 129 safe numeric extractor,
+        # whose records drive the same recompute leg. Absent today, so the safe leg
+        # degrades honestly to skipped. No OCR/table/source parsing; no clean.md
+        # numeric read; no job-folder scan; numbers are never fabricated from
+        # structural coverage.
+        safe_numeric_candidates = read_quality_safety_safe_numeric_candidates(
+            artifact_parent
         )
 
         # Slice 122: feed the advisory structural extraction-coverage leg from
@@ -746,6 +760,7 @@ def _write_quality_safety_unified_qa(job: Job) -> None:
         payload = build_quality_safety_job_artifact_payload(
             candidate_markdown=clean_markdown,
             numeric_extraction_records=numeric_extraction_records,
+            safe_numeric_candidates=safe_numeric_candidates,
             source_coverage_report=_read_job_json_artifact(job, "source_coverage_report_json"),
             extraction_metadata=_read_job_json_artifact(job, "extraction_metadata_json"),
             visual_inclusion_plan=_read_job_json_artifact(job, "visual_inclusion_plan_json"),
@@ -845,6 +860,15 @@ def _write_quality_safety_unified_qa(job: Job) -> None:
                     "numeric_records": [],
                     "warnings": ["component_missing"],
                 },
+                "safe_numeric_extractor_status": "skipped",
+                "safe_numeric_extractor_summary": {
+                    "candidate_count": 0,
+                    "record_count": 0,
+                    "supported_method_count": 0,
+                    "unsupported_method_count": 0,
+                    "dropped_candidate_count": 0,
+                },
+                "safe_numeric_extractor_warnings": [],
                 "quality_safety_unified_qa": {
                     "version": 1,
                     "kind": "quality_safety_unified_qa",
