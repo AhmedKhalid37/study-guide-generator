@@ -5046,3 +5046,44 @@ pure synthetic harness `test_scripts/test_quality_safety_numeric_extraction_cont
 proves the contract's synthetic records round-trip through the existing producer
 and recompute verifier (and that forbidden fields are stripped); it adds no
 production wiring and does not claim coverage.
+
+## Slice 125 implements the numeric extraction mapper as a pure, unwired translator only
+**Why a standalone mapper module, not a producer change.** Slice 125 adds
+`pipeline/quality_safety_numeric_extraction_mapper.py`, a pure translator from the
+Slice 124 numeric extraction record contract into the existing Slice 117
+`quality_safety_extraction_bundle` shape — leaving the Slice 117 producer and
+Slice 111 verifier untouched. The producer/verifier already accept the bundle
+shape and already sanitize ids/labels/refs/inputs, so the only missing piece was a
+contract→bundle translation; doing it in a new module keeps the load-bearing
+producer/verifier unchanged and the new surface small and import-pure (stdlib +
+the verifier's `SUPPORTED_METHODS` only).
+
+**Why structured numeric inputs only, raw formulas/text excluded.** The mapper
+allow-lists exactly the contract's fields and strips the closed forbidden-field
+list (`raw_text`, `source_text`, `formulas_as_text`, `paths`, `urls`, …),
+flagging `forbidden_field_stripped`. Inside `computation.inputs` only finite
+numbers, nested numeric dicts/lists, and the closed forward-pass activation tokens
+(`linear`/`relu`/`sigmoid`) survive; every other string value is stripped. A
+numeric fact is `value` + structured numeric inputs — never a copied formula
+string. This keeps the numeric leg exercisable later without ever capturing
+private content.
+
+**Why unsupported methods degrade instead of extending the verifier.** When a
+record's `computation.method` is outside the verifier's `SUPPORTED_METHODS` — or
+its inputs are malformed/empty — the mapper demotes the record to a bare numeric
+fact (`computation: null`) with an `unsupported_method` / `malformed_computation`
+warning, rather than inventing a new recompute method. Bare facts are recorded but
+never recompute-verified, so a numeric claim is never falsely marked verified. If a
+real-material spike later surfaces a genuinely needed method, the correct next step
+is a bounded recompute-method extension (one method, pure, tested) before any
+wiring — not widening this mapper.
+
+**Why the mapper stays pure/unwired before production artifact wiring.** Slice 125
+adds no production wiring: it does not touch `quality_safety_job_artifact.py`,
+`run_markdown_job.py`, or `api/server.py`, reads no source/`clean.md`, scans no job
+folders, and calls no providers. `judge_ready`/`repair_ready` stay `false` and the
+numeric leg stays `not_covered` because coverage requires a real **artifact path**
+that produces sanitized numeric records from real material — proved separately in a
+later advisory-wiring slice (Slice 126). The mapper being correct on synthetic
+inputs (`test_scripts/test_quality_safety_numeric_extraction_mapper.py`, 232
+checks) does not by itself close the leg.

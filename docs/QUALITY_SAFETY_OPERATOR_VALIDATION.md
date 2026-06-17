@@ -534,5 +534,33 @@ numeric leg remains `not_covered`; `judge_ready`/`repair_ready` remain `false`.
 }
 ```
 
+## Slice 125 Pure Numeric Extraction Record Mapper v1 (cross-reference)
+
+Slice 125 is a pure / unwired implementation slice and adds **no** operator-runtime
+validation: it does not read private material, run generations, scan job folders,
+or call providers/models/cloud. It implements the numeric extraction mapper
+(`pipeline/quality_safety_numeric_extraction_mapper.py`) and a synthetic harness,
+proving the contract round-trips through the existing producer + recompute verifier.
+The numeric leg remains `not_covered`; `judge_ready`/`repair_ready` remain `false`
+until a real artifact path proves it.
+
+```json
+{
+  "validation_id": "quality_safety_numeric_extraction_record_mapper_v1",
+  "slice": "125",
+  "operator_runtime_validation": "not_applicable_pure_unwired",
+  "production_wiring": "none",
+  "mapper_status": "ready",
+  "synthetic_mapper_harness_checks": "232_passed",
+  "recompute_round_trip": "ok",
+  "clean_real_case_synthetic": "recompute_passed",
+  "single_confident_wrong_numeric_case_synthetic": "recompute_failed_blocking",
+  "numeric_fact_sheet_extraction_leg_covered": false,
+  "judge_ready": false,
+  "repair_ready": false,
+  "next_engineering_slice": "wire_numeric_extraction_mapper_into_advisory_artifact"
+}
+```
+
 Slice 115, Slice 116, Slice 117, Slice 118, Slice 119, Slice 120, Slice 121,
-Slice 122, and Slice 123 are committed. Slice 124 is NOT committed.
+Slice 122, Slice 123, and Slice 124 are committed. Slice 125 is NOT committed.

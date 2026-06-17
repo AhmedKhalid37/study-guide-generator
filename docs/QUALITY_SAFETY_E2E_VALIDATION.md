@@ -443,6 +443,35 @@ no_leak_sweep: clean
 docker_compose_config_run: false
 ```
 
+## Slice 125 — Pure Numeric Extraction Record Mapper v1 (cross-reference)
+
+Slice 125 implements the pure / unwired mapper proposed by the Slice 124 contract
+(`pipeline/quality_safety_numeric_extraction_mapper.py`) plus a synthetic harness
+(`test_scripts/test_quality_safety_numeric_extraction_mapper.py`, 232 passed). The
+mapper translates sanitized numeric extraction records into the existing producer
+extraction-bundle shape and round-trips through the producer + recompute verifier.
+**No production wiring** was added; the numeric leg remains `not_covered` and
+`judge_ready`/`repair_ready` remain `false`.
+
+```
+quality_safety_numeric_extraction_record_mapper_v1: run
+status: ok
+mapper_status: ready
+production_wiring: none
+synthetic_mapper_harness: 232_passed
+supported_methods: weighted_gini total_error amount_of_say softmax cross_entropy forward_pass
+recompute_round_trip: ok
+clean_real_case_synthetic: recompute_passed
+single_confident_wrong_numeric_case_synthetic: recompute_failed_blocking
+bare_observation_false_verify: prevented
+numeric_fact_sheet_extraction_leg_status: not_covered
+judge_ready: false
+repair_ready: false
+next_step: wire_numeric_extraction_mapper_into_advisory_artifact
+no_leak_sweep: clean
+docker_compose_config_run: false
+```
+
 ## Non-Goals
 
 - The Slice 122 coverage wiring is advisory transparency only; the numeric /

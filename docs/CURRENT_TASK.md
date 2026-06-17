@@ -5,7 +5,53 @@
 
 ---
 
-## Slice 124 — **Quality Safety Numeric Extraction Contract Design**, on `slice124-quality-safety-numeric-extraction-contract-design`. **NOT COMMITTED.**
+## Slice 125 — **Pure Numeric Extraction Record Mapper v1**, on `slice125-quality-safety-numeric-extraction-record-mapper-v1`. **NOT COMMITTED.**
+
+- **Part 0 completed:** Slice 124 was committed as `242d580`, fast-forward merged to trunk `chrome-renderer-v1`, and pushed
+  with a normal `git push` (no force-push). Slice 124 defined the safe structured numeric extraction contract
+  (`docs/QUALITY_SAFETY_NUMERIC_EXTRACTION_CONTRACT.md`) and recorded `judge_ready=false`, `repair_ready=false`,
+  `next_step=pure_numeric_extraction_record_mapper_v1`. No docker compose config was run, and the Slice 60 trace stash remains
+  parked and untouched.
+- **Scope:** implement a **pure / unwired** mapper from caller-supplied sanitized numeric extraction records (the Slice 124
+  contract shape) into the existing producer `quality_safety_extraction_bundle` shape, so the Slice 117 fact-sheet producer
+  and Slice 111 recompute verifier can validate structured numeric facts. Closes the schema/mapper gap from Slice 123/124 but
+  adds **no production wiring** — the mapper is not wired into jobs in this slice.
+- **Files changed:** `M docs/CURRENT_TASK.md`, `M docs/DECISIONS.md`, `M docs/NEXT_CHAT_HANDOFF.md`,
+  `M docs/QUALITY_SAFETY_NUMERIC_EXTRACTION_CONTRACT.md`, `M docs/QUALITY_SAFETY_E2E_VALIDATION.md`,
+  `M docs/QUALITY_SAFETY_OPERATOR_VALIDATION.md`, `?? pipeline/quality_safety_numeric_extraction_mapper.py`,
+  `?? test_scripts/test_quality_safety_numeric_extraction_mapper.py`.
+- **Mapper (`pipeline/quality_safety_numeric_extraction_mapper.py`):** pure, stdlib + the verifier's `SUPPORTED_METHODS` only.
+  Public functions: `normalize_quality_safety_numeric_extraction_record`, `build_quality_safety_numeric_extraction_bundle`,
+  `build_empty_quality_safety_numeric_extraction_bundle`, `map_numeric_extraction_bundle_to_fact_sheet_input`. Emits a closed
+  `quality_safety_numeric_extraction_bundle` (`status` ∈ ok|warning|skipped|partial|failed; `summary` counts; numeric-only
+  records with `computation.{method,inputs}` or null) and maps it onto the producer's `computation_records[]` /
+  `numeric_observations[]`. Allow-listed fields only; the closed forbidden-field list is stripped and flagged; structured
+  numeric `computation.inputs` only (string values stripped except the closed forward-pass activation tokens); tolerance
+  capped to `(0.0, 1.0]`; never raises, never mutates caller input.
+- **Supported methods:** exactly the verifier's `SUPPORTED_METHODS` — `weighted_gini`, `total_error`, `amount_of_say`,
+  `softmax`, `cross_entropy`, `forward_pass`. No new recompute methods were invented; unsupported methods **degrade** (demoted
+  to a bare numeric fact with `unsupported_method`), never extend the verifier.
+- **Recompute compatibility (proven by tests):** mapper bundle → producer → recompute verifier works for all six supported
+  methods; `clean_real_case` synthetic equivalent recompute-verified (`passed`); `single_confident_wrong_numeric_case`
+  synthetic equivalent recompute-`failed` with a blocking failure and no contradiction/leak; bare numeric observations are
+  never falsely recompute-verified; unsupported/malformed-inputs records degrade without crashing.
+- **No production wiring:** no `quality_safety_job_artifact.py` / `run_markdown_job.py` / `api/server.py` change, no routes, no
+  frontend change, no generic artifact selector row, no OCR/table/source/`clean.md` reads, no provider/model/cloud calls.
+- **judge_ready=false, repair_ready=false** — unchanged; the numeric leg stays `not_covered` until a real **artifact path**
+  proves it with safe structured concept/fact data. This slice does **not** claim numeric coverage.
+- **Validation:** mapper harness 232 passed; numeric extraction contract 27 passed; fact-sheet producer 182 passed; fact sheet
+  61 passed; recompute verifier 99 passed; real-disaster harness 41 passed; `compileall api pipeline test_scripts` OK;
+  `git diff --check` clean; no-leak sweep clean. No docker compose config was run; Docker not required (pure module + synthetic
+  tests).
+- **Next recommended slice:** **Slice 126 — Wire Numeric Extraction Mapper into Advisory Artifact** (advisory, non-blocking)
+  unless a real-material spike first surfaces an unsupported method (then a bounded recompute-method extension comes first).
+- **Out of scope / unchanged:** no judge scoring, `overall_10`, repair loop, or blocking gate; no `quality_judge.py`,
+  `nn3.json`, `judge_response_nn3.json`, or `quality.jsonl`; no generation/prompt/provider/request-schema/render/export/OCR/
+  table/visual/Ask Guide change. **Slice 125 remains NOT committed.**
+
+---
+
+## Slice 124 — **Quality Safety Numeric Extraction Contract Design**, on `slice124-quality-safety-numeric-extraction-contract-design`. **Committed `242d580`, merged + pushed to `chrome-renderer-v1`.**
 
 - **Part 0 completed:** Slice 123 was committed as `624a70e`, fast-forward merged to trunk `chrome-renderer-v1`, and pushed
   with a normal `git push` (no force-push). Slice 123 validated the advisory `quality_safety_unified_qa.json` artifact path
@@ -49,7 +95,7 @@
 - **Out of scope / unchanged:** no production mapper wired, no OCR/table parsing, no source/`clean.md` read, no routes, no
   frontend change, no generic artifact selector row, no generation/prompt/provider/request-schema/render/export/OCR/table/
   visual/Ask Guide change, no judge scoring, `overall_10`, repair loop, or blocking gate; no `quality_judge.py`, `nn3.json`,
-  `judge_response_nn3.json`, or `quality.jsonl`. **Slice 124 remains NOT committed.**
+  `judge_response_nn3.json`, or `quality.jsonl`. **Committed `242d580`, merged + pushed to `chrome-renderer-v1`.**
 
 ---
 

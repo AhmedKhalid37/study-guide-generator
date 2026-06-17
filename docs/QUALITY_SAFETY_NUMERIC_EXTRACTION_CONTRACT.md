@@ -226,6 +226,66 @@ Acceptance shape:
 > (one method, pure, tested) before any mapper wiring — recommend that explicitly
 > rather than widening Slice 125.
 
+## Slice 125 Implementation Status — Pure Numeric Extraction Record Mapper v1
+
+Slice 125 implements the **pure / unwired** mapper proposed above
+(`pipeline/quality_safety_numeric_extraction_mapper.py`). No production wiring was
+added; the no-leak boundary above is preserved.
+
+Public functions:
+
+- `normalize_quality_safety_numeric_extraction_record(record, *, index=0)` — one
+  caller record → one closed numeric record (or `None` for non-mappings).
+- `build_quality_safety_numeric_extraction_bundle(records, *, max_items=None,
+  source_quality="synthetic")` → normalized `quality_safety_numeric_extraction_bundle`.
+- `build_empty_quality_safety_numeric_extraction_bundle(reason="component_missing")`
+  → empty/skipped bundle for the common "no numeric component" case.
+- `map_numeric_extraction_bundle_to_fact_sheet_input(bundle, *, lecture_id=None)`
+  → existing `quality_safety_extraction_bundle` shape for the Slice 117 producer.
+
+Mapper behavior (all proven by
+`test_scripts/test_quality_safety_numeric_extraction_mapper.py`, 232 checks):
+
+- Allow-listed fields only; the closed forbidden-field list is stripped and flagged
+  `forbidden_field_stripped`; no synthetic canary leaks into any produced structure.
+- Supported `computation` survives with **numeric-only** `inputs` (string values
+  stripped except the closed forward-pass activation tokens). Unsupported methods
+  and malformed/empty inputs **demote** to a bare numeric fact (`computation: null`)
+  with `unsupported_method` / `malformed_computation` — never a fabricated pass.
+- Round-trips through `run_quality_safety_fact_sheet_producer` and
+  `build_quality_safety_recompute_report` for all six supported methods.
+- `clean_real_case` synthetic equivalent → recompute `passed`;
+  `single_confident_wrong_numeric_case` synthetic equivalent → recompute `failed`
+  with a blocking failure and no contradiction/leak; bare numeric observations are
+  never falsely recompute-verified.
+- Invalid numeric values (NaN/Infinity/strings/bools) → `null` +
+  `invalid_numeric_value`; out-of-cap / non-positive tolerance → `null` +
+  `invalid_tolerance` (cap `(0.0, 1.0]`); deterministic serialization; `max_items`
+  caps records; caller input is never mutated; import-pure (stdlib + the verifier's
+  `SUPPORTED_METHODS` only).
+
+```
+quality_safety_numeric_extraction_record_mapper_v1: implemented
+mapper_status: ready
+production_wiring: none
+supported_methods: weighted_gini total_error amount_of_say softmax cross_entropy forward_pass
+recompute_round_trip: ok
+clean_real_case_synthetic: recompute_passed
+single_confident_wrong_numeric_case_synthetic: recompute_failed_blocking
+bare_observation_false_verify: prevented
+numeric_fact_sheet_extraction_leg_status: not_covered
+judge_ready: false
+repair_ready: false
+next_step: wire_numeric_extraction_mapper_into_advisory_artifact
+no_leak_sweep: clean
+docker_compose_config_run: false
+```
+
+The numeric leg remains `not_covered`: the mapper is correct on synthetic inputs
+but is **not** wired into the production artifact path. Coverage is only claimable
+once a real artifact path produces sanitized numeric records from real material
+(Slice 126).
+
 ## Non-Goals (Slice 124)
 
 - Not the judge tranche; no judge, no `overall_10`, no `quality_judge.py`,
