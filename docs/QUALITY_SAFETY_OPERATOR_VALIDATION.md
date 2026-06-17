@@ -869,6 +869,51 @@ the adapter and a synthetic-only harness.
 
 Slice 128 is committed as `8534784` and merged to `chrome-renderer-v1`.
 
+## Slice 134 Wire Structured Numeric Candidate Adapter into Advisory Artifact Path (cross-reference)
+
+Slice 134 is an advisory-wiring slice with **no operator-runtime validation of its
+own** beyond synthetic artifact-path harnesses. Production code optionally reads
+the exact job-local sidecar `quality_safety_structured_numeric_candidates.json`
+read-only, writes no structured/safe/records sidecars, parses no OCR/table/source
+text, reads no `clean.md` numbers, scans no job folders arbitrarily, and calls no
+providers/models/cloud. A real/private operator numeric validation pass remains a
+separate operator activity and is gated on a future producer or explicit operator
+waiver.
+
+```json
+{
+  "validation_id": "quality_safety_structured_numeric_adapter_artifact_wiring",
+  "slice": "134",
+  "operator_runtime_validation": "not_applicable_synthetic_artifact_path_only",
+  "structured_numeric_candidate_adapter_wired_into_artifact": true,
+  "structured_numeric_candidates_input_artifact": "quality_safety_structured_numeric_candidates.json",
+  "structured_sidecar_written_in_production": false,
+  "producer_implemented": false,
+  "precedence": "explicit_records_over_safe_candidates_over_structured_candidates",
+  "structured_numeric_candidate_adapter_artifact_path_status": "ok",
+  "safe_numeric_extractor_artifact_path_status": "ok",
+  "numeric_fact_sheet_extraction_leg_status": "partial",
+  "artifact_path_ready": "true_for_synthetic_structured_candidates",
+  "production_numeric_extractor_present": "structured_artifact_sidecar_only",
+  "single_confident_wrong_numeric_case": "recompute_blocked",
+  "clean_real_case": "recompute_passed",
+  "legacy_confused_wrong_case": "partial",
+  "unsupported_method_candidate": "counted_not_blocked",
+  "structural_coverage_into_structured_candidates": false,
+  "advisory_non_blocking": true,
+  "artifact_name_unchanged": true,
+  "judge_ready": false,
+  "repair_ready": false,
+  "next_step": "future_structured_numeric_candidate_producer_design_or_operator_waiver",
+  "raw_text_committed": false,
+  "raw_paths_committed": false,
+  "runtime_outputs_committed": false,
+  "provider_calls": false,
+  "judge_calls": false,
+  "repair_calls": false
+}
+```
+
 ## Slice 129 Pure Safe Numeric Extractor v1 (cross-reference)
 
 Slice 129 is a pure/unwired implementation slice with **no operator-runtime

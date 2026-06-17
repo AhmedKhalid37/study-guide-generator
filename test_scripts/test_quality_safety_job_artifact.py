@@ -118,6 +118,7 @@ ALLOWED_IMPORTS = {
     "pipeline.quality_safety_numeric_extraction_mapper",
     "pipeline.quality_safety_recompute_verifier",
     "pipeline.quality_safety_safe_numeric_extractor",
+    "pipeline.quality_safety_structured_numeric_candidate_adapter",
     "pipeline.quality_safety_unified_qa",
 }
 SAFE_EXTRACTOR_STATUSES = {"ok", "warning", "skipped", "partial", "failed"}
@@ -132,6 +133,26 @@ SAFE_EXTRACTOR_WARNINGS = {
 SAFE_EXTRACTOR_SUMMARY_KEYS = {
     "candidate_count",
     "record_count",
+    "supported_method_count",
+    "unsupported_method_count",
+    "dropped_candidate_count",
+}
+STRUCTURED_ADAPTER_STATUSES = {"ok", "warning", "skipped", "partial", "failed"}
+STRUCTURED_ADAPTER_WARNINGS = {
+    "component_missing",
+    "structured_numeric_candidates_missing",
+    "empty_structured_numeric_artifact",
+    "malformed_structured_numeric_artifact_input",
+    "unsupported_artifact_kind",
+    "missing_candidates",
+    "invalid_candidate_dropped",
+    "max_items_reached",
+    "superseded_by_explicit_records",
+    "superseded_by_safe_candidates",
+}
+STRUCTURED_ADAPTER_SUMMARY_KEYS = {
+    "input_candidate_count",
+    "output_candidate_count",
     "supported_method_count",
     "unsupported_method_count",
     "dropped_candidate_count",
@@ -1087,6 +1108,283 @@ def test_production_hook_reads_safe_candidates_sidecar() -> None:
         assert_no_canary("hook safe", loaded)
 
 
+# --- Slice 134: structured candidate adapter artifact wiring -----------------
+
+def assert_structured_shape(name: str, payload: dict[str, Any]) -> None:
+    check(
+        f"{name}: structured status closed",
+        payload["structured_numeric_candidate_adapter_status"] in STRUCTURED_ADAPTER_STATUSES,
+        str(payload.get("structured_numeric_candidate_adapter_status")),
+    )
+    summary = payload["structured_numeric_candidate_adapter_summary"]
+    check(f"{name}: structured summary keys", set(summary) == STRUCTURED_ADAPTER_SUMMARY_KEYS, str(set(summary)))
+    check(
+        f"{name}: structured summary non-negative ints",
+        all(isinstance(v, int) and not isinstance(v, bool) and v >= 0 for v in summary.values()),
+        str(summary),
+    )
+    check(
+        f"{name}: structured warnings closed",
+        all(w in STRUCTURED_ADAPTER_WARNINGS for w in payload["structured_numeric_candidate_adapter_warnings"]),
+        str(payload["structured_numeric_candidate_adapter_warnings"]),
+    )
+    check(f"{name}: no top-level adapted candidates", "structured_numeric_candidate_adapter_payload" not in payload)
+    check(f"{name}: artifact name unchanged", payload["artifact_name"] == ARTIFACT_NAME)
+    assert_job_warnings_closed(name, payload)
+
+
+def structured_artifact(candidates: list[Any]) -> dict[str, Any]:
+    return {
+        "version": 1,
+        "kind": "quality_safety_structured_numeric_candidates",
+        "status": "ok",
+        "source_quality": "structured_numeric_artifact",
+        "summary": {"candidate_count": len(candidates)},
+        "candidates": candidates,
+        "warnings": [],
+    }
+
+
+def structured_candidate(
+    *,
+    method: str = "weighted_gini",
+    value: float = 0.2,
+    rec_id: str = "qs_struct_clean",
+) -> dict[str, Any]:
+    candidate = numeric_record(method=method, value=value, rec_id=rec_id)
+    candidate["page_ref"] = "page_1"
+    return candidate
+
+
+def test_structured_candidates_missing_degrades() -> None:
+    payload = build_quality_safety_job_artifact_payload(candidate_markdown=candidate_markdown())
+    assert_structured_shape("structured missing", payload)
+    check(
+        "structured missing: status skipped",
+        payload["structured_numeric_candidate_adapter_status"] == "skipped",
+        str(payload["structured_numeric_candidate_adapter_status"]),
+    )
+    check(
+        "structured missing: warning",
+        payload["structured_numeric_candidate_adapter_warnings"] == ["structured_numeric_candidates_missing"],
+        str(payload["structured_numeric_candidate_adapter_warnings"]),
+    )
+    check("structured missing: safe skipped", payload["safe_numeric_extractor_status"] == "skipped")
+    check("structured missing: numeric skipped", payload["numeric_extraction_status"] == "skipped")
+    assert_no_canary("structured missing", payload)
+
+
+def test_structured_candidates_clean_verified() -> None:
+    payload = build_quality_safety_job_artifact_payload(
+        candidate_markdown=candidate_markdown(value=0.2),
+        structured_numeric_candidates=structured_artifact([structured_candidate(value=0.2)]),
+    )
+    assert_structured_shape("structured clean", payload)
+    assert_safe_shape("structured clean safe", payload)
+    assert_numeric_shape("structured clean numeric", payload)
+    check("structured clean: adapter ok", payload["structured_numeric_candidate_adapter_status"] == "ok")
+    check("structured clean: adapter output count 1", payload["structured_numeric_candidate_adapter_summary"]["output_candidate_count"] == 1)
+    check("structured clean: safe extractor ok", payload["safe_numeric_extractor_status"] == "ok")
+    check("structured clean: numeric ok", payload["numeric_extraction_status"] == "ok")
+    check("structured clean: recompute passed", payload["component_statuses"]["recompute"] == "passed", serialized(payload["component_statuses"]))
+    check("structured clean: shippable", payload["shippable"] is True)
+    assert_no_canary("structured clean", payload)
+
+
+def test_structured_candidates_wrong_blocks() -> None:
+    payload = build_quality_safety_job_artifact_payload(
+        candidate_markdown=candidate_markdown(value=0.9),
+        structured_numeric_candidates=structured_artifact([structured_candidate(value=0.9, rec_id="qs_struct_wrong")]),
+    )
+    assert_structured_shape("structured wrong", payload)
+    check("structured wrong: adapter ok", payload["structured_numeric_candidate_adapter_status"] == "ok")
+    check("structured wrong: safe extractor ok", payload["safe_numeric_extractor_status"] == "ok")
+    check(
+        "structured wrong: recompute blocker",
+        any(item["component"] == "recompute" and item["check_id"] == "weighted_gini" for item in payload["blocking_failures"]),
+        serialized(payload["blocking_failures"]),
+    )
+    check("structured wrong: status failed", payload["status"] == "failed", str(payload["status"]))
+    check("structured wrong: not shippable", payload["shippable"] is False)
+    check("structured wrong: safety floor red", payload["safety_floor_green"] is False)
+    assert_no_canary("structured wrong", payload)
+
+
+def test_structured_candidates_malformed_degrades() -> None:
+    payload = build_quality_safety_job_artifact_payload(
+        candidate_markdown=candidate_markdown(),
+        structured_numeric_candidates={"kind": "wrong", "candidates": []},
+    )
+    assert_structured_shape("structured malformed", payload)
+    check(
+        "structured malformed: failed",
+        payload["structured_numeric_candidate_adapter_status"] == "failed",
+        str(payload["structured_numeric_candidate_adapter_status"]),
+    )
+    check(
+        "structured malformed: warning",
+        "unsupported_artifact_kind" in payload["structured_numeric_candidate_adapter_warnings"],
+        str(payload["structured_numeric_candidate_adapter_warnings"]),
+    )
+    check("structured malformed: safe skipped", payload["safe_numeric_extractor_status"] == "skipped")
+    check("structured malformed: numeric skipped", payload["numeric_extraction_status"] == "skipped")
+    assert_no_canary("structured malformed", payload)
+
+
+def test_structured_candidates_precedence_explicit_and_safe_win() -> None:
+    explicit_wins = build_quality_safety_job_artifact_payload(
+        candidate_markdown=candidate_markdown(value=0.2),
+        numeric_extraction_records=[numeric_record(value=0.2)],
+        safe_numeric_candidates=[safe_candidate(value=0.9, rec_id="qs_safe_loser")],
+        structured_numeric_candidates=structured_artifact([structured_candidate(value=0.9, rec_id="qs_struct_loser")]),
+    )
+    assert_structured_shape("structured precedence explicit", explicit_wins)
+    check("structured precedence explicit: adapter skipped", explicit_wins["structured_numeric_candidate_adapter_status"] == "skipped")
+    check(
+        "structured precedence explicit: superseded",
+        "superseded_by_explicit_records" in explicit_wins["structured_numeric_candidate_adapter_warnings"],
+        str(explicit_wins["structured_numeric_candidate_adapter_warnings"]),
+    )
+    check("structured precedence explicit: safe superseded", "superseded_by_explicit_records" in explicit_wins["safe_numeric_extractor_warnings"])
+    check("structured precedence explicit: recompute passed", explicit_wins["component_statuses"]["recompute"] == "passed")
+    check("structured precedence explicit: shippable", explicit_wins["shippable"] is True)
+
+    safe_wins = build_quality_safety_job_artifact_payload(
+        candidate_markdown=candidate_markdown(value=0.2),
+        safe_numeric_candidates=[safe_candidate(value=0.2, rec_id="qs_safe_winner")],
+        structured_numeric_candidates=structured_artifact([structured_candidate(value=0.9, rec_id="qs_struct_loser")]),
+    )
+    assert_structured_shape("structured precedence safe", safe_wins)
+    check("structured precedence safe: adapter skipped", safe_wins["structured_numeric_candidate_adapter_status"] == "skipped")
+    check(
+        "structured precedence safe: superseded",
+        "superseded_by_safe_candidates" in safe_wins["structured_numeric_candidate_adapter_warnings"],
+        str(safe_wins["structured_numeric_candidate_adapter_warnings"]),
+    )
+    check("structured precedence safe: safe extractor ok", safe_wins["safe_numeric_extractor_status"] == "ok")
+    check("structured precedence safe: recompute passed", safe_wins["component_statuses"]["recompute"] == "passed")
+    check("structured precedence safe: no structured blocker", not safe_wins["blocking_failures"])
+    assert_no_canary("structured precedence explicit", explicit_wins)
+    assert_no_canary("structured precedence safe", safe_wins)
+
+
+def test_structured_candidates_unsupported_method() -> None:
+    payload = build_quality_safety_job_artifact_payload(
+        candidate_markdown=candidate_markdown(value=0.9),
+        structured_numeric_candidates=structured_artifact(
+            [structured_candidate(method="entropy", value=0.9, rec_id="qs_struct_unsupported")]
+        ),
+    )
+    assert_structured_shape("structured unsupported", payload)
+    check("structured unsupported: adapter warning", payload["structured_numeric_candidate_adapter_status"] == "warning")
+    check("structured unsupported: counted", payload["structured_numeric_candidate_adapter_summary"]["unsupported_method_count"] == 1)
+    check("structured unsupported: safe counted", payload["safe_numeric_extractor_summary"]["unsupported_method_count"] == 1)
+    check(
+        "structured unsupported: no recompute blocker",
+        not any(item["component"] == "recompute" for item in payload["blocking_failures"]),
+        serialized(payload["blocking_failures"]),
+    )
+    assert_no_canary("structured unsupported", payload)
+
+
+def test_structured_candidates_not_fabricated_from_coverage() -> None:
+    payload = build_quality_safety_job_artifact_payload(
+        candidate_markdown=candidate_markdown(),
+        source_coverage_report=synthetic_source_coverage_report(),
+        table_candidates_manifest={"status": "ok", "candidate_count": 5},
+    )
+    assert_structured_shape("structured vs coverage", payload)
+    check("structured vs coverage: adapter skipped", payload["structured_numeric_candidate_adapter_status"] == "skipped")
+    check("structured vs coverage: no adapter output", payload["structured_numeric_candidate_adapter_summary"]["output_candidate_count"] == 0)
+    check("structured vs coverage: safe skipped", payload["safe_numeric_extractor_status"] == "skipped")
+    check("structured vs coverage: numeric skipped", payload["numeric_extraction_status"] == "skipped")
+    check("structured vs coverage: coverage present", payload["extraction_coverage_status"] in EXTRACTION_COVERAGE_STATUSES)
+    check("structured vs coverage: coverage numeric 0", payload["extraction_coverage_summary"]["numeric_observation_count"] == 0)
+
+
+def test_structured_candidates_hostile_stripped_no_mutation_and_deterministic() -> None:
+    tainted = structured_candidate(value=0.2, rec_id="qs_struct_tainted")
+    tainted.update(
+        {
+            "raw_text": HOSTILE_CANARIES[11],
+            "source_text": "source text private marker",
+            "guide_text": "CANDIDATE_PRIVATE_TEXT_MARKER",
+            "ocr_text": HOSTILE_CANARIES[5],
+            "page_text": "PAGE_TEXT_PRIVATE_JOB_ARTIFACT_MARKER",
+            "table_cells": [HOSTILE_CANARIES[6]],
+            "captions": HOSTILE_CANARIES[7],
+            "formulas_as_text": HOSTILE_CANARIES[12],
+            "evidence_quotes": HOSTILE_CANARIES[10],
+            "filenames": HOSTILE_CANARIES[9],
+            "basenames": "SYNTHETIC_BASENAME_TOKEN",
+            "paths": HOSTILE_CANARIES[0],
+            "urls": HOSTILE_CANARIES[2],
+            "provider_payloads": HOSTILE_CANARIES[8],
+            "runtime_traces": HOSTILE_CANARIES[3],
+            "raw_exceptions": HOSTILE_CANARIES[1],
+            "raw_artifact_json": "RAW_ARTIFACT_JSON_PRIVATE_MARKER",
+        }
+    )
+    artifact = structured_artifact([tainted])
+    snapshot = serialized(artifact)
+    first = build_quality_safety_job_artifact_payload(
+        candidate_markdown=candidate_markdown(value=0.2),
+        structured_numeric_candidates=artifact,
+    )
+    second = build_quality_safety_job_artifact_payload(
+        candidate_markdown=candidate_markdown(value=0.2),
+        structured_numeric_candidates=structured_artifact([dict(tainted)]),
+    )
+    assert_structured_shape("structured tainted", first)
+    check("structured tainted: caller input unchanged", serialized(artifact) == snapshot)
+    check("structured tainted: deterministic", serialized(first) == serialized(second))
+    check("structured tainted: recompute passed", first["component_statuses"]["recompute"] == "passed", serialized(first["component_statuses"]))
+    assert_no_canary("structured tainted", first)
+
+
+def test_structured_candidates_sidecar_read_and_hook() -> None:
+    from pipeline.quality_safety_job_artifact import (
+        STRUCTURED_NUMERIC_CANDIDATES_ARTIFACT_NAME,
+        read_quality_safety_structured_numeric_candidates,
+    )
+    from pipeline.run_markdown_job import _write_quality_safety_unified_qa
+
+    with tempfile.TemporaryDirectory() as tmp:
+        job_dir = Path(tmp) / "job"
+        job_dir.mkdir()
+        check("structured sidecar absent reads None", read_quality_safety_structured_numeric_candidates(job_dir) is None)
+        absent = write_quality_safety_job_artifact(job_dir, candidate_markdown=candidate_markdown())
+        check("structured sidecar absent: skipped", absent["structured_numeric_candidate_adapter_status"] == "skipped")
+
+        (job_dir / STRUCTURED_NUMERIC_CANDIDATES_ARTIFACT_NAME).write_text(
+            json.dumps(structured_artifact([structured_candidate(value=0.2)])),
+            encoding="utf-8",
+        )
+        present = write_quality_safety_job_artifact(job_dir, candidate_markdown=candidate_markdown(value=0.2))
+        check("structured sidecar present: adapter ok", present["structured_numeric_candidate_adapter_status"] == "ok")
+        check("structured sidecar present: safe ok", present["safe_numeric_extractor_status"] == "ok")
+        check("structured sidecar present: recompute passed", present["component_statuses"]["recompute"] == "passed")
+        assert_no_canary("structured sidecar present", present)
+
+    with tempfile.TemporaryDirectory() as tmp:
+        root = Path(tmp) / "job"
+        root.mkdir()
+        job = FakeJob(root)
+        job.clean_md.write_text(candidate_markdown(value=0.9), encoding="utf-8")
+        (root / STRUCTURED_NUMERIC_CANDIDATES_ARTIFACT_NAME).write_text(
+            json.dumps(structured_artifact([structured_candidate(value=0.9, rec_id="qs_struct_hook_wrong")])),
+            encoding="utf-8",
+        )
+        _write_quality_safety_unified_qa(job)
+        loaded = json.loads(job.quality_safety_unified_qa_json.read_text(encoding="utf-8"))
+        check("hook structured: adapter ok", loaded["structured_numeric_candidate_adapter_status"] == "ok")
+        check("hook structured: safe ok", loaded["safe_numeric_extractor_status"] == "ok")
+        check("hook structured: recompute blocker", any(item.get("component") == "recompute" for item in loaded.get("blocking_failures") or []))
+        check("hook structured: not shippable", loaded["shippable"] is False)
+        check("hook structured: safety floor red", loaded["safety_floor_green"] is False)
+        assert_no_canary("hook structured", loaded)
+
+
 def test_import_hygiene() -> None:
     source = (REPO / "pipeline" / "quality_safety_job_artifact.py").read_text(encoding="utf-8")
     tree = ast.parse(source)
@@ -1145,6 +1443,15 @@ def run() -> int:
     test_safe_candidates_no_mutation_and_deterministic()
     test_safe_candidates_sidecar_read()
     test_production_hook_reads_safe_candidates_sidecar()
+    test_structured_candidates_missing_degrades()
+    test_structured_candidates_clean_verified()
+    test_structured_candidates_wrong_blocks()
+    test_structured_candidates_malformed_degrades()
+    test_structured_candidates_precedence_explicit_and_safe_win()
+    test_structured_candidates_unsupported_method()
+    test_structured_candidates_not_fabricated_from_coverage()
+    test_structured_candidates_hostile_stripped_no_mutation_and_deterministic()
+    test_structured_candidates_sidecar_read_and_hook()
     test_import_hygiene()
     print(f"\nquality_safety_job_artifact: {PASS} passed, {FAIL} failed")
     return 1 if FAIL else 0

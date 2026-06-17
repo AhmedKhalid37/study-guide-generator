@@ -163,6 +163,26 @@ def numeric_records(*, value: float) -> list[dict[str, Any]]:
     ]
 
 
+def structured_candidates(*, value: float, method: str = "weighted_gini") -> dict[str, Any]:
+    """Future structured numeric candidate sidecar shape (Slice 133/134)."""
+    record = dict(numeric_records(value=value)[0])
+    record["id"] = "qs_struct_disaster"
+    record["page_ref"] = "page_1"
+    record["computation"] = {
+        "method": method,
+        "inputs": {"groups": [{"yes": 3, "no": 0}, {"yes": 1, "no": 4}]},
+    }
+    return {
+        "version": 1,
+        "kind": "quality_safety_structured_numeric_candidates",
+        "status": "ok",
+        "source_quality": "structured_numeric_artifact",
+        "summary": {"candidate_count": 1},
+        "candidates": [record],
+        "warnings": [],
+    }
+
+
 def fixture_spec(*, value: float) -> dict[str, Any]:
     return {
         "version": 1,
@@ -482,10 +502,108 @@ def main() -> int:
     check("safe hook: not shippable", safe_hooked.get("shippable") is False)
     check("safe hook: no judge/repair/overall keys", _no_forbidden_keys(safe_hooked))
 
+    # --- Slice 134: structured adapter wired into the advisory artifact --------
+    # A future structured numeric candidate sidecar is read-only, adapted through
+    # Slice 133, then fed into the existing Slice 129 safe extractor path. Explicit
+    # records and safe candidates still win deterministically.
+    structured_clean = build_quality_safety_job_artifact_payload(
+        candidate_markdown=candidate_markdown(value=0.2),
+        structured_numeric_candidates=structured_candidates(value=0.2),
+        **coverage,
+    )
+    check(
+        "structured clean: adapter ok",
+        structured_clean.get("structured_numeric_candidate_adapter_status") == "ok",
+        json.dumps(structured_clean.get("structured_numeric_candidate_adapter_status")),
+    )
+    check("structured clean: safe extractor ok", structured_clean.get("safe_numeric_extractor_status") == "ok")
+    check("structured clean: recompute passed", structured_clean.get("component_statuses", {}).get("recompute") == "passed")
+    check("structured clean: shippable", structured_clean.get("shippable") is True)
+    check("structured clean: no judge/repair/overall keys", _no_forbidden_keys(structured_clean))
+
+    structured_wrong = build_quality_safety_job_artifact_payload(
+        candidate_markdown=candidate_markdown(value=0.9),
+        structured_numeric_candidates=structured_candidates(value=0.9),
+        **coverage,
+    )
+    check(
+        "structured wrong: recompute blocker through artifact path",
+        any(
+            item.get("component") == "recompute" and item.get("check_id") == "weighted_gini"
+            for item in structured_wrong.get("blocking_failures") or []
+        ),
+        json.dumps(structured_wrong.get("blocking_failures")),
+    )
+    check("structured wrong: status failed", structured_wrong.get("status") == "failed", json.dumps(structured_wrong.get("status")))
+    check("structured wrong: not shippable", structured_wrong.get("shippable") is False)
+    check("structured wrong: safety floor red", structured_wrong.get("safety_floor_green") is False)
+    check("structured wrong: no judge/repair/overall keys", _no_forbidden_keys(structured_wrong))
+
+    structured_legacy = build_quality_safety_job_artifact_payload(
+        candidate_markdown=candidate_markdown(value=0.9),
+        structured_numeric_candidates=structured_candidates(value=0.9, method="entropy"),
+        **coverage,
+    )
+    check(
+        "structured legacy unsupported: partial/warning",
+        structured_legacy.get("structured_numeric_candidate_adapter_status") in {"warning", "partial"},
+        json.dumps(structured_legacy.get("structured_numeric_candidate_adapter_status")),
+    )
+    check(
+        "structured legacy unsupported: no recompute blocker",
+        not any(item.get("component") == "recompute" for item in structured_legacy.get("blocking_failures") or []),
+        json.dumps(structured_legacy.get("blocking_failures")),
+    )
+
+    structured_precedence = build_quality_safety_job_artifact_payload(
+        candidate_markdown=candidate_markdown(value=0.2),
+        numeric_extraction_records=numeric_records(value=0.2),
+        safe_numeric_candidates=numeric_records(value=0.9),
+        structured_numeric_candidates=structured_candidates(value=0.9),
+        **coverage,
+    )
+    check(
+        "structured precedence: explicit wins",
+        structured_precedence.get("component_statuses", {}).get("recompute") == "passed",
+        json.dumps(structured_precedence.get("component_statuses")),
+    )
+    check(
+        "structured precedence: adapter superseded",
+        "superseded_by_explicit_records"
+        in (structured_precedence.get("structured_numeric_candidate_adapter_warnings") or []),
+        json.dumps(structured_precedence.get("structured_numeric_candidate_adapter_warnings")),
+    )
+    check("structured precedence: shippable", structured_precedence.get("shippable") is True)
+
+    from pipeline.quality_safety_job_artifact import STRUCTURED_NUMERIC_CANDIDATES_ARTIFACT_NAME
+
+    with tempfile.TemporaryDirectory() as tmp:
+        root = Path(tmp) / "job"
+        root.mkdir()
+        job = _FakeJob(root)
+        job.clean_md.write_text(candidate_markdown(value=0.9), encoding="utf-8")
+        (root / STRUCTURED_NUMERIC_CANDIDATES_ARTIFACT_NAME).write_text(
+            json.dumps(structured_candidates(value=0.9)), encoding="utf-8"
+        )
+        _write_quality_safety_unified_qa(job)
+        structured_hooked = json.loads(job.quality_safety_unified_qa_json.read_text(encoding="utf-8"))
+
+    check("structured hook: adapter ok", structured_hooked.get("structured_numeric_candidate_adapter_status") == "ok")
+    check("structured hook: safe extractor ok", structured_hooked.get("safe_numeric_extractor_status") == "ok")
+    check(
+        "structured hook: recompute blocker through production hook",
+        any(item.get("component") == "recompute" for item in structured_hooked.get("blocking_failures") or []),
+        json.dumps(structured_hooked.get("blocking_failures")),
+    )
+    check("structured hook: not shippable", structured_hooked.get("shippable") is False)
+    check("structured hook: no judge/repair/overall keys", _no_forbidden_keys(structured_hooked))
+
     # --- No-leak across every produced payload ---------------------------------
     blob = json.dumps(
         [clean, wrong, legacy, hooked, numeric_clean, numeric_wrong, numeric_hooked,
-         safe_clean, safe_wrong, safe_precedence, safe_hooked]
+         safe_clean, safe_wrong, safe_precedence, safe_hooked, structured_clean,
+         structured_wrong, structured_legacy, structured_precedence,
+         structured_hooked]
     )
     check("no synthetic canary anywhere", SYNTHETIC_CANARY not in blob)
 
@@ -562,6 +680,35 @@ def main() -> int:
                 "judge_ready": False,
                 "repair_ready": False,
                 "next_step": "production_safe_candidate_source_or_operator_waiver",
+            },
+            sort_keys=True,
+        )
+    )
+
+    # Closed-vocabulary Slice 134 outcome for the docs (display only).
+    print("\nSlice 134 structured numeric adapter wiring (closed-vocabulary):")
+    print(
+        "  "
+        + json.dumps(
+            {
+                "structured_numeric_candidate_adapter_wired_into_artifact": True,
+                "structured_numeric_candidates_input_artifact": "quality_safety_structured_numeric_candidates.json",
+                "precedence": "explicit_records_over_safe_candidates_over_structured_candidates",
+                "structured_numeric_candidate_adapter_artifact_path_status": "ok",
+                "safe_numeric_extractor_artifact_path_status": "ok",
+                "clean_structured_candidate_recompute": "passed",
+                "wrong_structured_candidate_recompute": "failed_blocking",
+                "legacy_confused_wrong_case": "partial",
+                "structured_adapter_status_without_sidecar": hooked.get(
+                    "structured_numeric_candidate_adapter_status"
+                ),
+                "numeric_fact_sheet_extraction_leg_status": "partial",
+                "artifact_path_ready": "true_for_synthetic_structured_candidates",
+                "production_numeric_extractor_present": "structured_artifact_sidecar_only",
+                "structural_coverage_into_structured_candidates": False,
+                "judge_ready": False,
+                "repair_ready": False,
+                "next_step": "future_structured_numeric_candidate_producer_design_or_operator_waiver",
             },
             sort_keys=True,
         )

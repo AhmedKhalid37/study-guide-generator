@@ -230,3 +230,33 @@ The adapter accepts only `kind=quality_safety_structured_numeric_candidates`,
 strips unknown top-level fields and forbidden candidate fields, and emits a
 safe-candidate-compatible payload. It does not read the future artifact from disk
 and does not write `quality_safety_safe_numeric_candidates.json`.
+
+## Slice 134 Advisory Artifact Wiring Status
+
+Slice 134 wires the adapter into the advisory artifact path through the optional
+read-only sidecar `quality_safety_structured_numeric_candidates.json`.
+
+```yaml
+structured_numeric_candidate_adapter_artifact_path_status: ok
+structured_numeric_candidates_input_artifact: quality_safety_structured_numeric_candidates.json
+artifact_path_ready: true_for_synthetic_structured_candidates
+precedence: explicit_records_over_safe_candidates_over_structured_candidates
+summary_only_artifact_fields: true
+full_adapter_payload_top_level: false
+producer_implemented: false
+production_numeric_extractor_present: structured_artifact_sidecar_only
+structured_artifact_written_in_production: false
+ocr_table_source_parsing_added: false
+clean_md_numeric_read_added: false
+single_confident_wrong_numeric_case: failed_blocking
+clean_real_case: passed
+legacy_confused_wrong_case: partial
+no_leak_boundary: adapter_then_safe_extractor_then_mapper
+judge_ready: false
+repair_ready: false
+next_step: future_structured_numeric_candidate_producer_design_or_operator_waiver
+```
+
+This makes the future artifact path testable with synthetic structured candidates,
+but it does not implement a producer and does not claim complete production
+numeric extraction coverage.

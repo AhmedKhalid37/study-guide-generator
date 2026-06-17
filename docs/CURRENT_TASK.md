@@ -5,7 +5,48 @@
 
 ---
 
-## Slice 133 — **Pure Structured Numeric Candidate Artifact Adapter v1**, on `slice133-quality-safety-structured-numeric-candidate-adapter-v1`. **NOT COMMITTED.**
+## Slice 134 — **Wire Structured Numeric Candidate Adapter into Advisory Artifact Path**, on `slice134-wire-structured-numeric-candidate-adapter-advisory-artifact`. **NOT COMMITTED.**
+
+- **Part 0 completed:** Slice 133 was committed as `990179c`, fast-forward merged to trunk `chrome-renderer-v1`, and pushed with
+  a normal `git push` (no force-push). Final trunk status before branching Slice 134 was clean; no docker compose config was run;
+  the Slice 60 trace stash remains parked and untouched.
+- **Scope:** advisory/non-blocking wiring only. `quality_safety_job_artifact.py` and `run_markdown_job.py` now optionally read
+  the exact job-local sidecar `quality_safety_structured_numeric_candidates.json`, pass it through the Slice 133 adapter, and feed
+  the adapted payload into the existing Slice 129 safe-candidate path. **No future producer was implemented, no structured
+  sidecar is written, no OCR/table/source parsing was added, no `clean.md` numeric read was added, and no production numeric
+  extraction coverage is claimed complete.**
+- **Precedence:** deterministic and non-merged: `quality_safety_numeric_extraction_records.json` >
+  `quality_safety_safe_numeric_candidates.json` > `quality_safety_structured_numeric_candidates.json`.
+- **Artifact shape:** `quality_safety_unified_qa.json` keeps the same exact artifact name and now adds
+  `structured_numeric_candidate_adapter_status`, `structured_numeric_candidate_adapter_summary`, and
+  `structured_numeric_candidate_adapter_warnings`. These are summary/status/warnings only; adapted candidates flow internally
+  into `safe_numeric_extractor_*` / `numeric_extraction_*`.
+- **Observed synthetic outcomes:** structured clean candidate -> adapter `ok`, safe extractor `ok`, recompute `passed`;
+  structured wrong candidate -> recompute blocker / `failed` / `shippable=false` / `safety_floor_green=false`;
+  unsupported structured method -> partial/warning, counted, and not falsely recompute-blocked.
+- **Closed-vocabulary outcome:** `structured_numeric_candidate_adapter_artifact_path_status=ok`;
+  `safe_numeric_extractor_artifact_path_status=ok`; `numeric_fact_sheet_extraction_leg_status=partial`;
+  `artifact_path_ready=true_for_synthetic_structured_candidates`;
+  `production_numeric_extractor_present=structured_artifact_sidecar_only`; `judge_ready=false`; `repair_ready=false`.
+- **Files changed:** `M docs/CURRENT_TASK.md`, `M docs/DECISIONS.md`, `M docs/NEXT_CHAT_HANDOFF.md`,
+  `M docs/QUALITY_SAFETY_FUTURE_STRUCTURED_NUMERIC_ARTIFACT_DESIGN.md`,
+  `M docs/QUALITY_SAFETY_PRODUCTION_SAFE_CANDIDATE_SOURCE_DISCOVERY.md`,
+  `M docs/QUALITY_SAFETY_SAFE_NUMERIC_EXTRACTOR_DESIGN.md`,
+  `M docs/QUALITY_SAFETY_NUMERIC_EXTRACTION_CONTRACT.md`, `M docs/QUALITY_SAFETY_E2E_VALIDATION.md`,
+  `M docs/QUALITY_SAFETY_OPERATOR_VALIDATION.md`, `M pipeline/quality_safety_job_artifact.py`,
+  `M pipeline/run_markdown_job.py`, `M test_scripts/test_quality_safety_job_artifact.py`,
+  `M test_scripts/validate_quality_safety_real_disaster_e2e.py`.
+- **Next recommended slice:** **Slice 135 — Future Structured Numeric Candidate Producer Design or Operator Waiver**, unless
+  review finds a blocker. Do not claim production numeric extraction coverage complete until a real producer exists and is
+  validated.
+- **Out of scope / unchanged:** no `api/server.py` change, no routes, no frontend/UI change, no generic artifact listing, no
+  generation/prompt/provider/request-schema/render/export/OCR/table/visual/Ask Guide change, no judge/`overall_10`/repair/
+  blocking gate, no `quality_judge.py`, `nn3.json`, `judge_response_nn3.json`, or `quality.jsonl`. **Slice 134 remains NOT
+  committed.**
+
+---
+
+## Slice 133 — **Pure Structured Numeric Candidate Artifact Adapter v1**, on `slice133-quality-safety-structured-numeric-candidate-adapter-v1`. **Committed `990179c`, merged + pushed to `chrome-renderer-v1`.**
 
 - **Part 0 completed:** Slice 132 was committed as `9d48656`, fast-forward merged to trunk `chrome-renderer-v1`, and pushed with
   a normal `git push` (no force-push). Final trunk status before branching Slice 133 was clean; no docker compose config was run;
@@ -48,7 +89,7 @@
 - **Out of scope / unchanged:** no `quality_safety_job_artifact.py` change, no `run_markdown_job.py` change, no `api/server.py`
   change, no routes, no frontend change, no production sidecar reader/writer, no generation/prompt/provider/request-schema/render/
   export/OCR/table/visual/Ask Guide change, no judge/`overall_10`/repair/blocking gate, no `quality_judge.py`, `nn3.json`,
-  `judge_response_nn3.json`, or `quality.jsonl`. **Slice 133 remains NOT committed.**
+  `judge_response_nn3.json`, or `quality.jsonl`. **Slice 133 is committed as `990179c` and merged to `chrome-renderer-v1`.**
 
 ---
 

@@ -5387,3 +5387,42 @@ supported records block, and the existing advisory wrapper path accepts the
 adapter output. Judge baseline and repair remain blocked:
 `judge_ready=false`, `repair_ready=false`. The next bounded slice is wiring the
 adapter into the advisory artifact path.
+
+---
+
+## Structured numeric adapter wiring is summary-only and advisory (Slice 134)
+Slice 134 wires the Slice 133 adapter into the advisory
+`quality_safety_unified_qa.json` path through the exact optional read-only
+job-local sidecar `quality_safety_structured_numeric_candidates.json`.
+
+The deterministic candidate precedence is:
+
+1. `quality_safety_numeric_extraction_records.json`
+2. `quality_safety_safe_numeric_candidates.json`
+3. `quality_safety_structured_numeric_candidates.json`
+
+These sources are never merged in Slice 134. Explicit records supersede safe and
+structured candidates; safe candidates supersede structured candidates. The
+structured artifact is internal/non-user-facing, is not added to generic artifact
+or export lists, and production code does not create or write it.
+
+The unified artifact exposes only
+`structured_numeric_candidate_adapter_status`,
+`structured_numeric_candidate_adapter_summary`, and
+`structured_numeric_candidate_adapter_warnings`. Full adapter output is not
+duplicated top-level; adapted candidates flow internally into the existing safe
+numeric extractor path, then the numeric mapper, fact-sheet producer, and
+recompute verifier. This preserves the existing field hierarchy:
+`extraction_coverage_*` is structural coverage only,
+`structured_numeric_candidate_adapter_*` is the bridge status only,
+`safe_numeric_extractor_*` is safe candidate extraction status only, and
+`numeric_extraction_*` is canonical recompute evidence.
+
+Slice 134 remains advisory/non-blocking and implements no future producer. It
+does not parse OCR/table/source text, read `clean.md` as a numeric source, scan job
+folders arbitrarily, call providers/models/cloud, add judge scoring, or implement
+repair. Observed synthetic artifact-path outcome:
+`structured_numeric_candidate_adapter_artifact_path_status=ok`,
+`artifact_path_ready=true_for_synthetic_structured_candidates`,
+`production_numeric_extractor_present=structured_artifact_sidecar_only`,
+`judge_ready=false`, and `repair_ready=false`.

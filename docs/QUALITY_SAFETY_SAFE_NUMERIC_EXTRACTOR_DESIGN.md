@@ -405,3 +405,30 @@ next_step: wire_structured_numeric_candidate_adapter_into_advisory_artifact_path
 The adapter does not replace the safe numeric extractor. It feeds only the
 extractor's existing `candidates` wrapper and leaves final field/value
 sanitization to the Slice 129/125 path.
+
+## Slice 134 Structured Adapter to Safe Extractor Path
+
+Slice 134 wires the structured adapter output into the existing safe extractor
+path only when explicit records and safe candidates are absent.
+
+```
+structured_numeric_candidates_input_artifact: quality_safety_structured_numeric_candidates.json
+adapter_to_safe_extractor_path: wired_advisory
+safe_numeric_extractor_artifact_path_status: ok
+structured_numeric_candidate_adapter_artifact_path_status: ok
+precedence: explicit_records_over_safe_candidates_over_structured_candidates
+summary_only_structured_adapter_fields: true
+structured_artifact_written_in_production: false
+producer_implemented: false
+structural_coverage_into_candidates: false
+clean_structured_candidate_recompute: passed
+wrong_structured_candidate_recompute: failed_blocking
+unsupported_method_candidate: counted_not_blocked
+judge_ready: false
+repair_ready: false
+next_step: future_structured_numeric_candidate_producer_design_or_operator_waiver
+```
+
+The safe extractor remains the pre-record sanitizer, and the numeric mapper
+remains the record sanitizer. Slice 134 does not parse raw OCR/table/source text
+or read `clean.md` for numbers.

@@ -26,6 +26,9 @@ from pipeline.quality_safety_recompute_verifier import verify_quality_safety_fac
 from pipeline.quality_safety_safe_numeric_extractor import (
     extract_quality_safety_numeric_records_from_candidates,
 )
+from pipeline.quality_safety_structured_numeric_candidate_adapter import (
+    adapt_structured_numeric_candidates_to_safe_candidates,
+)
 from pipeline.quality_safety_unified_qa import build_quality_safety_unified_qa_report
 
 VERSION = 1
@@ -49,6 +52,36 @@ NUMERIC_RECORDS_ARTIFACT_NAME = "quality_safety_numeric_extraction_records.json"
 # payloads, or raw runtime/artifact JSON; the Slice 125 mapper (the extractor's
 # final sanitizer) strips any such fields regardless.
 SAFE_NUMERIC_CANDIDATES_ARTIFACT_NAME = "quality_safety_safe_numeric_candidates.json"
+
+# Slice 134: exact-name, job-local *input* sidecar for a future producer-owned
+# structured numeric candidate artifact. It is read-only and optional — never
+# created or written in production by this slice — and feeds only the Slice 133
+# adapter, which then feeds the existing Slice 129 safe candidate path. It is
+# internal/non-user-facing and is never added to generic artifact/export lists or
+# any UI row.
+STRUCTURED_NUMERIC_CANDIDATES_ARTIFACT_NAME = "quality_safety_structured_numeric_candidates.json"
+
+STRUCTURED_ADAPTER_STATUSES = frozenset({"ok", "warning", "skipped", "partial", "failed"})
+STRUCTURED_ADAPTER_WARNING_ORDER = (
+    "component_missing",
+    "structured_numeric_candidates_missing",
+    "empty_structured_numeric_artifact",
+    "malformed_structured_numeric_artifact_input",
+    "unsupported_artifact_kind",
+    "missing_candidates",
+    "invalid_candidate_dropped",
+    "max_items_reached",
+    "superseded_by_explicit_records",
+    "superseded_by_safe_candidates",
+)
+STRUCTURED_ADAPTER_WARNINGS = frozenset(STRUCTURED_ADAPTER_WARNING_ORDER)
+STRUCTURED_ADAPTER_SUMMARY_KEYS = (
+    "input_candidate_count",
+    "output_candidate_count",
+    "supported_method_count",
+    "unsupported_method_count",
+    "dropped_candidate_count",
+)
 
 # Closed status / warning vocabulary for the advisory safe numeric extractor leg
 # (Slice 130). Statuses mirror the Slice 129 extractor payload; ``warnings`` mirror
@@ -117,6 +150,7 @@ def build_quality_safety_job_artifact_payload(
     extraction_bundle: Any = None,
     numeric_extraction_records: Any = None,
     safe_numeric_candidates: Any = None,
+    structured_numeric_candidates: Any = None,
     fixture_spec: Any = None,
     canonical_fixture: Any = None,
     job_metadata: Any = None,
@@ -163,6 +197,15 @@ def build_quality_safety_job_artifact_payload(
     folders, never writes sidecars, and never invents numeric facts from structural
     coverage. The leg degrades to a closed ``skipped`` / ``failed`` state when the
     candidate sidecar is absent or malformed.
+
+    ``structured_numeric_candidates`` (Slice 134) is an optional, caller-supplied
+    future-artifact dict with kind ``quality_safety_structured_numeric_candidates``.
+    It is adapted through the Slice 133 pure adapter only when explicit numeric
+    records and safe candidates are both absent. Precedence is deterministic:
+    explicit records > safe candidates > structured candidates. The structured
+    adapter section stores only status, count summary, and closed warning tokens;
+    adapted candidates flow internally into the safe extractor and are not
+    duplicated top-level.
     """
     warnings: set[str] = set()
     coverage_bundle = _build_coverage_bundle(
@@ -174,10 +217,27 @@ def build_quality_safety_job_artifact_payload(
         max_items=max_items,
         warnings=warnings,
     )
-    # Slice 130: deterministic precedence — explicit numeric records win; safe
-    # candidates feed the numeric leg only when no explicit records were supplied.
+    structured_safe_candidates, structured_status, structured_summary, structured_warnings = (
+        _build_structured_numeric_adapter_section(
+            structured_numeric_candidates,
+            explicit_records_present=numeric_extraction_records is not None,
+            safe_candidates_present=safe_numeric_candidates is not None,
+            max_items=max_items,
+        )
+    )
+    effective_safe_candidates = safe_numeric_candidates
+    if (
+        numeric_extraction_records is None
+        and effective_safe_candidates is None
+        and structured_safe_candidates is not None
+    ):
+        effective_safe_candidates = structured_safe_candidates
+
+    # Slice 130/134: deterministic precedence — explicit numeric records win;
+    # safe candidates win over structured candidates; structured candidates feed
+    # the numeric leg only through adapter -> safe extractor when both are absent.
     safe_records, safe_status, safe_summary, safe_warnings = _build_safe_numeric_section(
-        safe_numeric_candidates,
+        effective_safe_candidates,
         explicit_records_present=numeric_extraction_records is not None,
         max_items=max_items,
     )
@@ -271,6 +331,9 @@ def build_quality_safety_job_artifact_payload(
             warnings.add("max_items_reached")
         return _payload(
             unified, warnings, coverage_bundle, numeric_bundle,
+            structured_status=structured_status,
+            structured_summary=structured_summary,
+            structured_warnings=structured_warnings,
             safe_status=safe_status, safe_summary=safe_summary, safe_warnings=safe_warnings,
         )
     except Exception:
@@ -278,6 +341,9 @@ def build_quality_safety_job_artifact_payload(
         warnings.add("component_degraded")
         return _payload(
             unified, warnings, coverage_bundle, numeric_bundle,
+            structured_status=structured_status,
+            structured_summary=structured_summary,
+            structured_warnings=structured_warnings,
             safe_status=safe_status, safe_summary=safe_summary, safe_warnings=safe_warnings,
         )
 
@@ -289,6 +355,7 @@ def write_quality_safety_job_artifact(
     extraction_bundle: Any = None,
     numeric_extraction_records: Any = None,
     safe_numeric_candidates: Any = None,
+    structured_numeric_candidates: Any = None,
     fixture_spec: Any = None,
     canonical_fixture: Any = None,
     job_metadata: Any = None,
@@ -306,18 +373,24 @@ def write_quality_safety_job_artifact(
     already exists under ``job_dir`` (never created here). Likewise, when
     ``safe_numeric_candidates`` is not supplied, the optional read-only sidecar
     ``quality_safety_safe_numeric_candidates.json`` is consumed if it already exists
-    under ``job_dir`` (never created here). Explicit numeric records take precedence
-    over safe candidates.
+    under ``job_dir`` (never created here). When ``structured_numeric_candidates``
+    is not supplied, the optional read-only sidecar
+    ``quality_safety_structured_numeric_candidates.json`` is consumed if it already
+    exists under ``job_dir`` (never created here). Precedence is explicit numeric
+    records > safe candidates > structured candidates; sources are never merged.
     """
     if numeric_extraction_records is None:
         numeric_extraction_records = read_quality_safety_numeric_extraction_records(job_dir)
     if safe_numeric_candidates is None:
         safe_numeric_candidates = read_quality_safety_safe_numeric_candidates(job_dir)
+    if structured_numeric_candidates is None:
+        structured_numeric_candidates = read_quality_safety_structured_numeric_candidates(job_dir)
     payload = build_quality_safety_job_artifact_payload(
         candidate_markdown=candidate_markdown,
         extraction_bundle=extraction_bundle,
         numeric_extraction_records=numeric_extraction_records,
         safe_numeric_candidates=safe_numeric_candidates,
+        structured_numeric_candidates=structured_numeric_candidates,
         fixture_spec=fixture_spec,
         canonical_fixture=canonical_fixture,
         job_metadata=job_metadata,
@@ -375,12 +448,35 @@ def read_quality_safety_safe_numeric_candidates(job_dir: Any) -> Any:
         return None
 
 
+def read_quality_safety_structured_numeric_candidates(job_dir: Any) -> Any:
+    """Read the optional structured numeric candidate sidecar; never raise.
+
+    Returns the parsed dict from ``quality_safety_structured_numeric_candidates``
+    ``.json`` under ``job_dir`` when it exists, else ``None``. Read-only: the
+    sidecar is an *input* candidate for a future producer and is never created or
+    written here. The returned value is sanitized downstream by the Slice 133
+    adapter, then by the Slice 129 extractor and Slice 125 mapper; no raw content
+    is trusted.
+    """
+    try:
+        path = Path(job_dir) / STRUCTURED_NUMERIC_CANDIDATES_ARTIFACT_NAME
+        if not path.exists():
+            return None
+        data = json.loads(path.read_text(encoding="utf-8"))
+        return data if isinstance(data, dict) else None
+    except Exception:
+        return None
+
+
 def _payload(
     unified_report: Any,
     warnings: set[str],
     coverage_bundle: Any = None,
     numeric_bundle: Any = None,
     *,
+    structured_status: str = "skipped",
+    structured_summary: Any = None,
+    structured_warnings: Any = None,
     safe_status: str = "skipped",
     safe_summary: Any = None,
     safe_warnings: Any = None,
@@ -423,6 +519,11 @@ def _payload(
         "numeric_extraction_summary": _numeric_summary(numeric),
         "numeric_extraction_warnings": _numeric_warnings(numeric),
         "numeric_extraction_bundle": numeric,
+        "structured_numeric_candidate_adapter_status": (
+            structured_status if structured_status in STRUCTURED_ADAPTER_STATUSES else "failed"
+        ),
+        "structured_numeric_candidate_adapter_summary": _structured_summary(structured_summary),
+        "structured_numeric_candidate_adapter_warnings": _structured_warnings(structured_warnings),
         "safe_numeric_extractor_status": safe_status if safe_status in SAFE_EXTRACTOR_STATUSES else "failed",
         "safe_numeric_extractor_summary": _safe_summary(safe_summary),
         "safe_numeric_extractor_warnings": _safe_warnings(safe_warnings),
@@ -506,6 +607,70 @@ def _build_safe_numeric_section(
     return payload, status, summary, _ordered_safe(section_warnings)
 
 
+def _build_structured_numeric_adapter_section(
+    structured_numeric_candidates: Any,
+    *,
+    explicit_records_present: bool,
+    safe_candidates_present: bool,
+    max_items: Any,
+) -> tuple[Any, str, dict[str, int], list[str]]:
+    """Adapt the future structured sidecar into safe candidates; never raise.
+
+    Returns ``(adapter_payload, status, summary, warnings)`` where
+    ``adapter_payload`` is fed into the safe numeric extractor only when it is the
+    winning source. Explicit records and safe candidates supersede it; Slice 134
+    never merges numeric sources.
+    """
+    if structured_numeric_candidates is None:
+        return (
+            None,
+            "skipped",
+            _empty_structured_summary(),
+            ["structured_numeric_candidates_missing"],
+        )
+
+    if explicit_records_present:
+        return (
+            None,
+            "skipped",
+            _empty_structured_summary(),
+            ["superseded_by_explicit_records"],
+        )
+    if safe_candidates_present:
+        return (
+            None,
+            "skipped",
+            _empty_structured_summary(),
+            ["superseded_by_safe_candidates"],
+        )
+
+    try:
+        payload = adapt_structured_numeric_candidates_to_safe_candidates(
+            structured_numeric_candidates,
+            max_items=max_items,
+        )
+    except Exception:
+        payload = None
+    if not isinstance(payload, dict):
+        return (
+            None,
+            "failed",
+            _empty_structured_summary(),
+            ["malformed_structured_numeric_artifact_input"],
+        )
+
+    summary = _structured_summary(payload.get("summary"))
+    section_warnings = _structured_warnings(payload.get("warnings"))
+    status = payload.get("status") if payload.get("status") in STRUCTURED_ADAPTER_STATUSES else "failed"
+    if any(
+        token in section_warnings
+        for token in ("malformed_structured_numeric_artifact_input", "unsupported_artifact_kind")
+    ):
+        status = "failed"
+
+    return payload, status, summary, section_warnings
+
+
 def _coerce_safe_candidates(value: Any) -> Any:
     """Extract a candidates list from a caller value; let the extractor judge rest.
 
@@ -522,6 +687,22 @@ def _coerce_safe_candidates(value: Any) -> Any:
 
 def _empty_safe_summary() -> dict[str, int]:
     return {key: 0 for key in SAFE_EXTRACTOR_SUMMARY_KEYS}
+
+
+def _empty_structured_summary() -> dict[str, int]:
+    return {key: 0 for key in STRUCTURED_ADAPTER_SUMMARY_KEYS}
+
+
+def _structured_summary(summary: Any) -> dict[str, int]:
+    safe = summary if isinstance(summary, dict) else {}
+    return {key: _int(safe.get(key)) for key in STRUCTURED_ADAPTER_SUMMARY_KEYS}
+
+
+def _structured_warnings(warnings: Any) -> list[str]:
+    if not isinstance(warnings, list):
+        return []
+    safe = {token for token in warnings if isinstance(token, str) and token in STRUCTURED_ADAPTER_WARNINGS}
+    return [token for token in STRUCTURED_ADAPTER_WARNING_ORDER if token in safe]
 
 
 def _safe_summary(summary: Any) -> dict[str, int]:

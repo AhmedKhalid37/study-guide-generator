@@ -231,3 +231,29 @@ next_step: wire_structured_numeric_candidate_adapter_into_advisory_artifact_path
 The adapter proves that the future artifact shape can bridge into the existing
 safe-candidate path. It does not change the Slice 131 discovery conclusion that no
 current production source emits structured numeric candidates.
+
+## Slice 134 Structured Candidate Artifact Path Status
+
+Slice 134 adds advisory artifact-path wiring for the future structured sidecar,
+but still does not add a production producer.
+
+```yaml
+future_artifact: quality_safety_structured_numeric_candidates.json
+structured_artifact_read_from_jobs: true
+structured_artifact_written_in_production: false
+structured_numeric_candidate_adapter_artifact_path_status: ok
+safe_numeric_extractor_artifact_path_status: ok
+precedence: explicit_records_over_safe_candidates_over_structured_candidates
+production_safe_source_present: false
+production_numeric_extractor_present: structured_artifact_sidecar_only
+structural_coverage_into_structured_candidates: false
+single_confident_wrong_numeric_case: failed_blocking
+clean_real_case: passed
+legacy_confused_wrong_case: partial
+judge_ready: false
+repair_ready: false
+next_step: future_structured_numeric_candidate_producer_design_or_operator_waiver
+```
+
+The discovery conclusion remains unchanged: the repo now has an advisory bridge
+for a future structured sidecar, not an existing production source that emits it.

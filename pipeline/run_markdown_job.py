@@ -724,6 +724,7 @@ def _write_quality_safety_unified_qa(job: Job) -> None:
             build_quality_safety_job_artifact_payload,
             read_quality_safety_numeric_extraction_records,
             read_quality_safety_safe_numeric_candidates,
+            read_quality_safety_structured_numeric_candidates,
         )
 
         try:
@@ -752,6 +753,15 @@ def _write_quality_safety_unified_qa(job: Job) -> None:
             artifact_parent
         )
 
+        # Slice 134: optionally consume a future structured numeric candidate
+        # sidecar (read-only; never created here). It feeds only adapter -> safe
+        # extractor when explicit records and safe candidates are both absent.
+        # No OCR/table/source parsing; no clean.md numeric read; no job-folder
+        # scan; numeric facts are never fabricated from structural coverage.
+        structured_numeric_candidates = read_quality_safety_structured_numeric_candidates(
+            artifact_parent
+        )
+
         # Slice 122: feed the advisory structural extraction-coverage leg from
         # already-produced, already-sanitized sibling JSON artifacts (read-only).
         # This is advisory transparency only — it never feeds the concept/fact
@@ -761,6 +771,7 @@ def _write_quality_safety_unified_qa(job: Job) -> None:
             candidate_markdown=clean_markdown,
             numeric_extraction_records=numeric_extraction_records,
             safe_numeric_candidates=safe_numeric_candidates,
+            structured_numeric_candidates=structured_numeric_candidates,
             source_coverage_report=_read_job_json_artifact(job, "source_coverage_report_json"),
             extraction_metadata=_read_job_json_artifact(job, "extraction_metadata_json"),
             visual_inclusion_plan=_read_job_json_artifact(job, "visual_inclusion_plan_json"),
@@ -860,6 +871,17 @@ def _write_quality_safety_unified_qa(job: Job) -> None:
                     "numeric_records": [],
                     "warnings": ["component_missing"],
                 },
+                "structured_numeric_candidate_adapter_status": "skipped",
+                "structured_numeric_candidate_adapter_summary": {
+                    "input_candidate_count": 0,
+                    "output_candidate_count": 0,
+                    "supported_method_count": 0,
+                    "unsupported_method_count": 0,
+                    "dropped_candidate_count": 0,
+                },
+                "structured_numeric_candidate_adapter_warnings": [
+                    "structured_numeric_candidates_missing"
+                ],
                 "safe_numeric_extractor_status": "skipped",
                 "safe_numeric_extractor_summary": {
                     "candidate_count": 0,

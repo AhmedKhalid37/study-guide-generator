@@ -525,6 +525,33 @@ Synthetic validation covers adapter output through the existing extractor,
 numeric mapper, fact-sheet producer, recompute verifier, and the advisory artifact
 builder's existing `safe_numeric_candidates` wrapper.
 
+## Slice 134 Structured Candidate Artifact Path Relationship
+
+Slice 134 wires the future structured sidecar into the advisory artifact path
+without changing the numeric extraction record contract.
+
+```
+contract_changed: false
+structured_numeric_candidates_input_artifact: quality_safety_structured_numeric_candidates.json
+artifact_path_wired: true
+records_shape_changed: false
+precedence: explicit_records_over_safe_candidates_over_structured_candidates
+structured_adapter_summary_only_in_unified_artifact: true
+safe_extractor_remains_final_pre_record_sanitizer: true
+numeric_mapper_remains_final_record_sanitizer: true
+supported_methods_changed: false
+unsupported_methods: degrade_unverified
+producer_implemented: false
+production_numeric_extractor_present: structured_artifact_sidecar_only
+judge_ready: false
+repair_ready: false
+next_step: future_structured_numeric_candidate_producer_design_or_operator_waiver
+```
+
+Structured candidates can now exercise the advisory recompute path when supplied
+as a synthetic/read-only sidecar. They are not produced by production code in this
+slice and are never derived from structural coverage metadata.
+
 ## Non-Goals (Slice 124)
 
 - Not the judge tranche; no judge, no `overall_10`, no `quality_judge.py`,

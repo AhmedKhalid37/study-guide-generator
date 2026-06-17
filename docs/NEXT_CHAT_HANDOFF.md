@@ -6,46 +6,51 @@
 > stable overview see `PROJECT_CONTEXT.md`; canonical brief is `../CLAUDE.md`.
 
 ## Current position
-- **Working tree:** **Slice 133 (Pure Structured Numeric Candidate Artifact Adapter v1) — UNCOMMITTED (per instruction)** on branch
-  `slice133-quality-safety-structured-numeric-candidate-adapter-v1`, branched from updated `chrome-renderer-v1` after Slice 132
-  was committed, fast-forward merged, and pushed. **Slice 132 is trunk commit `9d48656`**.
-  - **Part 0 completed:** Slice 132 was committed as `9d48656`, fast-forward merged to `chrome-renderer-v1`, and pushed with a
+- **Working tree:** **Slice 134 (Wire Structured Numeric Candidate Adapter into Advisory Artifact Path) — UNCOMMITTED (per
+  instruction)** on branch `slice134-wire-structured-numeric-candidate-adapter-advisory-artifact`, branched from updated
+  `chrome-renderer-v1` after Slice 133 was committed, fast-forward merged, and pushed. **Slice 133 is trunk commit `990179c`**.
+  - **Part 0 completed:** Slice 133 was committed as `990179c`, fast-forward merged to `chrome-renderer-v1`, and pushed with a
     normal `git push` (no force-push). Final trunk status before branching was clean; no docker compose config was run; the Slice
     60 trace stash remains parked and untouched.
-  - **Slice 133 scope:** pure/unwired adapter only. It adds
-    `pipeline/quality_safety_structured_numeric_candidate_adapter.py` and
-    `test_scripts/test_quality_safety_structured_numeric_candidate_adapter.py`. It reads only caller-supplied dict/list values and
-    emits a `quality_safety_safe_numeric_candidates` payload under the existing `candidates` wrapper. No production wiring,
-    sidecar read/write, job-folder scan, source/OCR/table/caption parsing, `clean.md` numeric read, provider/model/cloud, judge,
-    repair, or blocking.
-  - **Adapter output:** `version=1`, `kind=quality_safety_safe_numeric_candidates`, closed `status`, closed `source_quality`,
-    count-only `summary` (`input_candidate_count`, `output_candidate_count`, `supported_method_count`,
-    `unsupported_method_count`, `dropped_candidate_count`), sanitized `candidates`, closed `warnings`.
-  - **Supported methods:** unchanged: `weighted_gini`, `total_error`, `amount_of_say`, `softmax`, `cross_entropy`,
-    `forward_pass`. Unsupported methods degrade through the existing extractor/mapper and do not become verifier extensions.
-  - **Compatibility:** synthetic structured artifact -> adapter -> safe numeric extractor -> numeric mapper -> fact-sheet producer
-    -> recompute verifier passes for clean supported candidates and blocks wrong supported candidates. The adapter output also
-    works as `build_quality_safety_job_artifact_payload(safe_numeric_candidates=adapter_payload)`, proving the existing
-    `{"candidates": [...]}` wrapper path without production wiring.
-  - **Real-disaster synthetic equivalents:** `single_confident_wrong_numeric_case=failed_blocking`; `clean_real_case=passed`;
-    `legacy_confused_wrong_case=partial` for unsupported method, with supported-method variant blocking.
-  - **Closed-vocabulary outcome:** `adapter_status=ready`; `adapter_implemented=true`; `producer_implemented=false`;
-    `production_wiring_changed=false`; `numeric_fact_sheet_extraction_leg_status=partial`; `judge_ready=false`;
-    `repair_ready=false`.
+  - **Slice 134 scope:** advisory/non-blocking wiring only. It optionally reads the exact job-local structured sidecar
+    `quality_safety_structured_numeric_candidates.json`, adapts it through the Slice 133 pure adapter, and feeds the adapted
+    payload into the existing safe numeric extractor path. It does not implement the future producer and does not parse OCR/table/
+    source text or read `clean.md` as a numeric source.
+  - **Precedence:** deterministic, no merging:
+    `quality_safety_numeric_extraction_records.json` > `quality_safety_safe_numeric_candidates.json` >
+    `quality_safety_structured_numeric_candidates.json`.
+  - **Artifact shape:** `quality_safety_unified_qa.json` exact name unchanged. New top-level fields are
+    `structured_numeric_candidate_adapter_status`, `structured_numeric_candidate_adapter_summary`, and
+    `structured_numeric_candidate_adapter_warnings`; only count summary/status/closed warnings are surfaced.
+  - **Observed outcome:** synthetic structured clean candidate passes recompute; synthetic structured wrong candidate produces a
+    recompute blocker; unsupported structured method remains partial/warning and not falsely blocked; structural coverage is not
+    converted into structured/safe/numeric candidates.
+  - **Closed-vocabulary outcome:** `structured_numeric_candidate_adapter_artifact_path_status=ok`;
+    `safe_numeric_extractor_artifact_path_status=ok`; `numeric_fact_sheet_extraction_leg_status=partial`;
+    `artifact_path_ready=true_for_synthetic_structured_candidates`;
+    `production_numeric_extractor_present=structured_artifact_sidecar_only`; `judge_ready=false`; `repair_ready=false`.
   - **Files changed:** `M docs/CURRENT_TASK.md`, `M docs/DECISIONS.md`, `M docs/NEXT_CHAT_HANDOFF.md`,
     `M docs/QUALITY_SAFETY_FUTURE_STRUCTURED_NUMERIC_ARTIFACT_DESIGN.md`,
     `M docs/QUALITY_SAFETY_PRODUCTION_SAFE_CANDIDATE_SOURCE_DISCOVERY.md`,
     `M docs/QUALITY_SAFETY_SAFE_NUMERIC_EXTRACTOR_DESIGN.md`,
     `M docs/QUALITY_SAFETY_NUMERIC_EXTRACTION_CONTRACT.md`, `M docs/QUALITY_SAFETY_E2E_VALIDATION.md`,
-    `M docs/QUALITY_SAFETY_OPERATOR_VALIDATION.md`,
-    `?? pipeline/quality_safety_structured_numeric_candidate_adapter.py`,
-    `?? test_scripts/test_quality_safety_structured_numeric_candidate_adapter.py`.
-  - **Next expected slice:** **Slice 134 — Wire Structured Numeric Candidate Adapter into Advisory Artifact Path**, unless Slice
-    133 review reveals a blocker. That wiring must be separate; Slice 133 is pure/unwired.
-  - **Out of scope/unchanged:** no `quality_safety_job_artifact.py` or `run_markdown_job.py` change, no `api/server.py` change,
-    no routes, no frontend change, no production sidecar reader/writer, no generation/prompt/provider/request-schema/render/
-    export/OCR/table/visual/Ask Guide change, no judge/`overall_10`/repair/blocking gate, no `quality_judge.py`, `nn3.json`,
-    `judge_response_nn3.json`, or `quality.jsonl`. **Slice 133 remains NOT committed.**
+    `M docs/QUALITY_SAFETY_OPERATOR_VALIDATION.md`, `M pipeline/quality_safety_job_artifact.py`,
+    `M pipeline/run_markdown_job.py`, `M test_scripts/test_quality_safety_job_artifact.py`,
+    `M test_scripts/validate_quality_safety_real_disaster_e2e.py`.
+  - **Next expected slice:** **Slice 135 — Future Structured Numeric Candidate Producer Design or Operator Waiver**, unless Slice
+    134 review reveals a blocker. A real producer remains absent.
+  - **Out of scope/unchanged:** no `api/server.py` change, no routes, no frontend change, no production structured sidecar writer,
+    no generation/prompt/provider/request-schema/render/export/OCR/table/visual/Ask Guide change, no judge/`overall_10`/repair/
+    blocking gate, no `quality_judge.py`, `nn3.json`, `judge_response_nn3.json`, or `quality.jsonl`. **Slice 134 remains NOT
+    committed.**
+
+### Previously (Slice 133, now trunk `990179c`)
+- **Slice 133 (Pure Structured Numeric Candidate Artifact Adapter v1)** added the pure/unwired adapter
+  `pipeline/quality_safety_structured_numeric_candidate_adapter.py` plus synthetic tests. It reads only caller-supplied dict/list
+  values and emits a `quality_safety_safe_numeric_candidates` payload under the existing `candidates` wrapper. No production
+  wiring, sidecar read/write, job-folder scan, source/OCR/table/caption parsing, `clean.md` numeric read, provider/model/cloud,
+  judge, repair, or blocking. `adapter_status=ready`; `producer_implemented=false`; `numeric_fact_sheet_extraction_leg_status=partial`;
+  `judge_ready=false`; `repair_ready=false`.
 
 ### Previously (Slice 132, now trunk `9d48656`)
 - **Slice 132 (Future Structured Numeric Artifact Design)** defined the future producer-owned artifact

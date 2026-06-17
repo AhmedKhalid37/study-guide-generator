@@ -699,6 +699,31 @@ next_step: wire_structured_numeric_candidate_adapter_into_advisory_artifact_path
 docker_compose_config_run: false
 ```
 
+## Slice 134 — Structured Numeric Adapter Advisory Artifact Wiring
+
+Slice 134 wires the adapter into the advisory artifact path for synthetic/read-only
+structured sidecars. It does not implement the future producer.
+
+```
+structured_numeric_candidate_adapter_artifact_path_status: ok
+structured_numeric_candidates_input_artifact: quality_safety_structured_numeric_candidates.json
+safe_numeric_extractor_artifact_path_status: ok
+numeric_fact_sheet_extraction_leg_status: partial
+artifact_path_ready: true_for_synthetic_structured_candidates
+production_numeric_extractor_present: structured_artifact_sidecar_only
+precedence: explicit_records_over_safe_candidates_over_structured_candidates
+clean_structured_candidate_recompute: passed
+wrong_structured_candidate_recompute: failed_blocking
+legacy_confused_wrong_case: partial
+structured_adapter_status_without_sidecar: skipped
+structural_coverage_into_structured_candidates: false
+producer_implemented: false
+judge_ready: false
+repair_ready: false
+next_step: future_structured_numeric_candidate_producer_design_or_operator_waiver
+docker_compose_config_run: false
+```
+
 ## Non-Goals
 
 - The Slice 122 coverage wiring is advisory transparency only; the numeric /
