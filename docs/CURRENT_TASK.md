@@ -5,7 +5,56 @@
 
 ---
 
-## Slice 112 — **Quality Safety Canonical Fixture Matcher v1**, on `slice112-quality-safety-canonical-matcher-v1`. **NOT COMMITTED.**
+## Slice 113 — **Quality Safety Verifier-Coupled Leak Scanner v1**, on `slice113-quality-safety-verifier-coupled-leak-scanner-v1`. **NOT COMMITTED.**
+
+- **Part 0 completed:** Slice 112 was committed as `1606896`, fast-forward merged to trunk `chrome-renderer-v1`, and pushed
+  with a normal `git push` (no force-push). Slice 112 added only the unwired canonical matcher and synthetic tests. It was
+  matcher-only/unwired, preserved recompute priority, never overrode recompute-verified facts, never hid recompute-failed
+  facts, changed no API/frontend/generation/prompt/request/render/export/OCR/table/visual/Ask Guide behavior, added no
+  provider/model/cloud call, committed no real fixtures/runtime outputs/generated guides/binary artifacts, and did not add
+  Claude's `quality_judge.py`, `nn3.json`, `judge_response_nn3.json`, or `quality.jsonl`. No docker compose config was run.
+  The parked Slice 60 trace stash remains untouched.
+- **Scope:** Slice 113 adds the unwired Quality Safety **verifier-coupled leak scanner**. It scans caller-supplied candidate
+  Markdown only, detects deterministic leak/uncertainty signals, and records safe verification-status context beside leak
+  hits for future repair safety. It does not repair, rewrite, regenerate, tune prompts, decide the unified QA artifact, or
+  claim shippable status. Slice 114 will aggregate the unified QA artifact later.
+- **New pure module:** `pipeline/quality_safety_leak_scanner.py` is stdlib-only plus the Slice 110 fact-sheet normalizer.
+  It exposes `scan_quality_safety_leaks(...)`, `build_quality_safety_leak_report(...)`, and
+  `extract_quality_safety_verification_context(...)`. It reads no source documents or `clean.md`, writes no artifacts, calls
+  no providers/models/cloud services, imports no FastAPI/frontend/OCR/render/job runtime code, never raises on malformed
+  input, and returns deterministic JSON-serializable dicts with closed-vocabulary tokens only.
+- **Leak detection:** fixed case-insensitive signatures cover reasoning/uncertainty phrases, trust/inference language,
+  TODO/TBD/FIXME markers, `[insert ...]` / `[fill ...]` / `[unknown ...]` placeholders, `= ?` / `≈ ?`, formula-like
+  question marks, and empty `answer:` / `final answer:` / `solution:` blocks. False-positive resistance keeps normal
+  mock/practice/self-test/quiz/check-yourself question headings, committed pedagogical `Why?` headings, formal
+  `Assumption` headings, and source/page refs from being flagged as structural uncertainty.
+- **Verifier coupling:** safe fact ids/labels from the normalized fact sheet can attach nearby leaks to fact ids. Recompute
+  report statuses have priority: recompute verified ⇒ `verified_recompute`; recompute failed ⇒ `failed_recompute`.
+  Canonical verified/mismatch applies only when recompute did not verify/fail that fact. Missing reports stay `unknown`.
+  The scanner never fuzzy-matches long concept text, uses no embeddings/LLM, and never stores raw line text, snippets,
+  formulas copied from private/generated material, OCR/table/caption text, paths, URLs, provider payloads, or evidence
+  quotes.
+- **Report / blocking behavior:** reports use `kind:"quality_safety_leak_report"`, version 1, closed statuses
+  (`passed/warning/failed/skipped/partial`), closed leak kinds/severities/verification statuses/warnings, summary counts,
+  `blocking`, `leaks`, and closed-token `blocking_failures`. Any blocking leak fails; warning-only leaks warn; clean
+  candidates pass; missing/malformed candidate markdown skips/degrades safely.
+- **Tests:** `test_scripts/test_quality_safety_leak_scanner.py` uses synthetic data and synthetic hostile canaries only. It
+  covers empty/malformed input, all major leak families, false-positive resistance, conservative fact attachment, recompute
+  and canonical verifier coupling, recompute-first priority, report shape/status/capping, Slice 110/111/112 integration,
+  Slice 109 synthetic seed fixture integration, no-leak sweeps, and import hygiene (181 checks pass).
+- **Out of scope / unchanged:** no production artifact writer, app route, UI/export selector, generic artifact entry, LLM
+  judge, `quality_judge.py`, `nn3.json`, `judge_response_nn3.json`, `quality.jsonl`, unified QA artifact, repair loop, What
+  the Lecturer Skipped, Active Recall, Memory Hooks, Practical Example Generator, Solve Path Generator, question-bank
+  coverage, generation/prompt/request/API/UI/render/export/OCR/table/visual/Ask Guide behavior change, provider/model/cloud
+  call, or Docker config. Docker validation is optional/not required because this is offline/leak-scanner-only.
+- **Safety boundary:** only synthetic fixtures/content were used. No real PDFs/images/DOCX/ZIPs, runtime artifacts,
+  generated guides, eval outputs, real source/reference filenames, uploaded quality-spec filenames, evidence quotes,
+  snippets, OCR/table/caption text, paths, URLs, image bytes, formulas copied from private/generated material, or provider
+  payloads were added. **Slice 113 remains NOT committed.**
+
+---
+
+## Slice 112 — **Quality Safety Canonical Fixture Matcher v1**, on `slice112-quality-safety-canonical-matcher-v1`. **Committed `1606896`, merged + pushed to `chrome-renderer-v1`.**
 
 - **Part 0 completed:** Slice 111 was committed as `9d2050b`, fast-forward merged to trunk `chrome-renderer-v1`, and pushed
   with a normal `git push` (no force-push). Slice 111 added only the unwired Quality Safety recompute verifier and synthetic
@@ -49,7 +98,7 @@
 - **Safety boundary:** only synthetic fixtures/content were used. No real PDFs/images/DOCX/ZIPs, runtime artifacts,
   generated guides, eval outputs, real source/reference filenames, uploaded quality-spec filenames, evidence quotes,
   snippets, OCR/table/caption text, paths, URLs, image bytes, formulas copied from private/generated material, or provider
-  payloads were added. **Slice 112 remains NOT committed.**
+  payloads were added. Slice 112 was committed as `1606896`, merged, and pushed before Slice 113.
 
 ---
 

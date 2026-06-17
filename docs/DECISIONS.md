@@ -4752,3 +4752,22 @@ safe ids/labels/match keys, and numeric values. Tests use synthetic fixtures and
 PDFs/images/DOCX/ZIPs, runtime outputs, generated guides, source/reference filenames, uploaded quality-spec filenames,
 evidence quotes, snippets, OCR/table/caption text, paths, URLs, formulas copied from private/generated material, image bytes,
 or provider payloads are added.
+
+## Slice 113 records verifier context beside leaks before any repair loop
+**Why leak detection is coupled to verification.** Deterministic leak detection is safe to run locally because it can report
+closed leak kinds, counts, line indexes, safe fact ids, severities, and warning tokens without storing raw leaked text or
+source snippets. Repair is different: rewriting uncertainty around a number without knowing whether that number is
+recompute-verified, recompute-failed, canonical-verified, canonical-failed, unverified, or unknown could turn a cautious
+sentence into confident wrongness. Slice 113 therefore records verification status beside leak hits and does not repair
+anything.
+
+**Why recompute still has priority.** The scanner reads optional recompute and canonical reports by safe fact id. Recompute
+verified/failed statuses win because recompute is the primary numeric truth path. Canonical verified/mismatch context applies
+only when recompute did not verify or fail that fact. Missing reports remain `unknown`. This keeps the Slice 111/112 runtime
+hierarchy intact while making future repair decisions safer.
+
+**Why it stays unwired and no-leak.** The scanner is a pure stdlib module plus the Slice 110 fact-sheet normalizer. It scans
+only caller-supplied candidate Markdown, reads no source documents or `clean.md`, writes no artifacts, calls no
+providers/models/cloud services, adds no production gate, and uses no fuzzy matching, embeddings, or LLM judge. Reports never
+echo raw matched text, guide/source snippets, formulas copied from private/generated material, OCR/table/caption text, paths,
+URLs, provider payloads, evidence quotes, image bytes, or uploaded quality-spec filenames.
