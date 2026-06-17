@@ -4197,6 +4197,13 @@ def _artifact_path(job: Job, artifact_name: str) -> tuple[Path, str]:
         # image/OCR inspection, no table reconstruction. Exact-name download only;
         # deliberately NOT in ARTIFACTS, generic UI rows, or export selectors.
         return job.guide_quality_rubric_score_json, "application/json"
+    if artifact_name == "quality_safety_unified_qa.json":
+        # Slice 118: advisory Quality Safety unified QA artifact. Closed
+        # counts/tokens only; no raw guide/source text, filenames, paths, URLs,
+        # OCR/table/caption text, evidence quotes, provider payloads, or traces.
+        # Exact-name download only; deliberately NOT in ARTIFACTS, generic UI rows,
+        # or export selectors. It never gates generation/render/export.
+        return job.quality_safety_unified_qa_json, "application/json"
 
     artifact = ARTIFACTS.get(artifact_name)
     if artifact is None:

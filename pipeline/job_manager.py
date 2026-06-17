@@ -269,6 +269,19 @@ class Job:
         return self.dir / "guide_quality_rubric_score.json"
 
     @property
+    def quality_safety_unified_qa_json(self) -> Path:
+        # Slice 118: sibling Quality Safety advisory artifact holding the
+        # deterministic unified QA floor for real jobs. It scans the generated
+        # clean.md only as input to the safe leak scanner and uses structured
+        # extraction bundles only when a safe bundle exists. Closed counts/tokens
+        # only; no raw guide/source text, filenames, paths, URLs, OCR/table/caption
+        # text, evidence quotes, provider payloads, or traces. It never changes job
+        # status, blocks generation/render/export, repairs content, tunes prompts,
+        # or calls providers/models/cloud. Exact-name download only; not added to
+        # generic artifact rows or export selectors.
+        return self.dir / "quality_safety_unified_qa.json"
+
+    @property
     def assets_dir(self) -> Path:
         # Slice 40: holds locally-cropped figure images (PNG) referenced by the
         # visual-assets manifest's `extracted_figure` records via safe RELATIVE

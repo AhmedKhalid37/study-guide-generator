@@ -5,39 +5,46 @@
 
 ---
 
-## Slice 117 — **Quality Safety Fact-Sheet Producer v1**, on `slice117-quality-safety-fact-sheet-producer-v1`. **NOT COMMITTED.**
+## Slice 118 — **Quality Safety Advisory Job Artifact v1**, on `slice118-quality-safety-advisory-job-artifact-v1`. **NOT COMMITTED.**
 
-- **Part 0 completed:** Slice 116 was committed as `0bef077`, fast-forward merged to trunk `chrome-renderer-v1`, and pushed
-  with a normal `git push` (no force-push). Slice 116 fixed the `clean_real_case=false_positive_leak` blocker while keeping
-  `legacy_confused_wrong_case` detected and keeping `single_confident_wrong_numeric_case` blocked by
-  `recompute:weighted_gini` without requiring leak or contradiction. `clean_real_case` now passes, and
-  `extraction_leg_covered=false` remains recorded for the real operator validation because production extraction was still
-  not built.
-- **Scope:** Slice 117 adds `pipeline/quality_safety_fact_sheet_producer.py`, a pure/unwired stdlib helper that maps
+- **Part 0 completed:** Slice 117 was committed as `e389697`, fast-forward merged to trunk `chrome-renderer-v1`, and pushed
+  with a normal `git push` (no force-push). Slice 117 added only the pure/unwired fact-sheet producer and a narrow
+  `computation.tolerance` schema preservation fix. The synthetic single-confident-wrong `weighted_gini` case fails via
+  recompute, the synthetic clean case passes, no production wiring was added, no provider/model/cloud call was added, no
+  docker compose config was run, and the Slice 60 trace stash remains parked and untouched.
+- **Scope:** Slice 118 adds advisory production job artifact generation for the exact artifact name
+  `quality_safety_unified_qa.json`. The helper builds a safe payload from existing deterministic Quality Safety modules and
+  the job pipeline writes it after `clean.md` exists and before rendering. It is reached by exact filename only, not generic
+  artifact rows or export selectors.
+- **Advisory contract:** the artifact never blocks job success, never changes job status, never rewrites or repairs guide
+  content, never changes prompts or provider requests, never changes request schemas, never calls providers/models/cloud, and
+  never changes render/export/OCR/table/visual/Ask Guide behavior. It does not add judge scoring, `overall_10`,
+  `quality_judge.py`, `nn3.json`, `judge_response_nn3.json`, or `quality.jsonl`.
+- **Payload shape:** `version=1`, `kind=quality_safety_job_artifact`, `artifact_name=quality_safety_unified_qa.json`,
+  `advisory=true`, `source=job_runtime`, top-level `status`, `shippable`, `safety_floor_green`, `component_statuses`,
+  `deterministic_axes_0_5`, safe count-only `summary`, closed-token `blocking_failures`, closed-token `warnings`, and nested
+  `quality_safety_unified_qa`.
+- **Missing extraction behavior:** production does not invent fact sheets. It uses `clean.md`/candidate markdown only as input
+  to the leak scanner and does not store it. Structured extraction bundles are used only if a safe bundle exists. When no
+  extraction bundle exists, the artifact records closed `component_missing` / skipped state for fact-sheet, recompute, and
+  canonical components while still running safe leak scanning against `clean.md` when available.
+- **Safety boundary:** the artifact stores only closed tokens/counts and safe deterministic report structures. It does not
+  store raw guide/source text, snippets, formulas, paths, filenames, URLs, OCR/table/caption text, evidence quotes, provider
+  payloads, runtime traces, real PDFs/images/DOCX/PDF/ZIPs, generated guide artifacts, eval JSON outputs, or private
+  material. Tests use synthetic bundles/canaries only. No frontend/UI change was added. **Slice 118 remains NOT committed.**
+
+---
+
+## Slice 117 — **Quality Safety Fact-Sheet Producer v1**, on `slice117-quality-safety-fact-sheet-producer-v1`. **Committed `e389697`, merged + pushed to `chrome-renderer-v1`.**
+
+- **Scope:** Slice 117 added `pipeline/quality_safety_fact_sheet_producer.py`, a pure/unwired stdlib helper that maps
   sanitized structured extraction bundles into the Slice 110 `quality_safety_fact_sheet` schema. It is not a PDF parser, does
   not read source documents or `clean.md`, does not scan directories, does not write job artifacts or runtime JSON, and is not
   wired into production jobs.
-- **Extraction bundle boundary:** callers supply in-memory sanitized dictionaries with closed `source_quality` and
-  computation-method vocabularies. The producer accepts synthetic `source_ref` tokens, computation records, and numeric
-  observations only; hostile strings are sanitized/dropped with closed warning tokens.
-- **Producer behavior:** computation records become unverified numeric facts with structured `computation:{method, inputs,
-  result, tolerance}` data. Numeric observations become unverified/extracted numeric facts without computation. The module
-  does not recompute, canonical-match, leak-scan, aggregate unified QA, decide shippability, compute `overall_10`, judge
-  scores, or repair content. Recompute remains first; canonical remains second/fallback.
 - **Synthetic integration proof:** `test_scripts/test_quality_safety_fact_sheet_producer.py` proves extraction bundle →
   producer fact sheet → recompute verifier → unified QA. A synthetic single-confident-wrong `weighted_gini` fact is blocked by
   recompute without leak or contradiction, and a synthetic clean computation-only extraction bundle passes unified QA with
   `shippable=true` and `safety_floor_green=true`.
-- **Narrow schema integration fix:** `pipeline/quality_safety_fact_sheet.py` now preserves safe `computation.tolerance` in
-  normalized fact records so producer output can carry the full computation record consumed by recompute.
-- **Out of scope / unchanged:** no production runtime wiring, app route, UI/export selector, generic artifact entry, PDF/OCR/
-  table/visual/render/export change, Ask Guide change, generation prompt/request change, provider/model/cloud call, live
-  generation, judge, `quality_judge.py`, `nn3.json`, `judge_response_nn3.json`, `quality.jsonl`, prompt tuning, repair loop,
-  or Chandra gate change.
-- **Safety boundary:** tests use synthetic bundles/canaries only. No real PDFs, images, DOCX/PDF/ZIPs, runtime artifacts,
-  generated guides, eval outputs, real source/reference filenames, uploaded quality-spec filenames, evidence quotes,
-  snippets, OCR/table/caption text, paths, URLs, image bytes, formulas copied from private/generated material, provider
-  payloads, or runtime output JSON were added. **Slice 117 remains NOT committed.**
 
 ---
 

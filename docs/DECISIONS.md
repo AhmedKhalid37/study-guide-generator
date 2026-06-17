@@ -4844,3 +4844,19 @@ extraction and job wiring come later.
 **What ordering is preserved.** The producer creates structured fact-sheet inputs; recompute remains the authoritative first
 numeric truth path, canonical matching remains fallback-only, leak scanning attaches verifier context, and unified QA
 aggregates the reports. Slice 117 does not compute judge scores, `overall_10`, shippability, prompt tuning, or repair.
+
+## Slice 118 wires Quality Safety into jobs first as an advisory exact-name artifact
+**Why advisory comes before blocking.** The Quality Safety floor is wired into jobs first as an advisory exact-name artifact,
+`quality_safety_unified_qa.json`. It does not block generation, alter guide content, repair or rewrite, tune prompts, change
+provider requests, or call providers/models/cloud. This lets the project collect deterministic safety signals on real jobs
+without risking false blocks or leaking private material.
+
+**Why the artifact stores only closed signals.** The runtime may read the finalized `clean.md` as input to the leak scanner,
+but the artifact stores only closed tokens, component statuses, deterministic axes, blocking check ids, and counts. It does
+not store raw guide/source text, snippets, formulas, paths, filenames, URLs, OCR/table/caption text, evidence quotes,
+provider payloads, runtime traces, or private material.
+
+**Why missing extraction stays closed.** Production extraction bundles are not invented from job content. When no safe
+structured bundle exists, the artifact records component-missing/skipped state for fact-sheet, recompute, and canonical
+signals while still running the safe leak scan against `clean.md` when available. Blocking gates, repair behavior, judge
+scoring, and `overall_10` remain deferred.

@@ -200,6 +200,15 @@ def run_raw_markdown_pipeline(job: Job, *, theme: str, strict_math: bool) -> Job
     # changes, no blocking, and no job failure.
     _write_guide_quality_rubric_score(job)
 
+    # Slice 118: persist a per-job quality_safety_unified_qa.json sibling artifact.
+    # It is advisory-only and deterministic: it scans the final, sanitized clean.md
+    # only as input to the safe leak scanner, uses structured extraction bundles
+    # only when such a safe bundle exists, stores closed counts/tokens only, calls
+    # no provider/model/cloud service, never changes prompts, never rewrites or
+    # repairs guide content, never changes job status, never blocks render/export,
+    # and never fails the job.
+    _write_quality_safety_unified_qa(job)
+
     # Last safe checkpoint before the uninterruptible Chromium render: a cancel
     # requested up to here skips the render entirely. Once render_pdf starts we
     # let it finish (no process killing).
@@ -683,6 +692,107 @@ def _write_guide_quality_rubric_score(job: Job) -> None:
                 "warnings": ["malformed_input_degraded"],
             }
             job.save_text(artifact_path, json.dumps(payload, indent=2) + "\n")
+        except Exception:
+            pass  # writing the degraded artifact must itself never raise
+
+
+def _write_quality_safety_unified_qa(job: Job) -> None:
+    """Persist ``quality_safety_unified_qa.json`` as an advisory-only job artifact."""
+    artifact_path = job.quality_safety_unified_qa_json
+    try:
+        from pipeline.quality_safety_job_artifact import (
+            build_quality_safety_job_artifact_payload,
+        )
+
+        try:
+            clean_markdown = job.clean_md.read_text(encoding="utf-8", errors="replace")
+        except Exception:
+            clean_markdown = None
+
+        payload = build_quality_safety_job_artifact_payload(
+            candidate_markdown=clean_markdown,
+        )
+        job.save_text(artifact_path, json.dumps(payload, indent=2, sort_keys=True) + "\n")
+    except Exception:  # never let the advisory artifact break a job
+        try:
+            from pipeline.quality_safety_job_artifact import (
+                ARTIFACT_NAME,
+                KIND,
+                SOURCE,
+                VERSION,
+            )
+
+            payload = {
+                "version": VERSION,
+                "kind": KIND,
+                "artifact_name": ARTIFACT_NAME,
+                "advisory": True,
+                "source": SOURCE,
+                "status": "skipped",
+                "shippable": False,
+                "safety_floor_green": False,
+                "component_statuses": {
+                    "layer1": "unknown",
+                    "recompute": "unknown",
+                    "canonical": "skipped",
+                    "leak": "unknown",
+                },
+                "deterministic_axes_0_5": {
+                    "accuracy": None,
+                    "coverage": None,
+                    "solved_problem": None,
+                    "clarity": None,
+                },
+                "summary": {
+                    "blocking_failure_count": 0,
+                    "quality_safety_warning_count": 0,
+                    "component_missing_count": 4,
+                    "deterministic_axis_count": 0,
+                    "job_artifact_warning_count": 1,
+                },
+                "blocking_failures": [],
+                "warnings": ["artifact_write_failed"],
+                "quality_safety_unified_qa": {
+                    "version": 1,
+                    "kind": "quality_safety_unified_qa",
+                    "status": "skipped",
+                    "shippable": False,
+                    "safety_floor_green": False,
+                    "blocking": False,
+                    "summary": {
+                        "blocking_failure_count": 0,
+                        "warning_count": 0,
+                        "layer1_blocking_failure_count": 0,
+                        "numeric_blocking_failure_count": 0,
+                        "leak_blocking_failure_count": 0,
+                        "coverage_warning_count": 0,
+                        "mock_question_warning_count": 0,
+                        "verified_recompute_count": 0,
+                        "verified_canonical_count": 0,
+                        "failed_recompute_count": 0,
+                        "failed_canonical_count": 0,
+                        "unverified_fact_count": 0,
+                        "unknown_context_leak_count": 0,
+                        "deterministic_axis_count": 0,
+                    },
+                    "deterministic_axes_0_5": {
+                        "accuracy": None,
+                        "coverage": None,
+                        "solved_problem": None,
+                        "clarity": None,
+                    },
+                    "component_statuses": {
+                        "layer1": "unknown",
+                        "recompute": "unknown",
+                        "canonical": "skipped",
+                        "leak": "unknown",
+                    },
+                    "component_summaries": {},
+                    "blocking_failures": [],
+                    "warnings": [],
+                },
+            }
+            job.save_text(artifact_path, json.dumps(payload, indent=2, sort_keys=True) + "\n")
         except Exception:
             pass  # writing the degraded artifact must itself never raise
 

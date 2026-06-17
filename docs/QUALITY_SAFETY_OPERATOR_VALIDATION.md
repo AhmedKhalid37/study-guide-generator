@@ -266,4 +266,26 @@ fact-sheet production, judge logic, prompt tuning, repair, providers, or runtime
 }
 ```
 
-Slice 115 and Slice 116 are committed. Slice 117 is NOT committed.
+## Slice 118 Advisory Job Artifact Note
+
+```json
+{
+  "validation_id": "quality_safety_advisory_job_artifact_scope_v1",
+  "slice": "118",
+  "artifact_name": "quality_safety_unified_qa.json",
+  "production_job_wiring": true,
+  "advisory_only": true,
+  "blocks_job_success": false,
+  "repairs_or_rewrites": false,
+  "prompt_or_provider_request_change": false,
+  "provider_calls": false,
+  "judge_calls": false,
+  "stores_raw_guide_or_source_text": false,
+  "stores_paths_or_filenames": false,
+  "stores_evidence_quotes": false,
+  "stores_runtime_traces": false,
+  "missing_extraction_bundle_behavior": "component_missing_or_skipped"
+}
+```
+
+Slice 115, Slice 116, and Slice 117 are committed. Slice 118 is NOT committed.
