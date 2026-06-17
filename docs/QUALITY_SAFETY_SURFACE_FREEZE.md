@@ -259,3 +259,31 @@ judge_ready: false
 repair_ready: false
 next_step: private_operator_judge_calibration_pass
 ```
+
+---
+
+## Slice 145 — Calibration gate harness does not unfreeze any surface
+
+Slice 145 added the closed-record calibration gate harness
+(`test_scripts/validate_quality_safety_judge_calibration_gate.py`), a test/docs-only
+slice. Exercising the calibration gate over synthetic golden cases does **not**
+unfreeze the deterministic surface or the numeric infrastructure, and adds **no**
+numeric schema/bridge layer. No production code changed; no judge ran on private
+material; no provider/model/cloud/local-LLM call was added; no private calibration
+was run (`private_operator_judge_calibration_run=not_run`). The frozen artifact
+names, field families, and validation harnesses above remain unchanged, and the
+deterministic safety floor stays the source of truth. The future judge stays
+advisory and non-blocking.
+
+```
+quality_safety_surface_frozen: true
+numeric_infrastructure_frozen: true
+judge_calibration_gate_protocol_status: ready
+private_operator_judge_calibration_run: not_run
+calibration_gate_harness_status: ok
+calibration_status: synthetic_only
+judge_contract_ready: true
+judge_ready: false
+repair_ready: false
+next_step: advisory_judge_artifact_design_or_stop_for_private_calibration
+```

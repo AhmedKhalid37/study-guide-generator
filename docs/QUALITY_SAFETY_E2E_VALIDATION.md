@@ -968,3 +968,26 @@ repair_ready: false
 next_step: private_operator_judge_calibration_pass
 docker_compose_config_run: false
 ```
+
+## Slice 145 Calibration Gate Harness (synthetic; private not run) status
+
+Slice 145 added the closed-record calibration gate harness
+(`test_scripts/validate_quality_safety_judge_calibration_gate.py`). It self-tests
+the Slice 144 golden cases against the pure Slice 143 offline judge core using
+**synthetic** observations only and never reads guide/source/reference documents
+or raw judge reports. No judge ran on real/private material and no judge output
+was produced against it. These synthetic E2E validation records are unchanged and
+remain the deterministic source of truth; the calibration harness commits only
+closed-vocabulary records and may never override these deterministic blockers.
+
+```
+private_operator_judge_calibration_run: not_run
+calibration_gate_harness_status: ok
+this_doc_changed: false
+calibration_status: synthetic_only
+judge_contract_ready: true
+judge_ready: false
+repair_ready: false
+next_step: advisory_judge_artifact_design_or_stop_for_private_calibration
+docker_compose_config_run: false
+```

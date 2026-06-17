@@ -246,3 +246,48 @@ docker_compose_config_run: false
 Conservative posture: the **protocol** can be `ready`; **judge readiness must
 remain false** and **repair readiness must remain false** until a later explicit
 gate (and operator validation) approves them.
+
+## Slice 145 — Calibration Gate Harness / Private Pass Status
+
+Slice 145 implemented the closed-record **calibration gate harness**
+(`test_scripts/validate_quality_safety_judge_calibration_gate.py`) that exercises
+this protocol. The harness validates **closed-vocabulary calibration records**,
+not raw/private materials:
+
+- Default **synthetic self-test** runs the five golden cases (`clean_real_case`,
+  `single_confident_wrong_numeric_case`, `legacy_confused_wrong_case`,
+  `leak_canary_case`, `deterministic_floor_red_case`) by exercising the pure
+  Slice 143 offline judge core over **synthetic** observations only. The synthetic
+  cases are closed records, not private material.
+- Optional **local closed-record mode** (`--input <path>`) reads exactly one
+  closed calibration-record JSON, never prints the path or raw values, never
+  writes files, and degrades read/parse failures to closed tokens.
+- The harness never reads guide/source/reference documents, never reads raw judge
+  reports, never invokes the judge core on private material, never calls
+  providers/models/cloud/local LLMs, and prints a closed-vocabulary summary only.
+
+The synthetic self-test confirms the protocol's conservative behavior: the
+wrong-numeric case is detected as blocking, the leak canary is detected as
+failing, the floor-red case cannot be overridden, no canary survives
+serialization, and `judge_ready` / `repair_ready` stay `false`.
+
+```
+private_operator_judge_calibration_run: not_run
+calibration_gate_harness_status: ok
+golden_case_count: 5
+passed_case_count: 5
+failed_case_count: 0
+input_kind: synthetic_only
+protocol_status: ok
+no_raw_private_material: true
+calibration_status: synthetic_only
+judge_contract_ready: true
+judge_ready: false
+repair_ready: false
+next_step: advisory_judge_artifact_design_or_stop_for_private_calibration
+docker_compose_config_run: false
+```
+
+No private/operator closed-record run was performed in Slice 145; local
+closed-record mode is implemented but not run as committed data. Calibration stays
+`synthetic_only` and the judge stays advisory and non-blocking.

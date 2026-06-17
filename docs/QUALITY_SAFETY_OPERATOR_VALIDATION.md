@@ -1302,3 +1302,36 @@ judge_ready: false
 repair_ready: false
 next_step: private_operator_judge_calibration_pass
 ```
+
+## Slice 145 Private Operator Judge Calibration Pass (closed record)
+
+Slice 145 exercised the Slice 144 calibration gate protocol through a closed-record
+harness (`test_scripts/validate_quality_safety_judge_calibration_gate.py`). **No
+private/local operator calibration run was performed or committed**
+(`private_operator_run=not_run`). The harness's optional local closed-record mode
+is implemented but was not run as committed data, and no operator supplied closed
+records for the golden cases. The committed evidence is the synthetic self-test
+only (five golden cases, all passed, closed-vocabulary summary). This record
+contains **no** raw guide/source/reference text, **no** file paths, **no**
+filenames, and **no** sidecar JSON. Any future operator calibration must commit
+**only closed-vocabulary records** (`operator_review_count`, counts, closed
+statuses, `*_committed=false` flags) and never raw private material; `judge_ready`
+stays false until a separate later gate (and operator validation) explicitly
+approves it.
+
+```
+private_operator_run: not_run
+calibration_gate_harness_status: ok
+golden_case_count: 5
+passed_case_count: 5
+failed_case_count: 0
+operator_review_count: 0
+raw_private_material_committed: false
+runtime_outputs_committed: false
+operator_numeric_export_waiver: approved_for_safety_floor_finalization_synthetic_only
+calibration_status: synthetic_only
+judge_contract_ready: true
+judge_ready: false
+repair_ready: false
+next_step: advisory_judge_artifact_design_or_stop_for_private_calibration
+```

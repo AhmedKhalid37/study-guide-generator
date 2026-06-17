@@ -397,3 +397,26 @@ repair_ready: false
 next_step: private_operator_judge_calibration_pass
 docker_compose_config_run: false
 ```
+
+---
+
+## Slice 145 — Calibration gate harness exercised (synthetic; private not run)
+
+Slice 145 added the closed-record calibration gate harness
+(`test_scripts/validate_quality_safety_judge_calibration_gate.py`), which
+exercises the Slice 144 protocol over the five golden cases using the pure Slice
+143 offline judge core with **synthetic** observations only. No private/operator
+closed-record run was performed; local closed-record mode is implemented but not
+run as committed data. The contract status is unchanged: the judge stays advisory
+and non-blocking, and the deterministic floor remains the source of truth.
+
+```
+private_operator_judge_calibration_run: not_run
+calibration_gate_harness_status: ok
+calibration_status: synthetic_only
+judge_contract_ready: true
+judge_ready: false
+repair_ready: false
+next_step: advisory_judge_artifact_design_or_stop_for_private_calibration
+docker_compose_config_run: false
+```

@@ -5877,3 +5877,56 @@ prematurely.
 `numeric_infrastructure_frozen=true`; `quality_safety_surface_frozen=true`;
 `quality_safety_blocking=false`; `judge_ready=false`; `repair_ready=false`;
 `next_step=private_operator_judge_calibration_pass`.
+
+---
+
+## Private operator judge calibration was not run; synthetic-only remains the committed state (Slice 145)
+Slice 145 is a test/docs-only slice. It adds a closed-record **calibration gate
+harness** (`test_scripts/validate_quality_safety_judge_calibration_gate.py`) that
+exercises the Slice 144 protocol's five golden cases against the pure Slice 143
+offline judge core using synthetic observations only, and records the
+private/operator calibration pass status in closed vocabulary. No production code
+changed; no judge ran on private material.
+
+**Decisions:**
+- **Private operator calibration was not run.**
+  `private_operator_judge_calibration_run=not_run`. The slice implements the
+  optional local closed-record mode (`--input <path>`) but did **not** run it as
+  committed data, and no operator supplied closed records for the golden cases.
+  The committed evidence is the synthetic self-test only.
+- **Synthetic-only calibration remains the current committed state.**
+  `calibration_status=synthetic_only`. Because no operator records were actually
+  supplied for the required golden cases, calibration is **not** promoted to
+  `operator_validated`. Per the Slice 144 pass/fail rules, `operator_validated`
+  would require closed operator records for all required golden cases, the
+  wrong-numeric case detected as blocking, the leak canary detected as failing,
+  the floor-red case non-overridable, no raw private/runtime/free-text material
+  committed, `schema_compatibility_status=ok`, and `offline_judge_core_status=ok`.
+- **No judge readiness until a later explicit gate.** `judge_ready=false` and
+  `repair_ready=false`. The judge stays advisory and non-blocking; the
+  deterministic floor remains the source of truth. The judge may become ready only
+  in a later explicit gate after `calibration_status=operator_validated`.
+- **The calibration harness commits only closed records.** It never reads
+  guide/source/reference text, never reads raw judge reports, never calls
+  providers/models/cloud/local LLMs, never writes files, never prints local paths,
+  and prints a closed-vocabulary summary only. A future private/local operator run
+  must commit only a closed-vocabulary record — never raw private material.
+- **Next step is advisory judge artifact design or stop-for-private-calibration.**
+  `next_step=advisory_judge_artifact_design_or_stop_for_private_calibration`.
+  Either design a closed-vocabulary advisory offline judge artifact (still
+  non-blocking, still no private input) or pause for a separately-arranged private
+  operator calibration pass if/when the operator supplies closed records.
+
+**Why:** keeping the committed state synthetic-only — and implementing (but not
+running) local closed-record mode — exercises the calibration protocol and proves
+the harness behaves conservatively, without committing any private material,
+turning the judge into a blocking gate, or flipping readiness flags true
+prematurely. The conservative default (`not_run` + `synthetic_only`) is faithful:
+no private calibration actually happened.
+
+`private_operator_judge_calibration_run=not_run`;
+`judge_calibration_gate_protocol_status=ready`;
+`calibration_status=synthetic_only`; `judge_contract_ready=true`;
+`numeric_infrastructure_frozen=true`; `quality_safety_surface_frozen=true`;
+`quality_safety_blocking=false`; `judge_ready=false`; `repair_ready=false`;
+`next_step=advisory_judge_artifact_design_or_stop_for_private_calibration`.
