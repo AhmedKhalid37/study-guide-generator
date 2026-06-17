@@ -5677,3 +5677,51 @@ no private material in the repo.
 `numeric_infrastructure_frozen=true`; `quality_safety_surface_frozen=true`;
 `quality_safety_blocking=false`; `judge_contract_ready=true`; `judge_ready=false`;
 `repair_ready=false`; `next_step=offline_judge_contract_design`.
+
+---
+
+## Offline judge contract designed (design-only) on top of the frozen floor (Slice 141)
+Slice 141 designed the **offline judge contract** now that the deterministic
+(non-judge) Quality Safety surface is frozen (Slice 140). It is **docs / design
+only** (no production code change): it adds
+`docs/QUALITY_SAFETY_OFFLINE_JUDGE_CONTRACT.md` and appends pointers/status to the
+freeze/floor/validation docs. No judge core, no judge calls, no
+provider/model/cloud/local-LLM calls, no `quality_judge.py`, no `nn3.json`, no
+`judge_response_nn3.json`, no `quality.jsonl`, no repair, and no prompt tuning were
+added.
+
+**Decisions:**
+- **The deterministic safety floor remains the source of truth** for hard
+  deterministic blockers. The future judge **cannot override** recompute blockers
+  or leak blockers, **cannot** mark a guide shippable if the floor is red, and
+  **cannot** fabricate facts from structural coverage metadata. The judge may only
+  add **advisory** quality findings, and only after calibration.
+- **Future judge artifact name is proposed, not produced:**
+  `quality_safety_offline_judge_report.json` (`advisory=true`, non-blocking
+  initially, not a final user score until calibrated, not used for repair). Nothing
+  writes it in Slice 141.
+- **No raw/private committed output.** Every committed judge-related record must be
+  closed-vocabulary and sanitized. Raw guide/source/reference/OCR/table/caption
+  text, formulas-as-text, evidence quotes, filenames, basenames, paths, URLs,
+  provider payloads, model prompts/responses, and `nn3.json` /
+  `judge_response_nn3.json` / `quality.jsonl` are forbidden in committed records.
+  The future judge may inspect private/local material **at runtime only**.
+- **No free-text private rationales.** The committed output shape carries no
+  free-text rationale; axis results are closed-vocabulary/count-only. Any future
+  rationale text is constrained to synthetic-only fixtures and never committed from
+  private/runtime runs.
+- **`judge_ready` stays false until calibration.** `judge_contract_ready=true`
+  records only that the contract can now be designed (and is). `judge_ready` cannot
+  flip true by reaching `synthetic_only` or even `operator_validated` alone — a
+  later, separately designed gate must approve it. `repair_ready` stays false.
+
+**Why:** the contract pins the judge's privacy/advisory/non-blocking boundary and
+its subordination to the deterministic floor **before** any judge code exists, so
+implementation slices cannot quietly turn the judge into a blocking gate, leak raw
+material, override deterministic blockers, or fabricate numeric facts.
+
+`offline_judge_contract_status=ready`;
+`future_judge_artifact_name=quality_safety_offline_judge_report_json`;
+`numeric_infrastructure_frozen=true`; `quality_safety_surface_frozen=true`;
+`quality_safety_blocking=false`; `judge_contract_ready=true`; `judge_ready=false`;
+`repair_ready=false`; `next_step=offline_judge_schema_fixtures_and_synthetic_harness`.

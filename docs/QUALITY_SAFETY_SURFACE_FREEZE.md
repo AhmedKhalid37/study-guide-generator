@@ -143,3 +143,31 @@ judge_ready: false
 repair_ready: false
 next_step: offline_judge_contract_design
 ```
+
+---
+
+## Slice 141 — Offline judge contract design has begun (surfaces stay frozen)
+
+Slice 141 began **Offline Judge Contract Design** (design only) in
+`docs/QUALITY_SAFETY_OFFLINE_JUDGE_CONTRACT.md`. Designing the judge contract does
+**not** unfreeze the numeric infrastructure or the deterministic surface: no judge
+core, no judge calls, no provider/model/cloud/local-LLM calls, no repair, no prompt
+tuning, no new numeric schema/bridge layer were added. The frozen artifact names,
+field families, and validation harnesses above are unchanged.
+
+The future offline judge — once built and calibrated — is advisory and layered on
+top of this frozen surface; it can never override a deterministic recompute/leak
+blocker, never mark a guide shippable if the floor is red, and never fabricate facts
+from structural coverage. The proposed (not produced) future artifact is
+`quality_safety_offline_judge_report.json`.
+
+```
+quality_safety_surface_frozen: true
+numeric_infrastructure_frozen: true
+offline_judge_contract_status: ready
+future_judge_artifact_name: quality_safety_offline_judge_report_json
+judge_contract_ready: true
+judge_ready: false
+repair_ready: false
+next_step: offline_judge_schema_fixtures_and_synthetic_harness
+```

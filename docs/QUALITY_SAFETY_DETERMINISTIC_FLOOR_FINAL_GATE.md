@@ -174,3 +174,23 @@ judge_ready: false
 repair_ready: false
 next_step: offline_judge_contract_design
 ```
+
+## Slice 141 Relationship to the Future Offline Judge
+
+Slice 141 designed the offline judge contract
+(`docs/QUALITY_SAFETY_OFFLINE_JUDGE_CONTRACT.md`, design only). This final gate
+**remains the source of truth** for hard deterministic blockers. The future offline
+judge is advisory and subordinate: it **cannot** override the recompute or leak
+blockers measured here, **cannot** mark a guide shippable if this floor is red, and
+**cannot** fabricate facts from structural coverage. It may only add advisory
+quality findings, and only after a separate calibration gate approves it.
+
+```
+deterministic_floor_is_source_of_truth: true
+judge_can_override_deterministic_blockers: false
+offline_judge_contract_status: ready
+judge_contract_ready: true
+judge_ready: false
+repair_ready: false
+next_step: offline_judge_schema_fixtures_and_synthetic_harness
+```

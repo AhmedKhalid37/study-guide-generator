@@ -5,7 +5,42 @@
 
 ---
 
-## Slice 140 — **Quality Safety Surface Cleanup / Freeze**, on `slice140-quality-safety-surface-cleanup-freeze`. **NOT COMMITTED.**
+## Slice 141 — **Offline Judge Contract Design**, on `slice141-quality-safety-offline-judge-contract-design`. **NOT COMMITTED.**
+
+- **Part 0 completed:** Slice 140 was committed as `62b7b82`, fast-forward merged to trunk `chrome-renderer-v1`, and pushed with
+  a normal `git push` (no force-push; `c421465..62b7b82`). Final trunk status before branching Slice 141 was clean; no docker
+  compose config was run; the Slice 60 trace stash remains parked and untouched.
+- **Scope:** docs / design only; **no production code change.** Now that the deterministic (non-judge) Quality Safety surface is
+  frozen (Slice 140), this slice **designs the offline judge contract** — it does **not** implement a judge. **No judge core, no
+  judge calls, no provider/model/cloud/local-LLM calls, no `quality_judge.py`, no `nn3.json`, no `judge_response_nn3.json`, no
+  `quality.jsonl`, no repair, no prompt tuning, no blocking gate, no route/frontend/request-schema/render/export/OCR/table/visual/
+  Ask Guide change, no numeric infrastructure unfreeze.** `quality_safety_job_artifact.py`, `run_markdown_job.py`,
+  `api/server.py` unchanged.
+- **New doc (`docs/QUALITY_SAFETY_OFFLINE_JUDGE_CONTRACT.md`)** defines, closed-vocabulary only: preconditions; boundary
+  (`offline_only`, `advisory_only`, `non_blocking_initially`, `no_repair`, `no_prompt_tuning`, `no_provider_calls_in_contract_slice`,
+  `no_runtime_outputs_committed`, `no_private_material_committed`); allowed future runtime-only inputs (sanitized/closed-vocabulary
+  committed outputs only); forbidden committed content; the **proposed** future artifact name
+  `quality_safety_offline_judge_report.json` (proposed, not produced); the closed/sanitized output shape (no free-text rationale)
+  with eight axes (`correctness`, `completeness`, `source_grounding`, `structure_and_study_value`, `math_numeric_safety`,
+  `leakage_privacy_safety`, `citation_traceability`, `exam_readiness`); calibration requirements; the relationship to the
+  deterministic floor (judge cannot override recompute/leak blockers or fabricate facts from coverage); the next five judge-path
+  slices; and the decision record.
+- **Future judge artifact name (proposed only):** `quality_safety_offline_judge_report.json` (`advisory=true`, non-blocking
+  initially, not a final user score until calibrated, not used for repair).
+- **Decision record:** `offline_judge_contract_status=ready`; `numeric_infrastructure_frozen=true`;
+  `quality_safety_surface_frozen=true`; `judge_contract_ready=true`; `judge_ready=false`; `repair_ready=false`;
+  `next_step=offline_judge_schema_fixtures_and_synthetic_harness`.
+- **Files changed:** `M docs/CURRENT_TASK.md`, `M docs/DECISIONS.md`, `M docs/NEXT_CHAT_HANDOFF.md`,
+  `M docs/QUALITY_SAFETY_SURFACE_FREEZE.md`, `M docs/QUALITY_SAFETY_DETERMINISTIC_FLOOR_FINAL_GATE.md`,
+  `M docs/QUALITY_SAFETY_E2E_VALIDATION.md`, `M docs/QUALITY_SAFETY_OPERATOR_VALIDATION.md`,
+  `?? docs/QUALITY_SAFETY_OFFLINE_JUDGE_CONTRACT.md`. **Slice 141 remains NOT committed.**
+- **Next recommended slice:** **Slice 142 — Offline Judge Schema Fixtures and Synthetic Harness.** `judge_ready=false`;
+  `repair_ready=false`; the judge contract is designed only — implementation begins, synthetic-only, in a later separately
+  designed slice.
+
+---
+
+## Slice 140 — **Quality Safety Surface Cleanup / Freeze**, on `slice140-quality-safety-surface-cleanup-freeze`. **Committed `62b7b82`, merged + pushed to `chrome-renderer-v1`.**
 
 - **Part 0 completed:** Slice 139 was committed as `c421465`, fast-forward merged to trunk `chrome-renderer-v1`, and pushed with
   a normal `git push` (no force-push; `cd7ac45..c421465`). Final trunk status before branching Slice 140 was clean; no docker

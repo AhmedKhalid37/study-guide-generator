@@ -893,3 +893,20 @@ judge_ready: false
 repair_ready: false
 next_step: offline_judge_contract_design
 ```
+
+## Slice 141 Offline Judge Contract (design-only) status
+
+Slice 141 designed the offline judge contract (design only); no judge ran and no
+judge output was produced. These synthetic E2E validation records are unchanged and
+remain the deterministic source of truth. The future offline judge cannot override
+their deterministic blockers.
+
+```
+offline_judge_contract_status: ready
+this_doc_changed: false
+judge_contract_ready: true
+judge_ready: false
+repair_ready: false
+next_step: offline_judge_schema_fixtures_and_synthetic_harness
+docker_compose_config_run: false
+```

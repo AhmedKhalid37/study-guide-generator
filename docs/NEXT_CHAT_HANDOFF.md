@@ -6,45 +6,52 @@
 > stable overview see `PROJECT_CONTEXT.md`; canonical brief is `../CLAUDE.md`.
 
 ## Current position
-- **Working tree:** **Slice 140 (Quality Safety Surface Cleanup / Freeze) — UNCOMMITTED (per instruction)** on branch
-  `slice140-quality-safety-surface-cleanup-freeze`, branched from updated `chrome-renderer-v1` after Slice 139 was committed,
-  fast-forward merged, and pushed. **Slice 139 is trunk commit `c421465`**.
-  - **Part 0 completed:** Slice 139 was committed as `c421465`, fast-forward merged to `chrome-renderer-v1`, and pushed with a
-    normal `git push` (no force-push; `cd7ac45..c421465`). Final trunk status before branching was clean; no docker compose config
+- **Working tree:** **Slice 141 (Offline Judge Contract Design) — UNCOMMITTED (per instruction)** on branch
+  `slice141-quality-safety-offline-judge-contract-design`, branched from updated `chrome-renderer-v1` after Slice 140 was
+  committed, fast-forward merged, and pushed. **Slice 140 is trunk commit `62b7b82`**.
+  - **Part 0 completed:** Slice 140 was committed as `62b7b82`, fast-forward merged to `chrome-renderer-v1`, and pushed with a
+    normal `git push` (no force-push; `c421465..62b7b82`). Final trunk status before branching was clean; no docker compose config
     was run; the Slice 60 trace stash remains parked and untouched.
-  - **Slice 140 scope:** docs / test-surface cleanup only; **no production code change.** This slice freezes the deterministic
-    (non-judge) Quality Safety surface so it is easy to reason about before Slice 141 begins **Offline Judge Contract Design**. It
-    adds one consolidated freeze summary `docs/QUALITY_SAFETY_SURFACE_FREEZE.md` and aligns the stale handoff/current-task
-    pointers. **No new Quality Safety feature, no new numeric schema/bridge layer, no judge scoring, no repair, no prompt tuning,
-    no production wiring, no route/frontend change, no provider/model/cloud, no OCR/table/source/`clean.md` parsing, no
-    real/private sidecar.** `quality_safety_job_artifact.py`, `run_markdown_job.py`, `api/server.py` unchanged.
-  - **Freeze summary records (closed-vocabulary only):** frozen artifact names (`quality_safety_unified_qa.json`,
-    `quality_safety_numeric_extraction_records.json`, `quality_safety_safe_numeric_candidates.json`,
-    `quality_safety_structured_numeric_candidates.json`); frozen field families (`extraction_coverage_*`, `numeric_extraction_*`,
-    `safe_numeric_extractor_*`, `structured_numeric_candidate_adapter_*`, `operator_structured_numeric_export_validation`,
-    `deterministic_floor_final_gate`); the nine frozen validation harnesses; the frozen non-goals; the known limitations; and the
-    next allowed phase (`offline_judge_contract_design`).
-  - **Known limitations (unchanged, re-stated):** operator waiver is **synthetic-only**; `production_numeric_extractor_present`
-    remains the sidecar / structured-sidecar / operator-approved path only; `judge_ready=false`; `repair_ready=false`;
-    `judge_contract_ready=true` means only that contract **design** may begin.
-  - **Companion validation (all green):** gate (34), operator export harness (35), operator export validator (422), adapter (177),
-    safe extractor (207), job artifact (753), recompute verifier (99), real-disaster e2e (100), unified QA (73); `compileall`
-    clean; `git diff --check` clean. Docker not run (docs/test-surface only); no docker compose config run.
-  - **Decision record:** `deterministic_safety_floor_status=ready_for_cleanup_freeze`; `numeric_infrastructure_frozen=true`;
+  - **Slice 141 scope:** docs / design only; **no production code change.** Now that the deterministic (non-judge) Quality Safety
+    surface is frozen (Slice 140), this slice **designs the offline judge contract** — it does **not** implement a judge. It adds
+    the new doc `docs/QUALITY_SAFETY_OFFLINE_JUDGE_CONTRACT.md` and appends pointers/status to the freeze/floor/validation docs.
+    **No judge core, no judge calls, no provider/model/cloud/local-LLM calls, no `quality_judge.py`, no `nn3.json`, no
+    `judge_response_nn3.json`, no `quality.jsonl`, no repair, no prompt tuning, no blocking gate, no route/frontend change, no
+    request-schema/render/export/OCR/table/visual/Ask Guide change, no numeric infrastructure unfreeze.**
+    `quality_safety_job_artifact.py`, `run_markdown_job.py`, `api/server.py` unchanged.
+  - **Contract records (closed-vocabulary only):** preconditions; boundary (`offline_only`, `advisory_only`,
+    `non_blocking_initially`, `no_repair`, `no_prompt_tuning`, `no_provider_calls_in_contract_slice`, `no_runtime_outputs_committed`,
+    `no_private_material_committed`); allowed future runtime-only inputs (committed outputs sanitized/closed-vocabulary only);
+    forbidden committed content; the **proposed** future artifact name `quality_safety_offline_judge_report.json` (proposed, not
+    produced); the closed/sanitized output shape (no free-text rationale) with eight axes; calibration requirements; the
+    deterministic-floor relationship; the next five judge-path slices; and the decision record.
+  - **Future judge artifact name (proposed only):** `quality_safety_offline_judge_report.json` (`advisory=true`, non-blocking
+    initially, not a final user score until calibrated, not used for repair).
+  - **Validation (all green):** gate (34), operator export harness (35), operator export validator (422), adapter (177), safe
+    extractor (207), job artifact (753), recompute verifier (99), real-disaster e2e (100), unified QA (73); `compileall` clean;
+    `git diff --check` clean. Docker not run (docs/design-only); no docker compose config run.
+  - **Decision record:** `offline_judge_contract_status=ready`; `numeric_infrastructure_frozen=true`;
     `quality_safety_surface_frozen=true`; `judge_contract_ready=true`; `judge_ready=false`; `repair_ready=false`;
-    `next_step=offline_judge_contract_design`.
+    `next_step=offline_judge_schema_fixtures_and_synthetic_harness`.
   - **Files changed:** `M docs/CURRENT_TASK.md`, `M docs/DECISIONS.md`, `M docs/NEXT_CHAT_HANDOFF.md`,
+    `M docs/QUALITY_SAFETY_SURFACE_FREEZE.md`, `M docs/QUALITY_SAFETY_DETERMINISTIC_FLOOR_FINAL_GATE.md`,
     `M docs/QUALITY_SAFETY_E2E_VALIDATION.md`, `M docs/QUALITY_SAFETY_OPERATOR_VALIDATION.md`,
-    `M docs/QUALITY_SAFETY_DETERMINISTIC_FLOOR_FINAL_GATE.md`, `M docs/QUALITY_SAFETY_NUMERIC_EXTRACTION_CONTRACT.md`,
-    `M docs/QUALITY_SAFETY_SAFE_NUMERIC_EXTRACTOR_DESIGN.md`, `M docs/QUALITY_SAFETY_OPERATOR_STRUCTURED_NUMERIC_EXPORT_PROTOCOL.md`,
-    `M docs/QUALITY_SAFETY_FUTURE_STRUCTURED_NUMERIC_ARTIFACT_DESIGN.md`,
-    `M docs/QUALITY_SAFETY_STRUCTURED_NUMERIC_CANDIDATE_PRODUCER_DESIGN.md`, `?? docs/QUALITY_SAFETY_SURFACE_FREEZE.md`.
-  - **Next expected slice:** **Slice 141 — Offline Judge Contract Design.** Judge baseline stays blocked (`judge_ready=false`;
-    `repair_ready=false`); the offline judge **contract** is designed (not implemented) now that the deterministic floor is frozen.
+    `?? docs/QUALITY_SAFETY_OFFLINE_JUDGE_CONTRACT.md`.
+  - **Next expected slice:** **Slice 142 — Offline Judge Schema Fixtures and Synthetic Harness.** Judge baseline stays blocked
+    (`judge_ready=false`; `repair_ready=false`); the judge contract is designed only — synthetic-only implementation begins in a
+    later separately designed slice.
   - **Out of scope/unchanged:** no `api/server.py` change, no routes, no frontend change, no production wiring/sidecar writer, no
     generation/prompt/provider/request-schema/render/export/OCR/table/visual/Ask Guide change, no judge/`overall_10`/repair/
-    blocking gate, no `quality_judge.py`, `nn3.json`, `judge_response_nn3.json`, or `quality.jsonl`. **Slice 140 remains NOT
+    blocking gate, no `quality_judge.py`, `nn3.json`, `judge_response_nn3.json`, or `quality.jsonl`. **Slice 141 remains NOT
     committed.**
+
+### Previously (Slice 140, now trunk `62b7b82`)
+- **Slice 140 (Quality Safety Surface Cleanup / Freeze)** froze the deterministic (non-judge) Quality Safety surface (docs /
+  test-surface only; no production code change) and added the consolidated freeze summary
+  `docs/QUALITY_SAFETY_SURFACE_FREEZE.md`. Recorded frozen artifact names, frozen field families, the nine frozen validation
+  harnesses, frozen non-goals, and known limitations: `deterministic_safety_floor_status=ready_for_cleanup_freeze`;
+  `numeric_infrastructure_frozen=true`; `quality_safety_surface_frozen=true`; `judge_contract_ready=true`; `judge_ready=false`;
+  `repair_ready=false`; `next_step=offline_judge_contract_design`. No production code changed.
 
 ### Previously (Slice 139, now trunk `c421465`)
 - **Slice 139 (Deterministic Safety Floor Final Gate)** added the test/docs-only synthetic gate

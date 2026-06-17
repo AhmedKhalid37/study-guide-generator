@@ -1221,3 +1221,22 @@ judge_ready: false
 repair_ready: false
 next_step: offline_judge_contract_design
 ```
+
+## Slice 141 Offline Judge Contract (design-only) status
+
+Slice 141 designed the offline judge contract (design only). The operator waiver
+status is unchanged: it stays synthetic-only
+(`operator_numeric_export_waiver=approved_for_safety_floor_finalization_synthetic_only`);
+no private/local operator run was performed or committed. A future judge
+calibration pass would require closed-vocabulary operator results only; `judge_ready`
+stays false until a separate calibration gate approves it.
+
+```
+offline_judge_contract_status: ready
+operator_numeric_export_waiver: approved_for_safety_floor_finalization_synthetic_only
+calibration_status: not_started
+judge_contract_ready: true
+judge_ready: false
+repair_ready: false
+next_step: offline_judge_schema_fixtures_and_synthetic_harness
+```
