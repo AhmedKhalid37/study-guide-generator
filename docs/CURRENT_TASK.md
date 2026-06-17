@@ -5,7 +5,53 @@
 
 ---
 
-## Slice 122 — **Wire Coverage Adapter into Advisory Artifact**, on `slice122-wire-quality-safety-coverage-adapter-advisory-artifact`. **NOT COMMITTED.**
+## Slice 123 — **Real-Disaster E2E with Advisory Coverage Leg**, on `slice123-quality-safety-real-disaster-e2e-coverage-leg`. **NOT COMMITTED.**
+
+- **Part 0 completed:** Slice 122 was committed as `979bb4e`, fast-forward merged to trunk `chrome-renderer-v1`, and pushed
+  with a normal `git push` (no force-push). Slice 122 wired the Slice 121 structural-coverage adapter into the advisory
+  `quality_safety_unified_qa.json` artifact; no docker compose config was run, and the Slice 60 trace stash remains parked and
+  untouched.
+- **Scope:** operator-/harness-validation slice. Validate the *actual* advisory job-artifact path against the real-disaster
+  case archetypes after Slice 122 coverage wiring, and record — in closed vocabulary only — which legs are now covered. No
+  production code change: one synthetic-safe harness plus docs only.
+- **Files changed:** `M docs/CURRENT_TASK.md`, `M docs/DECISIONS.md`, `M docs/NEXT_CHAT_HANDOFF.md`,
+  `M docs/QUALITY_SAFETY_E2E_VALIDATION.md`, `M docs/QUALITY_SAFETY_OPERATOR_VALIDATION.md`,
+  `?? test_scripts/validate_quality_safety_real_disaster_e2e.py`. No `quality_safety_job_artifact.py` /
+  `run_markdown_job.py` / `api/server.py` / frontend change was needed (the artifact path was not broken).
+- **Track A (synthetic-safe, artifact-path-exercised):** new harness
+  `test_scripts/validate_quality_safety_real_disaster_e2e.py` (41 checks, all passed) drives the real builder and the real
+  production hook `_write_quality_safety_unified_qa` with synthetic-safe inputs across three archetypes:
+  - `clean_real_case` → `unified_status=passed`, `shippable=true`, `safety_floor_green=true`, coverage present.
+  - `single_confident_wrong_numeric_case` → `unified_status=failed`, `shippable=false`, recompute blocker present (proves the
+    verifier works *when* a concept/fact bundle is fed).
+  - `legacy_confused_wrong_case` (production-shaped: structural coverage present, **no** concept/fact bundle) → recompute
+    stays `unknown`/missing, no recompute blocker, `safety_floor_green=false`, `shippable=true` only because nothing failed.
+    This is the honest gap.
+- **Track B (real private operator material):** no real-material generation was run in this automated session (provider/model/
+  cloud calls are not permitted here), so runtime fields are recorded honestly as `not_observed`; the structurally guaranteed
+  invariants (`advisory_non_blocking=true`, `structural_coverage_leg_covered=true`,
+  `numeric_fact_sheet_extraction_leg_covered=false`) are recorded directly. Records live in
+  `docs/QUALITY_SAFETY_OPERATOR_VALIDATION.md` → Slice 123.
+- **Coverage-leg status:** **structural coverage leg = covered** (wired into the artifact; present with safe metadata,
+  `skipped` otherwise). **Numeric fact-sheet extraction leg = NOT covered** through the production hook — that hook supplies
+  only `candidate_markdown` + structural-coverage siblings and never produces a concept/fact bundle, so recompute stays
+  `component_missing`. Structural coverage never invented numerics (`numeric_observation_count=0`) and never upgraded
+  `shippable` / `safety_floor_green`.
+- **judge_ready=false, repair_ready=false.** Next slice should be **numeric extraction design** (a safe concept/fact
+  extraction-to-fact-sheet mapper feeding the existing recompute verifier) — *not* a judge baseline or repair, because the
+  numeric leg is still uncovered end-to-end.
+- **Validation:** real-disaster harness 41 passed; E2E artifact harness 36 passed; job artifact 276 passed; adapter 705
+  passed; unified QA 73 passed; `compileall api pipeline test_scripts` OK; `git diff --check` clean; no-leak sweep clean. No
+  docker compose config was run; Docker not required (docs + synthetic harness only).
+- **Out of scope / unchanged:** no numeric extraction implemented, no extraction-to-fact-sheet mapper, no
+  `quality_safety_job_artifact.py` / `run_markdown_job.py` / `api/server.py` change, no routes, no frontend change, no generic
+  artifact selector row, no generation/prompt/provider/request-schema/render/export/OCR/table/visual/Ask Guide change, no
+  judge scoring, `overall_10`, repair loop, or blocking gate; no `quality_judge.py`, `nn3.json`, `judge_response_nn3.json`, or
+  `quality.jsonl`. **Slice 123 remains NOT committed.**
+
+---
+
+## Slice 122 — **Wire Coverage Adapter into Advisory Artifact**, on `slice122-wire-quality-safety-coverage-adapter-advisory-artifact`. **Committed `979bb4e`, merged + pushed to `chrome-renderer-v1`.**
 
 - **Part 0 completed:** Slice 121 was committed as `b382eed`, fast-forward merged to trunk `chrome-renderer-v1`, and pushed
   with a normal `git push` (no force-push). Slice 121 added the pure/unwired `quality_safety_extraction_coverage_bundle`
@@ -48,7 +94,7 @@
 - **Out of scope / unchanged:** no new routes, no `api/server.py` change, no frontend change, no generic artifact selector
   row, no generation/prompt/provider/request-schema/render/export/OCR/table/visual/Ask Guide behavior change, no judge
   scoring, `overall_10`, repair loop, or blocking gate; no `quality_judge.py`, `nn3.json`, `judge_response_nn3.json`, or
-  `quality.jsonl`. **Slice 122 remains NOT committed.**
+  `quality.jsonl`. **Committed `979bb4e`, merged + pushed to `chrome-renderer-v1`.**
 
 ---
 

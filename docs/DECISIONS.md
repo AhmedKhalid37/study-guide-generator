@@ -4967,3 +4967,38 @@ page/OCR/table text, and never scans directories. Missing/malformed siblings
 degrade to the closed `skipped` coverage leg with `extraction_coverage_missing`
 (or `extraction_coverage_degraded`) and never raise — the advisory artifact must
 never break a job.
+
+## Slice 123 separates the structural coverage leg from the numeric extraction leg, and gates judge/repair on the latter
+**Why structural coverage is not numeric extraction coverage.** Slice 122 wired
+the structural coverage bundle into the advisory artifact, but structural coverage
+carries page/visual/table *counts* only — never concept/fact `computation_records`
+or `numeric_observations`. Slice 123 validates the actual artifact path and records
+the two legs separately: the **structural coverage leg is covered** (present with
+safe metadata, `skipped` otherwise), while the **numeric fact-sheet extraction leg
+is not covered**. The production hook (`_write_quality_safety_unified_qa`) supplies
+only `candidate_markdown` plus structural-coverage siblings and never produces a
+concept/fact bundle, so recompute stays `component_missing` end-to-end no matter
+how rich the structural coverage is. A production-shaped synthetic archetype
+(`legacy_confused_wrong_case`: coverage present, no concept bundle) proves recompute
+stays `unknown`/missing and `safety_floor_green=false` — the artifact never claims
+numeric correctness it cannot verify.
+
+**Why judge baseline and repair must wait.** Because the numeric fact-sheet
+extraction leg is not covered through the production artifact path, `judge_ready`
+and `repair_ready` are both `false`. The next engineering slice must be **numeric
+extraction design** — a safe concept/fact extraction-to-fact-sheet mapper that
+feeds the existing recompute verifier — before any judge baseline or repair work.
+A judge layered on top of an uncovered numeric leg would score guides whose numbers
+were never verified, which would be dishonest.
+
+**Why real-disaster E2E records stay closed-vocabulary and use `not_observed`.**
+Real operator validation may inspect private local material at runtime, but
+committed records carry closed tokens only — no runtime artifacts, raw artifact
+JSON, raw extracted metadata, paths, filenames, source/OCR/table/caption text,
+snippets, formulas, numeric prose, evidence quotes, or provider payloads. Where a
+real-material generation was *not* executed in the automated session (provider/
+model/cloud calls are not permitted there), the runtime-dependent fields are
+recorded honestly as `not_observed` rather than fabricated; only structurally
+guaranteed invariants are asserted. The synthetic-safe Track A harness
+(`test_scripts/validate_quality_safety_real_disaster_e2e.py`) carries the
+artifact-path-exercised observations.

@@ -332,6 +332,91 @@ no_leak_sweep: clean
 docker_compose_config_run: false
 ```
 
+## Slice 123 — Real-Disaster E2E with Advisory Coverage Leg
+
+**Scope.** Validate the *actual* advisory `quality_safety_unified_qa.json` job
+artifact path against the real-disaster case archetypes after the Slice 122
+coverage wiring, and record — honestly, in closed vocabulary — which legs are
+covered. This is an operator-/harness-validation slice: it adds no production
+code change (one synthetic-safe harness plus docs only).
+
+**Privacy boundary.** Real operator validation may inspect private local material
+at runtime, but committed records carry closed tokens only. No real PDFs, images,
+DOCX/PDF/ZIPs, generated guides, runtime artifacts, eval/trace outputs, raw
+artifact JSON, raw extracted metadata, provider payloads, source/reference/spec
+filenames, paths, OCR/table/caption text, guide snippets, copied formulas,
+numeric prose, or evidence quotes are committed.
+
+**Two-leg distinction (the core honesty point).**
+- *Structural coverage leg* — now wired into the advisory artifact via
+  `extraction_coverage_bundle` (Slice 122). Present with safe synthetic structural
+  metadata; `skipped` when absent.
+- *Numeric fact-sheet extraction leg* — still NOT covered through the production
+  hook. `_write_quality_safety_unified_qa` supplies only `candidate_markdown` plus
+  the structural-coverage sibling artifacts; it never produces a concept/fact
+  bundle, so recompute stays `component_missing` / `skipped` no matter how rich
+  the structural coverage is. Structural coverage is not numeric recompute
+  evidence and is never converted into one.
+
+### Track A — Synthetic-safe artifact-path validation
+
+`test_scripts/validate_quality_safety_real_disaster_e2e.py` (41 checks, all
+passed) drives the real builder and the real production hook with synthetic-safe
+inputs across the three archetypes. Closed-vocabulary records (display only):
+
+```
+clean_real_case:                  artifact_path_exercised=true input_kind=synthetic_safe job_artifact_produced=true advisory_non_blocking=true extraction_coverage_bundle_present=true extraction_coverage_status=ok structural_coverage_leg_covered=true numeric_fact_sheet_extraction_leg_covered=true recompute_blocker_present=false unified_status=passed shippable=true safety_floor_green=true
+single_confident_wrong_numeric_case: artifact_path_exercised=true input_kind=synthetic_safe job_artifact_produced=true advisory_non_blocking=true extraction_coverage_bundle_present=true extraction_coverage_status=ok structural_coverage_leg_covered=true numeric_fact_sheet_extraction_leg_covered=true recompute_blocker_present=true unified_status=failed shippable=false safety_floor_green=false
+legacy_confused_wrong_case:       artifact_path_exercised=true input_kind=synthetic_safe job_artifact_produced=true advisory_non_blocking=true extraction_coverage_bundle_present=true extraction_coverage_status=ok structural_coverage_leg_covered=true numeric_fact_sheet_extraction_leg_covered=false recompute_blocker_present=false unified_status=warning shippable=true safety_floor_green=false
+```
+
+Note the `legacy_confused_wrong_case` is the production-shaped archetype: no
+concept/fact bundle is supplied (mirroring the real hook), so the numeric leg is
+honestly uncovered (`recompute_component_state=unknown`, no recompute blocker)
+even though structural coverage is present. Cases 1–2 show the numeric leg works
+*when* a synthetic concept/fact bundle is fed — proving the verifier, not the
+production extraction path. Structural coverage never invented a numeric
+observation (`numeric_observation_count=0` everywhere) and never upgraded
+`shippable` / `safety_floor_green`.
+
+### Track B — Real-disaster operator validation record (closed tokens)
+
+No real-material generation was executed in this automated session (no provider/
+model/cloud calls are permitted here), so the real-material runs are honestly
+recorded as `not_observed` for runtime-dependent fields. The structurally
+code-guaranteed invariants are recorded directly. See
+`QUALITY_SAFETY_OPERATOR_VALIDATION.md` → Slice 123 for the per-case records.
+
+### Closed outcome
+
+```
+quality_safety_real_disaster_e2e_validation: run
+status: ok
+artifact_path_validation: ok
+synthetic_track_a: 41_passed
+real_track_b_runtime: not_observed
+structural_coverage_leg_status: covered
+numeric_fact_sheet_extraction_leg_status: not_covered
+structural_coverage_upgrades_shippable: false
+numeric_observations_fabricated: false
+advisory_non_blocking: true
+provider_calls: false
+judge_calls: false
+repair_calls: false
+judge_ready: false
+repair_ready: false
+next_step: numeric_extraction_design
+no_leak_sweep: clean
+docker_compose_config_run: false
+warnings: []
+```
+
+**Next-step recommendation.** Do not proceed to a judge baseline or repair: the
+numeric fact-sheet extraction leg is not covered through the production artifact
+path (no concept/fact bundle is produced). The next engineering slice should be
+**numeric extraction design** — a safe concept/fact extraction-to-fact-sheet
+mapper that feeds the existing recompute verifier — before any judge/repair work.
+
 ## Non-Goals
 
 - The Slice 122 coverage wiring is advisory transparency only; the numeric /

@@ -288,4 +288,227 @@ fact-sheet production, judge logic, prompt tuning, repair, providers, or runtime
 }
 ```
 
-Slice 115, Slice 116, and Slice 117 are committed. Slice 118 is NOT committed.
+## Slice 123 Advisory Artifact-Path Validation
+
+Slice 123 is distinct from the Slice 115 / 116 detector-only operator validation.
+Slices 115–116 isolated the deterministic detectors (recompute / leak / unified
+QA) on private operator material using a **hand-built local fact sheet** — they
+did not exercise the production artifact path and did not cover the extraction
+leg. Slice 123 instead validates the **actual advisory `quality_safety_unified_qa.json`
+job artifact path** after the Slice 122 structural-coverage wiring, and separates
+two legs explicitly:
+
+- **structural coverage leg** — wired into the advisory artifact via
+  `extraction_coverage_bundle` (present with safe structural metadata; `skipped`
+  otherwise);
+- **numeric fact-sheet extraction leg** — still NOT covered through the
+  production hook, which never produces a concept/fact bundle.
+
+### Slice 123 Scope Honesty
+
+```json
+{
+  "validation_id": "quality_safety_advisory_artifact_path_scope_v1",
+  "slice": "123",
+  "artifact_name": "quality_safety_unified_qa_json",
+  "artifact_kind": "quality_safety_job_artifact",
+  "advisory_non_blocking": true,
+  "structural_coverage_leg_covered": true,
+  "numeric_fact_sheet_extraction_leg_covered": false,
+  "synthetic_track_a_checks": "41_passed",
+  "production_hook_exercised_synthetically": true,
+  "real_material_runtime_runs": "not_observed",
+  "judge_ready": false,
+  "repair_ready": false,
+  "next_engineering_slice": "numeric_extraction_design"
+}
+```
+
+### Slice 123 Synthetic Track A Records (artifact-path-exercised)
+
+```json
+[
+  {
+    "validation_case": "clean_real_case",
+    "input_kind": "synthetic_safe",
+    "artifact_path_exercised": true,
+    "artifact_name": "quality_safety_unified_qa_json",
+    "job_artifact_produced": true,
+    "advisory_non_blocking": true,
+    "extraction_coverage_bundle_present": true,
+    "extraction_coverage_status": "ok",
+    "structural_coverage_leg_covered": true,
+    "numeric_fact_sheet_extraction_leg_covered": true,
+    "recompute_blocker_present": false,
+    "leak_blocker_present": false,
+    "unified_status": "passed",
+    "shippable": true,
+    "safety_floor_green": true,
+    "expected_case_behavior_observed": true,
+    "raw_text_committed": false,
+    "raw_paths_committed": false,
+    "runtime_outputs_committed": false,
+    "provider_calls": false,
+    "judge_calls": false,
+    "repair_calls": false
+  },
+  {
+    "validation_case": "single_confident_wrong_numeric_case",
+    "input_kind": "synthetic_safe",
+    "artifact_path_exercised": true,
+    "artifact_name": "quality_safety_unified_qa_json",
+    "job_artifact_produced": true,
+    "advisory_non_blocking": true,
+    "extraction_coverage_bundle_present": true,
+    "extraction_coverage_status": "ok",
+    "structural_coverage_leg_covered": true,
+    "numeric_fact_sheet_extraction_leg_covered": true,
+    "recompute_blocker_present": true,
+    "leak_blocker_present": false,
+    "unified_status": "failed",
+    "shippable": false,
+    "safety_floor_green": false,
+    "expected_case_behavior_observed": true,
+    "raw_text_committed": false,
+    "raw_paths_committed": false,
+    "runtime_outputs_committed": false,
+    "provider_calls": false,
+    "judge_calls": false,
+    "repair_calls": false
+  },
+  {
+    "validation_case": "legacy_confused_wrong_case",
+    "input_kind": "synthetic_safe",
+    "artifact_path_exercised": true,
+    "artifact_name": "quality_safety_unified_qa_json",
+    "job_artifact_produced": true,
+    "advisory_non_blocking": true,
+    "extraction_coverage_bundle_present": true,
+    "extraction_coverage_status": "ok",
+    "structural_coverage_leg_covered": true,
+    "numeric_fact_sheet_extraction_leg_covered": false,
+    "recompute_blocker_present": false,
+    "leak_blocker_present": false,
+    "unified_status": "warning",
+    "shippable": true,
+    "safety_floor_green": false,
+    "expected_case_behavior_observed": true,
+    "raw_text_committed": false,
+    "raw_paths_committed": false,
+    "runtime_outputs_committed": false,
+    "provider_calls": false,
+    "judge_calls": false,
+    "repair_calls": false
+  }
+]
+```
+
+The production-shaped `legacy_confused_wrong_case` (no concept/fact bundle, only
+structural coverage) keeps the numeric leg uncovered: recompute stays missing, no
+recompute blocker is raised, and `safety_floor_green=false` — the artifact does
+not claim numeric correctness it cannot verify. `shippable=true` here only
+reflects that no detector *failed*; it is not evidence any number was checked.
+
+### Slice 123 Real Track B Records (private operator material, runtime not_observed)
+
+No real-material generation was executed in this automated session, so
+runtime-dependent fields are honestly `not_observed`; structurally guaranteed
+invariants are recorded directly.
+
+```json
+[
+  {
+    "validation_case": "legacy_confused_wrong_case",
+    "input_kind": "private_local_operator_material",
+    "artifact_path_exercised": "not_observed",
+    "artifact_name": "quality_safety_unified_qa_json",
+    "job_artifact_produced": "not_observed",
+    "advisory_non_blocking": true,
+    "extraction_coverage_bundle_present": "not_observed",
+    "extraction_coverage_status": "not_observed",
+    "structural_coverage_leg_covered": true,
+    "numeric_fact_sheet_extraction_leg_covered": false,
+    "recompute_blocker_present": "not_observed",
+    "leak_blocker_present": "not_observed",
+    "unified_status": "not_observed",
+    "shippable": "not_observed",
+    "safety_floor_green": "not_observed",
+    "expected_case_behavior_observed": "not_observed",
+    "raw_text_committed": false,
+    "raw_paths_committed": false,
+    "runtime_outputs_committed": false,
+    "provider_calls": false,
+    "judge_calls": false,
+    "repair_calls": false,
+    "warnings": ["real_material_generation_not_run_this_session"]
+  },
+  {
+    "validation_case": "single_confident_wrong_numeric_case",
+    "input_kind": "private_local_operator_material",
+    "artifact_path_exercised": "not_observed",
+    "artifact_name": "quality_safety_unified_qa_json",
+    "job_artifact_produced": "not_observed",
+    "advisory_non_blocking": true,
+    "extraction_coverage_bundle_present": "not_observed",
+    "extraction_coverage_status": "not_observed",
+    "structural_coverage_leg_covered": true,
+    "numeric_fact_sheet_extraction_leg_covered": false,
+    "recompute_blocker_present": "not_observed",
+    "leak_blocker_present": "not_observed",
+    "unified_status": "not_observed",
+    "shippable": "not_observed",
+    "safety_floor_green": "not_observed",
+    "expected_case_behavior_observed": "not_observed",
+    "raw_text_committed": false,
+    "raw_paths_committed": false,
+    "runtime_outputs_committed": false,
+    "provider_calls": false,
+    "judge_calls": false,
+    "repair_calls": false,
+    "warnings": ["real_material_generation_not_run_this_session"]
+  },
+  {
+    "validation_case": "clean_real_case",
+    "input_kind": "private_local_operator_material",
+    "artifact_path_exercised": "not_observed",
+    "artifact_name": "quality_safety_unified_qa_json",
+    "job_artifact_produced": "not_observed",
+    "advisory_non_blocking": true,
+    "extraction_coverage_bundle_present": "not_observed",
+    "extraction_coverage_status": "not_observed",
+    "structural_coverage_leg_covered": true,
+    "numeric_fact_sheet_extraction_leg_covered": false,
+    "recompute_blocker_present": "not_observed",
+    "leak_blocker_present": "not_observed",
+    "unified_status": "not_observed",
+    "shippable": "not_observed",
+    "safety_floor_green": "not_observed",
+    "expected_case_behavior_observed": "not_observed",
+    "raw_text_committed": false,
+    "raw_paths_committed": false,
+    "runtime_outputs_committed": false,
+    "provider_calls": false,
+    "judge_calls": false,
+    "repair_calls": false,
+    "warnings": ["real_material_generation_not_run_this_session"]
+  }
+]
+```
+
+### Slice 123 Outcome
+
+```json
+{
+  "validation_id": "quality_safety_real_disaster_e2e_v1",
+  "status": "ok",
+  "artifact_path_validation": "ok",
+  "structural_coverage_leg_status": "covered",
+  "numeric_fact_sheet_extraction_leg_status": "not_covered",
+  "judge_ready": false,
+  "repair_ready": false,
+  "next_step": "numeric_extraction_design"
+}
+```
+
+Slice 115, Slice 116, Slice 117, Slice 118, Slice 119, Slice 120, Slice 121, and
+Slice 122 are committed. Slice 123 is NOT committed.
