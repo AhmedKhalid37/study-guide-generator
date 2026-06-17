@@ -343,3 +343,22 @@ judge_ready: false
 repair_ready: false
 next_step: deterministic_safety_floor_final_gate
 ```
+
+## Slice 139 Final Gate Relationship
+
+Slice 139's deterministic safety floor final gate verified the advisory artifact
+contract is unchanged (`artifact_contract_status=ok`: `kind` unchanged, `advisory=true`,
+exact artifact name `quality_safety_unified_qa.json`) and that the structured-candidate
+sidecar remains a job-local, read-only input production never creates or commits. The
+future artifact schema is **unchanged**; the numeric infrastructure stays frozen.
+
+```yaml
+final_gate_status: ready_for_cleanup_freeze
+artifact_schema_changed: false
+sidecar_committed: false
+numeric_infrastructure_frozen: true
+judge_contract_ready: true
+judge_ready: false
+repair_ready: false
+next_step: quality_safety_surface_cleanup_freeze
+```

@@ -476,3 +476,14 @@ drives the existing chain. The numeric infrastructure is now frozen.
 `operator_numeric_export_waiver=approved_for_safety_floor_finalization_synthetic_only`;
 `private_operator_run=not_run`; `judge_ready=false`; `repair_ready=false`;
 `next_step=deterministic_safety_floor_final_gate`.
+
+## Slice 139 Final Gate Relationship
+
+Slice 139's deterministic safety floor final gate confirmed the safe-candidates path
+still works and is correctly superseded by explicit records (`numeric_path_status=ok`).
+The safe extractor's role is **unchanged**; the gate only drives the existing chain.
+The numeric infrastructure stays frozen.
+`final_gate_status=ready_for_cleanup_freeze`; `safe_extractor_changed=false`;
+`numeric_infrastructure_frozen=true`; `judge_contract_ready=true`;
+`judge_ready=false`; `repair_ready=false`;
+`next_step=quality_safety_surface_cleanup_freeze`.

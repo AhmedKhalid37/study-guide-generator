@@ -264,3 +264,23 @@ judge_ready: false
 repair_ready: false
 next_step: deterministic_safety_floor_final_gate
 ```
+
+## Slice 139 Final Gate Relationship
+
+Slice 139's deterministic safety floor final gate confirmed the structured-candidate
+path still works (`numeric_path_status=ok`) and that structural coverage never
+fabricates numeric records (`structural_coverage_status=ok`). The producer design is
+**unchanged**: producer v1 stays the hand-authored `operator_approved_structured_export`
+path, no future automated producer is implemented, and the numeric infrastructure
+stays frozen.
+
+```
+final_gate_status: ready_for_cleanup_freeze
+producer_design_changed: false
+future_automated_producer: not_implemented
+numeric_infrastructure_frozen: true
+judge_contract_ready: true
+judge_ready: false
+repair_ready: false
+next_step: quality_safety_surface_cleanup_freeze
+```

@@ -839,3 +839,38 @@ repair_ready: false
 next_step: deterministic_safety_floor_final_gate
 docker_compose_config_run: false
 ```
+
+## Slice 139 — Deterministic Safety Floor Final Gate (synthetic)
+
+Slice 139 added `test_scripts/validate_quality_safety_deterministic_floor_final_gate.py`,
+a synthetic-only gate that aggregates every deterministic Quality Safety component
+built in Slices 118–138 and decides readiness to freeze the non-judge surface. It
+has no private input mode, reads no input files, writes no output files, and prints
+a closed-vocabulary summary only. All seven deterministic prerequisites passed
+(`34 passed, 0 failed`); the real-disaster synthetic core cases reproduced
+(`single_confident_wrong_numeric_case=failed_blocking`, `clean_real_case=passed`,
+`legacy_confused_wrong_case=partial`). Closed-vocabulary outcome only:
+
+```
+validation_id: quality_safety_deterministic_floor_final_gate
+deterministic_safety_floor_status: ready_for_cleanup_freeze
+artifact_contract_status: ok
+leak_safety_status: ok
+recompute_status: ok
+numeric_path_status: ok
+structural_coverage_status: ok
+operator_export_harness_status: ok
+real_disaster_synthetic_status: ok
+ui_display_status: already_covered_by_existing_verify
+operator_numeric_export_waiver: approved_for_safety_floor_finalization_synthetic_only
+numeric_infrastructure_frozen: true
+provider_calls: false
+judge_calls: false
+repair_calls: false
+quality_safety_blocking: false
+judge_contract_ready: true
+judge_ready: false
+repair_ready: false
+next_step: quality_safety_surface_cleanup_freeze
+docker_compose_config_run: false
+```

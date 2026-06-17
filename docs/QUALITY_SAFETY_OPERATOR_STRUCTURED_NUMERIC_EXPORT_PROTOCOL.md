@@ -328,3 +328,21 @@ judge_ready: false
 repair_ready: false
 next_step: deterministic_safety_floor_final_gate
 ```
+
+## Slice 139 Final Gate Relationship
+
+Slice 139's deterministic safety floor final gate exercised the operator-validator
+output path as one of its numeric prerequisites (`numeric_path_status=ok`) and
+confirmed the operator export harness passes (`operator_export_harness_status=ok`).
+The protocol is **unchanged**; the numeric infrastructure stays frozen.
+
+```
+final_gate_status: ready_for_cleanup_freeze
+protocol_changed: false
+operator_export_harness_status: ok
+numeric_infrastructure_frozen: true
+judge_contract_ready: true
+judge_ready: false
+repair_ready: false
+next_step: quality_safety_surface_cleanup_freeze
+```

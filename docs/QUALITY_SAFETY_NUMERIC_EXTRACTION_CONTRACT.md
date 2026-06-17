@@ -644,3 +644,23 @@ judge_ready: false
 repair_ready: false
 next_step: deterministic_safety_floor_final_gate
 ```
+
+## Slice 139 Final Gate Relationship
+
+Slice 139's deterministic safety floor final gate confirmed the explicit-records
+numeric path still works and that the precedence **explicit records > safe candidates
+> structured candidates** holds (`numeric_path_status=ok`), with recompute catching a
+wrong synthetic claim (`recompute_status=ok`). The numeric extraction record contract
+is **unchanged**: the numeric mapper remains the final record sanitizer and the gate
+only drives the existing chain. The numeric infrastructure stays frozen.
+
+```
+final_gate_status: ready_for_cleanup_freeze
+contract_changed: false
+numeric_path_precedence: explicit_gt_safe_gt_structured
+numeric_infrastructure_frozen: true
+judge_contract_ready: true
+judge_ready: false
+repair_ready: false
+next_step: quality_safety_surface_cleanup_freeze
+```

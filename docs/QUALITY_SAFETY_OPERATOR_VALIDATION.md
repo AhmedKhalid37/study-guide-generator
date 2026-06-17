@@ -1180,3 +1180,25 @@ judge_ready: false
 repair_ready: false
 next_step: deterministic_safety_floor_final_gate
 ```
+
+## Slice 139 Final Gate — Operator / Waiver Status (synthetic, closed-vocabulary)
+
+Slice 139's deterministic safety floor final gate
+(`test_scripts/validate_quality_safety_deterministic_floor_final_gate.py`) ran the
+Slice 138 operator export harness in isolation as one of its prerequisites and
+confirmed it passes (`operator_export_harness_status=ok`, no canary leak). The
+operator numeric export waiver remains **synthetic-only**; no private/local operator
+run was performed or committed. The gate is `ready_for_cleanup_freeze` and the
+numeric infrastructure stays frozen.
+
+```
+operator_export_harness_status: ok
+operator_numeric_export_waiver: approved_for_safety_floor_finalization_synthetic_only
+private_operator_run: not_run
+deterministic_safety_floor_status: ready_for_cleanup_freeze
+numeric_infrastructure_frozen: true
+judge_contract_ready: true
+judge_ready: false
+repair_ready: false
+next_step: quality_safety_surface_cleanup_freeze
+```

@@ -5,7 +5,49 @@
 
 ---
 
-## Slice 138 — **Operator Structured Numeric Export Validation Harness / Waiver Decision**, on `slice138-quality-safety-operator-structured-numeric-export-validation-harness`. **NOT COMMITTED.**
+## Slice 139 — **Deterministic Safety Floor Final Gate**, on `slice139-quality-safety-deterministic-floor-final-gate`. **NOT COMMITTED.**
+
+- **Part 0 completed:** Slice 138 was committed as `cd7ac45`, fast-forward merged to trunk `chrome-renderer-v1`, and pushed with
+  a normal `git push` (no force-push; `763fb4a..cd7ac45`). Final trunk status before branching Slice 139 was clean; no docker
+  compose config was run; the Slice 60 trace stash remains parked and untouched.
+- **Scope:** test-harness + docs only; **no production code change.** New harness
+  `test_scripts/validate_quality_safety_deterministic_floor_final_gate.py` and new design doc
+  `docs/QUALITY_SAFETY_DETERMINISTIC_FLOOR_FINAL_GATE.md`. The gate aggregates the deterministic components built in Slices
+  118–138 (advisory `quality_safety_unified_qa.json` artifact, leak/no-leak rules, recompute verifier, fact-sheet/numeric
+  extraction path, structural extraction coverage, safe numeric extractor, structured numeric candidate adapter, operator
+  structured export validator, operator export harness/synthetic-only waiver, real-disaster synthetic E2E) and decides
+  readiness. **No new numeric schema/bridge layer, no production wiring, no route/frontend change, no judge, no repair, no
+  blocking gate, no provider/model/cloud, no OCR/table/source/`clean.md` parsing, no real/private sidecar, no private input
+  mode.** `quality_safety_job_artifact.py`, `run_markdown_job.py`, `api/server.py` unchanged.
+- **Gate harness behavior:** synthetic-only; no private input mode; reads no input files; writes no output files; prints a
+  closed-vocabulary summary only; exits non-zero if any deterministic prerequisite fails. It imports/drives the existing pure
+  components and the two existing Quality Safety harnesses.
+- **Final gate result (`34 passed, 0 failed`):**
+  - `deterministic_safety_floor_status=ready_for_cleanup_freeze`
+  - `artifact_contract_status=ok`, `leak_safety_status=ok`, `recompute_status=ok`, `numeric_path_status=ok`,
+    `structural_coverage_status=ok`, `operator_export_harness_status=ok`, `real_disaster_synthetic_status=ok`,
+    `ui_display_status=already_covered_by_existing_verify`
+  - real-disaster cases: `clean_real_case=passed`, `single_confident_wrong_numeric_case=failed_blocking`,
+    `legacy_confused_wrong_case=partial`
+  - `operator_numeric_export_waiver=approved_for_safety_floor_finalization_synthetic_only`; `numeric_infrastructure_frozen=true`
+  - `judge_contract_ready=true` (deterministic floor is ready; this only unblocks *designing* the judge contract — no judge
+    exists), `judge_ready=false`, `repair_ready=false`
+- **Companion validation (all green):** gate (34), operator export harness (35), operator export validator (422), structured
+  candidate adapter (177), safe numeric extractor (207), job artifact (753), recompute verifier (99), real-disaster e2e (100),
+  unified QA (73); `compileall` clean; `git diff --check` clean. Docker not run (test/docs only); no docker compose config run.
+- **Files changed:** `M docs/CURRENT_TASK.md`, `M docs/DECISIONS.md`, `M docs/NEXT_CHAT_HANDOFF.md`,
+  `M docs/QUALITY_SAFETY_E2E_VALIDATION.md`, `M docs/QUALITY_SAFETY_OPERATOR_VALIDATION.md`,
+  `M docs/QUALITY_SAFETY_OPERATOR_STRUCTURED_NUMERIC_EXPORT_PROTOCOL.md`,
+  `M docs/QUALITY_SAFETY_STRUCTURED_NUMERIC_CANDIDATE_PRODUCER_DESIGN.md`,
+  `M docs/QUALITY_SAFETY_FUTURE_STRUCTURED_NUMERIC_ARTIFACT_DESIGN.md`, `M docs/QUALITY_SAFETY_NUMERIC_EXTRACTION_CONTRACT.md`,
+  `M docs/QUALITY_SAFETY_SAFE_NUMERIC_EXTRACTOR_DESIGN.md`, `?? docs/QUALITY_SAFETY_DETERMINISTIC_FLOOR_FINAL_GATE.md`,
+  `?? test_scripts/validate_quality_safety_deterministic_floor_final_gate.py`. **Slice 139 remains NOT committed.**
+- **Next recommended slice:** **Slice 140 — Quality Safety Surface Cleanup / Freeze.** `judge_ready=false`; `repair_ready=false`;
+  the offline judge contract is designed only after cleanup/freeze.
+
+---
+
+## Slice 138 — **Operator Structured Numeric Export Validation Harness / Waiver Decision**, on `slice138-quality-safety-operator-structured-numeric-export-validation-harness`. **Committed `cd7ac45`, merged + pushed to `chrome-renderer-v1`.**
 
 - **Part 0 completed:** Slice 137 was committed as `763fb4a`, fast-forward merged to trunk `chrome-renderer-v1`, and pushed with
   a normal `git push` (no force-push; `eb13ada..763fb4a`). Final trunk status before branching Slice 138 was clean; no docker

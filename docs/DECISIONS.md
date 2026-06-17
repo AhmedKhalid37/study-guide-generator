@@ -5591,3 +5591,49 @@ any private material.
 `private_operator_run=not_run`; `quality_safety_blocking=false`;
 `judge_ready=false`; `repair_ready=false`;
 `next_step=deterministic_safety_floor_final_gate`.
+
+---
+
+## Deterministic safety floor is ready_for_cleanup_freeze; judge-contract design unblocked but no judge exists (Slice 139)
+Slice 139 added the deterministic safety floor final gate
+`test_scripts/validate_quality_safety_deterministic_floor_final_gate.py` and the
+design doc `docs/QUALITY_SAFETY_DETERMINISTIC_FLOOR_FINAL_GATE.md` (test + docs
+only; no production code change). The gate aggregates every deterministic Quality
+Safety component built across Slices 118–138 and decides readiness on synthetic
+fixtures only.
+
+**Decisions:**
+- **The deterministic safety floor is frozen at `ready_for_cleanup_freeze`.** All
+  seven deterministic prerequisites passed (`34 passed, 0 failed`):
+  `artifact_contract_status=ok`, `leak_safety_status=ok`, `recompute_status=ok`,
+  `numeric_path_status=ok`, `structural_coverage_status=ok`,
+  `operator_export_harness_status=ok`, `real_disaster_synthetic_status=ok`; UI
+  display is `already_covered_by_existing_verify` (no frontend change). The advisory
+  artifact contract, leak/no-leak rules, recompute verifier, numeric extraction
+  path + precedence (explicit > safe > structured), structural coverage separation,
+  operator export harness, and real-disaster synthetic core cases
+  (`single_confident_wrong_numeric_case=failed_blocking`, `clean_real_case=passed`,
+  `legacy_confused_wrong_case=partial`) are all proven and stable.
+- **The numeric infrastructure stays frozen.** No more numeric schema/bridge layers
+  will be added before the judge path. Slice 139 adds *no* new schema/bridge layer —
+  only a gate that drives the existing chain.
+- **Judge-contract design is unblocked, but no judge exists.**
+  `judge_contract_ready=true` may be set **only because** the deterministic floor is
+  ready; it records that the offline judge **contract** can now be **designed**. It
+  does **not** mean a judge exists — `judge_ready=false` remains true and stays false
+  until a judge contract/core actually exists. `repair_ready=false`.
+- **Cleanup/freeze comes before the judge contract.** The next step is
+  `quality_safety_surface_cleanup_freeze` (Slice 140). The offline judge contract is
+  designed only after cleanup/freeze.
+
+**Why:** the deterministic (non-judge) Quality Safety surface is now broad enough
+and proven enough on synthetic fixtures that further deterministic layering would be
+speculative. Freezing it with a single aggregate gate gives a clean, reproducible
+baseline to clean up and freeze before any judge work begins, without making Quality
+Safety blocking and without committing private material.
+
+`deterministic_safety_floor_status=ready_for_cleanup_freeze`;
+`numeric_infrastructure_frozen=true`;
+`operator_numeric_export_waiver=approved_for_safety_floor_finalization_synthetic_only`;
+`quality_safety_blocking=false`; `judge_contract_ready=true`; `judge_ready=false`;
+`repair_ready=false`; `next_step=quality_safety_surface_cleanup_freeze`.
