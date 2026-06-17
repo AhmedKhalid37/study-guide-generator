@@ -472,6 +472,44 @@ no_leak_sweep: clean
 docker_compose_config_run: false
 ```
 
+## Slice 126 — Wire Numeric Extraction Mapper into Advisory Artifact
+
+Slice 126 wires the Slice 125 mapper into the **actual** advisory
+`quality_safety_unified_qa.json` job-artifact path (builder
+`pipeline/quality_safety_job_artifact.py` and the production hook
+`pipeline/run_markdown_job.py:_write_quality_safety_unified_qa`). The real-disaster
+E2E harness (`test_scripts/validate_quality_safety_real_disaster_e2e.py`, 60 passed)
+and the job-artifact harness (`test_scripts/test_quality_safety_job_artifact.py`,
+428 passed) prove synthetic numeric records flow through the producer + recompute
+verifier via the actual builder and the production hook (sidecar read). Advisory /
+non-blocking; no production numeric extractor was added.
+
+```
+quality_safety_numeric_extraction_mapper_artifact_wiring: run
+status: ok
+advisory_non_blocking: true
+safe_input_sidecar: quality_safety_numeric_extraction_records.json
+sidecar_created_in_production: false
+artifact_name_unchanged: quality_safety_unified_qa.json
+numeric_bundle_separate_from_structural_coverage: true
+numeric_records_fabricated_from_coverage: false
+structural_coverage_leg_status: covered
+clean_synthetic_numeric_through_artifact: recompute_passed
+wrong_synthetic_numeric_through_artifact: recompute_failed_blocking
+single_confident_wrong_numeric_case_through_artifact: recompute_failed_blocking
+missing_numeric_records: skipped_component_missing
+malformed_numeric_records: failed_degraded_no_leak
+production_hook_reads_numeric_sidecar: ok
+numeric_fact_sheet_extraction_leg_status: partial
+artifact_path_ready: true
+production_numeric_extractor_exists: false
+judge_ready: false
+repair_ready: false
+next_step: safe_numeric_extractor_or_real_operator_numeric_validation
+no_leak_sweep: clean
+docker_compose_config_run: false
+```
+
 ## Non-Goals
 
 - The Slice 122 coverage wiring is advisory transparency only; the numeric /

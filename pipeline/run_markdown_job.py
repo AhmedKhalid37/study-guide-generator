@@ -722,12 +722,21 @@ def _write_quality_safety_unified_qa(job: Job) -> None:
     try:
         from pipeline.quality_safety_job_artifact import (
             build_quality_safety_job_artifact_payload,
+            read_quality_safety_numeric_extraction_records,
         )
 
         try:
             clean_markdown = job.clean_md.read_text(encoding="utf-8", errors="replace")
         except Exception:
             clean_markdown = None
+
+        # Slice 126: optionally consume a safe numeric extraction records sidecar
+        # if a future numeric extractor has already dropped it next to the
+        # artifact (read-only; never created here). Absent today, so the numeric
+        # leg degrades honestly to component_missing/skipped.
+        numeric_extraction_records = read_quality_safety_numeric_extraction_records(
+            Path(job.quality_safety_unified_qa_json).parent
+        )
 
         # Slice 122: feed the advisory structural extraction-coverage leg from
         # already-produced, already-sanitized sibling JSON artifacts (read-only).
@@ -736,6 +745,7 @@ def _write_quality_safety_unified_qa(job: Job) -> None:
         # shippable / safety_floor_green.
         payload = build_quality_safety_job_artifact_payload(
             candidate_markdown=clean_markdown,
+            numeric_extraction_records=numeric_extraction_records,
             source_coverage_report=_read_job_json_artifact(job, "source_coverage_report_json"),
             extraction_metadata=_read_job_json_artifact(job, "extraction_metadata_json"),
             visual_inclusion_plan=_read_job_json_artifact(job, "visual_inclusion_plan_json"),
@@ -808,6 +818,31 @@ def _write_quality_safety_unified_qa(job: Job) -> None:
                     },
                     "coverage_records": [],
                     "numeric_observations": [],
+                    "warnings": ["component_missing"],
+                },
+                "numeric_extraction_status": "skipped",
+                "numeric_extraction_summary": {
+                    "record_count": 0,
+                    "numeric_fact_count": 0,
+                    "computation_record_count": 0,
+                    "supported_method_count": 0,
+                    "unsupported_method_count": 0,
+                },
+                "numeric_extraction_warnings": ["component_missing"],
+                "numeric_extraction_bundle": {
+                    "version": 1,
+                    "kind": "quality_safety_numeric_extraction_bundle",
+                    "status": "skipped",
+                    "source_quality": "unknown",
+                    "summary": {
+                        "record_count": 0,
+                        "numeric_fact_count": 0,
+                        "computation_record_count": 0,
+                        "bare_numeric_observation_count": 0,
+                        "supported_method_count": 0,
+                        "unsupported_method_count": 0,
+                    },
+                    "numeric_records": [],
                     "warnings": ["component_missing"],
                 },
                 "quality_safety_unified_qa": {

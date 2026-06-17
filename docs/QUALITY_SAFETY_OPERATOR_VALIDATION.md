@@ -562,5 +562,44 @@ until a real artifact path proves it.
 }
 ```
 
+## Slice 126 Wire Numeric Extraction Mapper into Advisory Artifact (cross-reference)
+
+Slice 126 wires the Slice 125 mapper into the advisory
+`quality_safety_unified_qa.json` artifact path and adds **no** operator-runtime
+validation of its own: it reads no private material, runs no generations, scans no
+job folders arbitrarily, and calls no providers/models/cloud. It only adds a
+read-only optional sidecar reader (`quality_safety_numeric_extraction_records.json`,
+never created in production) and synthetic harness coverage proving numeric records
+flow through the real builder + production hook. Closed-vocabulary outcome only;
+the numeric leg is `partial` (synthetic records prove the artifact path, no real
+extractor yet); `judge_ready`/`repair_ready` remain `false`.
+
+```json
+{
+  "validation_id": "quality_safety_numeric_extraction_mapper_artifact_wiring",
+  "slice": "126",
+  "operator_runtime_validation": "not_applicable_synthetic_wiring",
+  "advisory_non_blocking": true,
+  "safe_input_sidecar": "quality_safety_numeric_extraction_records.json",
+  "sidecar_created_in_production": false,
+  "artifact_name_unchanged": "quality_safety_unified_qa.json",
+  "numeric_bundle_separate_from_structural_coverage": true,
+  "numeric_records_fabricated_from_coverage": false,
+  "structural_coverage_leg_status": "covered",
+  "clean_synthetic_numeric_through_artifact": "recompute_passed",
+  "wrong_synthetic_numeric_through_artifact": "recompute_failed_blocking",
+  "single_confident_wrong_numeric_case_through_artifact": "recompute_failed_blocking",
+  "missing_numeric_records": "skipped_component_missing",
+  "malformed_numeric_records": "failed_degraded_no_leak",
+  "numeric_fact_sheet_extraction_leg_status": "partial",
+  "artifact_path_ready": true,
+  "production_numeric_extractor_exists": false,
+  "judge_ready": false,
+  "repair_ready": false,
+  "next_engineering_slice": "safe_numeric_extractor_or_real_operator_numeric_validation"
+}
+```
+
 Slice 115, Slice 116, Slice 117, Slice 118, Slice 119, Slice 120, Slice 121,
-Slice 122, Slice 123, and Slice 124 are committed. Slice 125 is NOT committed.
+Slice 122, Slice 123, Slice 124, and Slice 125 are committed. Slice 126 is NOT
+committed.

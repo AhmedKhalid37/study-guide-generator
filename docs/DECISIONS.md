@@ -5087,3 +5087,58 @@ that produces sanitized numeric records from real material — proved separately
 later advisory-wiring slice (Slice 126). The mapper being correct on synthetic
 inputs (`test_scripts/test_quality_safety_numeric_extraction_mapper.py`, 232
 checks) does not by itself close the leg.
+
+## Slice 126 wires the numeric mapper into the advisory artifact behind a read-only input sidecar
+**Why an exact-name read-only input sidecar (`quality_safety_numeric_extraction_records.json`).**
+Slice 126 wires the Slice 125 mapper into the advisory `quality_safety_unified_qa.json`
+builder, but no safe numeric extractor exists yet. To keep the wiring honest and
+forward-compatible, the builder/writer read an optional, exact-name, job-local
+**input** sidecar `quality_safety_numeric_extraction_records.json` *only if it
+already exists* — it is never created or written in production by this slice, and
+is never added to any generic artifact/export list or UI row (mirroring how the
+other Quality Safety siblings are reached by exact filename). It accepts a bare
+records list or a dict wrapper (`records`/`numeric_records`/
+`numeric_extraction_records`). This lets a future extractor light up the numeric
+leg by dropping the sidecar, with zero further wiring, while today the leg simply
+degrades to `skipped`.
+
+**Why the numeric bundle is kept SEPARATE from the structural coverage bundle.**
+The artifact already carries `extraction_coverage_*` (Slice 121/122 structural
+coverage) which is advisory transparency and must NEVER feed the concept/fact
+producer or become numeric evidence. Numeric facts are a different thing: they DO
+feed the producer + recompute verifier and may legitimately raise a recompute
+blocker. So Slice 126 adds a parallel-but-distinct `numeric_extraction_*` family
+(`status`/`summary`/`warnings`/`bundle`) and never derives numeric records from
+structural coverage counts. The numeric leg can turn `shippable`/
+`safety_floor_green` red (via a recompute blocker); structural coverage still
+cannot upgrade them. Tests assert both directions (coverage never fabricates
+numeric facts; numeric records never touch the coverage bundle).
+
+**Why include the full sanitized `numeric_extraction_bundle`, not summary-only.**
+The Slice 125 mapper output is already closed-vocabulary, numeric-only, capped
+(`max_items`), allow-listed, and strips the closed forbidden-field list — i.e. it
+is safe and bounded by construction. Embedding the full bundle (records included)
+gives operators real transparency into which numeric facts were verified/blocked
+without any extra leak surface, so Slice 126 includes it rather than a summary
+stub. The hostile-field and no-canary tests run against the whole produced payload.
+
+**Why numeric records feed the producer only when no explicit `extraction_bundle`
+was supplied, and degrade rather than pretend coverage.** When numeric records are
+present and no caller `extraction_bundle` exists (the production reality), the
+mapped numeric bundle becomes the producer input so recompute can verify/block.
+When records are absent the leg degrades to `numeric_extraction_status=skipped`
+with a `numeric_extraction_missing` job warning, and the concept/fact recompute
+leg stays honestly `component_missing` — structural coverage alone never makes the
+numeric leg look covered. Malformed records degrade to `failed` +
+`numeric_extraction_degraded` without raising or failing the job. Because no real
+extractor exists yet, `numeric_fact_sheet_extraction_leg_status` is recorded as
+`partial` (synthetic records prove the artifact path; real material is not yet
+covered), and `judge_ready`/`repair_ready` stay `false`.
+
+**Why `run_markdown_job.py` gets only a narrow read-only sidecar reader.** The one
+production change is a minimal read-only call to
+`read_quality_safety_numeric_extraction_records(...)` (deriving the job dir from
+the existing `quality_safety_unified_qa_json` artifact path) plus passing the
+result to the existing builder call — no new Job model attribute, no new artifact
+written, no other behavior touched. The degraded-fallback artifact dict gains the
+same closed numeric fields for schema consistency.

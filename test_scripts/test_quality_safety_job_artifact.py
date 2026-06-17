@@ -69,12 +69,22 @@ JOB_WARNINGS = {
     "canonical_component_missing",
     "extraction_coverage_missing",
     "extraction_coverage_degraded",
+    "numeric_extraction_missing",
+    "numeric_extraction_degraded",
     "artifact_write_failed",
     "component_degraded",
     "unsafe_metadata_dropped",
     "max_items_reached",
 }
 EXTRACTION_COVERAGE_STATUSES = {"ok", "warning", "skipped", "partial", "failed"}
+NUMERIC_EXTRACTION_STATUSES = {"ok", "warning", "skipped", "partial", "failed"}
+NUMERIC_BUNDLE_WARNINGS = {
+    "component_missing",
+    "empty_numeric_extraction",
+    "malformed_numeric_extraction_input",
+    "invalid_numeric_record_dropped",
+    "max_items_reached",
+}
 FORBIDDEN_IMPORT_PARTS = (
     "fastapi",
     "frontend",
@@ -105,6 +115,7 @@ ALLOWED_IMPORTS = {
     "pipeline.quality_safety_extraction_bundle_adapter",
     "pipeline.quality_safety_fact_sheet_producer",
     "pipeline.quality_safety_leak_scanner",
+    "pipeline.quality_safety_numeric_extraction_mapper",
     "pipeline.quality_safety_recompute_verifier",
     "pipeline.quality_safety_unified_qa",
 }
@@ -533,6 +544,287 @@ def test_production_hook_reads_sibling_artifacts() -> None:
         assert_no_canary("hook coverage", loaded)
 
 
+# --- Slice 126: numeric extraction mapper wiring -----------------------------
+
+# weighted_gini of these groups recomputes to 0.2 (Slice 125 fixture).
+WEIGHTED_GINI_INPUTS = {"groups": [{"yes": 3, "no": 0}, {"yes": 1, "no": 4}]}
+
+
+def numeric_record(
+    *,
+    method: str = "weighted_gini",
+    inputs: dict[str, Any] | None = None,
+    value: float = 0.2,
+    rec_id: str = "qs_num_clean",
+    concept_id: str = "qs_concept_1",
+    label: str = "synthetic_score",
+    tolerance: float = 0.02,
+) -> dict[str, Any]:
+    return {
+        "id": rec_id,
+        "concept_id": concept_id,
+        "label": label,
+        "fact_type": "numeric",
+        "value": value,
+        "unit": "ratio",
+        "provenance": "computed",
+        "confidence": "medium",
+        "source_ref": "source_page_1",
+        "computation": {"method": method, "inputs": inputs if inputs is not None else dict(WEIGHTED_GINI_INPUTS)},
+        "tolerance": tolerance,
+    }
+
+
+def assert_numeric_shape(name: str, payload: dict[str, Any]) -> None:
+    check(f"{name}: numeric status closed", payload["numeric_extraction_status"] in NUMERIC_EXTRACTION_STATUSES, str(payload.get("numeric_extraction_status")))
+    summary = payload["numeric_extraction_summary"]
+    check(
+        f"{name}: numeric summary keys",
+        set(summary) == {"record_count", "numeric_fact_count", "computation_record_count", "supported_method_count", "unsupported_method_count"},
+        str(set(summary)),
+    )
+    check(f"{name}: numeric warnings closed", all(w in NUMERIC_BUNDLE_WARNINGS for w in payload["numeric_extraction_warnings"]), str(payload["numeric_extraction_warnings"]))
+    bundle = payload["numeric_extraction_bundle"]
+    check(f"{name}: numeric bundle kind", bundle.get("kind") == "quality_safety_numeric_extraction_bundle", str(bundle.get("kind")))
+    check(f"{name}: artifact name unchanged", payload["artifact_name"] == ARTIFACT_NAME)
+    assert_job_warnings_closed(name, payload)
+
+
+def test_numeric_records_missing_degrades() -> None:
+    payload = build_quality_safety_job_artifact_payload(candidate_markdown=candidate_markdown())
+    assert_numeric_shape("numeric missing", payload)
+    check("numeric missing: status skipped", payload["numeric_extraction_status"] == "skipped", str(payload["numeric_extraction_status"]))
+    check("numeric missing: warning present", "numeric_extraction_missing" in payload["warnings"], str(payload["warnings"]))
+    check("numeric missing: record_count 0", payload["numeric_extraction_summary"]["record_count"] == 0)
+    # No numeric records => the concept/fact recompute leg stays honestly missing.
+    check("numeric missing: recompute still missing", "recompute_component_missing" in payload["warnings"])
+    assert_no_canary("numeric missing", payload)
+
+
+def test_numeric_records_clean_verified() -> None:
+    payload = build_quality_safety_job_artifact_payload(
+        candidate_markdown=candidate_markdown(value=0.2),
+        numeric_extraction_records=[numeric_record(value=0.2)],
+    )
+    assert_numeric_shape("numeric clean", payload)
+    check("numeric clean: status ok", payload["numeric_extraction_status"] == "ok", str(payload["numeric_extraction_status"]))
+    check("numeric clean: one computation record", payload["numeric_extraction_summary"]["computation_record_count"] == 1, str(payload["numeric_extraction_summary"]))
+    check("numeric clean: recompute passed", payload["component_statuses"]["recompute"] == "passed", serialized(payload["component_statuses"]))
+    check("numeric clean: no recompute blocker", not any(item["component"] == "recompute" for item in payload["blocking_failures"]))
+    check("numeric clean: shippable", payload["shippable"] is True, serialized(payload["status"]))
+    # The numeric leg fed the producer; the structural extraction bundle was not
+    # supplied, so the explicit-bundle "missing" warning must NOT be present.
+    check("numeric clean: no extraction_bundle_missing", "extraction_bundle_missing" not in payload["warnings"], str(payload["warnings"]))
+    assert_no_canary("numeric clean", payload)
+
+
+def test_numeric_records_wrong_blocks() -> None:
+    payload = build_quality_safety_job_artifact_payload(
+        candidate_markdown=candidate_markdown(value=0.9),
+        numeric_extraction_records=[numeric_record(value=0.9)],  # recomputes to 0.2
+    )
+    assert_numeric_shape("numeric wrong", payload)
+    # Well-formed record => bundle status ok; the wrong VALUE is caught by recompute.
+    check("numeric wrong: bundle status ok", payload["numeric_extraction_status"] == "ok", str(payload["numeric_extraction_status"]))
+    check(
+        "numeric wrong: recompute blocker",
+        any(item["component"] == "recompute" and item["check_id"] == "weighted_gini" for item in payload["blocking_failures"]),
+        serialized(payload["blocking_failures"]),
+    )
+    check("numeric wrong: status failed", payload["status"] == "failed", str(payload["status"]))
+    check("numeric wrong: not shippable", payload["shippable"] is False)
+    check("numeric wrong: safety floor red", payload["safety_floor_green"] is False)
+    assert_no_canary("numeric wrong", payload)
+
+
+def test_numeric_records_confident_wrong_case() -> None:
+    # single_confident_wrong_numeric_case synthetic equivalent through the builder.
+    confident_wrong = {
+        "id": "qs_num_confident_wrong",
+        "concept_id": "qs_concept_confident",
+        "label": "synthetic_confident_wrong",
+        "fact_type": "numeric",
+        "value": 0.95,  # confidently claimed, but cross_entropy(0.5) ~= 0.6931
+        "confidence": "high",
+        "provenance": "computed",
+        "source_ref": "source_page_3",
+        "computation": {"method": "cross_entropy", "inputs": {"probability": 0.5}},
+        "tolerance": 0.01,
+    }
+    payload = build_quality_safety_job_artifact_payload(
+        candidate_markdown=candidate_markdown(value=0.95),
+        numeric_extraction_records=[confident_wrong],
+    )
+    assert_numeric_shape("confident wrong", payload)
+    check("confident wrong: status failed", payload["status"] == "failed", str(payload["status"]))
+    check("confident wrong: blocker present", any(item["component"] == "recompute" for item in payload["blocking_failures"]))
+    check("confident wrong: not shippable", payload["shippable"] is False)
+    assert_no_canary("confident wrong", payload)
+
+
+def test_numeric_records_clean_real_case() -> None:
+    # clean_real_case synthetic equivalent: two correct facts, no blocking.
+    records = [
+        numeric_record(rec_id="qs_num_real_a", concept_id="qs_concept_real", label="clean_gini", method="weighted_gini", inputs={"groups": [{"a": 4, "b": 0}, {"a": 0, "b": 4}]}, value=0.0),
+        numeric_record(rec_id="qs_num_real_b", concept_id="qs_concept_real", label="clean_total_error", method="total_error", inputs={"misclassified_weight": 0.0}, value=0.0),
+    ]
+    payload = build_quality_safety_job_artifact_payload(
+        candidate_markdown=candidate_markdown(value=0.0),
+        numeric_extraction_records=records,
+    )
+    assert_numeric_shape("clean real", payload)
+    check("clean real: recompute passed", payload["component_statuses"]["recompute"] == "passed", serialized(payload["component_statuses"]))
+    check("clean real: no blocking", not payload["blocking_failures"])
+    check("clean real: two computation records", payload["numeric_extraction_summary"]["computation_record_count"] == 2)
+    check("clean real: shippable", payload["shippable"] is True)
+    assert_no_canary("clean real", payload)
+
+
+def test_numeric_records_malformed_degrades() -> None:
+    for label, value in (
+        ("string", "not-a-list"),
+        ("dict-no-records", {"version": 1, "kind": "quality_safety_numeric_extraction_records"}),
+        ("number", 123),
+    ):
+        payload = build_quality_safety_job_artifact_payload(
+            candidate_markdown=candidate_markdown(),
+            numeric_extraction_records=value,
+        )
+        assert_numeric_shape(f"numeric malformed {label}", payload)
+        check(f"numeric malformed {label}: degraded warning", "numeric_extraction_degraded" in payload["warnings"], str(payload["warnings"]))
+        check(f"numeric malformed {label}: status failed", payload["numeric_extraction_status"] == "failed", str(payload["numeric_extraction_status"]))
+        check(f"numeric malformed {label}: no crash kind", payload["kind"] == "quality_safety_job_artifact")
+        assert_no_canary(f"numeric malformed {label}", payload)
+
+    # Empty list => skipped, not failed.
+    empty = build_quality_safety_job_artifact_payload(candidate_markdown=candidate_markdown(), numeric_extraction_records=[])
+    check("numeric empty: status skipped", empty["numeric_extraction_status"] == "skipped", str(empty["numeric_extraction_status"]))
+
+
+def test_numeric_records_dict_wrapper() -> None:
+    wrapper = {"version": 1, "kind": "quality_safety_numeric_extraction_records", "records": [numeric_record(value=0.2)]}
+    payload = build_quality_safety_job_artifact_payload(
+        candidate_markdown=candidate_markdown(value=0.2),
+        numeric_extraction_records=wrapper,
+    )
+    assert_numeric_shape("numeric wrapper", payload)
+    check("numeric wrapper: one record", payload["numeric_extraction_summary"]["record_count"] == 1, str(payload["numeric_extraction_summary"]))
+    check("numeric wrapper: recompute passed", payload["component_statuses"]["recompute"] == "passed")
+
+
+def test_numeric_records_separate_from_coverage() -> None:
+    # Structural coverage and numeric extraction are surfaced as SEPARATE bundles;
+    # neither contaminates the other.
+    payload = build_quality_safety_job_artifact_payload(
+        candidate_markdown=candidate_markdown(value=0.2),
+        numeric_extraction_records=[numeric_record(value=0.2)],
+        source_coverage_report=synthetic_source_coverage_report(),
+        visual_inclusion_plan={"status": "ok", "included_count": 2},
+        table_candidates_manifest={"status": "ok", "candidate_count": 1},
+    )
+    assert_numeric_shape("separate", payload)
+    check("separate: coverage bundle distinct kind", payload["extraction_coverage_bundle"]["kind"] == "quality_safety_extraction_coverage_bundle")
+    check("separate: numeric bundle distinct kind", payload["numeric_extraction_bundle"]["kind"] == "quality_safety_numeric_extraction_bundle")
+    # Structural coverage never becomes a numeric fact.
+    check("separate: coverage numeric obs empty", payload["extraction_coverage_bundle"]["numeric_observations"] == [])
+    check("separate: coverage numeric count 0", payload["extraction_coverage_summary"]["numeric_observation_count"] == 0)
+    # Numeric records still verified through recompute.
+    check("separate: recompute passed", payload["component_statuses"]["recompute"] == "passed")
+    check("separate: numeric record present", payload["numeric_extraction_summary"]["record_count"] == 1)
+
+
+def test_numeric_not_fabricated_from_coverage() -> None:
+    # Rich structural coverage but NO numeric records => numeric leg stays skipped;
+    # coverage counts are never turned into numeric facts.
+    payload = build_quality_safety_job_artifact_payload(
+        candidate_markdown=candidate_markdown(),
+        source_coverage_report=synthetic_source_coverage_report(),
+        visual_inclusion_plan={"status": "ok", "included_count": 9},
+        table_candidates_manifest={"status": "ok", "candidate_count": 9},
+    )
+    check("not fabricated: numeric skipped", payload["numeric_extraction_status"] == "skipped")
+    check("not fabricated: numeric record_count 0", payload["numeric_extraction_summary"]["record_count"] == 0)
+    check("not fabricated: numeric fact_count 0", payload["numeric_extraction_summary"]["numeric_fact_count"] == 0)
+    check("not fabricated: coverage present", payload["extraction_coverage_status"] in EXTRACTION_COVERAGE_STATUSES)
+    check("not fabricated: recompute still missing", "recompute_component_missing" in payload["warnings"])
+
+
+def test_numeric_records_hostile_stripped() -> None:
+    tainted = numeric_record(method="cross_entropy", inputs={"probability": 0.5}, value=0.6931471805599453)
+    tainted["raw_text"] = HOSTILE_CANARIES[5]
+    tainted["source_text"] = HOSTILE_CANARIES[11]
+    tainted["formulas_as_text"] = HOSTILE_CANARIES[12]
+    tainted["paths"] = HOSTILE_CANARIES[0]
+    tainted["evidence_quotes"] = HOSTILE_CANARIES[10]
+    tainted["label"] = HOSTILE_CANARIES[3]
+    payload = build_quality_safety_job_artifact_payload(
+        candidate_markdown=candidate_markdown(value=0.6931471805599453),
+        numeric_extraction_records=[tainted],
+    )
+    assert_numeric_shape("hostile numeric", payload)
+    assert_no_canary("hostile numeric", payload)
+    # The clean computation still recomputes despite the stripped hostile fields.
+    check("hostile numeric: recompute passed", payload["component_statuses"]["recompute"] == "passed")
+
+
+def test_numeric_records_no_mutation() -> None:
+    records = [numeric_record(value=0.2), {"raw_text": HOSTILE_CANARIES[5], "fact_type": "numeric", "value": 1.0}]
+    snapshot = json.dumps(records, sort_keys=True)
+    first = build_quality_safety_job_artifact_payload(candidate_markdown=candidate_markdown(value=0.2), numeric_extraction_records=records)
+    check("numeric no mutation: caller unchanged", json.dumps(records, sort_keys=True) == snapshot)
+    second = build_quality_safety_job_artifact_payload(candidate_markdown=candidate_markdown(value=0.2), numeric_extraction_records=[numeric_record(value=0.2), {"raw_text": HOSTILE_CANARIES[5], "fact_type": "numeric", "value": 1.0}])
+    check("numeric deterministic", serialized(first["numeric_extraction_bundle"]) == serialized(second["numeric_extraction_bundle"]))
+
+
+def test_numeric_records_sidecar_read() -> None:
+    from pipeline.quality_safety_job_artifact import (
+        NUMERIC_RECORDS_ARTIFACT_NAME,
+        read_quality_safety_numeric_extraction_records,
+    )
+
+    with tempfile.TemporaryDirectory() as tmp:
+        job_dir = Path(tmp) / "job"
+        job_dir.mkdir()
+        # No sidecar yet => None => numeric leg skipped.
+        check("sidecar absent reads None", read_quality_safety_numeric_extraction_records(job_dir) is None)
+        absent = write_quality_safety_job_artifact(job_dir, candidate_markdown=candidate_markdown())
+        check("sidecar absent: numeric skipped", absent["numeric_extraction_status"] == "skipped")
+
+        # Drop a synthetic sidecar; the writer must consume it read-only.
+        (job_dir / NUMERIC_RECORDS_ARTIFACT_NAME).write_text(
+            json.dumps({"records": [numeric_record(value=0.2)]}), encoding="utf-8"
+        )
+        present = write_quality_safety_job_artifact(job_dir, candidate_markdown=candidate_markdown(value=0.2))
+        check("sidecar present: recompute passed", present["component_statuses"]["recompute"] == "passed", serialized(present["component_statuses"]))
+        check("sidecar present: one record", present["numeric_extraction_summary"]["record_count"] == 1)
+        assert_no_canary("sidecar present", present)
+
+
+def test_production_hook_reads_numeric_sidecar() -> None:
+    from pipeline.quality_safety_job_artifact import NUMERIC_RECORDS_ARTIFACT_NAME
+    from pipeline.run_markdown_job import _write_quality_safety_unified_qa
+
+    with tempfile.TemporaryDirectory() as tmp:
+        root = Path(tmp) / "job"
+        root.mkdir()
+        job = FakeJob(root)
+        job.clean_md.write_text(candidate_markdown(value=0.9), encoding="utf-8")
+        (root / NUMERIC_RECORDS_ARTIFACT_NAME).write_text(
+            json.dumps({"records": [numeric_record(value=0.9)]}), encoding="utf-8"  # wrong vs 0.2
+        )
+        _write_quality_safety_unified_qa(job)
+        loaded = json.loads(job.quality_safety_unified_qa_json.read_text(encoding="utf-8"))
+        check("hook numeric: bundle present", loaded["numeric_extraction_summary"]["record_count"] == 1, serialized(loaded["numeric_extraction_summary"]))
+        check(
+            "hook numeric: recompute blocker through production path",
+            any(item.get("component") == "recompute" for item in loaded.get("blocking_failures") or []),
+            serialized(loaded.get("blocking_failures")),
+        )
+        check("hook numeric: not shippable", loaded["shippable"] is False)
+        check("hook numeric: safety floor red", loaded["safety_floor_green"] is False)
+        assert_no_canary("hook numeric", loaded)
+
+
 def test_import_hygiene() -> None:
     source = (REPO / "pipeline" / "quality_safety_job_artifact.py").read_text(encoding="utf-8")
     tree = ast.parse(source)
@@ -566,6 +858,19 @@ def run() -> int:
     test_extraction_coverage_no_mutation_and_deterministic()
     test_extraction_coverage_adapter_failure_degrades()
     test_production_hook_reads_sibling_artifacts()
+    test_numeric_records_missing_degrades()
+    test_numeric_records_clean_verified()
+    test_numeric_records_wrong_blocks()
+    test_numeric_records_confident_wrong_case()
+    test_numeric_records_clean_real_case()
+    test_numeric_records_malformed_degrades()
+    test_numeric_records_dict_wrapper()
+    test_numeric_records_separate_from_coverage()
+    test_numeric_not_fabricated_from_coverage()
+    test_numeric_records_hostile_stripped()
+    test_numeric_records_no_mutation()
+    test_numeric_records_sidecar_read()
+    test_production_hook_reads_numeric_sidecar()
     test_import_hygiene()
     print(f"\nquality_safety_job_artifact: {PASS} passed, {FAIL} failed")
     return 1 if FAIL else 0

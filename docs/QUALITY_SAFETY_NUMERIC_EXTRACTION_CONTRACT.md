@@ -286,6 +286,57 @@ but is **not** wired into the production artifact path. Coverage is only claimab
 once a real artifact path produces sanitized numeric records from real material
 (Slice 126).
 
+## Slice 126 Wiring Status — Numeric Extraction Mapper into the Advisory Artifact
+
+Slice 126 wires the Slice 125 mapper into the **actual** advisory
+`quality_safety_unified_qa.json` job-artifact path
+(`pipeline/quality_safety_job_artifact.py` +
+`pipeline/run_markdown_job.py:_write_quality_safety_unified_qa`). It stays
+advisory/non-blocking and adds **no** production numeric extractor.
+
+- **Safe input sidecar (read-only):** exact name
+  `quality_safety_numeric_extraction_records.json`, a job-local *input* candidate
+  for a future safe numeric extractor. Read only if it already exists; **never
+  created or written in production**; not added to any generic artifact/export
+  list or UI row. Accepts a records list or a dict wrapper
+  (`records`/`numeric_records`/`numeric_extraction_records`).
+- **Artifact additions (separate from structural `extraction_coverage_*`):**
+  `numeric_extraction_status` (`ok|warning|skipped|partial|failed`),
+  `numeric_extraction_summary` (counts only), `numeric_extraction_warnings`
+  (closed mapper tokens), and the full sanitized `numeric_extraction_bundle`.
+- **Path readiness:** the artifact path is **ready for synthetic numeric records**
+  — clean records recompute-`passed`, wrong records raise a recompute blocker
+  (`shippable=false`, `safety_floor_green=false`) through the real builder and the
+  production hook. No real production numeric extractor exists yet, so the leg is
+  **partial**, not covered.
+- **No-leak boundary (unchanged):** numeric records are sanitized by the Slice 125
+  mapper before anything is built; no source/OCR/table/caption text, copied
+  formulas, numeric prose, filenames, basenames, paths, URLs, provider payloads,
+  raw exceptions, or evidence quotes appear in the artifact. Structural coverage
+  counts are never converted into numeric facts.
+
+```
+quality_safety_numeric_extraction_mapper_artifact_wiring: implemented
+advisory_non_blocking: true
+safe_input_sidecar: quality_safety_numeric_extraction_records.json
+sidecar_created_in_production: false
+artifact_name_unchanged: quality_safety_unified_qa.json
+numeric_bundle_separate_from_structural_coverage: true
+numeric_records_fabricated_from_coverage: false
+clean_synthetic_numeric_through_artifact: recompute_passed
+wrong_synthetic_numeric_through_artifact: recompute_failed_blocking
+single_confident_wrong_numeric_case_through_artifact: recompute_failed_blocking
+missing_numeric_records: skipped_component_missing
+malformed_numeric_records: failed_degraded_no_leak
+artifact_path_ready_for_synthetic_numeric_records: true
+production_numeric_extractor_exists: false
+numeric_fact_sheet_extraction_leg_status: partial
+judge_ready: false
+repair_ready: false
+no_leak_sweep: clean
+docker_compose_config_run: false
+```
+
 ## Non-Goals (Slice 124)
 
 - Not the judge tranche; no judge, no `overall_10`, no `quality_judge.py`,

@@ -18,12 +18,20 @@ It proves the two legs stay distinct:
 - structural coverage leg: now wired into the advisory artifact via
   ``extraction_coverage_bundle`` (present with safe synthetic structural metadata;
   ``skipped`` when absent);
-- numeric fact-sheet extraction leg: still NOT covered through the production hook,
-  because that hook never produces a concept/fact bundle — recompute therefore
-  stays ``component_missing`` regardless of how rich the structural coverage is.
+- numeric fact-sheet extraction leg: NOT covered through the production hook from
+  structural coverage — that hook never derives a concept/fact bundle from
+  coverage, so recompute stays ``component_missing`` regardless of how rich the
+  structural coverage is. **Slice 126** additionally wires the numeric extraction
+  *mapper* into the advisory artifact: when a safe numeric extraction records
+  sidecar (``quality_safety_numeric_extraction_records.json``) is present, those
+  records feed the producer + recompute verifier, so a wrong numeric claim raises
+  a recompute blocker through the real artifact path. No production numeric
+  extractor exists yet, so the sidecar is read only when it already exists and the
+  leg degrades to ``skipped`` otherwise.
 
 Structural coverage never invents numeric observations and never upgrades
-``shippable`` / ``safety_floor_green``.
+``shippable`` / ``safety_floor_green``; numeric records are kept SEPARATE from the
+structural coverage bundle and are never fabricated from coverage counts.
 
 Synthetic-only. No real source decks, references, generated guides, OCR/table/
 caption text, uploaded specs, provider payloads, paths, URLs, images, PDFs,
@@ -130,6 +138,29 @@ def weighted_bundle(*, claimed: float) -> dict[str, Any]:
             }
         ],
     }
+
+
+def numeric_records(*, value: float) -> list[dict[str, Any]]:
+    """Safe synthetic numeric extraction records (Slice 124/125 contract shape).
+
+    weighted_gini of these groups recomputes to 0.2; ``value`` is the *claimed*
+    value, so passing 0.2 verifies and any other value raises a recompute blocker.
+    """
+    return [
+        {
+            "id": "qs_num_disaster",
+            "concept_id": "qs_concept_disaster",
+            "label": "synthetic_stump_choice_score",
+            "fact_type": "numeric",
+            "value": value,
+            "unit": "ratio",
+            "provenance": "computed",
+            "confidence": "high",
+            "source_ref": "source_page_1",
+            "computation": {"method": "weighted_gini", "inputs": {"groups": [{"yes": 3, "no": 0}, {"yes": 1, "no": 4}]}},
+            "tolerance": 0.01,
+        }
+    ]
 
 
 def fixture_spec(*, value: float) -> dict[str, Any]:
@@ -315,10 +346,70 @@ def main() -> int:
         json.dumps(hooked.get("component_statuses")),
     )
     check("hook: coverage numeric count 0", hooked.get("extraction_coverage_summary", {}).get("numeric_observation_count") == 0)
+    check("hook: numeric leg skipped without sidecar", hooked.get("numeric_extraction_status") == "skipped", json.dumps(hooked.get("numeric_extraction_status")))
     check("hook: no judge/repair/overall keys", _no_forbidden_keys(hooked))
 
+    # --- Slice 126: numeric extraction mapper wired into the advisory artifact --
+    # When safe numeric records are present they feed the producer + recompute
+    # verifier through the real artifact path: a clean claim verifies, a wrong one
+    # blocks. Numeric records stay SEPARATE from structural coverage.
+    numeric_clean = build_quality_safety_job_artifact_payload(
+        candidate_markdown=candidate_markdown(value=0.2),
+        numeric_extraction_records=numeric_records(value=0.2),
+        **coverage,
+    )
+    check("numeric clean: status ok bundle", numeric_clean.get("numeric_extraction_status") == "ok", json.dumps(numeric_clean.get("numeric_extraction_status")))
+    check("numeric clean: recompute passed", numeric_clean.get("component_statuses", {}).get("recompute") == "passed", json.dumps(numeric_clean.get("component_statuses")))
+    check("numeric clean: no recompute blocker", not any(item.get("component") == "recompute" for item in numeric_clean.get("blocking_failures") or []))
+    check("numeric clean: shippable", numeric_clean.get("shippable") is True)
+    check("numeric clean: coverage still separate", numeric_clean.get("extraction_coverage_summary", {}).get("numeric_observation_count") == 0)
+    check("numeric clean: coverage present", numeric_clean.get("extraction_coverage_status") in {"ok", "warning", "partial"})
+    check("numeric clean: no judge/repair/overall keys", _no_forbidden_keys(numeric_clean))
+
+    numeric_wrong = build_quality_safety_job_artifact_payload(
+        candidate_markdown=candidate_markdown(value=0.9),
+        numeric_extraction_records=numeric_records(value=0.9),  # recomputes to 0.2
+        **coverage,
+    )
+    check(
+        "numeric wrong: recompute blocker through artifact path",
+        any(
+            item.get("component") == "recompute" and item.get("check_id") == "weighted_gini"
+            for item in numeric_wrong.get("blocking_failures") or []
+        ),
+        json.dumps(numeric_wrong.get("blocking_failures")),
+    )
+    check("numeric wrong: status failed", numeric_wrong.get("status") == "failed", json.dumps(numeric_wrong.get("status")))
+    check("numeric wrong: not shippable", numeric_wrong.get("shippable") is False)
+    check("numeric wrong: safety floor red", numeric_wrong.get("safety_floor_green") is False)
+    check("numeric wrong: coverage did not upgrade", numeric_wrong.get("status") == "failed")
+    check("numeric wrong: no judge/repair/overall keys", _no_forbidden_keys(numeric_wrong))
+
+    # --- Production hook with a safe numeric records sidecar present ------------
+    from pipeline.quality_safety_job_artifact import NUMERIC_RECORDS_ARTIFACT_NAME
+
+    with tempfile.TemporaryDirectory() as tmp:
+        root = Path(tmp) / "job"
+        root.mkdir()
+        job = _FakeJob(root)
+        job.clean_md.write_text(candidate_markdown(value=0.9), encoding="utf-8")
+        (root / NUMERIC_RECORDS_ARTIFACT_NAME).write_text(
+            json.dumps({"records": numeric_records(value=0.9)}), encoding="utf-8"
+        )
+        _write_quality_safety_unified_qa(job)
+        numeric_hooked = json.loads(job.quality_safety_unified_qa_json.read_text(encoding="utf-8"))
+
+    check("numeric hook: record consumed", numeric_hooked.get("numeric_extraction_summary", {}).get("record_count") == 1, json.dumps(numeric_hooked.get("numeric_extraction_summary")))
+    check(
+        "numeric hook: recompute blocker through production hook",
+        any(item.get("component") == "recompute" for item in numeric_hooked.get("blocking_failures") or []),
+        json.dumps(numeric_hooked.get("blocking_failures")),
+    )
+    check("numeric hook: not shippable", numeric_hooked.get("shippable") is False)
+    check("numeric hook: no judge/repair/overall keys", _no_forbidden_keys(numeric_hooked))
+
     # --- No-leak across every produced payload ---------------------------------
-    blob = json.dumps([clean, wrong, legacy, hooked])
+    blob = json.dumps([clean, wrong, legacy, hooked, numeric_clean, numeric_wrong, numeric_hooked])
     check("no synthetic canary anywhere", SYNTHETIC_CANARY not in blob)
 
     # --- Closed-vocabulary records for the docs (display only) -----------------
@@ -338,8 +429,35 @@ def main() -> int:
         and records[2]["structural_coverage_leg_covered"] is True,
     )
     check(
-        "conclusion: numeric fact-sheet leg NOT covered through production hook",
+        "conclusion: numeric fact-sheet leg NOT covered through production hook (no extractor)",
         "recompute_component_missing" in hook_warnings,
+    )
+    check(
+        "conclusion: numeric mapper wiring verifies clean + blocks wrong through artifact path",
+        numeric_clean.get("component_statuses", {}).get("recompute") == "passed"
+        and any(item.get("component") == "recompute" for item in numeric_wrong.get("blocking_failures") or []),
+    )
+
+    # Closed-vocabulary Slice 126 outcome for the docs (display only).
+    print("\nSlice 126 numeric extraction wiring (closed-vocabulary):")
+    print(
+        "  "
+        + json.dumps(
+            {
+                "numeric_mapper_wired_into_artifact": True,
+                "numeric_records_present_path": "synthetic_only",
+                "clean_numeric_recompute": "passed",
+                "wrong_numeric_recompute": "failed_blocking",
+                "numeric_extraction_status_without_sidecar": hooked.get("numeric_extraction_status"),
+                "production_numeric_extractor_exists": False,
+                "structural_coverage_leg_status": "covered",
+                "numeric_fact_sheet_extraction_leg_status": "partial",
+                "artifact_path_ready_for_synthetic_numeric_records": True,
+                "judge_ready": False,
+                "repair_ready": False,
+            },
+            sort_keys=True,
+        )
     )
 
     print(f"\nvalidate_quality_safety_real_disaster_e2e: {PASS} passed, {FAIL} failed")
