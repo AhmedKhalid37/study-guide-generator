@@ -4788,3 +4788,29 @@ floor is green so subjective quality work does not sit on top of uncaught correc
 pure and unwired: it reads only caller-supplied reports/data, writes no artifacts, calls no providers/models/cloud services,
 does not repair/rewrite/regenerate sections, and stores no raw candidate/source snippets, formulas copied from private
 material, OCR/table/caption text, paths, URLs, filenames, evidence quotes, image bytes, or provider payloads.
+
+## Slice 115 validates the deterministic floor against the old Ensemble failure before judge work
+**Why real-disaster validation comes before judge scoring or production wiring.** After Slice 114, the deterministic safety
+floor is complete but unwired and validated only on synthetic fixtures. Before adding reference-anchored judge scoring,
+prompt tuning, repair, a fact-sheet producer, or wiring the floor into production jobs, the project performs a real-disaster
+operator validation against the legacy ambiguous Ensemble failure using private local material and a hand-built fact sheet.
+
+**Why the committed record is closed-vocabulary only.** The validation may read the real local guide/source material at
+runtime, but the repo must not gain private material or derived leakage. Slice 115 records only closed tokens: validation id,
+input kind, candidate case, fact-sheet kind, contract booleans, unified status, shippable/safety-floor booleans, closed
+blocking check ids, no-leak booleans, provider/judge-call booleans, and a closed failure category. It does not commit real
+PDFs/images/DOCX/ZIPs, runtime artifacts, generated guides, eval outputs, filenames, paths, snippets, evidence quotes,
+OCR/table/caption text, URLs, image bytes, formulas copied from private/generated material, provider payloads, or runtime
+JSON outputs.
+
+**Why no code changes are made in this slice.** The current `{method, inputs}` contract is expressive enough for the
+weighted-Gini leaf-count case, and the deterministic floor detects both the visibly confused legacy failure and the harder
+single confident wrong-value case with closed blockers. The clean real case currently fails closed with a false-positive leak
+blocker, so Slice 115 records `failure_category=clean_case_false_positive` instead of patching code. Since this slice is
+validation-only, it adds no production code, tests, judge, repair loop, fact-sheet producer, provider/model/cloud call,
+prompt change, API/UI change, or runtime job wiring.
+
+**What Slice 115 does not validate.** Slice 115 isolates the deterministic safety detectors on real private operator
+material using a hand-built local fact sheet. It validates recompute/leak/unified-QA behavior, not the
+extraction-to-fact-sheet leg. The extraction leg remains unvalidated and is the purpose of the next engineering slice. A
+green Slice 115 detector case does not mean the production app catches the failure end-to-end yet.

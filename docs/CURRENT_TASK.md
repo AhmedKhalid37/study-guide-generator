@@ -5,7 +5,52 @@
 
 ---
 
-## Slice 114 — **Quality Safety Unified QA Artifact v1**, on `slice114-quality-safety-unified-qa-artifact-v1`. **NOT COMMITTED.**
+## Slice 115 — **Quality Safety Real-Disaster Operator Validation**, on `slice115-quality-safety-real-disaster-operator-validation`. **NOT COMMITTED.**
+
+- **Part 0 completed:** Slice 114 was committed as `f3693dc`, fast-forward merged to trunk `chrome-renderer-v1`, and pushed
+  with a normal `git push` (no force-push). Slice 114 added only the unwired deterministic unified-QA report layer and
+  synthetic tests. It computed `shippable` / `safety_floor_green`, emitted deterministic axes
+  (`accuracy`, `coverage`, `solved_problem`, `clarity`), did not compute `overall_10`, did not add judge scoring, did not
+  tune prompts, did not repair/rewrite/regenerate, changed no API/frontend/generation/prompt/request/render/export/OCR/
+  table/visual/Ask Guide behavior, added no provider/model/cloud call, committed no real fixtures/runtime outputs/generated
+  guides/binary artifacts, and did not add Claude's `quality_judge.py`, `nn3.json`, `judge_response_nn3.json`, or
+  `quality.jsonl`. No docker compose config was run. The parked Slice 60 trace stash remains untouched.
+- **Scope:** Slice 115 is a docs-only/offline operator validation slice. It validates the completed deterministic safety
+  detectors from Slices 108-114 using private local operator material and a hand-built local fact sheet. It validates
+  recompute/leak/unified-QA behavior only; `extraction_leg_covered=false`. It does not validate extraction-to-fact-sheet
+  production behavior, and a green detector result would not mean the production app catches the failure end-to-end yet. It
+  adds no production code, no tests, no CLI scripts, no runtime artifact writers, no JSONL logs, no generated outputs, no
+  judge, no repair loop, and no fact-sheet producer.
+- **Contract inspection:** `weighted_gini` is supported by the fact-sheet/recompute contract. The fact-sheet `computation`
+  field can encode safe structured `{method, inputs}` data for leaf/group counts. The recompute report exposes only safe
+  fact ids, closed check/status/warning tokens, and numeric supplied/recomputed/tolerance values. Unified QA aggregates
+  Layer-1, recompute, canonical, and leak blocking failures without raw snippets. The leak scanner can attach verification
+  context through safe fact ids or labels only.
+- **Closed-vocabulary operator results:** `legacy_confused_wrong_case` failed as expected with
+  `blocking_checks=[layer1:leaked_reasoning, layer1:numeric_correctness, recompute:weighted_gini, leak:quality_safety_leak_scan]`
+  and `expected_legacy_failure_detected=true`. `single_confident_wrong_numeric_case` failed as expected with
+  `blocking_checks=[recompute:weighted_gini]`, `single_wrong_value_only=true`, `contradiction_required=false`,
+  `leak_required=false`, and `failure_category=confident_wrong_value_detected`. `clean_real_case` did **not** pass:
+  `unified_status=failed`, `shippable=false`, `safety_floor_green=false`,
+  `blocking_checks=[layer1:leaked_reasoning, leak:quality_safety_leak_scan]`, `clean_case_passed=false`,
+  `failure_category=clean_case_false_positive`, `component_miss_tokens=[false_positive_leak]`. All records use
+  `input_kind=private_local_operator_material`, `fact_sheet_kind=hand_built_local`, `extraction_leg_covered=false`,
+  `raw_text_committed=false`, `raw_paths_committed=false`, `runtime_outputs_committed=false`, `provider_calls=false`, and
+  `judge_calls=false`.
+- **Out of scope / unchanged:** no reference-anchored LLM judge, `quality_judge.py`, `nn3.json`,
+  `judge_response_nn3.json`, `quality.jsonl`, `overall_10`, prompt tuning, repair/rewrite/regeneration, fact-sheet producer,
+  production runtime wiring, app route, UI/export selector, generic artifact entry, What the Lecturer Skipped, Active Recall,
+  Memory Hooks, Practical Example Generator, Solve Path Generator, question-bank coverage, generation/prompt/request/API/UI/
+  render/export/OCR/table/visual/Ask Guide behavior change, provider/model/cloud call, live generation, or Docker config.
+- **Safety boundary:** the runtime validation read private local material, but committed docs use closed-vocabulary outcomes
+  only. No real PDFs/images/DOCX/ZIPs, runtime artifacts, generated guides, eval outputs, real source/reference filenames,
+  uploaded quality-spec filenames, evidence quotes, snippets, OCR/table/caption text, paths, URLs, image bytes, formulas
+  copied from private/generated material, provider payloads, or runtime output JSON were added. **Slice 115 remains NOT
+  committed.**
+
+---
+
+## Slice 114 — **Quality Safety Unified QA Artifact v1**, on `slice114-quality-safety-unified-qa-artifact-v1`. **Committed `f3693dc`, merged + pushed to `chrome-renderer-v1`.**
 
 - **Part 0 completed:** Slice 113 was committed as `4b002c6`, fast-forward merged to trunk `chrome-renderer-v1`, and pushed
   with a normal `git push` (no force-push). Slice 113 added only the unwired verifier-coupled leak scanner and synthetic
@@ -47,7 +92,7 @@
 - **Safety boundary:** only synthetic fixtures/content were used. No real PDFs/images/DOCX/ZIPs, runtime artifacts,
   generated guides, eval outputs, real source/reference filenames, uploaded quality-spec filenames, evidence quotes,
   snippets, OCR/table/caption text, paths, URLs, image bytes, formulas copied from private/generated material, or provider
-  payloads were added. **Slice 114 remains NOT committed.**
+  payloads were added. Slice 114 was committed as `f3693dc`, merged, and pushed before Slice 115.
 
 ---
 
