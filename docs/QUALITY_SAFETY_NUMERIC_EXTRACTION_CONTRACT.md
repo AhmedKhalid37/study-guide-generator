@@ -367,6 +367,34 @@ new contract field or method is required before a safe numeric extractor slice.
 A bounded recompute-method extension is needed only if a real case surfaces an
 unsupported computation method.
 
+## Slice 128 Design Outcome — Safe Numeric Extractor
+
+Slice 128 designed the safe production numeric extractor that will eventually emit
+records compatible with this contract (full design in
+`docs/QUALITY_SAFETY_SAFE_NUMERIC_EXTRACTOR_DESIGN.md`). The contract itself is
+unchanged: the extractor must emit the existing record shape and defer to the
+Slice 125 mapper as the final sanitizer. Design only; no production extractor code.
+
+```
+safe_numeric_extractor_design: defined
+production_extractor_implemented: false
+v1_input_category: caller_supplied_sanitized_numeric_candidates
+forbidden_input_categories: source_documents|pdf_images|docx_files|clean_md_as_numeric_source|ocr_text|page_text|table_cells|captions|guide_text|provider_payloads|raw_runtime_artifacts|raw_artifact_json|filenames|basenames|paths|urls
+output_record_shape: slice124_125_contract_unchanged
+v1_methods: weighted_gini|total_error|amount_of_say|softmax|cross_entropy|forward_pass
+new_methods_added: false
+legacy_confused_wrong_case: partial
+single_confident_wrong_numeric_case: representable
+clean_real_case: representable
+numeric_fact_sheet_extraction_leg_status: partial
+judge_ready: false
+repair_ready: false
+next_step: pure_safe_numeric_extractor_v1
+next_contract_need: none_unless_unsupported_method_surfaces
+no_leak_sweep: clean
+docker_compose_config_run: false
+```
+
 ## Non-Goals (Slice 124)
 
 - Not the judge tranche; no judge, no `overall_10`, no `quality_judge.py`,

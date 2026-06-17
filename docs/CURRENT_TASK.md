@@ -5,7 +5,55 @@
 
 ---
 
-## Slice 127 — **Numeric Sidecar Real-Path Operator Validation**, on `slice127-quality-safety-numeric-sidecar-real-path-validation`. **NOT COMMITTED.**
+## Slice 128 — **Safe Numeric Extractor Design**, on `slice128-quality-safety-safe-numeric-extractor-design`. **NOT COMMITTED.**
+
+- **Part 0 completed:** Slice 127 was committed as `35bdf8b`, fast-forward merged to trunk `chrome-renderer-v1`, and pushed with
+  a normal `git push` (no force-push). Slice 127 validated the numeric sidecar advisory artifact path (synthetic path `ok`;
+  private operator path `not_run`; leg `partial`; `judge_ready=false`, `repair_ready=false`). No docker compose config was run;
+  the Slice 60 trace stash remains parked and untouched.
+- **Scope:** **design only** — define the safe production numeric extractor that can eventually produce
+  `quality_safety_numeric_extraction_records.json`-compatible records, without consuming/emitting private/raw material. No
+  production extractor code, no OCR/table/source parsing, no `clean.md` reads, no job-folder scan, no judge, no repair, no
+  prompt tuning. **Docs-only** (new design doc + live-doc updates); no optional test added — the existing mapper tests already
+  cover the schema/forbidden-field stripping as an executable spec.
+- **Files changed:** `M docs/CURRENT_TASK.md`, `M docs/DECISIONS.md`, `M docs/NEXT_CHAT_HANDOFF.md`,
+  `M docs/QUALITY_SAFETY_E2E_VALIDATION.md`, `M docs/QUALITY_SAFETY_NUMERIC_EXTRACTION_CONTRACT.md`,
+  `M docs/QUALITY_SAFETY_OPERATOR_VALIDATION.md`, `?? docs/QUALITY_SAFETY_SAFE_NUMERIC_EXTRACTOR_DESIGN.md`.
+- **Design summary (new doc `docs/QUALITY_SAFETY_SAFE_NUMERIC_EXTRACTOR_DESIGN.md`):**
+  - **Allowed inputs:** `caller_supplied_sanitized_numeric_candidates` (v1 path), `synthetic_numeric_fixtures`,
+    `future_safe_structured_numeric_artifact` (named, not built in v1).
+  - **Forbidden inputs:** source documents, pdf images, docx files, `clean.md` as numeric source, OCR/page text, table cells,
+    captions, guide text, provider payloads, raw runtime artifacts, raw artifact JSON, filenames, basenames, paths, URLs.
+  - **Output contract:** Slice 124/125 record shape (`id`, `concept_id`, `label`, `fact_type=numeric`, `value`, `unit`,
+    `provenance`, `confidence`, `source_ref`, `page_ref`, `computation.{method,inputs}`, `tolerance`, `warnings`) —
+    sanitized tokens only; mapper remains the final sanitizer.
+  - **Supported v1 methods (verified against `SUPPORTED_METHODS`):** `weighted_gini`, `total_error`, `amount_of_say`,
+    `softmax`, `cross_entropy`, `forward_pass`. No new methods.
+  - **Degradation:** closed-token behavior for no_input/malformed/unsupported_method/unsafe_field/invalid_value/
+    invalid_computation/missing_field/max_items — never crash, never block the job, never leak.
+- **Archetype targeting (closed vocabulary):** `single_confident_wrong_numeric_case` and `clean_real_case` →
+  `extractor_representable=true` via supported methods; `legacy_confused_wrong_case` → `partial` (may need a bounded
+  recompute-method extension if its claim rests on an unsupported method). All three need
+  `next_requirement=mapper_input_generation`; no `unsafe_source_blocker`.
+- **Next recommended slice:** **Slice 129 — Pure Safe Numeric Extractor v1** (pure/unwired, synthetic tests only, no parsing,
+  no wiring, no provider/judge/repair). If a real case needs an unsupported method, recommend a bounded
+  `recompute_method_extension` design slice instead of widening v1.
+- **No-leak boundary:** docs carry only closed-vocabulary design + outcomes; no source/guide/OCR/table/caption text, copied
+  formulas, numeric prose, evidence quotes, filenames, basenames, paths, URLs, raw artifact JSON, runtime outputs, provider
+  payloads, or real/private sidecar JSON. `production_numeric_extractor_present=false`; production coverage **not** claimed
+  complete. `judge_ready=false`, `repair_ready=false`.
+- **Validation:** `compileall api pipeline test_scripts` OK; numeric mapper 232 passed; job artifact 428 passed; real-disaster
+  e2e 60 passed; `git diff --check` clean; no-leak sweep clean. No docker compose config was run; Docker not required
+  (docs-only design slice).
+- **Out of scope / unchanged:** no production extractor, no OCR/table/source parsing, no `clean.md` numeric read, no job-folder
+  scan, no change to `quality_safety_job_artifact.py`/`run_markdown_job.py`/`api/server.py`, no routes, no frontend change, no
+  generic artifact selector row, no generation/prompt/provider/request-schema/render/export/visual/Ask Guide change, no
+  judge/`overall_10`/repair/blocking gate, no `quality_judge.py`, `nn3.json`, `judge_response_nn3.json`, or `quality.jsonl`.
+  **Slice 128 remains NOT committed.**
+
+---
+
+## Slice 127 — **Numeric Sidecar Real-Path Operator Validation**, on `slice127-quality-safety-numeric-sidecar-real-path-validation`. **Committed `35bdf8b`, merged + pushed to `chrome-renderer-v1`.**
 
 - **Part 0 completed:** Slice 126 was committed as `7ff1887`, fast-forward merged to trunk `chrome-renderer-v1`, and pushed with
   a normal `git push` (no force-push). Slice 126 wired the Slice 125 numeric extraction mapper into the advisory
@@ -38,7 +86,7 @@
 - **Out of scope / unchanged:** no production numeric extractor; no OCR/table/source parsing; no `clean.md` numeric read; no
   job-folder scan; no routes; no frontend change; no generic artifact selector row; no generation/prompt/provider/
   request-schema/render/export/visual/Ask Guide change; no judge/`overall_10`/repair/blocking gate; no `quality_judge.py`,
-  `nn3.json`, `judge_response_nn3.json`, or `quality.jsonl`. **Slice 127 remains NOT committed.**
+  `nn3.json`, `judge_response_nn3.json`, or `quality.jsonl`. **Slice 127 is committed as `35bdf8b` and merged to `chrome-renderer-v1`.**
 
 ---
 

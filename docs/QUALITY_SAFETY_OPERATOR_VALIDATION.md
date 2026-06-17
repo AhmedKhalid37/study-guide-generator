@@ -756,4 +756,44 @@ operator pass or a safe numeric extractor. Closed-vocabulary per-case records
 ```
 
 Slice 115 through Slice 125 are committed. Slice 126 is committed as `7ff1887` and
-merged to `chrome-renderer-v1`. Slice 127 is NOT committed.
+merged to `chrome-renderer-v1`. Slice 127 is committed as `35bdf8b` and merged to
+`chrome-renderer-v1`.
+
+## Slice 128 Safe Numeric Extractor Design (cross-reference)
+
+Slice 128 is a design-only slice with **no operator-runtime validation of its own**:
+it reads no private material, runs no generations, scans no job folders, and calls
+no providers/models/cloud. It only adds the design doc
+`docs/QUALITY_SAFETY_SAFE_NUMERIC_EXTRACTOR_DESIGN.md` plus live-doc updates,
+defining the safe extractor's allowed/forbidden inputs, output contract, supported
+v1 methods, and degradation policy. The next implementation slice (Slice 129) will
+be the place to add synthetic harness coverage; a real/private operator numeric
+validation pass remains a separate operator activity.
+
+```json
+{
+  "validation_id": "quality_safety_safe_numeric_extractor_design",
+  "slice": "128",
+  "operator_runtime_validation": "not_applicable_design_only",
+  "production_extractor_implemented": false,
+  "v1_input_category": "caller_supplied_sanitized_numeric_candidates",
+  "forbidden_source_parsing": true,
+  "v1_methods": "weighted_gini|total_error|amount_of_say|softmax|cross_entropy|forward_pass",
+  "new_methods_added": false,
+  "legacy_confused_wrong_case": "partial",
+  "single_confident_wrong_numeric_case": "representable",
+  "clean_real_case": "representable",
+  "numeric_fact_sheet_extraction_leg_status": "partial",
+  "judge_ready": false,
+  "repair_ready": false,
+  "next_step": "pure_safe_numeric_extractor_v1",
+  "raw_text_committed": false,
+  "raw_paths_committed": false,
+  "runtime_outputs_committed": false,
+  "provider_calls": false,
+  "judge_calls": false,
+  "repair_calls": false
+}
+```
+
+Slice 128 is NOT committed.

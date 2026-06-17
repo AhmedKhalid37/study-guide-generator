@@ -5178,3 +5178,39 @@ extension is needed only if a real case surfaces an unsupported method).
 remains a read-only, never-created-in-production *input* candidate for a future
 extractor — not a user-facing artifact, not in any generic artifact/export/UI list.
 Slice 127 changes none of that; it is docs-only.
+
+---
+
+## Safe numeric extractor v1 consumes caller-supplied sanitized candidates, not OCR/table/source text (Slice 128)
+Slice 128 designed the safe production numeric extractor (design only; no code).
+The load-bearing choice: **v1 consumes `caller_supplied_sanitized_numeric_candidates`
+only** — already-sanitized, in-memory structured numeric candidates — and
+explicitly **forbids** reading source documents, PDFs/images, DOCX, `clean.md` as a
+numeric source, OCR/page text, table cells, captions, guide text, provider
+payloads, raw runtime/artifact JSON, filenames, basenames, paths, and URLs.
+
+**Why not parse the real material directly.** Parsing OCR/table/source/guide text
+into numeric facts is exactly the high-leak, high-fabrication surface the whole
+Quality Safety unit has avoided. A numeric fact is `value` + structured numeric
+`computation.inputs`, never a copied formula or prose snippet. Keeping v1 on
+pre-sanitized structured candidates means the extractor can be pure, total, and
+synthetic-testable, and the existing mapper stays the final sanitizer — so no new
+leak surface is introduced. A future `future_safe_structured_numeric_artifact` is
+named as the eventual production input but is a separately-designed boundary, not
+part of v1.
+
+**Why no new recompute methods in v1.** v1 is scoped to exactly the six existing
+`SUPPORTED_METHODS` (`weighted_gini`, `total_error`, `amount_of_say`, `softmax`,
+`cross_entropy`, `forward_pass`). The `legacy_confused_wrong_case` archetype is
+therefore only `partial`: if such a claim rests on a method outside that set it
+degrades to an unverified bare observation rather than a recompute blocker, which
+would need a *separately-designed bounded `recompute_method_extension`*, not a
+silent v1 widening.
+
+**Why sidecar/design work still does not unblock the judge.** Designing the
+extractor (Slice 128) and proving the sidecar transport (Slice 126/127) are not the
+same as a *proven production extraction path*. `judge_ready`/`repair_ready` stay
+`false` and production numeric extraction coverage is **not** claimed complete until
+either Slice 129's extractor path is implemented and proven, or an operator records
+an explicit waiver accepting sidecar-only coverage. The recommended next step is
+`pure_safe_numeric_extractor_v1` (Slice 129).

@@ -542,6 +542,28 @@ no_leak_sweep: clean
 docker_compose_config_run: false
 ```
 
+## Slice 128 — Safe Numeric Extractor Design (cross-reference)
+
+Slice 128 is a design-only slice (full design in
+`docs/QUALITY_SAFETY_SAFE_NUMERIC_EXTRACTOR_DESIGN.md`). It adds no production
+extractor, runs no new E2E path, and changes no artifact behavior; the synthetic
+sidecar artifact path from Slice 126/127 is unchanged. Closed-vocabulary outcome:
+
+```
+safe_numeric_extractor_design: defined
+production_extractor_implemented: false
+v1_input_category: caller_supplied_sanitized_numeric_candidates
+v1_methods: weighted_gini|total_error|amount_of_say|softmax|cross_entropy|forward_pass
+new_methods_added: false
+numeric_fact_sheet_extraction_leg_status: partial
+artifact_path_changed: false
+judge_ready: false
+repair_ready: false
+next_step: pure_safe_numeric_extractor_v1
+no_leak_sweep: clean
+docker_compose_config_run: false
+```
+
 ## Non-Goals
 
 - The Slice 122 coverage wiring is advisory transparency only; the numeric /
