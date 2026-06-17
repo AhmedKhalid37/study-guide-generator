@@ -291,3 +291,28 @@ docker_compose_config_run: false
 No private/operator closed-record run was performed in Slice 145; local
 closed-record mode is implemented but not run as committed data. Calibration stays
 `synthetic_only` and the judge stays advisory and non-blocking.
+
+## Slice 146 — Advisory Offline Judge Artifact Design relationship
+
+Slice 146 (docs/design-only) adds
+`docs/QUALITY_SAFETY_ADVISORY_OFFLINE_JUDGE_ARTIFACT_DESIGN.md`, which designs how a
+*future* advisory offline judge report artifact may be stored and surfaced **after**
+this calibration gate passes. The design does not implement artifact writing, does
+not wire anything into production, and does not relax this protocol: the calibration
+gate / golden protocol remains the precondition for any judge trust, the
+deterministic floor stays the source of truth, and the future judge stays advisory
+and non-blocking. The artifact's display is gated on a later calibration policy
+decision; `judge_ready` and `repair_ready` stay false.
+
+```
+advisory_judge_artifact_design_status: ready
+artifact_write_ready: false
+ui_display_ready: false
+judge_calibration_gate_protocol_status: ready
+calibration_status: synthetic_only
+private_operator_judge_calibration_run: not_run
+judge_ready: false
+repair_ready: false
+next_step: advisory_offline_judge_artifact_schema_adapter_or_stop_for_private_calibration
+docker_compose_config_run: false
+```

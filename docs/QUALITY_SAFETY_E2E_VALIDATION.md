@@ -991,3 +991,25 @@ repair_ready: false
 next_step: advisory_judge_artifact_design_or_stop_for_private_calibration
 docker_compose_config_run: false
 ```
+
+## Slice 146 Advisory Offline Judge Artifact Design (design-only) status
+
+Slice 146 is docs/design-only: it designs the future advisory offline judge report
+artifact and adds no production code, no artifact writer, no judge execution, and no
+provider/model/cloud/local-LLM call. The synthetic E2E validation records above are
+unchanged and remain the deterministic source of truth; the future advisory judge
+report may never override these deterministic blockers, and is hidden/internal until
+a later calibration policy allows display.
+
+```
+advisory_judge_artifact_design_status: ready
+artifact_write_ready: false
+ui_display_ready: false
+this_doc_changed: false
+calibration_status: synthetic_only
+private_operator_judge_calibration_run: not_run
+judge_ready: false
+repair_ready: false
+next_step: advisory_offline_judge_artifact_schema_adapter_or_stop_for_private_calibration
+docker_compose_config_run: false
+```

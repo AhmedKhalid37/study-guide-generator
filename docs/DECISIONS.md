@@ -5930,3 +5930,56 @@ no private calibration actually happened.
 `numeric_infrastructure_frozen=true`; `quality_safety_surface_frozen=true`;
 `quality_safety_blocking=false`; `judge_ready=false`; `repair_ready=false`;
 `next_step=advisory_judge_artifact_design_or_stop_for_private_calibration`.
+
+---
+
+## Future offline judge report artifact stays advisory/non-blocking; design only in Slice 146
+Slice 146 is a docs/design-only slice. It adds
+`docs/QUALITY_SAFETY_ADVISORY_OFFLINE_JUDGE_ARTIFACT_DESIGN.md`, designing how a
+*future* advisory offline judge report artifact may be stored and surfaced after
+calibration. It implements nothing: no artifact writing, no production wiring, no
+UI, no judge execution, no provider/model/cloud/local-LLM call, no repair, no
+prompt tuning. No production code changed.
+
+**Decisions:**
+- **The future judge report artifact remains advisory and non-blocking.** The
+  proposed artifact is `quality_safety_offline_judge_report.json` (kind
+  `quality_safety_offline_judge_report`, matching the Slice 142 schema). Its
+  boundary is `advisory=true`, `non_blocking`, `not_user_score`,
+  `not_repair_input`, `not_shippability_source`, `not_deterministic_floor_override`,
+  `hidden_or_internal_until_calibrated`. The deterministic safety floor stays the
+  source of truth.
+- **No UI display until a later calibration policy allows it.** Future read-only UI
+  display is permitted only after a later slice decides `calibration_status` is
+  sufficient, `privacy_status` is ok, the deterministic floor relationship is
+  enforced, and no raw/private rationale fields exist. Until then: no UI display.
+- **No grade-like score.** No user-facing score and no grade-like overall score
+  (no `overall_10`). Count-only summaries and closed band/confidence tokens only.
+- **No repair trigger.** The artifact is `not_repair_input`; it never triggers
+  repair or prompt tuning.
+- **No deterministic override.** The artifact can never override the deterministic
+  floor, recompute, leak, or shippable decisions.
+- **Artifact write is not ready in Slice 146.** `artifact_write_ready=false` and
+  `ui_display_ready=false`. Storage is restricted to Slice 142 schema fields only;
+  the forbidden field families (raw/source/guide/OCR/table/caption text, evidence
+  quotes, filenames, basenames, paths, URLs, screenshots, raw runtime artifacts,
+  raw artifact JSON from private jobs, provider payloads, model prompts/responses,
+  private/free-text rationales, `chain_of_thought`, `quality_judge.py` dumps,
+  `nn3.json`, `judge_response_nn3.json`, `quality.jsonl`) remain forbidden and are
+  not copied by construction.
+
+**Why:** designing the artifact boundary, integration boundary, storage rules, and
+display policy ahead of any writer keeps the future judge conservative — advisory,
+non-blocking, privacy-safe, and subordinate to the deterministic floor — and lets a
+later slice build a pure synthetic schema adapter (or run private calibration)
+without re-litigating these guarantees. Keeping `artifact_write_ready`,
+`ui_display_ready`, `judge_ready`, and `repair_ready` all false is faithful: nothing
+was wired, written, displayed, or calibrated in this slice.
+
+`advisory_judge_artifact_design_status=ready`; `artifact_write_ready=false`;
+`ui_display_ready=false`; `judge_calibration_gate_protocol_status=ready`;
+`calibration_status=synthetic_only`; `private_operator_judge_calibration_run=not_run`;
+`judge_contract_ready=true`; `numeric_infrastructure_frozen=true`;
+`quality_safety_surface_frozen=true`; `quality_safety_blocking=false`;
+`judge_ready=false`; `repair_ready=false`;
+`next_step=advisory_offline_judge_artifact_schema_adapter_or_stop_for_private_calibration`.

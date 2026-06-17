@@ -420,3 +420,30 @@ repair_ready: false
 next_step: advisory_judge_artifact_design_or_stop_for_private_calibration
 docker_compose_config_run: false
 ```
+
+---
+
+## Slice 146 — Advisory artifact design status (design-only)
+
+Slice 146 adds `docs/QUALITY_SAFETY_ADVISORY_OFFLINE_JUDGE_ARTIFACT_DESIGN.md`,
+designing how the future advisory offline judge report artifact
+(`quality_safety_offline_judge_report.json`, kind
+`quality_safety_offline_judge_report`) may be stored and surfaced after calibration.
+The design reuses this contract's closed-vocabulary surface and the Slice 142 schema
+fields only — it adds no new artifact name, no new schema kind, no new field, and
+relaxes no forbidden-field family. No artifact writer, no production wiring, no UI,
+no judge execution, no provider/model/cloud/local-LLM call. The judge stays advisory
+and non-blocking; the deterministic floor remains the source of truth.
+
+```
+advisory_judge_artifact_design_status: ready
+artifact_write_ready: false
+ui_display_ready: false
+calibration_status: synthetic_only
+private_operator_judge_calibration_run: not_run
+judge_contract_ready: true
+judge_ready: false
+repair_ready: false
+next_step: advisory_offline_judge_artifact_schema_adapter_or_stop_for_private_calibration
+docker_compose_config_run: false
+```

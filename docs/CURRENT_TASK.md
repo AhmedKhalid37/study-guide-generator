@@ -5,7 +5,58 @@
 
 ---
 
-## Slice 145 — **Private Operator Judge Calibration Pass**, on `slice145-quality-safety-private-operator-judge-calibration-pass`. **NOT COMMITTED.**
+## Slice 146 — **Advisory Offline Judge Artifact Design**, on `slice146-quality-safety-advisory-offline-judge-artifact-design`. **NOT COMMITTED.**
+
+- **Part 0 completed:** Slice 145 was committed as `8ad39c7`, fast-forward merged to trunk `chrome-renderer-v1`, and pushed with
+  a normal `git push` (no force-push; `91e6c7d..8ad39c7`). Final trunk status before branching Slice 146 was clean; no docker
+  compose config was run; the Slice 60 trace stash remains parked and untouched.
+- **Scope (docs/design-only):** design how a *future* advisory offline judge report artifact may be stored and surfaced after
+  calibration, without making it blocking or trusted prematurely. **No** production artifact writing, **no** wiring of judge
+  reports into job artifacts, **no** UI display, **no** judge execution, **no** LLM judge, **no** provider/model/cloud/local-LLM
+  calls, **no** `quality_judge.py`, **no** `nn3.json`, **no** `judge_response_nn3.json`, **no** `quality.jsonl`, **no** runtime
+  judge outputs, **no** repair, **no** prompt tuning, **no** blocking gate, **no** numeric infrastructure unfreeze, **no**
+  route/frontend/request-schema/render/export/OCR/table/visual/Ask Guide change. No production code changed in this slice.
+- **New doc (`docs/QUALITY_SAFETY_ADVISORY_OFFLINE_JUDGE_ARTIFACT_DESIGN.md`):** purpose, closed-vocabulary preconditions,
+  proposed artifact, artifact boundary, integration boundary (allowed/forbidden), storage rules (allowed/forbidden fields),
+  display policy, conservative readiness, and the proposed next slice.
+- **Proposed artifact name:** `quality_safety_offline_judge_report.json` (kind `quality_safety_offline_judge_report`; matches the
+  Slice 142 schema — no new artifact name, no new schema kind, no new field, no field relaxed).
+- **Artifact boundary:** `advisory=true`, `non_blocking`, `not_user_score`, `not_repair_input`, `not_shippability_source`,
+  `not_deterministic_floor_override`, `hidden_or_internal_until_calibrated`.
+- **Integration boundary:** *allowed (future):* optional job-local artifact after the offline judge core/report is produced;
+  read-only UI display only after calibration policy allows; docs/operator validation may record closed outcomes only.
+  *Forbidden:* no blocking gate, no shippable override, no recompute override, no leak override, no repair trigger, no prompt
+  tuning trigger, no raw rationale display from private jobs, no raw model prompt/response storage, no provider payload storage,
+  no generic artifact export of private judge raw outputs.
+- **Storage rules:** *allowed* — Slice 142 schema fields only, closed axis statuses, confidence/score_band tokens, count-only
+  summaries, closed blockers/warnings, `calibration_status`, `privacy_status`, `deterministic_floor_status`. *Forbidden* — source/
+  guide/OCR/page/table/caption text, `formulas_as_text`, evidence quotes, filenames, basenames, paths, URLs, screenshots, raw
+  runtime artifacts, raw artifact JSON from private jobs, provider payloads, model prompts/responses, private/free-text
+  rationales, `chain_of_thought`, `quality_judge.py` dumps, `nn3.json`, `judge_response_nn3.json`, `quality.jsonl`.
+- **Display policy:** future UI display allowed only after a later slice decides `calibration_status` is sufficient,
+  `privacy_status` is ok, the deterministic floor relationship is enforced, and no raw/private rationale fields exist. Until then:
+  no UI display, no user-facing score, no grade-like overall score, no repair suggestions.
+- **Readiness (closed vocabulary):** `advisory_judge_artifact_design_status=ready`; `artifact_write_ready=false`;
+  `ui_display_ready=false`; `judge_ready=false`; `repair_ready=false`;
+  `next_step=advisory_offline_judge_artifact_schema_adapter_or_stop_for_private_calibration`.
+- **Validation (all green):** calibration gate harness (synthetic ok, exit 0), core test (769), core synthetic harness (ok),
+  schema test (667), Slice 142 harness (ok), floor final gate (34), operator export harness (35), operator export validator
+  (422), candidate adapter (177), safe extractor (207), job artifact (753), recompute verifier (99), real-disaster e2e (100),
+  unified QA (73); `compileall api pipeline test_scripts` clean; `git diff --check` clean. Docker not run (docs/design-only); no
+  docker compose config run.
+- **Files changed:** `M docs/CURRENT_TASK.md`, `M docs/DECISIONS.md`, `M docs/NEXT_CHAT_HANDOFF.md`,
+  `M docs/QUALITY_SAFETY_JUDGE_CALIBRATION_GATE_PROTOCOL.md`, `M docs/QUALITY_SAFETY_OFFLINE_JUDGE_CONTRACT.md`,
+  `M docs/QUALITY_SAFETY_OPERATOR_VALIDATION.md`, `M docs/QUALITY_SAFETY_E2E_VALIDATION.md`,
+  `M docs/QUALITY_SAFETY_SURFACE_FREEZE.md`, `?? docs/QUALITY_SAFETY_ADVISORY_OFFLINE_JUDGE_ARTIFACT_DESIGN.md`.
+  **Slice 146 remains NOT committed.**
+- **Next recommended slice:** **Slice 147 — Advisory Offline Judge Artifact Schema Adapter, Synthetic Only** (pure/unwired
+  adapter that accepts normalized offline judge reports and verifies write-ready shape synthetically; no production writing, no
+  UI, no private input, no `judge_ready=true`), *or* **stop for a private operator calibration pass** before any artifact wiring.
+  Judge baseline stays blocked (`judge_ready=false`; `repair_ready=false`).
+
+---
+
+## Slice 145 — **Private Operator Judge Calibration Pass**, on `slice145-quality-safety-private-operator-judge-calibration-pass`. **Committed `8ad39c7`, merged + pushed to `chrome-renderer-v1`.**
 
 - **Part 0 completed:** Slice 144 was committed as `91e6c7d`, fast-forward merged to trunk `chrome-renderer-v1`, and pushed with
   a normal `git push` (no force-push; `0dedf99..91e6c7d`). Final trunk status before branching Slice 145 was clean; no docker

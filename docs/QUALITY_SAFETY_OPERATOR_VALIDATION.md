@@ -1335,3 +1335,27 @@ judge_ready: false
 repair_ready: false
 next_step: advisory_judge_artifact_design_or_stop_for_private_calibration
 ```
+
+## Slice 146 Advisory Offline Judge Artifact Design (closed status)
+
+Slice 146 is docs/design-only and runs **no** operator calibration: it designs the
+future advisory offline judge report artifact boundary, integration boundary,
+storage rules, and display policy without writing any artifact, wiring production,
+or displaying anything. No private/operator run was performed
+(`private_operator_judge_calibration_run=not_run`). No raw private material, file
+paths, filenames, or sidecar JSON are recorded. Future UI display of the artifact is
+gated on a later slice deciding `calibration_status` is sufficient, `privacy_status`
+is ok, the deterministic floor relationship is enforced, and no raw/private
+rationale fields exist.
+
+```
+private_operator_judge_calibration_run: not_run
+advisory_judge_artifact_design_status: ready
+artifact_write_ready: false
+ui_display_ready: false
+calibration_status: synthetic_only
+judge_contract_ready: true
+judge_ready: false
+repair_ready: false
+next_step: advisory_offline_judge_artifact_schema_adapter_or_stop_for_private_calibration
+```
