@@ -5,13 +5,42 @@
 
 ---
 
-## Slice 119 — **Quality Safety Advisory UI Display v1**, on `slice119-quality-safety-advisory-ui-display-v1`. **NOT COMMITTED.**
+## Slice 120 — **Quality Safety Advisory Artifact E2E + Extraction Metadata Inspection**, on `slice120-quality-safety-e2e-and-extraction-metadata-inspection`. **NOT COMMITTED.**
 
-- **Part 0 completed:** Slice 118 was committed as `c9644aa`, fast-forward merged to trunk `chrome-renderer-v1`, and pushed
-  with a normal `git push` (no force-push). Slice 118 added advisory production job artifact generation for the exact artifact
-  name `quality_safety_unified_qa.json`; the writer remains advisory/non-blocking, writer errors do not fail jobs, no
-  provider/model/cloud call was added, Docker validation passed, no docker compose config was run, and the Slice 60 trace
-  stash remains parked and untouched.
+- **Part 0 completed:** Slice 119 was committed as `91a1134`, fast-forward merged to trunk `chrome-renderer-v1`, and pushed
+  with a normal `git push` (no force-push). Slice 119 surfaced `quality_safety_unified_qa.json` in the existing Guide Quality
+  advisory UI as a read-only, non-blocking section behind a strict display allowlist; no backend artifact generation, API,
+  generation/prompt/provider/request-schema/render/export/OCR/table/visual/Ask Guide behavior changed, no docker compose
+  config was run, and the Slice 60 trace stash remains parked and untouched.
+- **Scope:** Slice 120 is docs/operator-validation first. It validates the full advisory Quality Safety visible path
+  (production build → exact-name fetch → read-only UI display) on a synthetic-safe sample, and inspects the existing
+  extraction/page metadata to discover what safe structured metadata exists today before designing the extraction-bundle
+  adapter. One synthetic-safe validation harness was added; no production behavior changed.
+- **Advisory artifact E2E (closed tokens):** `status=ok`, `sample_type=synthetic_safe`, `artifact_produced=true`,
+  `artifact_name=quality_safety_unified_qa_json`, `exact_name_fetch=ok`, `ui_display=ok`,
+  `missing_extraction_state=component_missing_skipped`, `artifact_advisory_non_blocking=true`,
+  `job_status_changed_by_quality_safety=false`, `provider_calls=false`, `judge_calls=false`, `repair_calls=false`,
+  `no_leak_sweep=clean`, `private_material_committed=false`, `raw_runtime_output_committed=false`.
+- **Extraction metadata inspection (closed tokens):** `status=ok`, `inspection_source=code_and_synthetic_runtime`,
+  `extraction_artifact_present=true`, `page_metadata_present=true`, `visual_metadata_present=true`,
+  `table_metadata_present=true`, `page_ref_shape=mixed`, `leaf_count_recoverable=yes`,
+  `numeric_observation_recoverable=no`, `extraction_leg_design_status=partial`. Candidate fields are closed structural
+  tokens only (page/coverage/visual/table counts, extraction mode/status, source/page refs); raw text, filenames, paths,
+  URLs, OCR/table/caption text, formulas, evidence quotes, provider payloads, and traces are excluded.
+- **Adapter design status:** **partial** — a structural-count / coverage-presence adapter leg is feasible now (prefer the
+  already-sanitized source coverage report, which is keyed by a source ref, not a basename); a numeric-observation/recompute
+  leg is not recoverable from today's metadata. Production wiring is deferred to Slice 122; the pure adapter is the next
+  slice (Slice 121).
+- **No-leak boundary:** committed records use closed vocabulary only. Full detail in `docs/QUALITY_SAFETY_E2E_VALIDATION.md`.
+- **Out of scope / unchanged:** no adapter implementation, no production wiring, no API route change, no frontend display
+  change, no generic artifact selector row, no generation/prompt/provider/request-schema/render/export/OCR/table/visual/Ask
+  Guide behavior change, no judge scoring, `overall_10`, repair loop, or blocking gate; no `quality_judge.py`, `nn3.json`,
+  `judge_response_nn3.json`, or `quality.jsonl`. **Slice 120 remains NOT committed.**
+
+---
+
+## Slice 119 — **Quality Safety Advisory UI Display v1**, on `slice119-quality-safety-advisory-ui-display-v1`. **Committed `91a1134`, merged + pushed to `chrome-renderer-v1`.**
+
 - **Scope:** Slice 119 surfaces `quality_safety_unified_qa.json` in the existing Guide Quality advisory UI. The section is
   read-only and advisory, degrades calmly when the artifact is missing, and uses a strict frontend display allowlist.
 - **Display boundary:** the UI shows only closed tokens, booleans/unknowns, non-negative counts, component statuses,
@@ -21,7 +50,6 @@
 - **Out of scope / unchanged:** no backend artifact generation change, no API behavior change, no generation/prompt/provider
   request/request-schema/job-success/render/export/OCR/table/visual/Ask Guide behavior change, no judge scoring,
   `overall_10`, repair loop, blocking gate, `quality_judge.py`, `nn3.json`, `judge_response_nn3.json`, or `quality.jsonl`.
-  **Slice 119 remains NOT committed.**
 
 ---
 

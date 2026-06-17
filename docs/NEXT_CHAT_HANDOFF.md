@@ -6,24 +6,45 @@
 > stable overview see `PROJECT_CONTEXT.md`; canonical brief is `../CLAUDE.md`.
 
 ## Current position
-- **Working tree:** **Slice 119 (Quality Safety Advisory UI Display v1) — UNCOMMITTED (per instruction)** on branch
-  `slice119-quality-safety-advisory-ui-display-v1`, branched from fresh `chrome-renderer-v1` after Slice 118 was committed,
-  fast-forward merged, and pushed. **Slice 118 is trunk commit `c9644aa`**.
-  - **Part 0 completed:** Slice 118 was committed as `c9644aa`, fast-forward merged to `chrome-renderer-v1`, and pushed with
-    a normal `git push` (no force-push). It added advisory production job artifact generation for
-    `quality_safety_unified_qa.json`; the writer remains advisory/non-blocking, writer errors do not fail jobs, no
-    provider/model/cloud call was added, Docker validation passed, no docker compose config was run, and the Slice 60 trace
-    stash remains parked and untouched.
-  - **Slice 119 scope:** surfaces `quality_safety_unified_qa.json` in the existing Guide Quality advisory UI as a read-only
-    Quality Safety section. Missing artifacts degrade calmly to "not available"; no backend artifact generation or API change
-    is required.
-  - **Display/no-leak boundary:** the frontend normalizer uses a strict allowlist and emits only closed statuses/components/
-    check ids/severities/verification statuses/warning tokens, booleans or unknown, non-negative counts, deterministic 0-5
-    axes, and capped blocking rows. It does not display raw guide/source text, snippets, formulas, OCR/table/caption text,
-    paths, filenames, URLs, evidence quotes, provider payloads, runtime traces, or raw nested child report fields.
-  - **Out of scope/unchanged:** no generation/prompt/provider request/request schema/job success/render/export/OCR/table/
-    visual/Ask Guide behavior change, no judge scoring or `overall_10`, no repair loop, no blocking gate, and no
-    `quality_judge.py`, `nn3.json`, `judge_response_nn3.json`, or `quality.jsonl`. **Slice 119 remains NOT committed.**
+- **Working tree:** **Slice 120 (Quality Safety Advisory Artifact E2E + Extraction Metadata Inspection) — UNCOMMITTED (per
+  instruction)** on branch `slice120-quality-safety-e2e-and-extraction-metadata-inspection`, branched from fresh
+  `chrome-renderer-v1` after Slice 119 was committed, fast-forward merged, and pushed. **Slice 119 is trunk commit
+  `91a1134`**.
+  - **Part 0 completed:** Slice 119 was committed as `91a1134`, fast-forward merged to `chrome-renderer-v1`, and pushed with
+    a normal `git push` (no force-push). It surfaced `quality_safety_unified_qa.json` in the existing Guide Quality advisory
+    UI as a read-only, non-blocking section behind a strict display allowlist; no backend artifact generation, API,
+    generation/prompt/provider/request-schema/render/export/OCR/table/visual/Ask Guide behavior changed, no docker compose
+    config was run, and the Slice 60 trace stash remains parked and untouched.
+  - **Slice 120 scope:** docs/operator-validation first. Validated the full advisory Quality Safety visible path (production
+    build → exact-name fetch → read-only UI display) on a synthetic-safe sample, and inspected existing extraction/page
+    metadata to discover what safe structured metadata exists today. Added one synthetic-safe harness
+    (`test_scripts/validate_quality_safety_e2e_artifact.py`, 22/22) and the new record `docs/QUALITY_SAFETY_E2E_VALIDATION.md`.
+    No production behavior changed.
+  - **What was validated (closed tokens):** `status=ok`, `artifact_produced=true`,
+    `artifact_name=quality_safety_unified_qa_json`, `exact_name_fetch=ok`, `ui_display=ok`,
+    `missing_extraction_state=component_missing_skipped`, `artifact_advisory_non_blocking=true`,
+    `job_status_changed_by_quality_safety=false`, `provider_calls=false`, `judge_calls=false`, `repair_calls=false`,
+    `no_leak_sweep=clean`.
+  - **Metadata observed (closed tokens):** `extraction_artifact_present=true`, `page_metadata_present=true`,
+    `visual_metadata_present=true`, `table_metadata_present=true`, `page_ref_shape=mixed`, `leaf_count_recoverable=yes`,
+    `numeric_observation_recoverable=no`, candidate fields are structural counts/tokens only (page/coverage/visual/table
+    counts, extraction mode/status, source/page refs). The raw extraction metadata artifact carries a source basename, so any
+    adapter must read sanitized structural counts only and never carry the basename/paths/text.
+  - **Adapter design status:** **partial** — a structural-count / coverage-presence leg is feasible now (prefer the
+    already-sanitized source coverage report, keyed by a source ref); a numeric-observation/recompute leg is not recoverable
+    from today's metadata. Production wiring deferred to Slice 122.
+  - **Next slice:** **Slice 121 — Pure Extraction-Bundle Adapter v1**, a pure/unwired adapter built from these Slice 120
+    findings (structural-count facts first; missing data → `component_missing`/`skipped`; unsafe fields excluded).
+  - **Out of scope/unchanged:** no adapter implementation, no production wiring, no API route change, no frontend display
+    change, no generic artifact selector row, no generation/prompt/provider/request-schema/render/export/OCR/table/visual/Ask
+    Guide behavior change, no judge scoring or `overall_10`, no repair loop, no blocking gate, and no `quality_judge.py`,
+    `nn3.json`, `judge_response_nn3.json`, or `quality.jsonl`. **Slice 120 remains NOT committed.**
+
+### Previously (Slice 119, now trunk `91a1134`)
+- **Slice 119 (Quality Safety Advisory UI Display v1)** surfaced `quality_safety_unified_qa.json` in the existing Guide
+  Quality advisory UI as a read-only, non-blocking section behind a strict display allowlist (closed statuses/components/check
+  ids/severities/verification statuses/warning tokens, booleans/unknowns, non-negative counts, deterministic 0-5 axes, capped
+  blocking rows). Missing artifacts degrade calmly to "not available".
 
 ### Previously (Slice 118, now trunk `c9644aa`)
 - **Slice 118 (Quality Safety Advisory Job Artifact v1)** added `pipeline/quality_safety_job_artifact.py`, a synthetic test

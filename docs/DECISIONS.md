@@ -4875,3 +4875,29 @@ report fields outside that allowlist.
 **Why missing artifacts are calm.** Older jobs or jobs without the Slice 118 artifact show a "not available" state in the
 existing Guide Quality panel. Missing Quality Safety metadata remains advisory UI state only and does not block downloads,
 exports, job status, or any generation flow.
+
+## Slice 120 grounds the extraction-bundle adapter in observed metadata reality
+**Why E2E + inspection precedes the adapter.** Before designing the
+`quality_safety_extraction_bundle` adapter, Slice 120 validated the advisory
+artifact's full visible path (production build → exact-name fetch → read-only UI
+display) on a synthetic-safe sample, and inspected the existing extraction/page
+metadata writers and derived artifacts. The adapter design is recorded from
+observed repo/runtime reality, not a guessed schema. Full closed-vocabulary
+record: `QUALITY_SAFETY_E2E_VALIDATION.md`.
+
+**Why the adapter must prefer the sanitized coverage report.** The raw extraction
+metadata artifact carries a source basename field. The already-sanitized source
+coverage report is keyed by a source reference (not a basename) and exposes
+per-category page counts, so it is the preferred adapter input; the raw artifact
+is a secondary source from which only sanitized structural counts/tokens may be
+read. Filenames, paths, raw/OCR/table/caption text, formulas, evidence quotes,
+provider payloads, and traces are excluded from the adapter boundary.
+
+**Why the first adapter leg is structural-count only.** Current metadata stores
+structural counts (page/coverage/visual/table counts) but no per-fact numeric
+content observations, so the numeric recompute leg is not recoverable today
+(`numeric_observation_recoverable=no`). The first adapter version emits
+structural-count / coverage-presence facts only and must not invent numeric
+facts; the recompute leg is deferred. Missing or malformed metadata degrades to
+the closed `component_missing` / `skipped` state, never an error and never a
+fabricated fact. Production wiring is deferred to Slice 122.
