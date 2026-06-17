@@ -5637,3 +5637,43 @@ Safety blocking and without committing private material.
 `operator_numeric_export_waiver=approved_for_safety_floor_finalization_synthetic_only`;
 `quality_safety_blocking=false`; `judge_contract_ready=true`; `judge_ready=false`;
 `repair_ready=false`; `next_step=quality_safety_surface_cleanup_freeze`.
+
+---
+
+## Quality Safety surface frozen; cleanup consolidated before offline judge contract (Slice 140)
+Slice 140 cleaned up and froze the deterministic (non-judge) Quality Safety
+surface. It is **docs / test-surface only** (no production code change): it adds the
+single consolidated freeze summary `docs/QUALITY_SAFETY_SURFACE_FREEZE.md` and aligns
+the stale handoff/current-task pointers (Slice 139 is now trunk `c421465`; Slice 140
+is the live uncommitted slice). It adds **no** new Quality Safety feature, **no** new
+numeric schema/bridge layer, **no** judge scoring, **no** repair, and **no** prompt
+tuning.
+
+**Decisions:**
+- **The deterministic safety floor stays `ready_for_cleanup_freeze`.** Slice 139's
+  aggregate gate result is unchanged; Slice 140 only consolidates and freezes it.
+- **The numeric infrastructure stays frozen.** No more numeric schema/bridge layers
+  will be added before the judge path **unless a real blocker appears**. The frozen
+  numeric chain, field families, artifact names, and validation harnesses are
+  enumerated in `docs/QUALITY_SAFETY_SURFACE_FREEZE.md` as the single source of the
+  freeze list.
+- **`quality_safety_surface_frozen=true`.** The non-judge surface (advisory artifact
+  contract, leak/no-leak rules, recompute verifier, numeric extraction path +
+  precedence, structural coverage separation, safe/structured candidate adapters,
+  operator export protocol/validator/harness, real-disaster synthetic E2E) is frozen
+  as-is and is **advisory, never blocking**.
+- **Judge-contract design comes next, but no judge exists.** `judge_contract_ready=true`
+  records only that the offline judge **contract** can now be **designed**;
+  `judge_ready=false` and `repair_ready=false` stay false. The next phase is
+  `offline_judge_contract_design` (Slice 141) — design only, not implementation.
+
+**Why:** the deterministic surface had grown across many slices into several
+scattered design/validation docs. A single freeze summary plus aligned pointers makes
+the surface easy to reason about before any judge work begins, while guaranteeing no
+further speculative deterministic layering, no production numeric-extraction claim, and
+no private material in the repo.
+
+`deterministic_safety_floor_status=ready_for_cleanup_freeze`;
+`numeric_infrastructure_frozen=true`; `quality_safety_surface_frozen=true`;
+`quality_safety_blocking=false`; `judge_contract_ready=true`; `judge_ready=false`;
+`repair_ready=false`; `next_step=offline_judge_contract_design`.

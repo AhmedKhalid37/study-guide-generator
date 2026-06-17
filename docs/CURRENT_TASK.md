@@ -5,7 +5,47 @@
 
 ---
 
-## Slice 139 — **Deterministic Safety Floor Final Gate**, on `slice139-quality-safety-deterministic-floor-final-gate`. **NOT COMMITTED.**
+## Slice 140 — **Quality Safety Surface Cleanup / Freeze**, on `slice140-quality-safety-surface-cleanup-freeze`. **NOT COMMITTED.**
+
+- **Part 0 completed:** Slice 139 was committed as `c421465`, fast-forward merged to trunk `chrome-renderer-v1`, and pushed with
+  a normal `git push` (no force-push; `cd7ac45..c421465`). Final trunk status before branching Slice 140 was clean; no docker
+  compose config was run; the Slice 60 trace stash remains parked and untouched.
+- **Scope:** docs / test-surface cleanup only; **no production code change.** This slice freezes the deterministic (non-judge)
+  Quality Safety surface so it is easy to reason about before Slice 141 begins **Offline Judge Contract Design**. It adds a single
+  consolidated freeze summary `docs/QUALITY_SAFETY_SURFACE_FREEZE.md` and aligns the stale handoff/current-task pointers. **No new
+  Quality Safety feature, no new numeric schema/bridge layer, no judge scoring, no repair, no prompt tuning, no production wiring,
+  no route/frontend change, no provider/model/cloud, no OCR/table/source/`clean.md` parsing, no real/private sidecar.**
+  `quality_safety_job_artifact.py`, `run_markdown_job.py`, `api/server.py` unchanged.
+- **Freeze summary (`docs/QUALITY_SAFETY_SURFACE_FREEZE.md`)** records, closed-vocabulary only: frozen artifact names
+  (`quality_safety_unified_qa.json`, `quality_safety_numeric_extraction_records.json`,
+  `quality_safety_safe_numeric_candidates.json`, `quality_safety_structured_numeric_candidates.json`); frozen field families
+  (`extraction_coverage_*`, `numeric_extraction_*`, `safe_numeric_extractor_*`, `structured_numeric_candidate_adapter_*`,
+  `operator_structured_numeric_export_validation`, `deterministic_floor_final_gate`); the nine frozen validation harnesses; the
+  frozen non-goals; the known limitations; and the next allowed phase (`offline_judge_contract_design`).
+- **Stale-doc cleanup:** the live `CURRENT_TASK.md` / `NEXT_CHAT_HANDOFF.md` "current position" pointers now reflect Slice 139 as
+  trunk commit `c421465` and Slice 140 as the live uncommitted slice; archived historical slice records are left as-is.
+- **Known limitations (unchanged, re-stated):** operator waiver is **synthetic-only**;
+  `production_numeric_extractor_present` remains the sidecar / structured-sidecar / operator-approved path only;
+  `judge_ready=false`; `repair_ready=false`; `judge_contract_ready=true` means only that contract **design** may begin.
+- **Companion validation (all green):** gate (34), operator export harness (35), operator export validator (422), structured
+  candidate adapter (177), safe numeric extractor (207), job artifact (753), recompute verifier (99), real-disaster e2e (100),
+  unified QA (73); `compileall` clean; `git diff --check` clean. Docker not run (docs/test-surface only); no docker compose config run.
+- **Decision record:** `deterministic_safety_floor_status=ready_for_cleanup_freeze`; `numeric_infrastructure_frozen=true`;
+  `quality_safety_surface_frozen=true`; `judge_contract_ready=true`; `judge_ready=false`; `repair_ready=false`;
+  `next_step=offline_judge_contract_design`.
+- **Files changed:** `M docs/CURRENT_TASK.md`, `M docs/DECISIONS.md`, `M docs/NEXT_CHAT_HANDOFF.md`,
+  `M docs/QUALITY_SAFETY_E2E_VALIDATION.md`, `M docs/QUALITY_SAFETY_OPERATOR_VALIDATION.md`,
+  `M docs/QUALITY_SAFETY_DETERMINISTIC_FLOOR_FINAL_GATE.md`, `M docs/QUALITY_SAFETY_NUMERIC_EXTRACTION_CONTRACT.md`,
+  `M docs/QUALITY_SAFETY_SAFE_NUMERIC_EXTRACTOR_DESIGN.md`, `M docs/QUALITY_SAFETY_OPERATOR_STRUCTURED_NUMERIC_EXPORT_PROTOCOL.md`,
+  `M docs/QUALITY_SAFETY_FUTURE_STRUCTURED_NUMERIC_ARTIFACT_DESIGN.md`,
+  `M docs/QUALITY_SAFETY_STRUCTURED_NUMERIC_CANDIDATE_PRODUCER_DESIGN.md`, `?? docs/QUALITY_SAFETY_SURFACE_FREEZE.md`.
+  **Slice 140 remains NOT committed.**
+- **Next recommended slice:** **Slice 141 — Offline Judge Contract Design.** `judge_ready=false`; `repair_ready=false`; the offline
+  judge **contract** is designed (not implemented) now that the deterministic floor is frozen.
+
+---
+
+## Slice 139 — **Deterministic Safety Floor Final Gate**, on `slice139-quality-safety-deterministic-floor-final-gate`. **Committed `c421465`, merged + pushed to `chrome-renderer-v1`.**
 
 - **Part 0 completed:** Slice 138 was committed as `cd7ac45`, fast-forward merged to trunk `chrome-renderer-v1`, and pushed with
   a normal `git push` (no force-push; `763fb4a..cd7ac45`). Final trunk status before branching Slice 139 was clean; no docker

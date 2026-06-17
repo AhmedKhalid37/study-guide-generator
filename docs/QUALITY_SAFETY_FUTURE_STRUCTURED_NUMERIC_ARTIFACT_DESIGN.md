@@ -362,3 +362,22 @@ judge_ready: false
 repair_ready: false
 next_step: quality_safety_surface_cleanup_freeze
 ```
+
+## Slice 140 Surface Freeze
+
+Slice 140 froze the deterministic (non-judge) Quality Safety surface (docs /
+test-surface cleanup only; no production code change) and consolidated the freeze
+list into a single summary, `docs/QUALITY_SAFETY_SURFACE_FREEZE.md`. This doc is
+**unchanged** in substance and is now one of the frozen pointers; the numeric
+infrastructure stays frozen.
+
+```
+quality_safety_surface_frozen: true
+numeric_infrastructure_frozen: true
+this_doc_changed: false
+freeze_summary: docs/QUALITY_SAFETY_SURFACE_FREEZE.md
+judge_contract_ready: true
+judge_ready: false
+repair_ready: false
+next_step: offline_judge_contract_design
+```
