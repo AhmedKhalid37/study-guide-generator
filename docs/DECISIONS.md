@@ -5142,3 +5142,39 @@ the existing `quality_safety_unified_qa_json` artifact path) plus passing the
 result to the existing builder call — no new Job model attribute, no new artifact
 written, no other behavior touched. The degraded-fallback artifact dict gains the
 same closed numeric fields for schema consistency.
+
+---
+
+## Manual/sidecar numeric validation is NOT equivalent to production numeric extraction (Slice 127)
+Slice 127 validated the Slice 126 numeric sidecar advisory artifact path. Synthetic
+sidecar records flow cleanly through the actual builder and the production hook
+(clean → `recompute=passed`; wrong → recompute blocker; missing → `skipped`;
+malformed → `failed`/degraded; advisory/non-blocking; no leak), so the **artifact
+path** is ready for sidecar-supplied records. But a hand-built or synthetic sidecar
+proves only the *transport and verification* path — it does not prove the app can
+**produce** correct numeric records from real material. No production numeric
+extractor exists, so `numeric_fact_sheet_extraction_leg_status` stays `partial`
+(not `covered`): the leg is only "covered" in the sidecar-supplied sense, never in
+the production-extraction sense. We deliberately do **not** upgrade the leg to
+`covered` on the strength of synthetic/manual sidecars.
+
+**Why the real/private operator pass was deferred rather than performed
+autonomously.** Producing private sidecar records means reading real source decks,
+references, and generated guides and hand-translating their numbers — an operator
+(human) task. Doing it autonomously risks committing or echoing private content,
+and the privacy boundary keeps all such material out of the repo. So Track B is
+recorded as `input_kind=not_run` with the archetypes validated via synthetic
+equivalents only; the real pass is left to an explicit operator session or, better,
+a safe numeric extractor slice.
+
+**Why the judge baseline still cannot start.** A meaningful judge calibration needs
+the numeric leg covered through real production extraction (or an explicit
+operator-approved waiver that accepts sidecar-only coverage). Neither exists, so
+`judge_ready=false` and `repair_ready=false` remain, and the recommended
+`next_step` is `safe_numeric_extractor_design` (a bounded recompute-method
+extension is needed only if a real case surfaces an unsupported method).
+
+**Why the sidecar stays internal.** `quality_safety_numeric_extraction_records.json`
+remains a read-only, never-created-in-production *input* candidate for a future
+extractor — not a user-facing artifact, not in any generic artifact/export/UI list.
+Slice 127 changes none of that; it is docs-only.

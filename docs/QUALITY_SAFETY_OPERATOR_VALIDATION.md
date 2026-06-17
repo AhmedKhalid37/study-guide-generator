@@ -600,6 +600,160 @@ extractor yet); `judge_ready`/`repair_ready` remain `false`.
 }
 ```
 
-Slice 115, Slice 116, Slice 117, Slice 118, Slice 119, Slice 120, Slice 121,
-Slice 122, Slice 123, Slice 124, and Slice 125 are committed. Slice 126 is NOT
-committed.
+## Slice 127 Numeric Sidecar Real-Path Operator Validation
+
+**Purpose.** Validate the Slice 126 numeric sidecar advisory artifact path against
+the three real-disaster archetypes and decide the next engineering step. This is an
+operator-/harness-validation slice: it implements no production numeric extractor,
+no judge, no repair, and no prompt tuning. Slice 126 already proved synthetic
+numeric records flow through the producer + recompute verifier via the actual
+builder and the production hook (sidecar read). Slice 127 answers whether the
+sidecar path can represent the archetypes, whether a real/private operator pass was
+run, and what the numeric leg status is.
+
+**Privacy boundary.** Local operator validation may inspect private runtime
+material, hand-build a temporary local sidecar JSON, run a job locally, and inspect
+`quality_safety_unified_qa.json` locally. None of that private material — sidecar
+JSON, raw artifact JSON, generated guides, PDFs/images/DOCX/ZIPs, source/OCR/table/
+caption text, copied formulas, numeric prose snippets, evidence quotes, filenames,
+basenames, paths, URLs, screenshots, provider payloads, runtime traces, or eval
+outputs — is committed. Committed docs carry only closed-vocabulary outcomes.
+
+**Track A — synthetic sidecar regression (run).** Through the actual builder
+(`build_quality_safety_job_artifact_payload`) and the production hook
+(`_write_quality_safety_unified_qa` reading the optional sidecar):
+
+```json
+{
+  "validation_id": "quality_safety_numeric_sidecar_synthetic_regression",
+  "slice": "127",
+  "track": "A",
+  "sidecar_missing": "skipped_numeric_extraction_missing_no_crash",
+  "sidecar_malformed": "failed_numeric_extraction_degraded_no_leak",
+  "sidecar_empty_list": "skipped",
+  "clean_synthetic_sidecar": "recompute_passed_through_artifact",
+  "wrong_synthetic_sidecar": "recompute_failed_blocking_through_artifact",
+  "advisory_non_blocking": true,
+  "structural_coverage_separate": true,
+  "numeric_records_fabricated_from_coverage": false,
+  "forbidden_canary_leak": false,
+  "production_hook_reads_numeric_sidecar": "ok"
+}
+```
+
+**Track B — operator real-path validation with private material.** Not performed
+autonomously this slice; safe production of private sidecar records requires an
+operator pass or a safe numeric extractor. Closed-vocabulary per-case records
+(synthetic equivalents only via Track A):
+
+```json
+[
+  {
+    "validation_case": "legacy_confused_wrong_case",
+    "input_kind": "not_run",
+    "sidecar_kind": "synthetic_sidecar",
+    "sidecar_committed": false,
+    "artifact_path_exercised": "not_observed",
+    "artifact_name": "quality_safety_unified_qa_json",
+    "job_artifact_produced": "not_observed",
+    "numeric_input_artifact_name": "quality_safety_numeric_extraction_records_json",
+    "numeric_extraction_status": "not_observed",
+    "numeric_extraction_bundle_present": "not_observed",
+    "numeric_fact_sheet_extraction_leg_covered": "partial",
+    "recompute_status": "not_observed",
+    "recompute_blocker_present": "not_observed",
+    "leak_blocker_present": "not_observed",
+    "unified_status": "not_observed",
+    "shippable": "not_observed",
+    "safety_floor_green": "not_observed",
+    "expected_case_behavior_observed": "not_observed",
+    "advisory_non_blocking": "not_observed",
+    "raw_text_committed": false,
+    "raw_paths_committed": false,
+    "runtime_outputs_committed": false,
+    "provider_calls": false,
+    "judge_calls": false,
+    "repair_calls": false,
+    "warnings": "private_run_deferred"
+  },
+  {
+    "validation_case": "single_confident_wrong_numeric_case",
+    "input_kind": "synthetic_safe",
+    "sidecar_kind": "synthetic_sidecar",
+    "sidecar_committed": false,
+    "artifact_path_exercised": true,
+    "artifact_name": "quality_safety_unified_qa_json",
+    "job_artifact_produced": true,
+    "numeric_input_artifact_name": "quality_safety_numeric_extraction_records_json",
+    "numeric_extraction_status": "ok",
+    "numeric_extraction_bundle_present": true,
+    "numeric_fact_sheet_extraction_leg_covered": "partial",
+    "recompute_status": "failed",
+    "recompute_blocker_present": true,
+    "leak_blocker_present": false,
+    "unified_status": "failed",
+    "shippable": false,
+    "safety_floor_green": false,
+    "expected_case_behavior_observed": true,
+    "advisory_non_blocking": true,
+    "raw_text_committed": false,
+    "raw_paths_committed": false,
+    "runtime_outputs_committed": false,
+    "provider_calls": false,
+    "judge_calls": false,
+    "repair_calls": false,
+    "warnings": "synthetic_equivalent_only"
+  },
+  {
+    "validation_case": "clean_real_case",
+    "input_kind": "synthetic_safe",
+    "sidecar_kind": "synthetic_sidecar",
+    "sidecar_committed": false,
+    "artifact_path_exercised": true,
+    "artifact_name": "quality_safety_unified_qa_json",
+    "job_artifact_produced": true,
+    "numeric_input_artifact_name": "quality_safety_numeric_extraction_records_json",
+    "numeric_extraction_status": "ok",
+    "numeric_extraction_bundle_present": true,
+    "numeric_fact_sheet_extraction_leg_covered": "partial",
+    "recompute_status": "passed",
+    "recompute_blocker_present": false,
+    "leak_blocker_present": false,
+    "unified_status": "passed",
+    "shippable": true,
+    "safety_floor_green": true,
+    "expected_case_behavior_observed": true,
+    "advisory_non_blocking": true,
+    "raw_text_committed": false,
+    "raw_paths_committed": false,
+    "runtime_outputs_committed": false,
+    "provider_calls": false,
+    "judge_calls": false,
+    "repair_calls": false,
+    "warnings": "synthetic_equivalent_only"
+  }
+]
+```
+
+**Track C — decision record.**
+
+```json
+{
+  "numeric_sidecar_real_path_validation": "run",
+  "slice": "127",
+  "status": "partial",
+  "synthetic_sidecar_artifact_path": "ok",
+  "private_operator_sidecar_artifact_path": "not_run",
+  "numeric_fact_sheet_extraction_leg_status": "partial",
+  "artifact_path_ready": "partial",
+  "artifact_path_ready_for_synthetic_numeric_records": true,
+  "production_numeric_extractor_present": false,
+  "judge_ready": false,
+  "repair_ready": false,
+  "next_step": "safe_numeric_extractor_design",
+  "warnings": "private_run_deferred"
+}
+```
+
+Slice 115 through Slice 125 are committed. Slice 126 is committed as `7ff1887` and
+merged to `chrome-renderer-v1`. Slice 127 is NOT committed.

@@ -337,6 +337,36 @@ no_leak_sweep: clean
 docker_compose_config_run: false
 ```
 
+## Slice 127 Validation Status — Numeric Sidecar Real-Path Operator Validation
+
+Slice 127 validated the contract path through the sidecar (operator-/harness-only;
+no production extractor, judge, or repair). The synthetic sidecar path is confirmed
+through the actual builder and the production hook; the real/private operator pass
+is deferred. The contract itself is unchanged.
+
+```
+contract_path_validated_through_sidecar: yes_synthetic
+contract_path_validated_through_private_operator_material: not_run
+clean_synthetic_record_recompute: passed
+wrong_synthetic_record_recompute: failed_blocking
+missing_sidecar_behavior: skipped_component_missing
+malformed_sidecar_behavior: failed_degraded_no_leak
+production_extractor_status: absent
+numeric_fact_sheet_extraction_leg_status: partial
+artifact_path_ready_for_synthetic_numeric_records: true
+judge_ready: false
+repair_ready: false
+next_contract_need: none_yet
+next_step: safe_numeric_extractor_design
+no_leak_sweep: clean
+docker_compose_config_run: false
+```
+
+The contract supports the current archetypes via the supported first methods; no
+new contract field or method is required before a safe numeric extractor slice.
+A bounded recompute-method extension is needed only if a real case surfaces an
+unsupported computation method.
+
 ## Non-Goals (Slice 124)
 
 - Not the judge tranche; no judge, no `overall_10`, no `quality_judge.py`,

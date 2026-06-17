@@ -5,7 +5,44 @@
 
 ---
 
-## Slice 126 — **Wire Numeric Extraction Mapper into Advisory Artifact**, on `slice126-wire-quality-safety-numeric-mapper-advisory-artifact`. **NOT COMMITTED.**
+## Slice 127 — **Numeric Sidecar Real-Path Operator Validation**, on `slice127-quality-safety-numeric-sidecar-real-path-validation`. **NOT COMMITTED.**
+
+- **Part 0 completed:** Slice 126 was committed as `7ff1887`, fast-forward merged to trunk `chrome-renderer-v1`, and pushed with
+  a normal `git push` (no force-push). Slice 126 wired the Slice 125 numeric extraction mapper into the advisory
+  `quality_safety_unified_qa.json` artifact path. No docker compose config was run; the Slice 60 trace stash remains parked
+  and untouched.
+- **Scope:** operator-/harness-validation only. Validate the Slice 126 numeric sidecar advisory artifact path against the
+  real-disaster archetypes and decide the next step. No production extraction, no judge, no repair, no prompt tuning. Docs-only
+  (no application-code change); the existing synthetic real-disaster harness already records the required closed-token
+  outcomes, so no new harness script was added.
+- **Files changed:** `M docs/CURRENT_TASK.md`, `M docs/DECISIONS.md`, `M docs/NEXT_CHAT_HANDOFF.md`,
+  `M docs/QUALITY_SAFETY_E2E_VALIDATION.md`, `M docs/QUALITY_SAFETY_NUMERIC_EXTRACTION_CONTRACT.md`,
+  `M docs/QUALITY_SAFETY_OPERATOR_VALIDATION.md`.
+- **Track A — synthetic sidecar regression (run, ok):** through the actual builder + production hook — sidecar missing →
+  `skipped`/`numeric_extraction_missing` (no crash); malformed → `failed`/`numeric_extraction_degraded` (no leak); clean
+  synthetic record → `recompute=passed` through the artifact; wrong synthetic record → recompute blocker, `shippable=false`,
+  `safety_floor_green=false`; artifact stays advisory/non-blocking; structural coverage stays separate; no canary leaks.
+- **Track B — operator real-path validation with private material:** `input_kind=not_run` this slice (not performed
+  autonomously; safe production of private sidecar records requires an operator pass or a safe numeric extractor). All three
+  archetypes (`legacy_confused_wrong_case`, `single_confident_wrong_numeric_case`, `clean_real_case`) validated only via the
+  synthetic equivalents in Track A; `sidecar_committed=false`, `raw_text_committed=false`, `provider_calls=false`,
+  `judge_calls=false`, `repair_calls=false`.
+- **Decision record:** `numeric_sidecar_real_path_validation=run`; `status=partial`;
+  `synthetic_sidecar_artifact_path=ok`; `private_operator_sidecar_artifact_path=not_run`;
+  `numeric_fact_sheet_extraction_leg_status=partial`; `artifact_path_ready=true_for_synthetic` (partial overall);
+  `production_numeric_extractor_present=false`; `judge_ready=false`; `repair_ready=false`;
+  `next_step=safe_numeric_extractor_design`.
+- **Validation:** numeric mapper 232 passed; job artifact 428 passed; real-disaster e2e 60 passed; recompute verifier 99;
+  unified QA 73; `compileall api pipeline test_scripts` OK; `git diff --check` clean; no-leak sweep clean. No docker compose
+  config was run.
+- **Out of scope / unchanged:** no production numeric extractor; no OCR/table/source parsing; no `clean.md` numeric read; no
+  job-folder scan; no routes; no frontend change; no generic artifact selector row; no generation/prompt/provider/
+  request-schema/render/export/visual/Ask Guide change; no judge/`overall_10`/repair/blocking gate; no `quality_judge.py`,
+  `nn3.json`, `judge_response_nn3.json`, or `quality.jsonl`. **Slice 127 remains NOT committed.**
+
+---
+
+## Slice 126 — **Wire Numeric Extraction Mapper into Advisory Artifact**, on `slice126-wire-quality-safety-numeric-mapper-advisory-artifact`. **Committed `7ff1887`, merged + pushed to `chrome-renderer-v1`.**
 
 - **Part 0 completed:** Slice 125 was committed as `13a7ef6`, fast-forward merged to trunk `chrome-renderer-v1`, and pushed
   with a normal `git push` (no force-push). Slice 125 added the pure/unwired numeric extraction mapper
@@ -48,7 +85,7 @@
 - **Out of scope / unchanged:** no OCR/table/source parsing, no `clean.md` numeric read, no job-folder scan, no `api/server.py`
   change, no routes, no frontend change, no generic artifact selector row, no generation/prompt/provider/request-schema/render/
   export/visual/Ask Guide change, no judge/`overall_10`/repair/blocking gate, no `quality_judge.py`/`nn3.json`/
-  `judge_response_nn3.json`/`quality.jsonl`. **Slice 126 remains NOT committed.**
+  `judge_response_nn3.json`/`quality.jsonl`. **Slice 126 is committed as `7ff1887` and merged to `chrome-renderer-v1`.**
 
 ---
 

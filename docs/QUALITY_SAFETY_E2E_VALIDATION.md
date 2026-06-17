@@ -510,6 +510,38 @@ no_leak_sweep: clean
 docker_compose_config_run: false
 ```
 
+## Slice 127 — Numeric Sidecar Real-Path Operator Validation
+
+**Scope.** Operator-/harness-validation of the Slice 126 numeric sidecar advisory
+artifact path against the real-disaster archetypes. No production extractor, no
+judge, no repair, no prompt tuning. The synthetic sidecar path is re-confirmed
+through the actual builder and the production hook; the real/private operator pass
+is deferred. Closed-vocabulary summary:
+
+```
+numeric_sidecar_real_path_validation: run
+slice: 127
+status: partial
+synthetic_sidecar_artifact_path: ok
+sidecar_missing_behavior: skipped_numeric_extraction_missing_no_crash
+sidecar_malformed_behavior: failed_numeric_extraction_degraded_no_leak
+clean_synthetic_recompute_through_artifact: passed
+wrong_synthetic_recompute_through_artifact: failed_blocking
+production_hook_reads_numeric_sidecar: ok
+advisory_non_blocking: true
+structural_coverage_separate: true
+numeric_records_fabricated_from_coverage: false
+private_operator_sidecar_artifact_path: not_run
+numeric_fact_sheet_extraction_leg_status: partial
+artifact_path_ready_for_synthetic_numeric_records: true
+production_numeric_extractor_exists: false
+judge_ready: false
+repair_ready: false
+next_step: safe_numeric_extractor_design
+no_leak_sweep: clean
+docker_compose_config_run: false
+```
+
 ## Non-Goals
 
 - The Slice 122 coverage wiring is advisory transparency only; the numeric /
