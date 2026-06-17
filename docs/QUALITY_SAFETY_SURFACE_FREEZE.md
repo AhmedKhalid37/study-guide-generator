@@ -202,3 +202,34 @@ judge_ready: false
 repair_ready: false
 next_step: offline_judge_core_v1_synthetic_only
 ```
+
+---
+
+## Slice 143 — Synthetic offline judge core does not unfreeze any surface
+
+Slice 143 added a **pure** offline judge core
+(`pipeline/quality_safety_offline_judge_core.py`) that converts caller-supplied
+**synthetic closed observations** into the Slice 142 report shape using
+deterministic rules only. This does **not** unfreeze the numeric infrastructure or
+the deterministic surface, and adds **no** numeric schema/bridge layer. No judge
+calls, no provider/model/cloud/local-LLM calls, no repair, and no prompt tuning
+were added; nothing in production imports the core. The frozen artifact names,
+field families, and validation harnesses above are unchanged.
+
+The core stays advisory and layered on top of this frozen surface: it can never
+override a deterministic recompute/leak/floor blocker, never mark a guide
+shippable if the floor is red, and never fabricate facts from structural coverage.
+The proposed (not produced) future artifact remains
+`quality_safety_offline_judge_report.json`.
+
+```
+quality_safety_surface_frozen: true
+numeric_infrastructure_frozen: true
+offline_judge_core_status: ok
+future_judge_artifact_name: quality_safety_offline_judge_report_json
+calibration_status: synthetic_only
+judge_contract_ready: true
+judge_ready: false
+repair_ready: false
+next_step: judge_calibration_gate_golden_protocol
+```

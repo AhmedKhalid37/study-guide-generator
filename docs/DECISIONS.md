@@ -5779,3 +5779,55 @@ calibration gate approves it.
 `quality_safety_blocking=false`; `judge_contract_ready=true`;
 `calibration_status=synthetic_only`; `judge_ready=false`; `repair_ready=false`;
 `next_step=offline_judge_core_v1_synthetic_only`.
+
+---
+
+## Offline judge core v1 is deterministic, synthetic-only, pure, and subordinate to the floor (Slice 143)
+Slice 143 implemented a pure offline judge **core**
+(`pipeline/quality_safety_offline_judge_core.py`) that converts caller-supplied
+**closed observations** (synthetic, in this slice) into the Slice 142 offline
+judge report shape using **deterministic rules only**, plus synthetic cases, a
+synthetic core harness, and a focused test. It is **not** an LLM judge.
+
+**Decisions:**
+- **The core is deterministic, not an LLM judge.** It maps closed per-axis signal
+  counts to axis results with fixed rules (`fail_count>0 → fail/failed`;
+  `warning_count>0 → warning`, weak band when confidence low/unknown else
+  acceptable; `pass_count>0 → pass`, strong when confidence high else acceptable;
+  otherwise `not_observed/unknown`). No model runs; no prompts/responses;
+  no chain-of-thought; no free-text rationale.
+- **It is pure and unwired.** It imports only the Slice 142 schema module and
+  stdlib `typing`; it reads/writes no files, scans no jobs, parses no
+  source/OCR/table text, and calls no provider/model/cloud/local LLM. Nothing in
+  production imports it; `quality_safety_job_artifact.py`, `run_markdown_job.py`,
+  `api/server.py`, routes, and UI are untouched. No artifact is produced.
+- **It does not inspect real material.** Input is caller-supplied closed
+  observations only. In this slice those are synthetic fixtures (with synthetic
+  canaries to prove stripping). Every report is passed through the Slice 142
+  schema normalizer before return, so forbidden content cannot survive, `advisory`
+  is forced `true`, and `judge_ready` / `repair_ready` are forced `false`.
+- **It cannot override deterministic floor / leak / privacy blockers.** A
+  floor-red `deterministic_floor_payload` yields a `deterministic_floor_red`
+  blocker and a non-`ok` status even when every axis passes; `privacy_status=
+  failed` yields `privacy_failed`; a failing axis yields `axis_failed`. The
+  deterministic safety floor remains the source of truth, and the core can never
+  mark anything shippable or operator-validated (`operator_validated` is
+  downgraded to `synthetic_only`).
+- **`judge_ready` / `repair_ready` stay false until the calibration gate.** The
+  next slice is the Judge Calibration Gate / Golden Protocol; readiness cannot be
+  claimed before it (and operator validation) approves it.
+
+**Why:** building the core as pure, deterministic, synthetic-only, and
+schema-normalized lets later slices (calibration gate, then any real judge
+adapter) reuse a proven, leak-safe conversion from observations to report without
+any risk of leaking private material, turning the judge into a blocking gate, or
+flipping readiness flags true prematurely.
+
+`offline_judge_core_status=ok`; `synthetic_case_status=ok`;
+`schema_compatibility_status=ok`; `leak_safety_status=ok`;
+`deterministic_floor_relationship_status=ok`;
+`future_judge_artifact_name=quality_safety_offline_judge_report_json`;
+`numeric_infrastructure_frozen=true`; `quality_safety_surface_frozen=true`;
+`quality_safety_blocking=false`; `judge_contract_ready=true`;
+`calibration_status=synthetic_only`; `judge_ready=false`; `repair_ready=false`;
+`next_step=judge_calibration_gate_golden_protocol`.

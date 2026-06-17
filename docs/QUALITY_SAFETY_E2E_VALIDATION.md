@@ -929,3 +929,22 @@ repair_ready: false
 next_step: offline_judge_core_v1_synthetic_only
 docker_compose_config_run: false
 ```
+
+## Slice 143 Offline Judge Core (synthetic-only) status
+
+Slice 143 added the pure synthetic offline judge core (deterministic; not judge
+execution). No judge ran and no judge output was produced against real/private
+material. These synthetic E2E validation records are unchanged and remain the
+deterministic source of truth; the synthetic core cannot override their
+deterministic blockers.
+
+```
+offline_judge_core_status: ok
+this_doc_changed: false
+calibration_status: synthetic_only
+judge_contract_ready: true
+judge_ready: false
+repair_ready: false
+next_step: judge_calibration_gate_golden_protocol
+docker_compose_config_run: false
+```

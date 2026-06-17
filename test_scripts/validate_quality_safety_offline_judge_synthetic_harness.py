@@ -34,6 +34,18 @@ from pipeline.quality_safety_offline_judge_schema import (  # noqa: E402
     validate_offline_judge_report,
 )
 
+# Slice 143 core compatibility is checked opportunistically: if the pure core
+# module is present, its synthetic reports must validate against this schema. The
+# harness does not depend on production and degrades gracefully if absent.
+try:
+    from pipeline.quality_safety_offline_judge_core import (  # noqa: E402
+        SYNTHETIC_CASE_IDS as CORE_CASE_IDS,
+        run_synthetic_offline_judge_case,
+    )
+except Exception:  # pragma: no cover - core module optional for this harness
+    CORE_CASE_IDS = ()
+    run_synthetic_offline_judge_case = None
+
 VALIDATION_ID = "quality_safety_offline_judge_synthetic_harness"
 ARTIFACT_NAME_TOKEN = "quality_safety_offline_judge_report_json"
 
@@ -157,6 +169,22 @@ def main() -> int:
     if "deterministic_floor_red" not in override.get("blockers", []):
         floor_ok = False
 
+    # Slice 143 core compatibility (opportunistic; no production dependency).
+    core_status = "absent"
+    if run_synthetic_offline_judge_case is not None:
+        core_ok = bool(CORE_CASE_IDS)
+        for case_id in CORE_CASE_IDS:
+            report = run_synthetic_offline_judge_case(case_id)
+            if not validate_offline_judge_report(report)["valid"]:
+                core_ok = False
+            if report.get("judge_ready") is not False or report.get("repair_ready") is not False:
+                core_ok = False
+            blob = serialize_offline_judge_report(report)
+            if any(fragment in blob for fragment in CANARY_FRAGMENTS):
+                core_ok = False
+                leak_ok = False
+        core_status = "ok" if core_ok else "failed"
+
     summary = {
         "validation_id": VALIDATION_ID,
         "future_judge_artifact_name": ARTIFACT_NAME_TOKEN,
@@ -164,6 +192,7 @@ def main() -> int:
         "synthetic_fixture_status": "ok" if fixture_ok else "failed",
         "leak_safety_status": "ok" if leak_ok else "failed",
         "deterministic_floor_relationship_status": "ok" if floor_ok else "failed",
+        "offline_judge_core_compatibility_status": core_status,
         "calibration_status": "synthetic_only",
         "judge_contract_ready": True,
         "judge_ready": False,
@@ -172,7 +201,7 @@ def main() -> int:
     }
     print(json.dumps(summary, sort_keys=True))
 
-    ok = schema_ok and fixture_ok and leak_ok and floor_ok
+    ok = schema_ok and fixture_ok and leak_ok and floor_ok and core_status in {"ok", "absent"}
     return 0 if ok else 1
 
 

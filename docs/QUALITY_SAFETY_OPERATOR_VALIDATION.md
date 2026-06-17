@@ -1260,3 +1260,23 @@ judge_ready: false
 repair_ready: false
 next_step: offline_judge_core_v1_synthetic_only
 ```
+
+## Slice 143 Offline Judge Core (synthetic-only) status
+
+Slice 143 added the pure synthetic offline judge core (deterministic; not judge
+execution). The operator waiver status is unchanged: it stays synthetic-only
+(`operator_numeric_export_waiver=approved_for_safety_floor_finalization_synthetic_only`);
+no private/local operator run was performed or committed. The core **downgrades**
+any `calibration_status=operator_validated` to `synthetic_only`; `judge_ready`
+stays false until a separate calibration gate (and operator validation) approves
+it.
+
+```
+offline_judge_core_status: ok
+operator_numeric_export_waiver: approved_for_safety_floor_finalization_synthetic_only
+calibration_status: synthetic_only
+judge_contract_ready: true
+judge_ready: false
+repair_ready: false
+next_step: judge_calibration_gate_golden_protocol
+```

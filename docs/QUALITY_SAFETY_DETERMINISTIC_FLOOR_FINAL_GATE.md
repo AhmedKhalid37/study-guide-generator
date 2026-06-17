@@ -216,3 +216,23 @@ judge_ready: false
 repair_ready: false
 next_step: offline_judge_core_v1_synthetic_only
 ```
+
+## Slice 143 Relationship — Synthetic judge core is subordinate to this floor
+
+Slice 143 added the pure synthetic offline judge core. It **subordinates** the
+future judge to this final gate: a floor-red `deterministic_floor_payload` forces
+a `deterministic_floor_red` blocker and a non-`ok` status even when every axis the
+core observed passes, so the core can never override the recompute or leak
+blockers measured here and can never mark a guide shippable while this floor is
+red. `judge_ready` / `repair_ready` remain forced `false`.
+
+```
+deterministic_floor_is_source_of_truth: true
+judge_can_override_deterministic_blockers: false
+offline_judge_core_status: ok
+deterministic_floor_relationship_status: ok
+judge_contract_ready: true
+judge_ready: false
+repair_ready: false
+next_step: judge_calibration_gate_golden_protocol
+```

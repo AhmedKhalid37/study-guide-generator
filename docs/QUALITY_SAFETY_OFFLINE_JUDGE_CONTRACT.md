@@ -327,3 +327,51 @@ repair_ready: false
 next_step: offline_judge_core_v1_synthetic_only
 docker_compose_config_run: false
 ```
+
+---
+
+## Slice 143 — Offline judge core v1 status (implemented, synthetic-only)
+
+Slice 143 implemented a **pure offline judge core**
+(`pipeline/quality_safety_offline_judge_core.py`) that converts caller-supplied
+**closed observations** (synthetic, in this slice) into this contract's report
+shape using **deterministic rules only** — not an LLM judge, not production
+wiring, and never inspecting real guide/source/reference text. No judge calls, no
+provider/model/cloud/local-LLM calls, no `quality_judge.py`, no `nn3.json`, no
+`judge_response_nn3.json`, no `quality.jsonl`, no repair, no prompt tuning, no UI,
+and no blocking gate were added.
+
+- **Public functions:** `build_offline_judge_report_from_observations`,
+  `normalize_offline_judge_observations`,
+  `build_synthetic_offline_judge_observations`, `run_synthetic_offline_judge_case`,
+  `build_empty_offline_judge_core_result`. Imports only the Slice 142 schema
+  module + stdlib `typing`; no file I/O; no provider/model/cloud/local-LLM calls.
+- **Deterministic axis rules:** `fail_count>0 → fail/failed`; else `warning_count>0
+  → warning` (weak band when confidence low/unknown, else acceptable); else
+  `pass_count>0 → pass` (strong when confidence high, else acceptable); else
+  `not_observed/unknown`. Every report is passed through the Slice 142 normalizer,
+  so `advisory=true`, `judge_ready=false`, `repair_ready=false`, and forbidden
+  content is stripped by construction.
+- **Floor remains source of truth:** a floor-red `deterministic_floor_payload`
+  yields a `deterministic_floor_red` blocker and a non-`ok` status even when all
+  axes pass; `privacy_status=failed` yields `privacy_failed`; a failing axis yields
+  `axis_failed`. The core cannot mark anything shippable or operator-validated.
+- **Synthetic cases:** `clean_synthetic_judge_case`, `weak_synthetic_judge_case`,
+  `failed_synthetic_judge_case`, `leak_canary_synthetic_judge_case`,
+  `deterministic_floor_red_synthetic_judge_case`.
+- **Harness:** `test_scripts/validate_quality_safety_offline_judge_core_synthetic.py`
+  (closed-vocabulary summary; writes no files; exits nonzero on failure).
+
+```
+offline_judge_core_status: ok
+synthetic_case_status: ok
+schema_compatibility_status: ok
+leak_safety_status: ok
+deterministic_floor_relationship_status: ok
+calibration_status: synthetic_only
+judge_contract_ready: true
+judge_ready: false
+repair_ready: false
+next_step: judge_calibration_gate_golden_protocol
+docker_compose_config_run: false
+```
