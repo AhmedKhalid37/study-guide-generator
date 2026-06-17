@@ -4771,3 +4771,20 @@ only caller-supplied candidate Markdown, reads no source documents or `clean.md`
 providers/models/cloud services, adds no production gate, and uses no fuzzy matching, embeddings, or LLM judge. Reports never
 echo raw matched text, guide/source snippets, formulas copied from private/generated material, OCR/table/caption text, paths,
 URLs, provider payloads, evidence quotes, image bytes, or uploaded quality-spec filenames.
+
+## Slice 114 makes the unified QA artifact the deterministic safety floor
+**Why this report gates shippability.** The unified QA artifact/report aggregates the deterministic Layer-1 eval, recompute
+verifier, canonical fallback, and verifier-coupled leak scanner into one closed-vocabulary safety floor. It decides
+`shippable` and `safety_floor_green` from deterministic blocking failures and warnings before any subjective quality scoring
+is attempted.
+
+**Why deterministic axes are emitted but no judge score is computed.** Slice 114 produces deterministic axes for later judge
+injection: `accuracy`, `coverage`, `solved_problem`, and `clarity`. These axes are safety/coverage signals, not the final
+quality score, and the module deliberately does not compute `overall_10`, a 9.5 score, or any reference-anchored judge
+result.
+
+**Why judge scoring and prompt tuning wait.** Reference-anchored judge scoring and prompt tuning are deferred until this
+floor is green so subjective quality work does not sit on top of uncaught correctness failures. The Slice 114 module stays
+pure and unwired: it reads only caller-supplied reports/data, writes no artifacts, calls no providers/models/cloud services,
+does not repair/rewrite/regenerate sections, and stores no raw candidate/source snippets, formulas copied from private
+material, OCR/table/caption text, paths, URLs, filenames, evidence quotes, image bytes, or provider payloads.

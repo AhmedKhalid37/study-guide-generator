@@ -6,46 +6,47 @@
 > stable overview see `PROJECT_CONTEXT.md`; canonical brief is `../CLAUDE.md`.
 
 ## Current position
-- **Working tree:** **Slice 113 (Quality Safety Verifier-Coupled Leak Scanner v1) — UNCOMMITTED (per instruction)** on branch
-  `slice113-quality-safety-verifier-coupled-leak-scanner-v1`, branched from fresh `chrome-renderer-v1` after Slice 112 was
-  committed, fast-forward merged, and pushed. **Slice 112 is trunk commit `1606896`**.
-  - **Part 0 completed:** Slice 112 was committed as `1606896`, fast-forward merged to `chrome-renderer-v1`, and pushed with
-    a normal `git push` (no force-push). It added only the unwired canonical matcher and synthetic tests. It was
-    matcher-only/unwired, preserved recompute priority, never overrode recompute-verified facts, never hid recompute-failed
-    facts, changed no API/frontend/generation/prompt/request/render/export/OCR/table/visual/Ask Guide behavior, added no
-    provider/model/cloud calls, and did not add `quality_judge.py`, `nn3.json`, `judge_response_nn3.json`, or `quality.jsonl`.
+- **Working tree:** **Slice 114 (Quality Safety Unified QA Artifact v1) — UNCOMMITTED (per instruction)** on branch
+  `slice114-quality-safety-unified-qa-artifact-v1`, branched from fresh `chrome-renderer-v1` after Slice 113 was committed,
+  fast-forward merged, and pushed. **Slice 113 is trunk commit `4b002c6`**.
+  - **Part 0 completed:** Slice 113 was committed as `4b002c6`, fast-forward merged to `chrome-renderer-v1`, and pushed with
+    a normal `git push` (no force-push). It added only the unwired verifier-coupled leak scanner and synthetic tests. It did
+    not repair/rewrite/regenerate/tune prompts, changed no API/frontend/generation/prompt/request/render/export/OCR/table/
+    visual/Ask Guide behavior, added no provider/model/cloud calls, committed no real fixtures/runtime outputs/generated
+    guides/binary artifacts, and did not add `quality_judge.py`, `nn3.json`, `judge_response_nn3.json`, or `quality.jsonl`.
     The Slice 60 trace stash remains parked and untouched.
-  - **Slice 113 scope:** add the unwired Quality Safety **verifier-coupled leak scanner**. It scans caller-supplied candidate
-    Markdown only, reports deterministic leak/uncertainty signals, and records safe verification status context beside leak
-    hits so later repair logic can distinguish verified, failed, canonical, unverified, and unknown numeric contexts. It does
-    not repair, rewrite, regenerate, tune prompts, claim shippable status, or decide the unified QA artifact (Slice 114).
-  - **New module:** `pipeline/quality_safety_leak_scanner.py` is pure stdlib-only plus the Slice 110
-    `quality_safety_fact_sheet` import. It exposes `scan_quality_safety_leaks(...)`,
-    `build_quality_safety_leak_report(...)`, and `extract_quality_safety_verification_context(...)`. It reads only supplied
-    text/dicts, writes nothing, reads no source documents or `clean.md`, calls no providers/models/cloud services, never
-    raises, and returns deterministic JSON-serializable reports with closed leak kinds, severities, statuses, and warning
-    tokens.
-  - **Leak/report behavior:** detects fixed reasoning/uncertainty signatures, TODO/TBD/FIXME, placeholder brackets,
-    `= ?` / `≈ ?`, formula-like question marks, and empty answer markers. It avoids structural false positives for normal
-    mock/practice/self-test/quiz/check-yourself headings, committed pedagogical `Why?`, formal `Assumption`, and source/page
-    refs. Reports are `quality_safety_leak_report` v1 with safe counts, leak metadata, `blocking`, and closed-token
-    `blocking_failures`; they never include raw matched text, guide/source snippets, copied formulas, OCR/table/caption
-    text, paths, URLs, provider payloads, or evidence quotes.
-  - **Verifier coupling:** safe fact ids/labels from the normalized fact sheet may attach leak hits to fact ids.
-    Recompute verified/failed statuses take priority over canonical. Canonical verified/mismatch applies only when recompute
-    did not verify/fail that fact. Missing reports remain `unknown`. No fuzzy matching, embeddings, LLM judge, source
-    document scan, production leak gate, or repair loop is added.
-  - **Tests:** `test_scripts/test_quality_safety_leak_scanner.py` (synthetic only, 181 checks) covers empty/malformed input,
-    leak families, false-positive resistance, conservative attachment, verifier coupling, recompute-first priority, report
-    shape/capping, Slice 110/111/112 integration, Slice 109 synthetic seed fixtures, no-leak sweep, and import hygiene.
-  - **Out of scope/unchanged:** no production artifact writer, app route, UI/export selector, generic artifact entry, LLM
-    judge, `quality_judge.py`, `nn3.json`, `judge_response_nn3.json`, `quality.jsonl`, unified QA artifact, repair loop,
-    What the Lecturer Skipped / Active Recall or other picked study-intelligence features, generation/prompt/request/API/UI/
-    render/export/OCR/table/visual/Ask Guide behavior change, provider/model/cloud calls, or Docker config. Only synthetic
-    fixtures/content were used; no real PDFs/images/DOCX/ZIPs, runtime artifacts, generated guides, eval outputs,
-    source/reference filenames, uploaded quality-spec filenames, evidence quotes, snippets, OCR/table/caption text, paths,
-    URLs, image bytes, copied private formulas, or provider payloads were added. Chandra remains blocked by its own
-    live-validation gate.
+  - **Slice 114 scope:** add the pure unified deterministic Quality Safety QA report layer. It aggregates Layer-1 eval,
+    recompute verifier, canonical fallback, and verifier-coupled leak scanner outputs into one report that determines
+    `shippable` / `safety_floor_green` for the deterministic safety floor.
+  - **New module:** `pipeline/quality_safety_unified_qa.py` exposes `build_quality_safety_unified_qa_report(...)`,
+    `aggregate_quality_safety_reports(...)`, `build_quality_safety_deterministic_axes(...)`, and optional offline
+    `run_quality_safety_unified_floor(...)`. It is stdlib plus Quality Safety modules only, reads no source documents or
+    `clean.md`, writes no artifacts, calls no providers/models/cloud services, never raises on malformed input, and returns
+    deterministic JSON-serializable reports with closed statuses, warnings, check ids, and verification-status tokens.
+  - **Report behavior:** normalized blockers contain only component, closed check id, failed/blocking status, safe fact ids,
+    closed verification status, and closed warnings. Recompute remains primary; canonical fallback is second and never
+    overrides recompute pass/fail; leak failures preserve safe recompute/canonical context.
+  - **Axes:** emits deterministic 0-5 axes for later judge injection: `accuracy`, `coverage`, `solved_problem`, and
+    `clarity`. It does not compute `overall_10`, judge scores, or any 9.5/9.0 quality score.
+  - **Tests:** `test_scripts/test_quality_safety_unified_qa.py` (synthetic only, 73 checks) covers empty/malformed input,
+    green/failing paths, warning-only paths, deterministic axes, Slices 108-113 integration, seed fixture gates, no-leak
+    sweeps, and import hygiene. Both Slice 109 synthetic seed fixtures pass the green safety-floor test with all-green
+    synthetic candidates; the ambiguous synthetic leaked/mismatched candidate fails as expected.
+  - **Out of scope/unchanged:** no production runtime wiring, app route, UI/export selector, generic artifact entry, LLM
+    judge, `quality_judge.py`, `nn3.json`, `judge_response_nn3.json`, `quality.jsonl`, prompt tuning, repair/rewrite/
+    regeneration, What the Lecturer Skipped / Active Recall or other picked study-intelligence features, generation/prompt/
+    request/API/UI/render/export/OCR/table/visual/Ask Guide behavior change, provider/model/cloud calls, or Docker config.
+    Only synthetic fixtures/content were used; no real PDFs/images/DOCX/ZIPs, runtime artifacts, generated guides, eval
+    outputs, source/reference filenames, uploaded quality-spec filenames, evidence quotes, snippets, OCR/table/caption text,
+    paths, URLs, image bytes, copied private formulas, or provider payloads were added. Chandra remains blocked by its own
+    live-validation gate. **Slice 114 remains NOT committed.**
+
+### Previously (Slice 113, now trunk `4b002c6`)
+- **Slice 113 (Quality Safety Verifier-Coupled Leak Scanner v1)** added
+  `pipeline/quality_safety_leak_scanner.py` and `test_scripts/test_quality_safety_leak_scanner.py` — the unwired scanner
+  that records safe verification context beside leak hits. Recompute verified/failed statuses take priority over canonical;
+  it changed no API, frontend, generation, prompt, request schema, render/export/OCR/table/visual, Ask Guide,
+  provider/model/cloud behavior, and did not add repair or judge logic.
 
 ### Previously (Slice 112, now trunk `1606896`)
 - **Slice 112 (Quality Safety Canonical Fixture Matcher v1)** added `pipeline/quality_safety_canonical_matcher.py` and

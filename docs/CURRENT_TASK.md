@@ -5,7 +5,53 @@
 
 ---
 
-## Slice 113 — **Quality Safety Verifier-Coupled Leak Scanner v1**, on `slice113-quality-safety-verifier-coupled-leak-scanner-v1`. **NOT COMMITTED.**
+## Slice 114 — **Quality Safety Unified QA Artifact v1**, on `slice114-quality-safety-unified-qa-artifact-v1`. **NOT COMMITTED.**
+
+- **Part 0 completed:** Slice 113 was committed as `4b002c6`, fast-forward merged to trunk `chrome-renderer-v1`, and pushed
+  with a normal `git push` (no force-push). Slice 113 added only the unwired verifier-coupled leak scanner and synthetic
+  tests. It remained leak-scanner-only/unwired, did not repair/rewrite/regenerate/tune prompts, changed no API/frontend/
+  generation/prompt/request/render/export/OCR/table/visual/Ask Guide behavior, added no provider/model/cloud call, committed
+  no real fixtures/runtime outputs/generated guides/binary artifacts, and did not add Claude's `quality_judge.py`,
+  `nn3.json`, `judge_response_nn3.json`, or `quality.jsonl`. No docker compose config was run. The parked Slice 60 trace
+  stash remains untouched.
+- **Scope:** Slice 114 adds the unified deterministic Quality Safety QA report layer. It aggregates Layer-1 eval,
+  recompute verifier, canonical fallback, and verifier-coupled leak scanner outputs into one pure report that determines
+  `shippable` / `safety_floor_green` for the deterministic safety floor.
+- **New pure module:** `pipeline/quality_safety_unified_qa.py` exposes `build_quality_safety_unified_qa_report(...)`,
+  `aggregate_quality_safety_reports(...)`, `build_quality_safety_deterministic_axes(...)`, and the optional offline
+  `run_quality_safety_unified_floor(...)`. It is stdlib plus Quality Safety modules only, reads no source documents or
+  `clean.md`, writes no artifacts, calls no providers/models/cloud services, imports no FastAPI/frontend/OCR/render/job
+  runtime code, never raises on malformed input, and returns deterministic JSON-serializable dicts with closed vocabularies.
+- **Aggregation behavior:** normalized blocking failures keep only component, closed check id, status, severity, safe fact
+  ids, closed verification status, and closed warning tokens. Ordering is deterministic: Layer-1, recompute, canonical,
+  leak. Recompute failures remain primary; canonical fallback can verify only when recompute did not verify/fail; leak
+  failures preserve safe recompute/canonical context.
+- **Safety floor behavior:** `shippable` is true only for passed/warning reports with zero blocking failures.
+  `safety_floor_green` additionally requires no missing/malformed component warnings, a passed/skipped leak component, no
+  numeric blocking failures, no failed recompute/canonical mismatch, and no Layer-1 blocking failures. This is the
+  deterministic floor only.
+- **Deterministic axes:** the report emits `deterministic_axes_0_5` for later judge injection: `accuracy`, `coverage`,
+  `solved_problem`, and `clarity`. It does not compute `overall_10`, judge scores, or any 9.5/9.0 quality score.
+- **Tests:** `test_scripts/test_quality_safety_unified_qa.py` uses synthetic data and hostile synthetic canaries only. It
+  covers empty/malformed behavior, all-green floor, Layer-1/recompute/canonical/leak blocking, warning-only reports,
+  deterministic axes, Slices 108-113 integration, recompute-first/canonical-second/leak-context behavior, Slice 109 seed
+  fixture gates, no-leak sweeps, and import hygiene (73 checks pass). Both Slice 109 synthetic seed fixtures pass the green
+  safety-floor test with all-green synthetic candidates; the ambiguous synthetic leaked/mismatched candidate fails as
+  expected.
+- **Out of scope / unchanged:** no reference-anchored LLM judge, `quality_judge.py`, `nn3.json`, `judge_response_nn3.json`,
+  `quality.jsonl`, `overall_10`, prompt tuning, repair/rewrite/regeneration, production runtime wiring, app route, UI/export
+  selector, generic artifact entry, What the Lecturer Skipped, Active Recall, Memory Hooks, Practical Example Generator,
+  Solve Path Generator, question-bank coverage, generation/prompt/request/API/UI/render/export/OCR/table/visual/Ask Guide
+  behavior change, provider/model/cloud call, or Docker config. Docker validation is optional/not required because this is
+  offline/unified-QA-only.
+- **Safety boundary:** only synthetic fixtures/content were used. No real PDFs/images/DOCX/ZIPs, runtime artifacts,
+  generated guides, eval outputs, real source/reference filenames, uploaded quality-spec filenames, evidence quotes,
+  snippets, OCR/table/caption text, paths, URLs, image bytes, formulas copied from private/generated material, or provider
+  payloads were added. **Slice 114 remains NOT committed.**
+
+---
+
+## Slice 113 — **Quality Safety Verifier-Coupled Leak Scanner v1**, on `slice113-quality-safety-verifier-coupled-leak-scanner-v1`. **Committed `4b002c6`, merged + pushed to `chrome-renderer-v1`.**
 
 - **Part 0 completed:** Slice 112 was committed as `1606896`, fast-forward merged to trunk `chrome-renderer-v1`, and pushed
   with a normal `git push` (no force-push). Slice 112 added only the unwired canonical matcher and synthetic tests. It was
@@ -50,7 +96,7 @@
 - **Safety boundary:** only synthetic fixtures/content were used. No real PDFs/images/DOCX/ZIPs, runtime artifacts,
   generated guides, eval outputs, real source/reference filenames, uploaded quality-spec filenames, evidence quotes,
   snippets, OCR/table/caption text, paths, URLs, image bytes, formulas copied from private/generated material, or provider
-  payloads were added. **Slice 113 remains NOT committed.**
+  payloads were added. Slice 113 was committed as `4b002c6`, merged, and pushed before Slice 114.
 
 ---
 
