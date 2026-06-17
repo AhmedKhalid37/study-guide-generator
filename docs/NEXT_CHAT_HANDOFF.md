@@ -6,42 +6,41 @@
 > stable overview see `PROJECT_CONTEXT.md`; canonical brief is `../CLAUDE.md`.
 
 ## Current position
-- **Working tree:** **Slice 115 (Quality Safety Real-Disaster Operator Validation) — UNCOMMITTED (per instruction)** on
-  branch `slice115-quality-safety-real-disaster-operator-validation`, branched from fresh `chrome-renderer-v1` after
-  Slice 114 was committed, fast-forward merged, and pushed. **Slice 114 is trunk commit `f3693dc`**.
-  - **Part 0 completed:** Slice 114 was committed as `f3693dc`, fast-forward merged to `chrome-renderer-v1`, and pushed with
-    a normal `git push` (no force-push). It added only the unwired deterministic unified-QA report layer and synthetic tests.
-    It computed `shippable` / `safety_floor_green`, emitted deterministic axes (`accuracy`, `coverage`, `solved_problem`,
-    `clarity`), did not compute `overall_10`, did not add judge scoring, did not tune prompts, did not repair/rewrite/
-    regenerate, changed no API/frontend/generation/prompt/request/render/export/OCR/table/visual/Ask Guide behavior, added
-    no provider/model/cloud calls, committed no real fixtures/runtime outputs/generated guides/binary artifacts, and did not
-    add `quality_judge.py`, `nn3.json`, `judge_response_nn3.json`, or `quality.jsonl`. No docker compose config was run.
-    The Slice 60 trace stash remains parked and untouched.
-  - **Slice 115 scope:** docs-only/offline operator validation of the completed deterministic safety detectors against real
-    private operator cases. Runtime validation may read private local operator material and a hand-built local fact sheet,
-    but committed docs must contain closed-vocabulary outcomes only. `extraction_leg_covered=false`: this validates
-    recompute/leak/unified-QA behavior, not extraction-to-fact-sheet production behavior. A green detector result would not
-    mean the production app catches the failure end-to-end yet.
-  - **Contract inspection:** `weighted_gini` supports leaf-count/group-count inputs through structured
-    `computation:{method, inputs}` facts. Recompute reports keep numeric supplied/recomputed/tolerance values plus safe fact
-    ids and closed tokens only. Unified QA aggregates recompute and leak blocking failures without raw snippets. Leak scanner
-    context attaches through safe fact ids or labels only.
-  - **Closed results:** `legacy_confused_wrong_case` failed as expected with blockers `layer1:leaked_reasoning`,
-    `layer1:numeric_correctness`, `recompute:weighted_gini`, and `leak:quality_safety_leak_scan`.
-    `single_confident_wrong_numeric_case` failed as expected with `blocking_checks=[recompute:weighted_gini]`,
-    `single_wrong_value_only=true`, `contradiction_required=false`, and `leak_required=false`.
-    `clean_real_case` did not pass: `failure_category=clean_case_false_positive`,
-    `component_miss_tokens=[false_positive_leak]`, with blockers `layer1:leaked_reasoning` and
-    `leak:quality_safety_leak_scan`.
-  - **Out of scope/unchanged:** no production code, tests, CLI scripts, runtime artifact writers, JSONL logs, real fixtures,
-    generated outputs, reference-anchored LLM judge, `quality_judge.py`, `nn3.json`, `judge_response_nn3.json`,
-    `quality.jsonl`, `overall_10`, prompt tuning, repair/rewrite/regeneration, fact-sheet producer, production runtime
-    wiring, app route, UI/export selector, generic artifact entry, generation/prompt/request/API/UI/render/export/OCR/table/
-    visual/Ask Guide behavior change, provider/model/cloud calls, live generation, or Docker config. Committed docs contain
-    no real PDFs/images/DOCX/ZIPs, runtime artifacts, generated guides, eval outputs, source/reference filenames, uploaded
-    quality-spec filenames, evidence quotes, snippets, OCR/table/caption text, paths, URLs, image bytes, copied private
-    formulas, provider payloads, or runtime output JSON. Chandra remains blocked by its own live-validation gate.
-    **Slice 115 remains NOT committed.**
+- **Working tree:** **Slice 116 (Quality Safety Leak Scanner Clean-Case False-Positive Hardening) — UNCOMMITTED (per
+  instruction)** on branch `slice116-quality-safety-leak-false-positive-hardening`, branched from fresh
+  `chrome-renderer-v1` after Slice 115 was committed, fast-forward merged, and pushed. **Slice 115 is trunk commit
+  `92a4fb2`**.
+  - **Part 0 completed:** Slice 115 was committed as `92a4fb2`, fast-forward merged to `chrome-renderer-v1`, and pushed with
+    a normal `git push` (no force-push). It was docs/operator-validation only and recorded the red gate honestly:
+    `clean_real_case=false_positive_leak`, `failure_category=clean_case_false_positive`, and
+    `extraction_leg_covered=false`. No code/tests/runtime outputs/private material/judge/provider/model/cloud calls were
+    added, no docker compose config was run, and the Slice 60 trace stash remains parked and untouched.
+  - **Slice 116 scope:** targeted hardening of the unwired offline leak scanner plus synthetic tests and closed-vocabulary
+    docs. It fixes the clean-case false-positive blocker before fact-sheet production, job wiring, judge scoring, prompt
+    tuning, or repair work.
+  - **Root cause / fix tokens:** `leak_boundary_false_positive`; `technical_weight_term_false_positive`. Fixed leak
+    signatures now use boundary-safe word/phrase matching. Synthetic tests prove clean technical prose about
+    `weighted_gini`, weighted error, neural-network weights, weighted sums, `await`, `actual`, and `factual` produces zero
+    leaks while the major leak phrases and structural uncertainty markers still trigger.
+  - **Closed operator revalidation:** `legacy_confused_wrong_case` remains detected and not shippable.
+    `single_confident_wrong_numeric_case` remains detected by `recompute:weighted_gini` with `contradiction_required=false`
+    and `leak_required=false`. `clean_real_case` now passes with `clean_case_passed=true`, `unified_status=passed`,
+    `shippable=true`, `safety_floor_green=true`, and `blocking_checks=[]`. `extraction_leg_covered=false` remains recorded
+    because fact-sheet production is still not built.
+  - **Out of scope/unchanged:** no fact-sheet producer, production runtime wiring, app route, UI/export selector, generic
+    artifact entry, reference-anchored LLM judge, `quality_judge.py`, `nn3.json`, `judge_response_nn3.json`, `quality.jsonl`,
+    `overall_10`, prompt tuning, repair/rewrite/regeneration, live generation, provider/model/cloud call, Docker config,
+    generation/prompt/request/API/UI/render/export/OCR/table/visual/Ask Guide behavior change, or Chandra gate change.
+    Docs/tests contain no real PDFs/images/DOCX/ZIPs, runtime artifacts, generated guides, eval outputs, source/reference
+    filenames, uploaded quality-spec filenames, evidence quotes, snippets, OCR/table/caption text, paths, URLs, image bytes,
+    copied private formulas, provider payloads, or runtime output JSON. **Slice 116 remains NOT committed.**
+
+### Previously (Slice 115, now trunk `92a4fb2`)
+- **Slice 115 (Quality Safety Real-Disaster Operator Validation)** added `docs/QUALITY_SAFETY_OPERATOR_VALIDATION.md` and
+  updated the handoff docs only. It validated recompute/leak/unified-QA behavior with private local operator material and a
+  hand-built local fact sheet, recorded only closed-vocabulary outcomes, and found the blocker fixed by Slice 116:
+  `failure_category=clean_case_false_positive`, `component_miss_tokens=[false_positive_leak]`,
+  `extraction_leg_covered=false`.
 
 ### Previously (Slice 114, now trunk `f3693dc`)
 - **Slice 114 (Quality Safety Unified QA Artifact v1)** added `pipeline/quality_safety_unified_qa.py` and

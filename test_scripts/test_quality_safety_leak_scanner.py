@@ -283,6 +283,43 @@ Final answer:
     assert_no_raw_phrases("leak signatures", report, ("Actually,", "we'll trust", "I think", "presumably maybe", "[insert synthetic step]"))
 
 
+def test_boundary_matching() -> None:
+    clean_boundary_terms = """
+The weighted_gini calculation uses weighted error from neural network weights.
+Weighted sums combine the weight, weights, and weighted rows without uncertainty.
+The await and awaiting examples are straightforward implementation details.
+The factual result is actual and not a speculative note.
+## Probable Cause
+Committed label text follows.
+"""
+    clean = build_quality_safety_leak_report(clean_boundary_terms)
+    check("boundary clean technical terms pass", clean["status"] == "passed", serialized(clean))
+    check("wait boundary avoids technical substrings", clean["summary"]["leak_count"] == 0, serialized(clean))
+    assert_report_shape("boundary clean technical terms", clean)
+
+    leak_examples = {
+        "wait": "Wait, this may be wrong.",
+        "actually": "Actually, this value is unclear.",
+        "we_ll_trust": "We'll trust this.",
+        "we_will_trust": "We will trust this.",
+        "it_seems": "It seems the value is synthetic.",
+        "lets_infer": "Let's infer the missing value.",
+        "i_think": "I think this means synthetic.",
+        "presumably": "Presumably this is synthetic.",
+        "maybe": "Maybe the answer is synthetic.",
+        "not_sure": "Not sure.",
+        "cannot_tell": "Cannot tell.",
+        "hard_to_tell": "Hard to tell.",
+        "we_assume": "We assume this is synthetic.",
+        "appears_to_be": "Appears to be synthetic.",
+        "likely_means": "Likely means synthetic.",
+    }
+    for name, text in leak_examples.items():
+        report = build_quality_safety_leak_report(text)
+        check(f"boundary leak preserved: {name}", report["summary"]["leak_count"] >= 1, serialized(report))
+        assert_no_raw_phrases(f"boundary leak preserved: {name}", report, (text,))
+
+
 def test_false_positive_resistance() -> None:
     candidate = """
 ## Question 1?
@@ -297,10 +334,14 @@ Committed prompt text follows.
 Committed prompt text follows.
 ## Check yourself?
 Committed prompt text follows.
+## Check-yourself?
+Committed prompt text follows.
 ## Why?
 The committed explanation defines the next step.
 ## Assumption
 Synthetic variable is held constant.
+## Probable Cause
+Synthetic label is committed.
 Source: page 12?
 """
     report = build_quality_safety_leak_report(candidate)
@@ -311,6 +352,19 @@ Source: page 12?
     unsafe_assumption = build_quality_safety_leak_report("## Assumption\nWe assume synthetic_label is correct.")
     check("assumption with uncertainty language flags", unsafe_assumption["status"] in {"warning", "failed"})
     check("unsafe assumption rule", any(leak["rule_id"] == "unsafe_assumption" for leak in unsafe_assumption["leaks"]))
+
+
+def test_technical_clean_prose() -> None:
+    candidate = """
+The synthetic weighted_gini fact is recomputed from leaf counts.
+Weighted error is aggregated across the synthetic rows.
+Neural network weights update through a weighted sum during the forward pass.
+The actual factual explanation is committed and complete.
+"""
+    report = build_quality_safety_leak_report(candidate)
+    check("technical clean prose passes", report["status"] == "passed", serialized(report))
+    check("technical clean prose zero leaks", report["summary"]["leak_count"] == 0, serialized(report))
+    assert_report_shape("technical clean prose", report)
 
 
 def test_verifier_coupling() -> None:
@@ -538,7 +592,9 @@ def test_import_hygiene() -> None:
 def run() -> int:
     test_empty_and_malformed()
     test_leak_signatures()
+    test_boundary_matching()
     test_false_positive_resistance()
+    test_technical_clean_prose()
     test_verifier_coupling()
     test_conservative_attachment()
     test_report_shape_and_status()

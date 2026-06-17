@@ -4814,3 +4814,18 @@ prompt change, API/UI change, or runtime job wiring.
 material using a hand-built local fact sheet. It validates recompute/leak/unified-QA behavior, not the
 extraction-to-fact-sheet leg. The extraction leg remains unvalidated and is the purpose of the next engineering slice. A
 green Slice 115 detector case does not mean the production app catches the failure end-to-end yet.
+
+## Slice 116 fixes clean-case leak false positives before production wiring
+**Why this precedes fact-sheet production and judge work.** Slice 115 found a clean-case false positive in the deterministic
+leak scanner. Slice 116 fixes that before fact-sheet production or job wiring, because a safety floor that blocks clean
+guides cannot be trusted as a shippability gate.
+
+**What changed.** Fixed leak signatures now use boundary-safe word/phrase matching so uncertainty words do not fire inside
+normal technical prose. The hardening is targeted at `leak_boundary_false_positive` and
+`technical_weight_term_false_positive`, with synthetic tests covering clean weighted/weight terminology and preserved
+detection of actual leak phrases, placeholders, unresolved answers, and structural uncertainty.
+
+**What remains unchanged.** Recompute remains primary over canonical fallback, leak reports still contain only closed
+tokens/counts/safe fact ids, and the scanner stays unwired and offline. Slice 116 adds no judge, no `overall_10`, no prompt
+tuning, no repair/rewrite/regeneration, no provider/model/cloud call, no production runtime wiring, no fact-sheet producer,
+and no generation/prompt/request/API/UI/render/export/OCR/table/visual/Ask Guide behavior change.

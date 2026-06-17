@@ -78,27 +78,39 @@ _UNSAFE_RE = re.compile(
     re.IGNORECASE,
 )
 _BASE64ISH_RE = re.compile(r"^[A-Za-z0-9+/]{80,}={0,2}$")
+_LEAK_LEFT = r"(?<![A-Za-z0-9_])"
+_LEAK_RIGHT = r"(?![A-Za-z0-9_])"
 
 _FIXED_RULES: tuple[tuple[str, str, str, re.Pattern[str]], ...] = (
-    ("reasoning_leak", "wait_or_actually", "blocking", re.compile(r"\b(?:wait|actually)\b", re.IGNORECASE)),
+    (
+        "reasoning_leak",
+        "wait_or_actually",
+        "blocking",
+        re.compile(_LEAK_LEFT + r"(?:wait|actually)" + _LEAK_RIGHT, re.IGNORECASE),
+    ),
     (
         "uncertainty_leak",
         "unclear_or_trust",
         "contextual",
-        re.compile(r"\b(?:unclear|we(?:'|’)ll trust|we will trust)\b", re.IGNORECASE),
+        re.compile(
+            _LEAK_LEFT + r"(?:unclear|we(?:'|’)ll\s+trust|we\s+will\s+trust)" + _LEAK_RIGHT,
+            re.IGNORECASE,
+        ),
     ),
     (
         "uncertainty_leak",
         "speculative_inference",
         "contextual",
-        re.compile(r"\b(?:it seems|let(?:'|’)s infer)\b", re.IGNORECASE),
+        re.compile(_LEAK_LEFT + r"(?:it\s+seems|let(?:'|’)s\s+infer)" + _LEAK_RIGHT, re.IGNORECASE),
     ),
     (
         "uncertainty_leak",
         "personal_uncertainty",
         "contextual",
         re.compile(
-            r"\b(?:i think|presumably|probably|maybe|guess|not sure|cannot tell|hard to tell)\b",
+            _LEAK_LEFT
+            + r"(?:i\s+think|presumably|probably|maybe|guess|not\s+sure|cannot\s+tell|hard\s+to\s+tell)"
+            + _LEAK_RIGHT,
             re.IGNORECASE,
         ),
     ),
@@ -106,7 +118,10 @@ _FIXED_RULES: tuple[tuple[str, str, str, re.Pattern[str]], ...] = (
         "uncertainty_leak",
         "unsafe_assumption",
         "contextual",
-        re.compile(r"\b(?:we assume|assume this is|appears to be|likely means)\b", re.IGNORECASE),
+        re.compile(
+            _LEAK_LEFT + r"(?:we\s+assume|assume\s+this\s+is|appears\s+to\s+be|likely\s+means)" + _LEAK_RIGHT,
+            re.IGNORECASE,
+        ),
     ),
 )
 _TODO_RE = re.compile(r"\b(?:TODO|TBD|FIXME)\b", re.IGNORECASE)
@@ -115,7 +130,7 @@ _EQUALS_QUESTION_RE = re.compile(r"(?:=|≈)\s*\?")
 _ANSWER_MARKER_RE = re.compile(r"^\s*(?:#{1,6}\s*)?(?:answer|final answer|solution)\s*:\s*$", re.IGNORECASE)
 _QUESTION_HEADING_RE = re.compile(
     r"^\s*(?:#{1,6}\s*)?"
-    r"(?:question\s*\d*|practice\s+question|mock\s+question|self[- ]?test|quiz|check yourself)\b",
+    r"(?:question\s*\d*|practice\s+question|mock\s+question|self[- ]?test|quiz|check[- ]?yourself)\b",
     re.IGNORECASE,
 )
 _SOURCE_REF_RE = re.compile(r"\b(?:source|page|slide|p\.|pp\.)\s*[:#]?\s*\d{1,4}\b", re.IGNORECASE)

@@ -124,6 +124,116 @@ production app catches the failure end-to-end yet.
 ]
 ```
 
+## Slice 116
+
+Slice 116 hardens the deterministic leak scanner against the clean-case false positive found by Slice 115. It changes only
+the unwired offline leak scanner, synthetic tests, and closed-vocabulary docs. It does not add production wiring,
+fact-sheet production, judge logic, prompt tuning, repair, providers, or runtime artifact writers.
+
+## Slice 116 Root Cause
+
+```json
+{
+  "validation_id": "quality_safety_leak_false_positive_root_cause_v1",
+  "status": "completed",
+  "root_cause_tokens": [
+    "leak_boundary_false_positive",
+    "technical_weight_term_false_positive"
+  ],
+  "fix_tokens": [
+    "boundary_safe_fixed_signature_matching",
+    "technical_weight_term_clean_case"
+  ],
+  "raw_text_committed": false,
+  "raw_paths_committed": false,
+  "runtime_outputs_committed": false
+}
+```
+
+## Slice 116 Scope Honesty
+
+```json
+{
+  "validation_id": "quality_safety_scope_honesty_v2",
+  "extraction_leg_covered": false,
+  "detectors_covered": [
+    "recompute",
+    "leak",
+    "unified_qa"
+  ],
+  "fact_sheet_kind": "hand_built_local",
+  "production_end_to_end_covered": false,
+  "next_engineering_slice": "extraction_to_fact_sheet_producer"
+}
+```
+
+## Slice 116 Validation Records
+
+```json
+[
+  {
+    "validation_case": "legacy_confused_wrong_case",
+    "input_kind": "private_local_operator_material",
+    "fact_sheet_kind": "hand_built_local",
+    "extraction_leg_covered": false,
+    "unified_status": "failed",
+    "detected": true,
+    "shippable": false,
+    "safety_floor_green": false,
+    "blocking_checks": [
+      "layer1:leaked_reasoning",
+      "layer1:numeric_correctness",
+      "recompute:weighted_gini",
+      "leak:quality_safety_leak_scan"
+    ],
+    "failure_category": "legacy_confused_case_detected",
+    "raw_text_committed": false,
+    "raw_paths_committed": false,
+    "runtime_outputs_committed": false,
+    "provider_calls": false,
+    "judge_calls": false
+  },
+  {
+    "validation_case": "single_confident_wrong_numeric_case",
+    "input_kind": "private_local_operator_material",
+    "fact_sheet_kind": "hand_built_local",
+    "extraction_leg_covered": false,
+    "unified_status": "failed",
+    "detected": true,
+    "shippable": false,
+    "safety_floor_green": false,
+    "blocking_checks": [
+      "recompute:weighted_gini"
+    ],
+    "contradiction_required": false,
+    "leak_required": false,
+    "failure_category": "confident_wrong_value_detected",
+    "raw_text_committed": false,
+    "raw_paths_committed": false,
+    "runtime_outputs_committed": false,
+    "provider_calls": false,
+    "judge_calls": false
+  },
+  {
+    "validation_case": "clean_real_case",
+    "input_kind": "private_local_operator_material",
+    "fact_sheet_kind": "hand_built_local",
+    "extraction_leg_covered": false,
+    "unified_status": "passed",
+    "clean_case_passed": true,
+    "shippable": true,
+    "safety_floor_green": true,
+    "blocking_checks": [],
+    "failure_category": "none",
+    "raw_text_committed": false,
+    "raw_paths_committed": false,
+    "runtime_outputs_committed": false,
+    "provider_calls": false,
+    "judge_calls": false
+  }
+]
+```
+
 ## Safety Boundary
 
 - Committed docs contain only closed-vocabulary validation outcomes.
@@ -134,6 +244,7 @@ production app catches the failure end-to-end yet.
 - No `overall_10` or judge score is computed.
 - No provider/model/cloud call is made.
 - No generation, prompt, request schema, API, UI, render, export, OCR, table, visual, or Ask Guide behavior is changed.
-- Docker validation is optional for this docs/operator-validation slice; docker compose config must not be run.
+- Docker validation is optional for Slice 116 because it changes only an offline Quality Safety helper plus docs/tests; docker
+  compose config must not be run.
 
-Slice 115 is NOT committed.
+Slice 115 is committed. Slice 116 is NOT committed.

@@ -5,7 +5,46 @@
 
 ---
 
-## Slice 115 — **Quality Safety Real-Disaster Operator Validation**, on `slice115-quality-safety-real-disaster-operator-validation`. **NOT COMMITTED.**
+## Slice 116 — **Quality Safety Leak Scanner Clean-Case False-Positive Hardening**, on `slice116-quality-safety-leak-false-positive-hardening`. **NOT COMMITTED.**
+
+- **Part 0 completed:** Slice 115 was committed as `92a4fb2`, fast-forward merged to trunk `chrome-renderer-v1`, and pushed
+  with a normal `git push` (no force-push). Slice 115 was docs/operator-validation only. It recorded the red deterministic
+  safety-floor validation honestly: `clean_real_case=false_positive_leak`,
+  `failure_category=clean_case_false_positive`, and `extraction_leg_covered=false`. It added no code, tests, runtime
+  outputs, real fixtures, generated guides, provider/model/cloud call, judge, `quality_judge.py`, `nn3.json`,
+  `judge_response_nn3.json`, or `quality.jsonl`; no docker compose config was run; the parked Slice 60 trace stash remains
+  untouched.
+- **Scope:** Slice 116 is a targeted leak-scanner hardening slice. It changes only the unwired offline leak scanner,
+  synthetic leak-scanner tests, and closed-vocabulary docs. It fixes the clean-case false-positive blocker found by Slice 115
+  before fact-sheet production, production job wiring, judge scoring, prompt tuning, or repair work.
+- **Root cause tokens:** `leak_boundary_false_positive`; `technical_weight_term_false_positive`. Fixed leak signatures now
+  use boundary-safe matching for word/phrase signals instead of substring-prone matching around technical terms. The
+  structural guards also keep practice/mock/self-test/quiz/check-yourself headings, pedagogical `Why?` headings, formal
+  `Assumption` headings, source/page references, and formal `Probable Cause` labels out of leak results unless actual
+  uncertainty wording is present.
+- **Tests:** `test_scripts/test_quality_safety_leak_scanner.py` adds synthetic boundary tests proving `weight`, `weights`,
+  `weighted`, `weighted_gini`, `weighted error`, `await`, `awaiting`, `straightforward`, `actual`, `factual`, and clean
+  weighted technical prose produce zero leaks, while the major fixed leak signatures and structural uncertainty markers still
+  trigger. Recompute priority over canonical remains covered.
+- **Closed-vocabulary operator revalidation:** `legacy_confused_wrong_case` remains detected with
+  `detected=true`, `shippable=false`, `safety_floor_green=false`, and blockers including `leak`, `numeric`, and
+  `recompute`. `single_confident_wrong_numeric_case` remains detected with
+  `blocking_checks=[recompute:weighted_gini]`, `contradiction_required=false`, and `leak_required=false`.
+  `clean_real_case` now passes with `clean_case_passed=true`, `unified_status=passed`, `shippable=true`,
+  `safety_floor_green=true`, and `blocking_checks=[]`. `extraction_leg_covered=false` remains recorded because fact-sheet
+  production is still not built.
+- **Out of scope / unchanged:** no fact-sheet producer, production runtime wiring, app route, UI/export selector, generic
+  artifact entry, reference-anchored LLM judge, `quality_judge.py`, `nn3.json`, `judge_response_nn3.json`, `quality.jsonl`,
+  `overall_10`, prompt tuning, repair/rewrite/regeneration, live generation, provider/model/cloud call, Docker config,
+  generation/prompt/request/API/UI/render/export/OCR/table/visual/Ask Guide behavior change, or Chandra gate change.
+- **Safety boundary:** docs and tests use synthetic fixtures/canaries or closed-vocabulary outcomes only. No real PDFs,
+  images, DOCX/PDF/ZIPs, runtime artifacts, generated guides, eval outputs, real source/reference filenames, uploaded
+  quality-spec filenames, evidence quotes, snippets, OCR/table/caption text, paths, URLs, image bytes, formulas copied from
+  private/generated material, provider payloads, or runtime output JSON were added. **Slice 116 remains NOT committed.**
+
+---
+
+## Slice 115 — **Quality Safety Real-Disaster Operator Validation**, on `slice115-quality-safety-real-disaster-operator-validation`. **Committed `92a4fb2`, merged + pushed to `chrome-renderer-v1`.**
 
 - **Part 0 completed:** Slice 114 was committed as `f3693dc`, fast-forward merged to trunk `chrome-renderer-v1`, and pushed
   with a normal `git push` (no force-push). Slice 114 added only the unwired deterministic unified-QA report layer and
@@ -45,8 +84,8 @@
 - **Safety boundary:** the runtime validation read private local material, but committed docs use closed-vocabulary outcomes
   only. No real PDFs/images/DOCX/ZIPs, runtime artifacts, generated guides, eval outputs, real source/reference filenames,
   uploaded quality-spec filenames, evidence quotes, snippets, OCR/table/caption text, paths, URLs, image bytes, formulas
-  copied from private/generated material, provider payloads, or runtime output JSON were added. **Slice 115 remains NOT
-  committed.**
+  copied from private/generated material, provider payloads, or runtime output JSON were added. Slice 115 was committed as
+  `92a4fb2`, merged, and pushed before Slice 116.
 
 ---
 
