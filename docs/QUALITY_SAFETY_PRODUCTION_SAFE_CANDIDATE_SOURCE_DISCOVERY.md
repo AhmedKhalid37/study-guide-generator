@@ -204,3 +204,30 @@ Adapter v1. It should be pure, unwired, synthetic-tested, and should bridge
 `quality_safety_structured_numeric_candidates.json`-like dicts into
 `quality_safety_safe_numeric_candidates.json`-compatible payloads without
 production wiring.
+
+## Slice 133 Adapter Readiness
+
+Slice 133 added a pure adapter but still did not add a production producer or
+production wiring.
+
+```yaml
+future_artifact: quality_safety_structured_numeric_candidates.json
+adapter_status: ready
+adapter_output_kind: quality_safety_safe_numeric_candidates
+adapter_output_wrapper_key: candidates
+production_safe_source_present: false
+producer_implemented: false
+production_wiring_changed: false
+structured_artifact_read_from_jobs: false
+sidecar_written_in_production: false
+single_confident_wrong_numeric_case: failed_blocking
+clean_real_case: passed
+legacy_confused_wrong_case: partial
+judge_ready: false
+repair_ready: false
+next_step: wire_structured_numeric_candidate_adapter_into_advisory_artifact_path
+```
+
+The adapter proves that the future artifact shape can bridge into the existing
+safe-candidate path. It does not change the Slice 131 discovery conclusion that no
+current production source emits structured numeric candidates.

@@ -829,6 +829,44 @@ source.
 }
 ```
 
+## Slice 133 Pure Structured Numeric Candidate Adapter v1 (cross-reference)
+
+Slice 133 is a pure/unwired adapter implementation with **no operator-runtime
+validation of its own**: it reads no private material, runs no generations, scans
+no job folders, writes no artifacts, and calls no providers/models/cloud. It adds
+the adapter and a synthetic-only harness.
+
+```json
+{
+  "validation_id": "quality_safety_structured_numeric_candidate_adapter_v1",
+  "slice": "133",
+  "operator_runtime_validation": "not_applicable_pure_unwired",
+  "adapter_implemented": true,
+  "adapter_status": "ready",
+  "input_kind": "quality_safety_structured_numeric_candidates",
+  "output_kind": "quality_safety_safe_numeric_candidates",
+  "output_wrapper_key": "candidates",
+  "producer_implemented": false,
+  "production_wiring_changed": false,
+  "extractor_mapper_recompute_chain": "passed",
+  "advisory_artifact_path_compatibility": "passed_synthetic_wrapper_only",
+  "single_confident_wrong_numeric_case": "failed_blocking",
+  "clean_real_case": "passed",
+  "legacy_confused_wrong_case": "partial",
+  "unsupported_methods": "degrade_unverified",
+  "numeric_fact_sheet_extraction_leg_status": "partial",
+  "judge_ready": false,
+  "repair_ready": false,
+  "next_step": "wire_structured_numeric_candidate_adapter_into_advisory_artifact_path",
+  "raw_text_committed": false,
+  "raw_paths_committed": false,
+  "runtime_outputs_committed": false,
+  "provider_calls": false,
+  "judge_calls": false,
+  "repair_calls": false
+}
+```
+
 Slice 128 is committed as `8534784` and merged to `chrome-renderer-v1`.
 
 ## Slice 129 Pure Safe Numeric Extractor v1 (cross-reference)

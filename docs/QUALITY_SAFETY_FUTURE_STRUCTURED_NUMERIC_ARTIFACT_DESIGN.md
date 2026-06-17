@@ -195,3 +195,38 @@ Purpose:
 - no provider/model/cloud;
 - no judge;
 - no repair.
+
+## Slice 133 Implementation Status
+
+Slice 133 implemented the pure adapter/bridge only:
+
+```yaml
+adapter_module: pipeline/quality_safety_structured_numeric_candidate_adapter.py
+adapter_status: ready
+adapter_implemented: true
+producer_implemented: false
+production_wiring_changed: false
+output_kind: quality_safety_safe_numeric_candidates
+output_wrapper_key: candidates
+final_sanitizer: slice129_extractor_then_slice125_mapper
+supported_methods:
+  - weighted_gini
+  - total_error
+  - amount_of_say
+  - softmax
+  - cross_entropy
+  - forward_pass
+unsupported_methods: degrade_unverified
+single_confident_wrong_numeric_case: failed_blocking
+clean_real_case: passed
+legacy_confused_wrong_case: partial
+advisory_artifact_path_compatibility: tested_synthetic_wrapper_only
+judge_ready: false
+repair_ready: false
+next_step: wire_structured_numeric_candidate_adapter_into_advisory_artifact_path
+```
+
+The adapter accepts only `kind=quality_safety_structured_numeric_candidates`,
+strips unknown top-level fields and forbidden candidate fields, and emits a
+safe-candidate-compatible payload. It does not read the future artifact from disk
+and does not write `quality_safety_safe_numeric_candidates.json`.

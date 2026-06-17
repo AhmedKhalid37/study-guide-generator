@@ -5360,3 +5360,30 @@ validated. Judge baseline and repair remain blocked:
 `judge_ready=false`, `repair_ready=false`. The next bounded slice is a pure,
 unwired adapter from `quality_safety_structured_numeric_candidates.json`-like dicts
 into `quality_safety_safe_numeric_candidates.json`-compatible payloads.
+
+---
+
+## Structured numeric artifact adapter stays pure and unwired (Slice 133)
+Slice 133 implements a pure adapter from caller-supplied
+`quality_safety_structured_numeric_candidates` dictionaries into a
+`quality_safety_safe_numeric_candidates`-compatible payload. The adapter accepts
+only the future artifact kind `quality_safety_structured_numeric_candidates` and
+emits the existing closed `candidates` wrapper that the Slice 130 advisory path
+already understands.
+
+The adapter is deliberately not wired into production. It reads no files, scans no
+job folders, writes no sidecars, parses no OCR/table/source/`clean.md` text, calls
+no providers/models/cloud, and imports no API/frontend/render/OCR/job runtime
+modules. Unknown top-level fields and forbidden candidate fields are stripped.
+The Slice 129 safe numeric extractor and Slice 125 mapper remain the final
+sanitizers.
+
+Supported methods stay exactly `weighted_gini`, `total_error`,
+`amount_of_say`, `softmax`, `cross_entropy`, and `forward_pass`. Unsupported
+method tokens are preserved only far enough for the existing extractor/mapper to
+degrade them to unsupported/unverified; Slice 133 does not extend the verifier.
+Synthetic compatibility proves clean supported records pass recompute, wrong
+supported records block, and the existing advisory wrapper path accepts the
+adapter output. Judge baseline and repair remain blocked:
+`judge_ready=false`, `repair_ready=false`. The next bounded slice is wiring the
+adapter into the advisory artifact path.

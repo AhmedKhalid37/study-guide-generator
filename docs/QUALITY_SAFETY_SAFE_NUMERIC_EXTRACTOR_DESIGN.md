@@ -378,3 +378,30 @@ Forbidden producers are `raw_ocr_parser_direct_to_numeric`,
 `provider_payload_parser`, and `source_document_reader`. Supported v1 methods stay
 unchanged: `weighted_gini`, `total_error`, `amount_of_say`, `softmax`,
 `cross_entropy`, `forward_pass`.
+
+## Slice 133 Structured Artifact Adapter Compatibility
+
+Slice 133 added a pure, unwired adapter that converts future structured numeric
+artifact dictionaries into the existing safe-candidate payload shape.
+
+```
+adapter_module: pipeline/quality_safety_structured_numeric_candidate_adapter.py
+input_kind: quality_safety_structured_numeric_candidates
+output_kind: quality_safety_safe_numeric_candidates
+output_wrapper_key: candidates
+extractor_compatibility: passed
+mapper_compatibility: passed
+recompute_compatibility: passed
+advisory_artifact_path_compatibility: passed_synthetic_wrapper_only
+production_wiring_changed: false
+producer_implemented: false
+final_sanitizer: slice129_extractor_then_slice125_mapper
+unsupported_methods: degrade_unverified
+judge_ready: false
+repair_ready: false
+next_step: wire_structured_numeric_candidate_adapter_into_advisory_artifact_path
+```
+
+The adapter does not replace the safe numeric extractor. It feeds only the
+extractor's existing `candidates` wrapper and leaves final field/value
+sanitization to the Slice 129/125 path.

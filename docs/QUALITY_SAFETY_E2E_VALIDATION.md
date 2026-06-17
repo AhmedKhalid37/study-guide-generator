@@ -673,6 +673,32 @@ next_step: pure_structured_numeric_candidate_artifact_adapter_v1
 docker_compose_config_run: false
 ```
 
+## Slice 133 — Pure Structured Numeric Candidate Adapter v1
+
+Slice 133 is pure/unwired adapter work. It does not run operator runtime
+validation and does not wire the adapter into production.
+
+```
+structured_numeric_candidate_adapter: ready
+adapter_module: pipeline/quality_safety_structured_numeric_candidate_adapter.py
+input_kind: quality_safety_structured_numeric_candidates
+output_kind: quality_safety_safe_numeric_candidates
+output_wrapper_key: candidates
+production_wiring_changed: false
+producer_implemented: false
+extractor_mapper_recompute_chain: passed
+advisory_artifact_path_compatibility: passed_synthetic_wrapper_only
+single_confident_wrong_numeric_case: failed_blocking
+clean_real_case: passed
+legacy_confused_wrong_case: partial
+unsupported_methods: degrade_unverified
+numeric_fact_sheet_extraction_leg_status: partial
+judge_ready: false
+repair_ready: false
+next_step: wire_structured_numeric_candidate_adapter_into_advisory_artifact_path
+docker_compose_config_run: false
+```
+
 ## Non-Goals
 
 - The Slice 122 coverage wiring is advisory transparency only; the numeric /

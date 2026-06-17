@@ -498,6 +498,33 @@ The future artifact must be adapted into the existing safe-candidate payload
 before it can reach the Slice 129 extractor. That adapter is the next bounded
 contract-adjacent slice; no production source or bridge is implemented here.
 
+## Slice 133 Adapter Relationship
+
+Slice 133 implements the bridge without changing the Slice 124/125 numeric record
+contract.
+
+```
+contract_changed: false
+adapter_module: pipeline/quality_safety_structured_numeric_candidate_adapter.py
+input_kind: quality_safety_structured_numeric_candidates
+output_kind: quality_safety_safe_numeric_candidates
+output_wrapper_key: candidates
+records_shape_changed: false
+safe_extractor_remains_final_pre_record_sanitizer: true
+numeric_mapper_remains_final_record_sanitizer: true
+supported_methods_changed: false
+unsupported_methods: degrade_unverified
+production_wiring_changed: false
+producer_implemented: false
+judge_ready: false
+repair_ready: false
+next_step: wire_structured_numeric_candidate_adapter_into_advisory_artifact_path
+```
+
+Synthetic validation covers adapter output through the existing extractor,
+numeric mapper, fact-sheet producer, recompute verifier, and the advisory artifact
+builder's existing `safe_numeric_candidates` wrapper.
+
 ## Non-Goals (Slice 124)
 
 - Not the judge tranche; no judge, no `overall_10`, no `quality_judge.py`,
