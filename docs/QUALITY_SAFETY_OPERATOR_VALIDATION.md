@@ -1280,3 +1280,25 @@ judge_ready: false
 repair_ready: false
 next_step: judge_calibration_gate_golden_protocol
 ```
+
+## Slice 144 Judge Calibration Gate Protocol (docs/protocol-only) status
+
+Slice 144 added the judge calibration gate / golden protocol
+(`docs/QUALITY_SAFETY_JUDGE_CALIBRATION_GATE_PROTOCOL.md`). The operator waiver
+status is unchanged and stays synthetic-only
+(`operator_numeric_export_waiver=approved_for_safety_floor_finalization_synthetic_only`);
+no private/local operator run was performed or committed. The protocol requires
+that any future operator calibration commits **only closed-vocabulary records**
+(`operator_review_count`, counts, closed statuses, `*_committed=false` flags) and
+never raw private material; `judge_ready` stays false until a separate later gate
+(and operator validation) explicitly approves it.
+
+```
+judge_calibration_gate_protocol_status: ready
+operator_numeric_export_waiver: approved_for_safety_floor_finalization_synthetic_only
+calibration_status: synthetic_only
+judge_contract_ready: true
+judge_ready: false
+repair_ready: false
+next_step: private_operator_judge_calibration_pass
+```

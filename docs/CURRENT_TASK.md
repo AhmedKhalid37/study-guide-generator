@@ -5,7 +5,55 @@
 
 ---
 
-## Slice 143 — **Offline Judge Core v1, Synthetic Only**, on `slice143-quality-safety-offline-judge-core-synthetic-v1`. **NOT COMMITTED.**
+## Slice 144 — **Judge Calibration Gate / Golden Protocol**, on `slice144-quality-safety-judge-calibration-gate-protocol`. **NOT COMMITTED.**
+
+- **Part 0 completed:** Slice 143 was committed as `0dedf99`, fast-forward merged to trunk `chrome-renderer-v1`, and pushed with
+  a normal `git push` (no force-push; `800b187..0dedf99`). Final trunk status before branching Slice 144 was clean; no docker
+  compose config was run; the Slice 60 trace stash remains parked and untouched.
+- **Scope (docs/protocol-only):** define the closed-vocabulary **calibration gate / golden protocol** that must pass before any
+  offline judge report can be trusted as an advisory quality signal. **No** private calibration, **no** judge execution, **no**
+  LLM judge, **no** provider/model/cloud/local-LLM calls, **no** `quality_judge.py`, **no** `nn3.json`, **no**
+  `judge_response_nn3.json`, **no** `quality.jsonl`, **no** runtime judge outputs, **no** repair, **no** prompt tuning, **no**
+  blocking gate, **no** production wiring, **no** UI, **no** route/frontend/request-schema/render/export/OCR/table/visual/Ask
+  Guide change, **no** numeric infrastructure unfreeze. No production code changed in this slice.
+- **New doc (`docs/QUALITY_SAFETY_JUDGE_CALIBRATION_GATE_PROTOCOL.md`):** purpose, current preconditions (closed vocabulary),
+  boundary (`protocol_only`/`advisory_only`/`non_blocking`/`no_repair`/`no_prompt_tuning`/`no_provider_calls`/`no_llm_calls`/
+  `no_judge_calls`/`no_runtime_outputs_committed`/`no_private_material_committed`), the **golden case set** (five closed cases:
+  `clean_real_case`, `single_confident_wrong_numeric_case`, `legacy_confused_wrong_case`, `leak_canary_case`,
+  `deterministic_floor_red_case`), the closed-vocabulary **calibration record shape** (`validation_id`, `input_kind`, counts,
+  `*_committed=false` flags, `*_calls=false`, statuses, `judge_ready=false`, `repair_ready=false`, closed `warnings`), the
+  conservative **pass/fail rules**, the **offline-judge-core** and **deterministic-floor** relationships, and the proposed next
+  slice.
+- **Golden case summary:** `clean_real_case` (floor pass, judge ok|warning, no blockers); `single_confident_wrong_numeric_case`
+  (floor failed_blocking, judge failed|partial, recompute/correctness blocker); `legacy_confused_wrong_case` (floor partial,
+  judge warning|partial|failed); `leak_canary_case` (floor failed_blocking|warning, judge failed, leakage/privacy);
+  `deterministic_floor_red_case` (floor blocked, judge cannot override). No real text/snippets/filenames/paths committed.
+- **Pass/fail rules:** calibration may become `operator_validated` only in a later slice when all required golden cases have
+  closed operator records, the floor passes where expected, the wrong-numeric case is detected as blocking, the leak canary is
+  detected as failing, the floor-red case cannot be overridden, no raw private/runtime/free-text material is committed, schema
+  compatibility is `ok`, and core status is `ok`. The judge may become ready only in a later gate after
+  `calibration_status=operator_validated` and an explicit decision; repair stays false regardless.
+- **Deterministic-floor relationship:** the floor remains the hard gate / source of truth; the judge cannot override
+  recompute/leak/privacy blockers, cannot mark anything shippable while the floor is red, cannot fabricate facts from structural
+  coverage, and remains advisory even after calibration unless a later explicit policy changes it. No surface unfreeze.
+- **Decision record:** `judge_calibration_gate_protocol_status=ready`; `calibration_status=synthetic_only`;
+  `judge_contract_ready=true`; `judge_ready=false`; `repair_ready=false`; `next_step=private_operator_judge_calibration_pass`.
+- **Validation (all green):** core test (769), core synthetic harness (ok), schema test (667), Slice 142 harness (core
+  compatibility ok), gate (34), operator export harness (35), operator export validator (422), adapter (177), safe extractor
+  (207), job artifact (753), recompute verifier (99), real-disaster e2e (100), unified QA (73); `compileall` clean;
+  `git diff --check` clean. Docker not run (docs/protocol-only); no docker compose config run.
+- **Files changed:** `M docs/CURRENT_TASK.md`, `M docs/DECISIONS.md`, `M docs/NEXT_CHAT_HANDOFF.md`,
+  `M docs/QUALITY_SAFETY_OFFLINE_JUDGE_CONTRACT.md`, `M docs/QUALITY_SAFETY_SURFACE_FREEZE.md`,
+  `M docs/QUALITY_SAFETY_DETERMINISTIC_FLOOR_FINAL_GATE.md`, `M docs/QUALITY_SAFETY_E2E_VALIDATION.md`,
+  `M docs/QUALITY_SAFETY_OPERATOR_VALIDATION.md`, `?? docs/QUALITY_SAFETY_JUDGE_CALIBRATION_GATE_PROTOCOL.md`.
+  **Slice 144 remains NOT committed.**
+- **Next recommended slice:** **Slice 145 — Private Operator Judge Calibration Pass** (conservative; the *Synthetic Calibration
+  Gate Harness* is the safe fallback if no private run is desired). Judge baseline stays blocked (`judge_ready=false`;
+  `repair_ready=false`).
+
+---
+
+## Slice 143 — **Offline Judge Core v1, Synthetic Only**, on `slice143-quality-safety-offline-judge-core-synthetic-v1`. **Committed `0dedf99`, merged + pushed to `chrome-renderer-v1`.**
 
 - **Part 0 completed:** Slice 142 was committed as `800b187`, fast-forward merged to trunk `chrome-renderer-v1`, and pushed with
   a normal `git push` (no force-push; `b193d43..800b187`). Final trunk status before branching Slice 143 was clean; no docker

@@ -233,3 +233,29 @@ judge_ready: false
 repair_ready: false
 next_step: judge_calibration_gate_golden_protocol
 ```
+
+---
+
+## Slice 144 — Calibration gate protocol does not unfreeze any surface
+
+Slice 144 added the **judge calibration gate / golden protocol**
+(`docs/QUALITY_SAFETY_JUDGE_CALIBRATION_GATE_PROTOCOL.md`), a docs/protocol-only
+slice. Defining the calibration gate does **not** unfreeze the deterministic
+surface or the numeric infrastructure, and adds **no** numeric schema/bridge
+layer. No production code changed; no judge ran; no provider/model/cloud/local-LLM
+call was added. The frozen artifact names, field families, and validation
+harnesses above remain unchanged, and the deterministic safety floor stays the
+source of truth. The future judge stays advisory and non-blocking; even after
+calibration it cannot override deterministic blockers unless a later explicit
+policy decision changes it.
+
+```
+quality_safety_surface_frozen: true
+numeric_infrastructure_frozen: true
+judge_calibration_gate_protocol_status: ready
+calibration_status: synthetic_only
+judge_contract_ready: true
+judge_ready: false
+repair_ready: false
+next_step: private_operator_judge_calibration_pass
+```

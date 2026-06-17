@@ -236,3 +236,26 @@ judge_ready: false
 repair_ready: false
 next_step: judge_calibration_gate_golden_protocol
 ```
+
+## Slice 144 Relationship — Calibration gate keeps this floor as source of truth
+
+Slice 144 added the **judge calibration gate / golden protocol**
+(`docs/QUALITY_SAFETY_JUDGE_CALIBRATION_GATE_PROTOCOL.md`). The protocol keeps
+this final gate as the hard source of truth: its golden cases require that the
+`single_confident_wrong_numeric_case` is detected as blocking, the
+`leak_canary_case` is detected as failing, and the `deterministic_floor_red_case`
+**cannot be overridden** by the judge. Calibration can never let the judge mark a
+guide shippable while this floor is red, never override recompute/leak/privacy
+blockers, and never fabricate facts from structural coverage. The judge remains
+advisory even after calibration unless a later explicit policy changes it.
+
+```
+deterministic_floor_is_source_of_truth: true
+judge_can_override_deterministic_blockers: false
+judge_calibration_gate_protocol_status: ready
+calibration_status: synthetic_only
+judge_contract_ready: true
+judge_ready: false
+repair_ready: false
+next_step: private_operator_judge_calibration_pass
+```

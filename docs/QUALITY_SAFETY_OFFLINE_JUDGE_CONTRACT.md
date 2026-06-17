@@ -375,3 +375,25 @@ repair_ready: false
 next_step: judge_calibration_gate_golden_protocol
 docker_compose_config_run: false
 ```
+
+---
+
+## Slice 144 — Calibration protocol status (docs/protocol-only)
+
+Slice 144 added the **judge calibration gate / golden protocol**
+(`docs/QUALITY_SAFETY_JUDGE_CALIBRATION_GATE_PROTOCOL.md`): the closed-vocabulary
+golden-case set, the future closed calibration record shape, and the conservative
+pass/fail rules that a later slice must satisfy before `judge_ready` could ever be
+considered. No production code changed; no judge ran; no provider/model/cloud/
+local-LLM call was added; no private calibration was run. The deterministic floor
+remains the source of truth and the judge stays advisory and non-blocking.
+
+```
+judge_calibration_gate_protocol_status: ready
+calibration_status: synthetic_only
+judge_contract_ready: true
+judge_ready: false
+repair_ready: false
+next_step: private_operator_judge_calibration_pass
+docker_compose_config_run: false
+```

@@ -948,3 +948,23 @@ repair_ready: false
 next_step: judge_calibration_gate_golden_protocol
 docker_compose_config_run: false
 ```
+
+## Slice 144 Judge Calibration Gate Protocol (docs/protocol-only) status
+
+Slice 144 added the judge calibration gate / golden protocol
+(`docs/QUALITY_SAFETY_JUDGE_CALIBRATION_GATE_PROTOCOL.md`). No judge ran and no
+judge output was produced against real/private material. These synthetic E2E
+validation records are unchanged and remain the deterministic source of truth; a
+future calibration pass must commit only closed-vocabulary records and may never
+override these deterministic blockers.
+
+```
+judge_calibration_gate_protocol_status: ready
+this_doc_changed: false
+calibration_status: synthetic_only
+judge_contract_ready: true
+judge_ready: false
+repair_ready: false
+next_step: private_operator_judge_calibration_pass
+docker_compose_config_run: false
+```

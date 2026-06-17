@@ -5831,3 +5831,49 @@ flipping readiness flags true prematurely.
 `quality_safety_blocking=false`; `judge_contract_ready=true`;
 `calibration_status=synthetic_only`; `judge_ready=false`; `repair_ready=false`;
 `next_step=judge_calibration_gate_golden_protocol`.
+
+---
+
+## A calibration gate must pass before any judge readiness (Slice 144)
+Slice 144 is a docs/protocol-only slice. It defines the **judge calibration gate /
+golden protocol** (`docs/QUALITY_SAFETY_JUDGE_CALIBRATION_GATE_PROTOCOL.md`): the
+closed-vocabulary golden-case set, calibration record shape, and conservative
+pass/fail rules that a later slice must satisfy before `judge_ready` could ever be
+considered. No production code changed; no judge ran.
+
+**Decisions:**
+- **A calibration gate is required before judge readiness.** The Slice 143 core is
+  synthetic-only and deterministic; its output is not trusted for real quality
+  decisions. Before any offline judge report can be treated as an advisory signal,
+  the golden cases (`clean_real_case`, `single_confident_wrong_numeric_case`,
+  `legacy_confused_wrong_case`, `leak_canary_case`, `deterministic_floor_red_case`)
+  must be recorded against the conservative pass/fail rules, and `judge_ready` may
+  flip true only via a separate explicit later gate after
+  `calibration_status=operator_validated`.
+- **The deterministic floor remains the source of truth.** Calibration cannot let
+  the judge override recompute/leak/privacy blockers, cannot mark anything
+  shippable while the floor is red, and cannot fabricate facts from structural
+  coverage. The judge remains advisory even after calibration unless a later
+  explicit policy changes it. The protocol does not unfreeze the numeric
+  infrastructure or the deterministic surface.
+- **Private/operator calibration can commit closed records only.** Any future
+  private/local operator calibration pass must commit a closed-vocabulary record
+  (counts + closed statuses + `*_committed=false` flags) — never raw private
+  guide/source/reference text, never runtime judge outputs, never free-text
+  rationales.
+- **No raw/private judge report may be committed.** No raw judge report from
+  private material may ever be committed; only the closed calibration record may.
+- **`judge_ready` / `repair_ready` stay false.** They remain false until a later
+  explicit gate; repair stays out of scope regardless of calibration.
+
+**Why:** specifying the gate as closed-vocabulary, conservative, and subordinate
+to the deterministic floor lets a later slice exercise real/operator calibration
+(or a synthetic gate harness) without any risk of leaking private material,
+turning the judge into a blocking gate, or flipping readiness flags true
+prematurely.
+
+`judge_calibration_gate_protocol_status=ready`;
+`calibration_status=synthetic_only`; `judge_contract_ready=true`;
+`numeric_infrastructure_frozen=true`; `quality_safety_surface_frozen=true`;
+`quality_safety_blocking=false`; `judge_ready=false`; `repair_ready=false`;
+`next_step=private_operator_judge_calibration_pass`.
