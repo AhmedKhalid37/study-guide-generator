@@ -796,4 +796,45 @@ validation pass remains a separate operator activity.
 }
 ```
 
-Slice 128 is NOT committed.
+Slice 128 is committed as `8534784` and merged to `chrome-renderer-v1`.
+
+## Slice 129 Pure Safe Numeric Extractor v1 (cross-reference)
+
+Slice 129 is a pure/unwired implementation slice with **no operator-runtime
+validation of its own**: the extractor reads no private material, runs no
+generations, scans no job folders, writes no artifacts, and calls no
+providers/models/cloud. It adds `pipeline/quality_safety_safe_numeric_extractor.py`
+plus a synthetic-only harness
+(`test_scripts/test_quality_safety_safe_numeric_extractor.py`) and live-doc updates.
+A real/private operator numeric validation pass remains a separate operator activity
+and is gated on a future production-wiring slice (Slice 130).
+
+```json
+{
+  "validation_id": "quality_safety_safe_numeric_extractor_v1",
+  "slice": "129",
+  "operator_runtime_validation": "not_applicable_pure_unwired",
+  "extractor_implemented": true,
+  "extractor_wired": false,
+  "final_sanitizer": "slice125_mapper",
+  "sidecar_payload_compatible": true,
+  "v1_input_category": "caller_supplied_sanitized_numeric_candidates",
+  "forbidden_source_parsing": true,
+  "v1_methods": "weighted_gini|total_error|amount_of_say|softmax|cross_entropy|forward_pass",
+  "new_methods_added": false,
+  "single_confident_wrong_numeric_case": "recompute_blocked",
+  "clean_real_case": "recompute_passed",
+  "legacy_confused_wrong_case": "partial",
+  "judge_ready": false,
+  "repair_ready": false,
+  "next_step": "wire_safe_numeric_extractor_into_advisory_artifact_path",
+  "raw_text_committed": false,
+  "raw_paths_committed": false,
+  "runtime_outputs_committed": false,
+  "provider_calls": false,
+  "judge_calls": false,
+  "repair_calls": false
+}
+```
+
+Slice 129 is NOT committed.

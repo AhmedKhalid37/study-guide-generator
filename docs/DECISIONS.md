@@ -5214,3 +5214,46 @@ same as a *proven production extraction path*. `judge_ready`/`repair_ready` stay
 either Slice 129's extractor path is implemented and proven, or an operator records
 an explicit waiver accepting sidecar-only coverage. The recommended next step is
 `pure_safe_numeric_extractor_v1` (Slice 129).
+
+---
+
+## Safe numeric extractor v1 reuses the Slice 125 mapper as the final sanitizer (Slice 129)
+Slice 129 implemented the pure/unwired safe numeric extractor
+(`pipeline/quality_safety_safe_numeric_extractor.py`). The load-bearing choices:
+
+**The extractor accepts caller-supplied sanitized candidates only.** Its single
+input category is `caller_supplied_sanitized_numeric_candidates` — in-memory
+structured candidate dicts. It reads no documents, parses no OCR/table/source text,
+reads no `clean.md`, scans no job folders, writes no artifacts, and calls no
+provider/model/cloud. Raw text, formulas, tables, captions, evidence quotes,
+filenames, basenames, paths, URLs, provider payloads, and raw runtime/artifact JSON
+are forbidden inputs that are never copied toward a record (and are flagged
+`forbidden_field_stripped` when present on a candidate).
+
+**The extractor delegates field sanitization to the Slice 125 mapper rather than
+re-implementing it.** Every record the extractor emits is produced by
+`normalize_quality_safety_numeric_extraction_record`, so the mapper remains the
+*single* final sanitizer — there is exactly one place that decides what tokens may
+appear in a record, and the extractor cannot widen that surface. The extractor's
+own value-add is narrow and explicit: resolve the flat `method`/`inputs` alias into
+a `computation` block, inject stable synthetic `qs_safe_num_NNNN` ids when a
+candidate has none, strip/flag forbidden fields, and wrap the records in the
+`quality_safety_numeric_extraction_records` payload the Slice 126 artifact reader
+already accepts (`_coerce_numeric_records`). This keeps the extractor separate from
+the mapper while guaranteeing compatibility by construction.
+
+**Unsupported methods degrade rather than extending the verifier.** v1 is scoped to
+exactly the six existing `SUPPORTED_METHODS`. A candidate whose method is outside
+that set demotes to a bare numeric observation (`unsupported_method`) and is never
+falsely recompute-verified. The `legacy_confused_wrong_case` archetype is therefore
+honestly `partial`: an unsupported-method wrong claim is *not* recompute-blocked
+(it escapes as an unverified observation), while the same archetype expressed with a
+supported method *is* blocked. Closing that gap is a separately-designed bounded
+`recompute_method_extension`, not a silent v1 widening.
+
+**Pure/unwired stays pure/unwired.** No production module imports the extractor, no
+artifact is written, and the production job artifact path is unchanged. Proving the
+extractor path (Slice 129) is not the same as wiring it: `judge_ready`/`repair_ready`
+stay `false` and production numeric extraction coverage is **not** claimed complete
+until Slice 130 wires the extractor into the advisory artifact path (or an operator
+records an explicit waiver).

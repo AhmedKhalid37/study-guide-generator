@@ -564,6 +564,33 @@ no_leak_sweep: clean
 docker_compose_config_run: false
 ```
 
+## Slice 129 — Pure Safe Numeric Extractor v1 (cross-reference)
+
+Slice 129 implemented the pure/unwired extractor
+(`pipeline/quality_safety_safe_numeric_extractor.py`). It is **not** production
+wiring: no module imports it, no artifact is written, and the production job
+artifact path is unchanged. Synthetic tests prove the extractor payload flows
+through `_coerce_numeric_records` → mapper → producer → recompute verifier, and
+straight into the real Slice 126 artifact path. Closed-vocabulary outcome:
+
+```
+extractor_implemented: true
+extractor_wired: false
+final_sanitizer: slice125_mapper
+sidecar_payload_compatible: true
+single_confident_wrong_numeric_case: recompute_blocked
+clean_real_case: recompute_passed
+legacy_confused_wrong_case: partial
+v1_methods: weighted_gini|total_error|amount_of_say|softmax|cross_entropy|forward_pass
+new_methods_added: false
+artifact_path_changed: false
+judge_ready: false
+repair_ready: false
+next_step: wire_safe_numeric_extractor_into_advisory_artifact_path
+no_leak_sweep: clean
+docker_compose_config_run: false
+```
+
 ## Non-Goals
 
 - The Slice 122 coverage wiring is advisory transparency only; the numeric /

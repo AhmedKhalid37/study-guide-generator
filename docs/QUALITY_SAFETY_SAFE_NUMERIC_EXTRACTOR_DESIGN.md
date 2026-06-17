@@ -226,3 +226,41 @@ next_step: pure_safe_numeric_extractor_v1
 no_leak_sweep: clean
 docker_compose_config_run: false
 ```
+
+## Slice 129 Implementation Status — Pure Safe Numeric Extractor v1
+
+Slice 129 implemented the pure/unwired extractor in
+`pipeline/quality_safety_safe_numeric_extractor.py` exactly to this design boundary.
+Public API: `normalize_safe_numeric_candidate`,
+`extract_quality_safety_numeric_records_from_candidates`,
+`build_empty_safe_numeric_extraction_records`,
+`map_safe_numeric_candidates_to_sidecar_payload`. The extractor consumes only
+`caller_supplied_sanitized_numeric_candidates`, resolves the flat `method`/`inputs`
+alias into a `computation` block, injects synthetic `qs_safe_num_NNNN` ids when
+missing, strips/flags forbidden fields, and **defers all field sanitization to the
+Slice 125 mapper** (the single final sanitizer). It imports only stdlib + the
+Slice 125 mapper; reads no files, scans no folders, writes no artifacts, calls no
+provider/model/cloud; never raises; never mutates caller input.
+
+Compatibility proven by synthetic tests
+(`test_scripts/test_quality_safety_safe_numeric_extractor.py`, 207 checks): the
+payload flows through `_coerce_numeric_records` → mapper → fact-sheet producer →
+recompute verifier, and straight into the real Slice 126 artifact path
+(`build_quality_safety_job_artifact_payload(numeric_extraction_records=payload)`).
+
+```
+extractor_status: ready
+input_category: caller_supplied_sanitized_numeric_candidates
+final_sanitizer: slice125_mapper
+production_extractor_wired: false
+sidecar_payload_compatible: true
+single_confident_wrong_numeric_case: recompute_blocked
+clean_real_case: recompute_passed
+legacy_confused_wrong_case: partial
+new_methods_added: false
+judge_ready: false
+repair_ready: false
+next_step: wire_safe_numeric_extractor_into_advisory_artifact_path
+no_leak_sweep: clean
+docker_compose_config_run: false
+```

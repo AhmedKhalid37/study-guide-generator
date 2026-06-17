@@ -395,6 +395,32 @@ no_leak_sweep: clean
 docker_compose_config_run: false
 ```
 
+## Slice 129 Mapper/Extractor Compatibility Status
+
+Slice 129 implemented the pure safe extractor
+(`pipeline/quality_safety_safe_numeric_extractor.py`). The contract is unchanged:
+the extractor emits the existing record shape and **defers to the Slice 125 mapper
+as the final sanitizer** (every emitted record is produced by
+`normalize_quality_safety_numeric_extraction_record`). The extractor's
+`quality_safety_numeric_extraction_records` payload carries records under the closed
+`records` key, which the Slice 126 artifact reader's `_coerce_numeric_records`
+accepts directly. No production wiring; no contract field or method added.
+
+```
+extractor_implemented: true
+extractor_wired: false
+final_sanitizer: slice125_mapper
+record_shape: slice124_125_contract_unchanged
+sidecar_records_key: records
+v1_methods: weighted_gini|total_error|amount_of_say|softmax|cross_entropy|forward_pass
+new_methods_added: false
+contract_changed: false
+judge_ready: false
+repair_ready: false
+no_leak_sweep: clean
+docker_compose_config_run: false
+```
+
 ## Non-Goals (Slice 124)
 
 - Not the judge tranche; no judge, no `overall_10`, no `quality_judge.py`,
