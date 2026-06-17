@@ -261,3 +261,32 @@ Purpose:
 - no private sidecar commit;
 - no OCR / table / source parsing;
 - no judge / repair.
+
+## Slice 137 Validator Status
+
+Slice 137 implemented the pure/unwired validator promised by this protocol:
+`pipeline/quality_safety_operator_structured_numeric_export_validator.py`. It gates
+an operator-authored (or synthetic) `quality_safety_structured_numeric_candidates`-
+like dict against this protocol and re-emits a sanitized, forbidden-field-free
+`structured_numeric_payload` that flows through the existing adapter → safe
+extractor → numeric mapper → fact-sheet → recompute path and the Slice 134 advisory
+artifact path. It validated synthetic fixtures only; it validated no real/private
+sidecar and is not wired into production.
+
+```
+validator_status: ready
+validator_module: pipeline/quality_safety_operator_structured_numeric_export_validator.py
+validator_wired_into_production: false
+private_sidecar_validated: false
+forbidden_fields_detected_counted_stripped: true
+unsupported_method_handling: degraded_not_extended
+downstream_chain_compatible: true
+advisory_artifact_path_compatible: true
+single_confident_wrong_numeric_case: validated_ok_then_recompute_blocker
+clean_real_case: validated_ok_then_recompute_passed
+legacy_confused_wrong_case: validated_warning_partial_unverified
+quality_safety_blocking: false
+judge_ready: false
+repair_ready: false
+next_step: operator_structured_numeric_export_validation_harness
+```

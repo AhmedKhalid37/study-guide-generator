@@ -786,3 +786,28 @@ docker_compose_config_run: false
 - Do not add judge scoring, `overall_10`, `quality_judge.py`, `nn3.json`,
   `judge_response_nn3.json`, or `quality.jsonl`.
 - Do not implement repair.
+
+## Slice 137 — Pure Operator Structured Numeric Export Validator v1
+
+Slice 137 is a pure/unwired implementation slice. The new validator
+(`pipeline/quality_safety_operator_structured_numeric_export_validator.py`) was
+exercised with synthetic fixtures through the full downstream chain (validator →
+adapter → safe extractor → numeric mapper → fact-sheet → recompute) and the Slice
+134 advisory artifact path. No production wiring; no real/private sidecar validated.
+Closed-vocabulary outcome only:
+
+```
+validator_status: ready
+validator_wired_into_production: false
+downstream_chain_compatible: true
+advisory_artifact_path_compatible: true
+single_confident_wrong_numeric_case: validated_ok_then_recompute_blocking
+clean_real_case: validated_ok_then_recompute_passed
+legacy_confused_wrong_case: validated_warning_partial_unverified
+unsupported_method_handling: degraded_not_extended
+quality_safety_blocking: false
+judge_ready: false
+repair_ready: false
+next_step: operator_structured_numeric_export_validation_harness
+docker_compose_config_run: false
+```

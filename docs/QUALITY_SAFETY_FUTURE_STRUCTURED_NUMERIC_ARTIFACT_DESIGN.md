@@ -302,3 +302,23 @@ judge_ready: false
 repair_ready: false
 next_step: pure_operator_export_validator
 ```
+
+## Slice 137 Validator Relationship
+
+Slice 137 added a pure validator
+(`pipeline/quality_safety_operator_structured_numeric_export_validator.py`) that
+sits *in front of* this artifact's adapter: it gates an operator-authored export
+against the Slice 136 protocol and re-emits a sanitized
+`quality_safety_structured_numeric_candidates`-shaped payload. The artifact schema
+is unchanged; the sidecar remains a job-local, read-only input production never
+creates and never commits. The validator is not wired into production.
+
+```yaml
+validator_status: ready
+artifact_schema_changed: false
+sidecar_committed: false
+validator_wired_into_production: false
+judge_ready: false
+repair_ready: false
+next_step: operator_structured_numeric_export_validation_harness
+```

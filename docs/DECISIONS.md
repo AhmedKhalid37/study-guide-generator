@@ -5503,3 +5503,48 @@ keeps Quality Safety advisory and non-blocking.
 `numeric_fact_sheet_extraction_leg_status=partial`;
 `artifact_path_ready=true_for_synthetic_structured_candidates`; `judge_ready=false`;
 `repair_ready=false`; `next_step=pure_operator_export_validator`.
+
+---
+
+## Operator structured numeric export validator is pure/unwired and non-blocking (Slice 137)
+Slice 137 implemented `pipeline/quality_safety_operator_structured_numeric_export_validator.py`,
+a pure validator that gates an operator-authored (or synthetic)
+`quality_safety_structured_numeric_candidates`-like dict against the Slice 136
+protocol before it may feed the existing adapter → safe extractor → numeric
+mapper → fact-sheet → recompute path. It is an implementation slice, not wiring.
+
+**Decisions:**
+- **The validator is pure and unwired.** It imports only stdlib and the Slice 133
+  adapter, reads only caller-supplied dicts/lists (no files, job folders,
+  `clean.md`, source/OCR/page/table/caption text), writes no artifacts, calls no
+  provider/model/cloud, imports no FastAPI/frontend/render/OCR/job-runtime module,
+  never raises, and never mutates caller input. It is **not** wired into
+  production; `quality_safety_job_artifact.py`, `run_markdown_job.py`, and
+  `api/server.py` are unchanged.
+- **An operator export must be validated before any real/private operator run is
+  trusted.** Slice 137 validates synthetic fixtures only and validates no real
+  private sidecar. The validator is the gate the Slice 136 protocol said was
+  needed (`operator_export_validator_needed` is now satisfied as a pure component).
+- **The validator output does not make Quality Safety blocking.** It produces an
+  advisory closed-vocabulary validation result and a sanitized, forbidden-field-
+  free `structured_numeric_payload`; downstream recompute remains the only place a
+  numeric claim can raise a (still advisory) blocker, exactly as before.
+- **Unsupported methods degrade rather than extending the verifier.** A
+  structurally valid candidate with an unsupported `computation.method` is kept and
+  flagged `unsupported_method` (so downstream honestly reports it as
+  partial/unverified) but is never promoted to the recomputable/supported count.
+  Slice 137 does **not** extend the recompute verifier with new methods.
+- **Forbidden fields are detected, counted, stripped, and never emitted.** The
+  validator reuses the Slice 133 adapter per-candidate as the sanitizer, so no
+  forbidden field value can reach the validation result, the structured payload,
+  or any downstream stage.
+
+**Why:** it makes the only no-raw-text, no-provider producer path safe to gate in
+isolation, keeps private material and unverified real-run claims out of git, and
+keeps Quality Safety advisory and non-blocking while proving end-to-end downstream
+compatibility on synthetic fixtures.
+
+`validator_status=ready`; `validator_wired_into_production=false`;
+`quality_safety_blocking=false`; `unsupported_methods=degraded_not_extended`;
+`judge_ready=false`; `repair_ready=false`;
+`next_step=operator_structured_numeric_export_validation_harness`.

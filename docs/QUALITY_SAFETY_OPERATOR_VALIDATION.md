@@ -1118,3 +1118,31 @@ records today.
   "repair_calls": false
 }
 ```
+
+## Slice 137 Pure Operator Export Validator (closed-vocabulary status, not a run)
+
+Slice 137 implemented the pure/unwired validator
+(`pipeline/quality_safety_operator_structured_numeric_export_validator.py`) and
+exercised it with **synthetic fixtures only**. It records **no real operator-runtime
+validation**: no real/private sidecar was validated, and `operator_export_committed`
+stays fixed `false`. The closed-vocabulary status below is a component status, not a
+private run.
+
+```
+validator_status: ready
+input_kind: synthetic_safe
+operator_export_committed: false
+private_sidecar_validated: false
+validator_wired_into_production: false
+forbidden_fields_detected_counted_stripped: true
+unsupported_method_handling: degraded_not_extended
+downstream_chain_compatible: true
+advisory_artifact_path_compatible: true
+single_confident_wrong_numeric_case: validated_ok_then_recompute_blocker
+clean_real_case: validated_ok_then_recompute_passed
+legacy_confused_wrong_case: validated_warning_partial_unverified
+quality_safety_blocking: false
+judge_ready: false
+repair_ready: false
+next_step: operator_structured_numeric_export_validation_harness
+```

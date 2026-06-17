@@ -602,3 +602,24 @@ next_step: pure_operator_export_validator
 - No OCR/table/source/`clean.md` reading; no provider/model/cloud calls.
 - Does not claim the numeric extraction leg is covered — it remains `not_covered`
   until a real artifact path proves it with safe structured concept/fact data.
+
+## Slice 137 Operator Export Validator Relationship
+
+Slice 137 added a pure operator export validator
+(`pipeline/quality_safety_operator_structured_numeric_export_validator.py`) that
+gates an operator-authored export before it reaches the adapter. The numeric
+extraction record contract is unchanged: the numeric mapper remains the final record
+sanitizer, and operator-validated candidates still flow through the adapter → safe
+extractor → mapper path with no new contract. The validator adds no production
+wiring.
+
+```
+contract_changed: false
+validator_status: ready
+validator_wired_into_production: false
+numeric_mapper_remains_final_record_sanitizer: true
+unsupported_method_handling: degraded_not_extended
+judge_ready: false
+repair_ready: false
+next_step: operator_structured_numeric_export_validation_harness
+```

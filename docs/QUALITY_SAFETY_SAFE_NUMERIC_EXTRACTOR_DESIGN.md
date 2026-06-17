@@ -452,3 +452,16 @@ authored candidates flowing through the adapter, and it parses no OCR/table/sour
 text and reads no `clean.md`. No operator export validator is implemented here.
 `operator_protocol_status=ready`; `operator_export_validator_needed=true`;
 `judge_ready=false`; `repair_ready=false`; `next_step=pure_operator_export_validator`.
+
+## Slice 137 Operator Export Validator Relationship
+
+Slice 137 added a pure operator export validator
+(`pipeline/quality_safety_operator_structured_numeric_export_validator.py`) that
+sits in front of the Slice 133 adapter and re-emits sanitized
+`quality_safety_structured_numeric_candidates`-shaped candidates. The safe
+extractor's role is unchanged: it stays the pre-record sanitizer for the adapted
+operator-validated candidates, parses no OCR/table/source text, and reads no
+`clean.md`. The validator is pure/unwired and adds no production wiring.
+`validator_status=ready`; `validator_wired_into_production=false`;
+`unsupported_methods=degraded_not_extended`; `judge_ready=false`; `repair_ready=false`;
+`next_step=operator_structured_numeric_export_validation_harness`.

@@ -224,3 +224,22 @@ The protocol fixes the operator workflow, the closed schema, the allowed/forbidd
 values, how private material stays out of git, and the closed-vocabulary validation
 record. A real operator validation record is treated as `not_observed` until the
 pure validator (Slice 137) exists.
+
+## Slice 137 Validator Status
+
+Slice 137 implemented the pure/unwired operator export validator
+(`pipeline/quality_safety_operator_structured_numeric_export_validator.py`) for the
+selected `operator_approved_structured_export` producer v1. It gates the operator
+export against the Slice 136 protocol and re-emits a sanitized, forbidden-field-free
+`quality_safety_structured_numeric_candidates`-shaped payload for the existing
+adapter/extractor/mapper/recompute path. Synthetic fixtures only; no production
+wiring; no private sidecar validated.
+
+```
+validator_status: ready
+validator_wired_into_production: false
+unsupported_method_handling: degraded_not_extended
+judge_ready: false
+repair_ready: false
+next_step: operator_structured_numeric_export_validation_harness
+```
