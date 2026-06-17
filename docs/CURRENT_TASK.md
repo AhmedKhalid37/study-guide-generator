@@ -5,7 +5,55 @@
 
 ---
 
-## Slice 111 — **Quality Safety Recompute Verifier v1**, on `slice111-quality-safety-recompute-verifier-v1`. **NOT COMMITTED.**
+## Slice 112 — **Quality Safety Canonical Fixture Matcher v1**, on `slice112-quality-safety-canonical-matcher-v1`. **NOT COMMITTED.**
+
+- **Part 0 completed:** Slice 111 was committed as `9d2050b`, fast-forward merged to trunk `chrome-renderer-v1`, and pushed
+  with a normal `git push` (no force-push). Slice 111 added only the unwired Quality Safety recompute verifier and synthetic
+  tests. It changed no API route, frontend, generation prompt, request schema, Builder UI, Ask Guide, render/export/OCR/
+  table/visual behavior, runtime artifact writer, provider/model/cloud integration, or Docker config. `pipeline/math_verifier.py`
+  was not modified. The parked Slice 60 trace stash remains untouched.
+- **Scope:** Slice 112 adds the unwired Quality Safety **canonical fixture matcher** as step 2 of the runtime hierarchy only:
+  recompute from structured computation inputs remains the primary truth path; canonical fixture matching is fallback-only;
+  otherwise facts remain unverified. The matcher is not wired into production artifacts, routes, jobs, prompts, exports, UI,
+  renderers, OCR, table/visual handling, Ask Guide, leak gates, or repair loops.
+- **New pure module:** `pipeline/quality_safety_canonical_matcher.py` is stdlib-only plus the Slice 110 fact-sheet normalizer.
+  It exposes `normalize_quality_safety_canonical_fixture(...)`, `match_quality_safety_canonical_facts(...)`, and
+  `build_quality_safety_canonical_match_report(...)`. It reads only caller-supplied dicts, writes no artifacts, reads no
+  source documents or `clean.md`, calls no providers/models/cloud services, never raises, never mutates caller input, and
+  returns deterministic JSON-serializable dicts with closed-vocabulary tokens only.
+- **Canonical fixture schema:** normalized fixtures use `kind:"quality_safety_canonical_fixture"`, version 1, safe
+  `lecture_id`, closed `source_quality`, bounded canonical facts, safe ids/labels/match keys/aliases, finite numeric
+  values/tolerances, `provenance:"canonical_fixture"`, and closed warnings. Fixture data is synthetic only; no real golden
+  corpus, source/reference filenames, uploaded quality-spec filenames, evidence quotes, snippets, formulas copied from
+  private/generated material, OCR/table/caption text, paths, URLs, image bytes, or provider payloads are added.
+- **Fallback-only behavior:** the matcher normalizes the Slice 110 fact sheet and canonical fixture, reads the optional
+  Slice 111 recompute report by safe fact id, and canonical-matches only numeric facts that are not already recompute-verified
+  or recompute-failed. Recompute-verified facts are skipped and cannot be overridden. Recompute-failed facts are skipped and
+  cannot be hidden. Missing/unsupported/malformed recompute results may use exact canonical fallback when lecture id matches,
+  type matches, id/label/match key/explicit safe alias matches, and the supplied numeric value is within tolerance. No fuzzy
+  matching, embeddings, raw guide-text inference, provider calls, or LLM judge is added.
+- **Report / blocking behavior:** reports use `kind:"quality_safety_canonical_match_report"`, version 1, closed statuses
+  (`passed/warning/failed/skipped/partial`), closed check ids/statuses/warnings, summary counts, `blocking:true`, and
+  `blocking_failures`. Canonical mismatch for an eligible fallback fact is blocking; missing canonical entries and lecture
+  mismatches are warnings/skips, not blocking; recompute pass/fail skips do not add new blocking failures. Checks store only
+  safe ids/labels/match keys, numeric supplied/canonical/tolerance values, and closed warnings.
+- **Tests:** `test_scripts/test_quality_safety_canonical_matcher.py` uses synthetic data and synthetic hostile canaries only.
+  It covers empty/malformed behavior, fixture normalization, exact fallback pass/fail, explicit alias matching, recompute
+  priority, lecture mismatch, type behavior, report shape/status/blocking counts, Slice 110 + 111 integration, Slice 109
+  synthetic seed fixture integration, no-leak sweep, and import hygiene (159 checks pass).
+- **Out of scope / unchanged:** no production artifact writer, app route, UI/export selector, generic artifact list entry,
+  LLM judge, quality_judge.py, nn3.json, judge_response_nn3.json, quality.jsonl, What the Lecturer Skipped, Active Recall,
+  Memory Hooks, Practical Example Generator, Solve Path Generator, question-bank coverage, production leak gate, repair loop,
+  generation/prompt/request/API/UI/render/export/OCR/table/visual/Ask Guide behavior change, provider/model/cloud call, or
+  `pipeline/math_verifier.py` change. Docker validation is optional/not required because this is offline/matcher-only.
+- **Safety boundary:** only synthetic fixtures/content were used. No real PDFs/images/DOCX/ZIPs, runtime artifacts,
+  generated guides, eval outputs, real source/reference filenames, uploaded quality-spec filenames, evidence quotes,
+  snippets, OCR/table/caption text, paths, URLs, image bytes, formulas copied from private/generated material, or provider
+  payloads were added. **Slice 112 remains NOT committed.**
+
+---
+
+## Slice 111 — **Quality Safety Recompute Verifier v1**, on `slice111-quality-safety-recompute-verifier-v1`. **Committed `9d2050b`, merged + pushed to `chrome-renderer-v1`.**
 
 - **Part 0 completed:** Slice 110 was committed as `ff7c971`, fast-forward merged to trunk `chrome-renderer-v1`, and pushed
   with a normal `git push` (no force-push). Slice 110 added only the unwired Quality Safety fact-record/fact-sheet schema and
@@ -52,7 +100,7 @@
 - **Safety boundary:** only synthetic fixtures/content were used. No real PDFs/images/DOCX/ZIPs, runtime artifacts, generated
   guides, eval outputs, source/reference filenames, uploaded quality-spec filenames, evidence quotes, snippets,
   OCR/table/caption text, paths, URLs, image bytes, formulas copied from private/generated material, or provider payloads
-  were added. **Slice 111 remains NOT committed.**
+  were added. Slice 111 was committed as `9d2050b`, merged, and pushed before Slice 112.
 
 ---
 

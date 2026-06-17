@@ -4732,3 +4732,23 @@ purpose and risking its existing behavior. Per the slice rules the new verifier 
 emits only numeric values, counts, closed check ids, closed statuses, and closed warning tokens. It writes no artifacts,
 reads no source documents or `clean.md`, calls no providers/models/cloud, never mutates caller input, and never echoes
 paths, URLs, snippets, formula strings, raw inputs, provider payloads, OCR/table/caption text, or raw exception text.
+
+## Slice 112 keeps canonical fixture matching fallback-only after recompute
+**Why canonical matching comes second.** Canonical fixture matching is implemented after recompute and remains fallback-only.
+It exists for narrow operator-approved cases where structured recomputation inputs are unavailable, unsupported, or malformed,
+but it must never replace or override recompute verification. This preserves the runtime priority: recompute first, canonical
+fallback second, unverified otherwise.
+
+**Why recompute results are never overridden or hidden.** The matcher reads the Slice 111 recompute report by safe fact id.
+Facts already recompute-verified are skipped, so a canonical fixture cannot downgrade or change the primary truth path. Facts
+already recompute-failed are also skipped, so a canonical fixture cannot hide an existing blocking recompute failure. Only
+unverified numeric facts may use exact canonical fallback, and only when lecture id, type, safe id/label/match key or
+explicit safe alias, and numeric tolerance all match.
+
+**Why it stays unwired and no-leak.** The matcher is a pure stdlib module plus the Slice 110 fact-sheet normalizer. It reads
+only caller-supplied dicts, writes no artifacts, calls no providers/models/cloud services, uses no fuzzy matching,
+embeddings, guide text, or LLM judge, and returns only JSON-serializable reports with closed statuses/check ids/warnings,
+safe ids/labels/match keys, and numeric values. Tests use synthetic fixtures and synthetic hostile canaries only; no real
+PDFs/images/DOCX/ZIPs, runtime outputs, generated guides, source/reference filenames, uploaded quality-spec filenames,
+evidence quotes, snippets, OCR/table/caption text, paths, URLs, formulas copied from private/generated material, image bytes,
+or provider payloads are added.

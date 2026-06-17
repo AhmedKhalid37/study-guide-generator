@@ -6,42 +6,46 @@
 > stable overview see `PROJECT_CONTEXT.md`; canonical brief is `../CLAUDE.md`.
 
 ## Current position
-- **Working tree:** **Slice 111 (Quality Safety Recompute Verifier v1) — UNCOMMITTED (per instruction)** on branch
-  `slice111-quality-safety-recompute-verifier-v1`, branched from fresh `chrome-renderer-v1` after Slice 110 was committed,
-  fast-forward merged, and pushed. **Slice 110 is trunk commit `ff7c971`**.
-  - **Part 0 completed:** Slice 110 was committed as `ff7c971`, fast-forward merged to `chrome-renderer-v1`, and pushed with
-    a normal `git push` (no force-push). It added only the unwired Quality Safety fact-record/fact-sheet schema and synthetic
-    tests. No API/frontend/generation/prompt/request/render/export/OCR/table/visual/Ask Guide behavior changed. No
-    provider/model/cloud calls were added. The Slice 60 trace stash remains parked and untouched.
-  - **Slice 111 scope:** add the unwired Quality Safety **recompute verifier** — the primary numeric truth path. It consumes
-    the Slice 110 fact-sheet/fact-record schema and verifies numeric facts by recomputing their value from structured
-    computation inputs. **Recompute is primary; canonical fixture matching stays fallback-only and is deferred to Slice 112.**
-  - **`math_verifier.py` inspected, kept separate:** the Slice 18/21 `pipeline/math_verifier.py` is text/guide-oriented (it
-    AST-walks generated Markdown for inline numeric claims). The Quality Safety verifier consumes structured `{method,
-    inputs}` records instead, so it is a separate module — no reuse, no change to `math_verifier.py`, not routed through
-    production math verification.
-  - **New module:** `pipeline/quality_safety_recompute_verifier.py` is pure stdlib-only (plus the Slice 110
-    `quality_safety_fact_sheet` import) and exposes `recompute_quality_safety_fact(...)`,
-    `verify_quality_safety_fact_sheet(...)`, and `build_quality_safety_recompute_report(...)`. It reads only supplied dicts,
-    writes nothing, reads no source documents or `clean.md`, calls no providers/models/cloud services, never raises, and
-    returns deterministic JSON-serializable dicts.
-  - **Supported methods (v1):** `weighted_gini`, `total_error`, `amount_of_say`, `softmax` (stable), `cross_entropy`,
-    `forward_pass` (linear + tested relu/sigmoid). Method tolerances 0.005–0.02 (default 1e-6, cap 1.0); tolerance precedence
-    explicit arg > computation/fact metadata > method default.
-  - **Behavior:** match-in-tolerance ⇒ `verified` (unverified may upgrade to computed); mismatch ⇒ `failed` + blocking;
-    missing/unsupported/malformed computation ⇒ `unverified` warning (non-blocking); non-numeric ⇒ `not_applicable`;
-    canonical_fixture without computation is not recomputed (Slice 112). Caller input never mutated. Report is
-    `quality_safety_recompute_report` v1, `blocking:true`, closed statuses/check-ids/warnings, numeric-only check values.
-  - **Tests:** `test_scripts/test_quality_safety_recompute_verifier.py` (synthetic only, 99 checks) covers empty/malformed,
-    each method, provenance/status transitions, Slice 110 integration (no mutation, deterministic), Slice 109 fixture
-    recompute, report status transitions, no-leak sweep, and import hygiene.
-  - **Out of scope/unchanged:** no canonical fixture matcher, production leak gate, repair loop, runtime artifact writer, app
-    route, UI/export selector, LLM judge, What the Lecturer Skipped / Active Recall or other picked study-intelligence
-    features, generation/prompt/request/API/UI/render/export/OCR/table/visual/Ask Guide behavior change, provider/model/cloud
-    calls, or Docker config. Only synthetic fixtures/content were used; no real PDFs/images/DOCX/ZIPs, runtime artifacts,
-    generated guides, eval outputs, source/reference filenames, uploaded quality-spec filenames, evidence quotes, snippets,
-    OCR/table/caption text, paths, URLs, image bytes, copied private formulas, or provider payloads were added. Chandra
-    remains blocked by its own live-validation gate.
+- **Working tree:** **Slice 112 (Quality Safety Canonical Fixture Matcher v1) — UNCOMMITTED (per instruction)** on branch
+  `slice112-quality-safety-canonical-matcher-v1`, branched from fresh `chrome-renderer-v1` after Slice 111 was committed,
+  fast-forward merged, and pushed. **Slice 111 is trunk commit `9d2050b`**.
+  - **Part 0 completed:** Slice 111 was committed as `9d2050b`, fast-forward merged to `chrome-renderer-v1`, and pushed with
+    a normal `git push` (no force-push). It added only the unwired Quality Safety recompute verifier and synthetic tests. No
+    API/frontend/generation/prompt/request/render/export/OCR/table/visual/Ask Guide behavior changed. No provider/model/cloud
+    calls were added. `pipeline/math_verifier.py` was not modified. The Slice 60 trace stash remains parked and untouched.
+  - **Slice 112 scope:** add the unwired Quality Safety **canonical fixture matcher** as fallback-only step 2. Runtime
+    priority remains: recompute from structured inputs first; exact canonical fixture fallback only when recompute is
+    unavailable/unsupported/malformed; otherwise unverified. This slice does not wire production artifacts, routes, jobs,
+    prompts, UI, exports, renderers, OCR, table/visual handling, Ask Guide, leak gates, or repair loops.
+  - **New module:** `pipeline/quality_safety_canonical_matcher.py` is pure stdlib-only plus the Slice 110
+    `quality_safety_fact_sheet` import. It exposes `normalize_quality_safety_canonical_fixture(...)`,
+    `match_quality_safety_canonical_facts(...)`, and `build_quality_safety_canonical_match_report(...)`. It reads only
+    supplied dicts, writes nothing, reads no source documents or `clean.md`, calls no providers/models/cloud services, never
+    raises, never mutates caller input, and returns deterministic JSON-serializable dicts.
+  - **Fixture/report behavior:** canonical fixtures normalize to safe synthetic ids/labels/match keys/aliases, closed
+    source-quality/type/provenance values, finite numeric values/tolerances, bounded facts, and closed warnings. Reports are
+    `quality_safety_canonical_match_report` v1 with closed statuses/check ids/warnings, summary counts, `blocking:true`, and
+    numeric-only values. Eligible canonical mismatches block; missing canonical entries and lecture mismatches warn/skip.
+  - **Recompute priority:** recompute-verified facts are skipped and cannot be overridden; recompute-failed facts are skipped
+    and cannot be hidden; only missing/unsupported/malformed recompute results may exact-match by lecture id plus safe
+    id/label/match key/explicit alias and numeric tolerance. No fuzzy matching, embeddings, guide-text inference, provider
+    call, or LLM judge is added.
+  - **Tests:** `test_scripts/test_quality_safety_canonical_matcher.py` (synthetic only, 159 checks) covers empty/malformed
+    input, fixture normalization, exact fallback pass/fail, aliases, recompute priority, lecture mismatch, type behavior,
+    report shape/blocking, Slice 110 + 111 integration, Slice 109 synthetic seed fixtures, no-leak sweep, and import hygiene.
+  - **Out of scope/unchanged:** no production artifact writer, app route, UI/export selector, generic artifact entry, LLM
+    judge, `quality_judge.py`, `nn3.json`, `judge_response_nn3.json`, `quality.jsonl`, What the Lecturer Skipped / Active
+    Recall or other picked study-intelligence features, generation/prompt/request/API/UI/render/export/OCR/table/visual/
+    Ask Guide behavior change, provider/model/cloud calls, or Docker config. Only synthetic fixtures/content were used; no
+    real PDFs/images/DOCX/ZIPs, runtime artifacts, generated guides, eval outputs, source/reference filenames, uploaded
+    quality-spec filenames, evidence quotes, snippets, OCR/table/caption text, paths, URLs, image bytes, copied private
+    formulas, or provider payloads were added. Chandra remains blocked by its own live-validation gate.
+
+### Previously (Slice 111, now trunk `9d2050b`)
+- **Slice 111 (Quality Safety Recompute Verifier v1)** added `pipeline/quality_safety_recompute_verifier.py` and
+  `test_scripts/test_quality_safety_recompute_verifier.py` — the unwired primary numeric truth path that consumes the
+  Slice 110 fact-sheet contract and recomputes structured `{method, inputs}` facts. It changed no API, frontend, generation,
+  prompt, request schema, render/export/OCR/table/visual, Ask Guide, provider/model/cloud behavior, or `math_verifier.py`.
 
 ### Previously (Slice 110, now trunk `ff7c971`)
 - **Slice 110 (Quality Safety Fact-Sheet Schema v1)** added `pipeline/quality_safety_fact_sheet.py` and
