@@ -5725,3 +5725,57 @@ material, override deterministic blockers, or fabricate numeric facts.
 `numeric_infrastructure_frozen=true`; `quality_safety_surface_frozen=true`;
 `quality_safety_blocking=false`; `judge_contract_ready=true`; `judge_ready=false`;
 `repair_ready=false`; `next_step=offline_judge_schema_fixtures_and_synthetic_harness`.
+
+---
+
+## Offline judge schema fixtures + synthetic harness are pure, unwired, synthetic-only (Slice 142)
+Slice 142 implemented the future offline judge report contract as a **pure schema
+module** (`pipeline/quality_safety_offline_judge_schema.py`) plus **synthetic
+fixtures** and a **synthetic harness**
+(`test_scripts/validate_quality_safety_offline_judge_synthetic_harness.py`). It
+proves the future report shape can be normalized, sanitized, serialized, and
+validated using **synthetic data only**. It is **not** judge execution.
+
+**Decisions:**
+- **The schema module is pure and unwired.** Stdlib-only (`json`, `re`, `typing`);
+  it reads/writes no files, scans no jobs, parses no source/OCR/table text, and
+  calls no provider/model/cloud/local LLM. Nothing in production imports it; it is
+  not wired into `quality_safety_job_artifact.py`, `run_markdown_job.py`,
+  `api/server.py`, any route, or any UI. No artifact is produced.
+- **The synthetic harness is not judge execution.** It only runs synthetic
+  fixtures through the pure normalizer/validator and prints a closed-vocabulary
+  summary. No guide is scored; no model runs.
+- **Sanitization is by construction.** The normalizer rebuilds output strictly
+  from a closed whitelist of fields and closed-vocabulary tokens, so raw
+  guide/source/reference text, free-text rationales, filenames, basenames, paths,
+  URLs, screenshots, provider payloads, model prompts/responses, chain-of-thought,
+  and `quality_judge_dump` / `nn3.json` / `judge_response_nn3.json` /
+  `quality.jsonl` content cannot survive into output. Forbidden input fields raise
+  a closed `forbidden_field_stripped` warning and are dropped; unknown axes are
+  dropped, duplicates deduplicated, and invalid status/confidence/score_band/counts
+  normalized to safe closed values.
+- **The future judge artifact remains advisory / non-blocking.** The schema fixes
+  `advisory=true` and carries no shippable/safety-floor authority. The deterministic
+  safety floor stays the source of truth: a synthetic `deterministic_floor_status=
+  blocked` case yields a `deterministic_floor_red` blocker and cannot become
+  `ok`/shippable/ready, and a floor-red payload overrides any softer self-reported
+  floor status.
+- **`judge_ready` stays false until calibration; `repair_ready` stays false.** The
+  normalizer **forces** `judge_ready=false` and `repair_ready=false` for every
+  input in this slice, and **downgrades** any `calibration_status=operator_validated`
+  to `synthetic_only` with an `operator_validated_not_allowed_yet` warning — the
+  judge cannot be claimed operator-validated yet.
+
+**Why:** building the schema/fixtures/harness as pure, synthetic-only, sanitized-
+by-construction code lets later judge-core slices reuse a proven, leak-safe output
+contract without any risk of leaking private material, turning the judge into a
+blocking gate, or flipping `judge_ready`/`repair_ready` true before a separate
+calibration gate approves it.
+
+`offline_judge_schema_status=ok`; `synthetic_fixture_status=ok`;
+`leak_safety_status=ok`; `deterministic_floor_relationship_status=ok`;
+`future_judge_artifact_name=quality_safety_offline_judge_report_json`;
+`numeric_infrastructure_frozen=true`; `quality_safety_surface_frozen=true`;
+`quality_safety_blocking=false`; `judge_contract_ready=true`;
+`calibration_status=synthetic_only`; `judge_ready=false`; `repair_ready=false`;
+`next_step=offline_judge_core_v1_synthetic_only`.

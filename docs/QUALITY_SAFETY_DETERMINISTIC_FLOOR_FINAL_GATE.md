@@ -194,3 +194,25 @@ judge_ready: false
 repair_ready: false
 next_step: offline_judge_schema_fixtures_and_synthetic_harness
 ```
+
+## Slice 142 Relationship — Schema fixtures honor this floor as source of truth
+
+Slice 142 added the pure offline judge schema module, synthetic fixtures, and a
+synthetic harness (synthetic-only; not judge execution). The schema **subordinates**
+the future judge to this final gate: a synthetic `deterministic_floor_status=blocked`
+case yields a `deterministic_floor_red` blocker and a non-`ok` status, a floor-red
+payload overrides any softer self-reported floor status, and `judge_ready` /
+`repair_ready` are forced `false`. The future judge can never override the recompute
+or leak blockers measured here, and can never mark a guide shippable if this floor is
+red.
+
+```
+deterministic_floor_is_source_of_truth: true
+judge_can_override_deterministic_blockers: false
+offline_judge_schema_status: ok
+deterministic_floor_relationship_status: ok
+judge_contract_ready: true
+judge_ready: false
+repair_ready: false
+next_step: offline_judge_core_v1_synthetic_only
+```

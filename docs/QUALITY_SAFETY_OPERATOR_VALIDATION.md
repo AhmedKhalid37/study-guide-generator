@@ -1240,3 +1240,23 @@ judge_ready: false
 repair_ready: false
 next_step: offline_judge_schema_fixtures_and_synthetic_harness
 ```
+
+## Slice 142 Offline Judge Schema (synthetic-only) status
+
+Slice 142 added the pure offline judge schema module, synthetic fixtures, and a
+synthetic harness (synthetic-only; not judge execution). The operator waiver status
+is unchanged: it stays synthetic-only
+(`operator_numeric_export_waiver=approved_for_safety_floor_finalization_synthetic_only`);
+no private/local operator run was performed or committed. The schema **downgrades**
+any `calibration_status=operator_validated` to `synthetic_only`; `judge_ready` stays
+false until a separate calibration gate approves it.
+
+```
+offline_judge_schema_status: ok
+operator_numeric_export_waiver: approved_for_safety_floor_finalization_synthetic_only
+calibration_status: synthetic_only
+judge_contract_ready: true
+judge_ready: false
+repair_ready: false
+next_step: offline_judge_core_v1_synthetic_only
+```

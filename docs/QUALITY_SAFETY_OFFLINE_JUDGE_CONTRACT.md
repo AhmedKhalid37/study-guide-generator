@@ -281,3 +281,49 @@ Conservative stance:
 - Contract ready **can** be true.
 - Judge ready **must** remain false.
 - Repair ready **must** remain false.
+
+---
+
+## Slice 142 — Schema fixtures + synthetic harness status (implemented, synthetic-only)
+
+Slice 142 implemented this contract as a **pure schema module** plus **synthetic
+fixtures** and a **synthetic harness** — not judge execution. No judge core, no
+judge calls, no provider/model/cloud/local-LLM calls, no `quality_judge.py`, no
+`nn3.json`, no `judge_response_nn3.json`, no `quality.jsonl`, no repair, no prompt
+tuning, no production wiring, no UI, and no blocking gate were added.
+
+- **Module:** `pipeline/quality_safety_offline_judge_schema.py` (pure; stdlib-only;
+  no file I/O; no provider/model/cloud/local-LLM calls). Public functions:
+  `build_empty_offline_judge_report`, `normalize_offline_judge_report`,
+  `validate_offline_judge_report`, `build_synthetic_offline_judge_fixture`,
+  `serialize_offline_judge_report`.
+- **Output `kind`:** `quality_safety_offline_judge_report`. **Proposed future
+  artifact name (not produced):** `quality_safety_offline_judge_report.json`.
+- **Sanitized by construction:** output is rebuilt from a closed whitelist; the
+  forbidden committed content listed above cannot survive. `advisory` is forced
+  `true`; `judge_ready` and `repair_ready` are forced `false`;
+  `calibration_status=operator_validated` is downgraded to `synthetic_only`.
+- **Synthetic fixtures:** `clean_synthetic_judge_case`, `weak_synthetic_judge_case`,
+  `failed_synthetic_judge_case`, `leak_canary_synthetic_judge_case`,
+  `deterministic_floor_red_synthetic_judge_case`.
+- **Synthetic harness:** `test_scripts/validate_quality_safety_offline_judge_synthetic_harness.py`
+  (runs fixtures, normalizes/validates, checks deterministic serialization,
+  no-canary survival, forced false readiness, floor-red can never become
+  shippable/ready; prints closed-vocabulary summary only; writes no files).
+- **Deterministic floor remains source of truth:** a synthetic
+  `deterministic_floor_status=blocked` case yields a `deterministic_floor_red`
+  blocker and a non-`ok` status; a floor-red payload overrides a softer
+  self-reported floor status.
+
+```
+offline_judge_schema_status: ok
+synthetic_fixture_status: ok
+leak_safety_status: ok
+deterministic_floor_relationship_status: ok
+calibration_status: synthetic_only
+judge_contract_ready: true
+judge_ready: false
+repair_ready: false
+next_step: offline_judge_core_v1_synthetic_only
+docker_compose_config_run: false
+```

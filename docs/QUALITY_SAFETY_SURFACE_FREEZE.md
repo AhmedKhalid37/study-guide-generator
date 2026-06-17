@@ -171,3 +171,34 @@ judge_ready: false
 repair_ready: false
 next_step: offline_judge_schema_fixtures_and_synthetic_harness
 ```
+
+---
+
+## Slice 142 — Schema fixtures do not unfreeze the deterministic / numeric surfaces
+
+Slice 142 added a **pure** offline judge schema module
+(`pipeline/quality_safety_offline_judge_schema.py`), synthetic fixtures, and a
+synthetic harness. This proves the future judge report shape using **synthetic data
+only**; it does **not** unfreeze the numeric infrastructure or the deterministic
+surface. No judge core, no judge calls, no provider/model/cloud/local-LLM calls, no
+repair, no prompt tuning, and no new numeric schema/bridge layer were added. The
+frozen artifact names, field families, and validation harnesses above are unchanged,
+and nothing in production imports the new schema module.
+
+The future offline judge — once built and calibrated — stays advisory and layered on
+top of this frozen surface; it can never override a deterministic recompute/leak
+blocker, never mark a guide shippable if the floor is red, and never fabricate facts
+from structural coverage. The proposed (not produced) future artifact remains
+`quality_safety_offline_judge_report.json`.
+
+```
+quality_safety_surface_frozen: true
+numeric_infrastructure_frozen: true
+offline_judge_schema_status: ok
+future_judge_artifact_name: quality_safety_offline_judge_report_json
+calibration_status: synthetic_only
+judge_contract_ready: true
+judge_ready: false
+repair_ready: false
+next_step: offline_judge_core_v1_synthetic_only
+```

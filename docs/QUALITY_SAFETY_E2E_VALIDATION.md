@@ -910,3 +910,22 @@ repair_ready: false
 next_step: offline_judge_schema_fixtures_and_synthetic_harness
 docker_compose_config_run: false
 ```
+
+## Slice 142 Offline Judge Schema (synthetic-only) status
+
+Slice 142 added the pure offline judge schema module, synthetic fixtures, and a
+synthetic harness (synthetic-only; not judge execution). No judge ran and no judge
+output was produced against real/private material. These synthetic E2E validation
+records are unchanged and remain the deterministic source of truth; the future
+offline judge cannot override their deterministic blockers.
+
+```
+offline_judge_schema_status: ok
+this_doc_changed: false
+calibration_status: synthetic_only
+judge_contract_ready: true
+judge_ready: false
+repair_ready: false
+next_step: offline_judge_core_v1_synthetic_only
+docker_compose_config_run: false
+```

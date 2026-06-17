@@ -6,44 +6,61 @@
 > stable overview see `PROJECT_CONTEXT.md`; canonical brief is `../CLAUDE.md`.
 
 ## Current position
-- **Working tree:** **Slice 141 (Offline Judge Contract Design) — UNCOMMITTED (per instruction)** on branch
-  `slice141-quality-safety-offline-judge-contract-design`, branched from updated `chrome-renderer-v1` after Slice 140 was
-  committed, fast-forward merged, and pushed. **Slice 140 is trunk commit `62b7b82`**.
-  - **Part 0 completed:** Slice 140 was committed as `62b7b82`, fast-forward merged to `chrome-renderer-v1`, and pushed with a
-    normal `git push` (no force-push; `c421465..62b7b82`). Final trunk status before branching was clean; no docker compose config
+- **Working tree:** **Slice 142 (Offline Judge Schema Fixtures and Synthetic Harness) — UNCOMMITTED (per instruction)** on branch
+  `slice142-quality-safety-offline-judge-schema-fixtures`, branched from updated `chrome-renderer-v1` after Slice 141 was
+  committed, fast-forward merged, and pushed. **Slice 141 is trunk commit `b193d43`**.
+  - **Part 0 completed:** Slice 141 was committed as `b193d43`, fast-forward merged to `chrome-renderer-v1`, and pushed with a
+    normal `git push` (no force-push; `62b7b82..b193d43`). Final trunk status before branching was clean; no docker compose config
     was run; the Slice 60 trace stash remains parked and untouched.
-  - **Slice 141 scope:** docs / design only; **no production code change.** Now that the deterministic (non-judge) Quality Safety
-    surface is frozen (Slice 140), this slice **designs the offline judge contract** — it does **not** implement a judge. It adds
-    the new doc `docs/QUALITY_SAFETY_OFFLINE_JUDGE_CONTRACT.md` and appends pointers/status to the freeze/floor/validation docs.
-    **No judge core, no judge calls, no provider/model/cloud/local-LLM calls, no `quality_judge.py`, no `nn3.json`, no
-    `judge_response_nn3.json`, no `quality.jsonl`, no repair, no prompt tuning, no blocking gate, no route/frontend change, no
-    request-schema/render/export/OCR/table/visual/Ask Guide change, no numeric infrastructure unfreeze.**
+  - **Slice 142 scope:** pure schema + synthetic fixtures + a synthetic harness. Proves the **future** offline judge report shape
+    can be normalized / sanitized / serialized / validated using **synthetic data only**. It is **not** judge execution. **No judge
+    core, no judge calls, no provider/model/cloud/local-LLM calls, no `quality_judge.py`, no `nn3.json`, no
+    `judge_response_nn3.json`, no `quality.jsonl`, no repair, no prompt tuning, no blocking gate, no production wiring, no UI, no
+    route/frontend/request-schema/render/export/OCR/table/visual/Ask Guide change, no numeric infrastructure unfreeze.**
     `quality_safety_job_artifact.py`, `run_markdown_job.py`, `api/server.py` unchanged.
-  - **Contract records (closed-vocabulary only):** preconditions; boundary (`offline_only`, `advisory_only`,
-    `non_blocking_initially`, `no_repair`, `no_prompt_tuning`, `no_provider_calls_in_contract_slice`, `no_runtime_outputs_committed`,
-    `no_private_material_committed`); allowed future runtime-only inputs (committed outputs sanitized/closed-vocabulary only);
-    forbidden committed content; the **proposed** future artifact name `quality_safety_offline_judge_report.json` (proposed, not
-    produced); the closed/sanitized output shape (no free-text rationale) with eight axes; calibration requirements; the
-    deterministic-floor relationship; the next five judge-path slices; and the decision record.
-  - **Future judge artifact name (proposed only):** `quality_safety_offline_judge_report.json` (`advisory=true`, non-blocking
-    initially, not a final user score until calibrated, not used for repair).
-  - **Validation (all green):** gate (34), operator export harness (35), operator export validator (422), adapter (177), safe
-    extractor (207), job artifact (753), recompute verifier (99), real-disaster e2e (100), unified QA (73); `compileall` clean;
-    `git diff --check` clean. Docker not run (docs/design-only); no docker compose config run.
-  - **Decision record:** `offline_judge_contract_status=ready`; `numeric_infrastructure_frozen=true`;
-    `quality_safety_surface_frozen=true`; `judge_contract_ready=true`; `judge_ready=false`; `repair_ready=false`;
-    `next_step=offline_judge_schema_fixtures_and_synthetic_harness`.
+  - **New pure module (`pipeline/quality_safety_offline_judge_schema.py`):** `build_empty_offline_judge_report`,
+    `normalize_offline_judge_report`, `validate_offline_judge_report`, `build_synthetic_offline_judge_fixture`,
+    `serialize_offline_judge_report`. Stdlib-only (`json`, `re`, `typing`); no file I/O; no provider/model/cloud/local-LLM calls.
+    Output is rebuilt strictly from a closed whitelist, so raw text / free-text rationale / filenames / paths / URLs / provider
+    payloads / model prompts/responses / `nn3.json` / `judge_response_nn3.json` / `quality.jsonl` content cannot survive into
+    output by construction.
+  - **Output report shape (closed/sanitized):** `version`, `kind=quality_safety_offline_judge_report`, `advisory=true`, `status`,
+    `judge_model_kind`, `input_scope`, count-only `summary`, `axis_results` (eight allowed axes; closed
+    `status`/`confidence`/`score_band`/`counts`/`warnings`), closed-token `blockers`/`warnings`, `calibration_status`,
+    `privacy_status`, `deterministic_floor_status`, `judge_ready=false`, `repair_ready=false`. No free-text rationales.
+  - **Synthetic fixtures (synthetic ids + canaries only):** `clean_synthetic_judge_case`, `weak_synthetic_judge_case`,
+    `failed_synthetic_judge_case`, `leak_canary_synthetic_judge_case`, `deterministic_floor_red_synthetic_judge_case`.
+  - **Synthetic harness (`test_scripts/validate_quality_safety_offline_judge_synthetic_harness.py`):** runs all fixtures,
+    normalizes/validates, checks deterministic serialization + no-canary survival + `judge_ready`/`repair_ready` always false +
+    floor-red can never become shippable/ready; prints a closed-vocabulary summary only; writes no files.
+  - **Future judge artifact name (proposed only):** `quality_safety_offline_judge_report.json` (nothing produces it here).
+  - **Validation (all green):** schema test (667), synthetic harness (ok), gate (34), operator export harness (35), operator
+    export validator (422), adapter (177), safe extractor (207), job artifact (753), recompute verifier (99), real-disaster e2e
+    (100), unified QA (73); `compileall` clean; `git diff --check` clean. Docker not run (pure schema/test only); no docker
+    compose config run.
+  - **Decision record:** `offline_judge_schema_status=ok`; `calibration_status=synthetic_only`; `judge_contract_ready=true`;
+    `judge_ready=false`; `repair_ready=false`; `next_step=offline_judge_core_v1_synthetic_only`.
   - **Files changed:** `M docs/CURRENT_TASK.md`, `M docs/DECISIONS.md`, `M docs/NEXT_CHAT_HANDOFF.md`,
-    `M docs/QUALITY_SAFETY_SURFACE_FREEZE.md`, `M docs/QUALITY_SAFETY_DETERMINISTIC_FLOOR_FINAL_GATE.md`,
-    `M docs/QUALITY_SAFETY_E2E_VALIDATION.md`, `M docs/QUALITY_SAFETY_OPERATOR_VALIDATION.md`,
-    `?? docs/QUALITY_SAFETY_OFFLINE_JUDGE_CONTRACT.md`.
-  - **Next expected slice:** **Slice 142 — Offline Judge Schema Fixtures and Synthetic Harness.** Judge baseline stays blocked
-    (`judge_ready=false`; `repair_ready=false`); the judge contract is designed only — synthetic-only implementation begins in a
-    later separately designed slice.
+    `M docs/QUALITY_SAFETY_OFFLINE_JUDGE_CONTRACT.md`, `M docs/QUALITY_SAFETY_SURFACE_FREEZE.md`,
+    `M docs/QUALITY_SAFETY_DETERMINISTIC_FLOOR_FINAL_GATE.md`, `M docs/QUALITY_SAFETY_E2E_VALIDATION.md`,
+    `M docs/QUALITY_SAFETY_OPERATOR_VALIDATION.md`, `?? pipeline/quality_safety_offline_judge_schema.py`,
+    `?? test_scripts/test_quality_safety_offline_judge_schema.py`,
+    `?? test_scripts/validate_quality_safety_offline_judge_synthetic_harness.py`.
+  - **Next expected slice:** **Slice 143 — Offline Judge Core v1, Synthetic Only.** Judge baseline stays blocked
+    (`judge_ready=false`; `repair_ready=false`); the judge core would be wired to synthetic fixtures only — no private input, no
+    provider/model/cloud/local-LLM calls.
   - **Out of scope/unchanged:** no `api/server.py` change, no routes, no frontend change, no production wiring/sidecar writer, no
     generation/prompt/provider/request-schema/render/export/OCR/table/visual/Ask Guide change, no judge/`overall_10`/repair/
-    blocking gate, no `quality_judge.py`, `nn3.json`, `judge_response_nn3.json`, or `quality.jsonl`. **Slice 141 remains NOT
+    blocking gate, no `quality_judge.py`, `nn3.json`, `judge_response_nn3.json`, or `quality.jsonl`. **Slice 142 remains NOT
     committed.**
+
+### Previously (Slice 141, now trunk `b193d43`)
+- **Slice 141 (Offline Judge Contract Design)** designed the offline judge contract (docs / design only; no production code
+  change) in `docs/QUALITY_SAFETY_OFFLINE_JUDGE_CONTRACT.md`: boundary (`offline_only`, `advisory_only`, `non_blocking_initially`,
+  `no_repair`, `no_prompt_tuning`), the proposed (not produced) future artifact `quality_safety_offline_judge_report.json`, the
+  closed/sanitized output shape with eight axes, calibration requirements, and the deterministic-floor relationship.
+  `offline_judge_contract_status=ready`; `judge_contract_ready=true`; `judge_ready=false`; `repair_ready=false`;
+  `next_step=offline_judge_schema_fixtures_and_synthetic_harness`.
 
 ### Previously (Slice 140, now trunk `62b7b82`)
 - **Slice 140 (Quality Safety Surface Cleanup / Freeze)** froze the deterministic (non-judge) Quality Safety surface (docs /
