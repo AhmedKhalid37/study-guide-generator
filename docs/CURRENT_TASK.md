@@ -5,7 +5,76 @@
 
 ---
 
-## Slice 149 — **Measured Guide Quality Baseline Harness (reuse existing wired artifacts)**, on `slice149-measured-guide-quality-baseline-harness`. **NOT COMMITTED.**
+## Slice 150 — **Reasoning Leak Baseline Failure Triage (closed-record only)**, on `slice150-reasoning-leak-baseline-failure-triage`. **NOT COMMITTED.**
+
+- **Part 0 completed:** Slice 149 was committed as `7e298b6` ("Slice 149: Add measured guide quality baseline harness"),
+  fast-forward merged to trunk `chrome-renderer-v1` (`74ddf76..7e298b6`), and pushed with a normal `git push` (no force-push).
+  The measured baseline failure (`baseline_status=failed`, `reasoning_leak_status=fail` on both app runs) was committed as an
+  honest measured baseline record, **not** hidden. Final trunk status before branching Slice 150 was clean; **no docker compose
+  config was run**; the Slice 60 trace stash remains parked and untouched.
+- **What this slice is:** a narrow **closed-vocabulary triage** of the first measured baseline failure
+  (`reasoning_leak_status=fail` on `app_run_1` and `app_run_2`). It decides whether the failure is a true reasoning leak in the
+  generated guide, a contract-lint false positive, a baseline interpretation bug, or under-determined. No prompt tuning, no
+  repair, no generation change, no judge/provider/model/cloud/local-LLM call, no new blocking gate, no rebuilt checks.
+- **Baseline mapping verified correct (no code change).** The baseline collector whitelists `reasoning_leak_count` from
+  `guide_quality_contract_lint.json`'s summary and `_derive_reasoning_leak` maps `count > 0 → fail` (headline first-class
+  metric). The local artifacts carry a **real positive** `reasoning_leak_count` on both runs (no matched text stored), so the
+  baseline correctly reports `fail` — this is **not** a baseline interpretation bug. No baseline / contract-lint / generation
+  code was touched.
+- **Local operator triage ran (closed record only).** Inspected only the local **gitignored** app job artifacts and app guide
+  files under `local_operator_baselines/`; classification was computed programmatically and emits **closed category tokens
+  only**. No guide/source/OCR/table/caption text, no leaking phrase, no count, no filename, no path, no raw artifact JSON, no
+  snippet was printed into docs or committed.
+
+  ```
+  reasoning_leak_baseline_failure_triage: run
+  status: ok
+  input_scope: local_gitignored_operator_artifacts
+  local_operator_material_committed: false
+  raw_guide_text_committed: false
+  raw_artifact_json_committed: false
+  provider_calls: false
+  judge_calls: false
+  repair_calls: false
+  baseline_mapping_changed: false
+  runs:
+    app_run_1:
+      baseline_reasoning_leak_status: fail
+      triage_status: contract_lint_false_positive
+      leak_category: detector_boundary_false_positive
+      fix_recommendation: contract_lint_hardening
+    app_run_2:
+      baseline_reasoning_leak_status: fail
+      triage_status: true_reasoning_leak_visible
+      leak_category: internal_reasoning_phrase
+      fix_recommendation: prompt_contract_fix
+  overall_decision: true_leak_confirmed
+  next_step: first_measured_reasoning_leak_fix
+  ```
+
+- **Mixed result, honestly recorded.** `app_run_2` contains a **genuine** internal-reasoning phrase (matched with both-sided
+  word boundaries; PDF-extracted reproduced count validated within ±2 of the artifact's `reasoning_leak_count`) → a real leak.
+  `app_run_1` fired only on factual-intensifier signatures (`"actually "`, `"presumably"`) that the substring detector treats as
+  hedges → a **detector false positive**. Headline decision is `true_leak_confirmed` because reasoning-leak is the first-class
+  regression guard and at least one generated guide genuinely leaked internal reasoning. **Secondary finding:** the contract-lint
+  reasoning-leak detector over-flags common factual intensifiers, and the baseline's `any count > 0 → hard fail` escalation will
+  mislabel clean guides — both warrant a future `contract_lint_false_positive_hardening` slice.
+- **Operator-authorization boundary held.** A prompt-contract fix is **proven warranted but NOT applied** — generation prompts are
+  unchanged pending an explicit operator decision in a later slice. This slice records the recommendation only.
+- **Files changed:** `M docs/CURRENT_TASK.md`, `M docs/NEXT_CHAT_HANDOFF.md`, `M docs/DECISIONS.md`. No code changed.
+- **Validation (all green):** `test_guide_quality_baseline.py` (130 passed), `validate_guide_quality_baseline_harness.py`
+  synthetic self-test (`baseline_harness_status=ok`, exit 0) plus the two reproducible local runs (`app_run_1`/`app_run_2`:
+  `baseline_harness_status=ok`, exit 0, `reasoning_leak_status=fail` unchanged), `compileall api pipeline test_scripts` clean;
+  `git diff --check` clean; no-leak sweep clean. Docker not required (no production/API/UI change); **no docker compose config
+  run.**
+- **Next recommended slice:** **Slice 151 — First Measured Reasoning Leak Fix** (operator-authorized prompt-contract fix for the
+  `app_run_2` internal-reasoning leak; keep only if the measured `reasoning_leak_status` improves), with a parallel candidate
+  `contract_lint_false_positive_hardening` for the intensifier over-flagging surfaced by `app_run_1`. Style/preset audit stays
+  deferred until the first measured failure is handled.
+
+---
+
+## Slice 149 — **Measured Guide Quality Baseline Harness (reuse existing wired artifacts)**, on `slice149-measured-guide-quality-baseline-harness`. **Committed `7e298b6`, merged + pushed to `chrome-renderer-v1`.**
 
 - **Part 0 completed:** Slice 148 was committed as `74ddf76` ("Slice 148: Freeze judge path and redirect to measured
   baseline"), fast-forward merged to trunk `chrome-renderer-v1` (`effc9d9..74ddf76`), and pushed with a normal `git push` (no

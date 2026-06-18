@@ -6,69 +6,57 @@
 > stable overview see `PROJECT_CONTEXT.md`; canonical brief is `../CLAUDE.md`.
 
 ## Current position
-- **Working tree:** **Slice 149 (Measured Guide Quality Baseline Harness — reuse existing wired artifacts) — UNCOMMITTED** on
-  branch `slice149-measured-guide-quality-baseline-harness`, branched from updated `chrome-renderer-v1` after Slice 148 was
-  committed, fast-forward merged, and pushed. **Slice 148 is trunk commit `74ddf76`**.
-  - **Part 0 completed:** Slice 148 was committed as `74ddf76`, fast-forward merged to `chrome-renderer-v1`, and pushed with a
-    normal `git push` (no force-push; `effc9d9..74ddf76`). The ambiguous `next_step` token
-    `…_real_public_fixture_harness` was corrected to `…_existing_artifacts_harness` before committing. Final trunk status before
-    branching Slice 149 was clean; **no docker compose config was run**; the Slice 60 trace stash remains parked and untouched.
-  - **Slice 149 is a baseline aggregator/diff harness, not a new evaluator stack.** A pure, deterministic, stdlib-only module
-    (`pipeline/guide_quality_baseline.py`) that **reuses existing wired artifacts** — it reruns no checks, reads no
-    PDFs/guides/`clean.md`/source/OCR/table/caption text, writes nothing to the repo, and calls no provider/model/cloud/local
-    LLM. It reads exact-name artifact JSON from a caller-provided local job dir, extracts **closed scalar statuses/counts only**,
-    compares them to a committed **closed golden spec**, and emits a closed aggregate record + optional trend diff. Advisory,
-    non-blocking. The collector never returns/prints the artifact directory path.
-  - **Existing wired artifacts reused (exact names):** `math_verification.json`, `guide_quality_contract_lint.json`,
-    `guide_quality_qa_gate.json`, `guide_quality_report_v2.json`, `source_coverage_report.json`, and
-    `guide_quality_rubric_score.json` (advisory). **Required core:** contract lint + QA gate + math verification.
-  - **Metric families (all present):** `reasoning_leak_status` (**headline, first-class** — contract lint primary, QA gate
-    fallback; fail when leak > 0), `numeric_math_status` (math verification; spec-relative scoring `needs_future_metric` while
-    golden `known_numbers` empty), `guide_quality_qa_gate_status`, `source_coverage_status`, `structure_contract_status`,
-    `reference_relative_completeness_status` (`needs_future_metric` — no safe labels to match without parsing guide text),
-    `figure_handling_status` (`needs_future_metric`), `artifact_existence_status`.
-  - **Privacy / fixture policy (held):** source/reference PDFs and generated guides stay **local and gitignored**; only the
-    **golden spec** (closed facts/labels) plus **closed aggregate metrics** are committable. No private paths/filenames/raw
-    artifact JSON/source/guide/OCR/table/caption text committed.
-  - **`local_operator_baseline_run = closed_summary_only` (the local operator baseline has now been RUN).** The harness gained a
-    safe local mode (`--golden-spec … --artifact-dir … --run-label …`) that reads only exact-name wired artifact JSONs from a
-    **local gitignored** job dir and prints a **closed aggregate summary only** (never the dir path, raw artifact JSON, or any
-    source/guide/OCR/table/caption text, snippet, formula, filename, or path); it exits nonzero only on a harness error, never on
-    an honest `not_available`/`needs_future_metric`/`fail` metric. Synthetic self-test preserved when no `--artifact-dir`.
-    - `baseline_status = failed` (worst-of across both runs; advisory/non-blocking, **not** a gate) ·
-      `baseline_run_count = 2` · `baseline_run_labels: app_run_1, app_run_2`.
-    - **app_run_1:** reasoning_leak `fail` · numeric_math `not_available` · qa_gate `warning` · source_coverage `warning` ·
-      structure_contract `pass` · reference_relative_completeness `needs_future_metric` · figure_handling `needs_future_metric` ·
-      artifact_existence `pass`.
-    - **app_run_2:** reasoning_leak `fail` · numeric_math `not_available` · qa_gate `warning` · source_coverage `not_observed` ·
-      structure_contract `pass` · reference_relative_completeness `needs_future_metric` · figure_handling `needs_future_metric` ·
-      artifact_existence `pass`.
-    - **Real gaps (not "covered"):** `reference_relative_completeness_status` + `figure_handling_status` =
-      `needs_future_metric` (`metric_family_present=true`, `metric_value_measured=false`,
-      `gap_reason=existing_artifacts_do_not_expose_safe_labels_or_visual_counts`); `numeric_math_status=not_available` (real
-      `math_verification.json` exposes no closed `total` counter).
-    - **known_numbers stay `[]`** → `spec_relative_numeric_status = needs_operator_known_numbers`.
-    - **Local source/reference/generated files and copied app artifacts remain uncommitted** — `local_operator_baselines/` is
-      ignored via `.git/info/exclude`; nothing under it is tracked.
-  - **Validation (all green):** `test_guide_quality_baseline.py` (130 passed — now includes local-mode tests on synthetic temp
-    dirs only), `validate_guide_quality_baseline_harness.py` synthetic self-test (`baseline_harness_status=ok`, exit 0) plus two
-    real local runs (`app_run_1`/`app_run_2`: `baseline_harness_status=ok`, exit 0, closed summary only), `compileall` clean;
-    existing producers unchanged and green (math 74, contract lint 83, QA gate 177, report v2 100, rubric 63); quality-safety
-    adapter/calibration/floor harnesses green; `git diff --check` clean; no-leak sweep clean. Docker not required (no
+- **Working tree:** **Slice 150 (Reasoning Leak Baseline Failure Triage — closed-record only) — UNCOMMITTED** on branch
+  `slice150-reasoning-leak-baseline-failure-triage`, branched from updated `chrome-renderer-v1` after Slice 149 was committed,
+  fast-forward merged, and pushed. **Slice 149 is trunk commit `7e298b6`**.
+  - **Part 0 completed:** Slice 149 was committed as `7e298b6`, fast-forward merged to `chrome-renderer-v1`, and pushed with a
+    normal `git push` (no force-push; `74ddf76..7e298b6`). The measured failure (`baseline_status=failed`,
+    `reasoning_leak_status=fail` on both app runs) was committed as an honest baseline record, **not** hidden. Final trunk status
+    before branching Slice 150 was clean; **no docker compose config was run**; the Slice 60 trace stash remains parked and
+    untouched.
+  - **Slice 150 is a narrow closed-vocabulary triage, not a fix.** It triages the first measured baseline failure
+    (`reasoning_leak_status=fail` on `app_run_1`/`app_run_2`) into a closed root-cause record. No prompt tuning, no repair, no
+    generation change, no new gate, no rebuilt checks, no judge/provider/model/cloud/local-LLM call.
+  - **Baseline mapping verified correct (no code change).** The collector whitelists `reasoning_leak_count` from
+    `guide_quality_contract_lint.json` and maps `count > 0 → fail`; both local runs carry a real positive count (no matched text
+    stored), so the baseline correctly reports `fail`. **Not** a baseline interpretation bug. No baseline / contract-lint /
+    generation code was touched. `baseline_mapping_changed: false`.
+  - **Triage decision (closed record):**
+    - `app_run_1` → `triage_status=contract_lint_false_positive`, `leak_category=detector_boundary_false_positive`,
+      `fix_recommendation=contract_lint_hardening` (only factual-intensifier signatures `"actually "` / `"presumably"` fired —
+      the substring detector over-flags them as hedges).
+    - `app_run_2` → `triage_status=true_reasoning_leak_visible`, `leak_category=internal_reasoning_phrase`,
+      `fix_recommendation=prompt_contract_fix` (a genuine internal-reasoning phrase, matched with both-sided word boundaries;
+      PDF-extracted reproduced count validated within ±2 of the artifact `reasoning_leak_count`).
+    - `overall_decision=true_leak_confirmed` · `next_step=first_measured_reasoning_leak_fix`.
+  - **Operator-authorization boundary held.** A prompt-contract fix is proven warranted but **NOT applied** — generation prompts are
+    unchanged pending an explicit operator decision in a later slice. Secondary finding: the contract-lint detector + the
+    baseline `any count > 0 → hard fail` escalation over-flag clean intensifier prose → a future
+    `contract_lint_false_positive_hardening` candidate.
+  - **Local triage was closed-record only.** Inspected only local **gitignored** app artifacts/guides under
+    `local_operator_baselines/`; emitted closed category tokens only — no guide/source/OCR/table/caption text, no leaking phrase,
+    no count, no filename, no path, no raw artifact JSON committed or printed into docs. `local_operator_baselines/` stays ignored
+    via `.git/info/exclude`; nothing under it is tracked.
+  - **Validation (all green):** `test_guide_quality_baseline.py` (130 passed), `validate_guide_quality_baseline_harness.py`
+    synthetic self-test (`ok`, exit 0) plus the two reproducible local runs (`reasoning_leak_status=fail` unchanged),
+    `compileall api pipeline test_scripts` clean; `git diff --check` clean; no-leak sweep clean. Docker not required (no
     production/API/UI change); no docker compose config run.
-  - **Files changed:** `M docs/CURRENT_TASK.md`, `M docs/NEXT_CHAT_HANDOFF.md`, `M docs/DECISIONS.md`,
-    `?? pipeline/guide_quality_baseline.py`, `?? test_scripts/test_guide_quality_baseline.py`,
-    `?? test_scripts/validate_guide_quality_baseline_harness.py`,
-    `?? test_scripts/fixtures/guide_quality_baseline/nn_iris_local_golden_spec.json`,
-    `?? docs/GUIDE_QUALITY_BASELINE_HARNESS.md`. **Slice 149 remains NOT committed.**
-  - **Out of scope/unchanged:** no `api/server.py`/routes/frontend/Builder/Ask-Guide change, no LLM judge, no
-    `quality_judge.py`/`nn3.json`/`judge_response_nn3.json`/`quality.jsonl`, no prompt tuning, no repair, no rebuilding wired
-    checks, no generation/provider/render/export/OCR/table/visual change, no `judge_ready`/`repair_ready`/`artifact_write_ready`/
-    `ui_display_ready` flip.
-  - **Next expected slice:** **Slice 150 — Style/Preset Output Audit using the baseline** (run the baseline locally across
-    style/generator presets, compare closed aggregate metrics; still advisory, still no committed private content). **Slice 150
-    must not start unless `local_operator_baseline_run = closed_summary_only`** — that gate is now satisfied. (Slice 149 itself
-    stays NOT committed until the operator approves the commit.)
+  - **Files changed:** `M docs/CURRENT_TASK.md`, `M docs/NEXT_CHAT_HANDOFF.md`, `M docs/DECISIONS.md`. No code changed.
+    **Slice 150 remains NOT committed.**
+  - **Next expected slice:** **Slice 151 — First Measured Reasoning Leak Fix** (operator-authorized prompt-contract fix for the
+    `app_run_2` internal-reasoning leak; keep only if measured `reasoning_leak_status` improves), with a parallel
+    `contract_lint_false_positive_hardening` candidate. Style/preset audit stays deferred until the first measured failure is
+    handled.
+
+### Previously (Slice 149, now trunk `7e298b6`)
+- **Slice 149 (Measured Guide Quality Baseline Harness — reuse existing wired artifacts)** landed
+  `pipeline/guide_quality_baseline.py`, a pure stdlib aggregator/diff over the existing wired artifacts
+  (`math_verification.json`, `guide_quality_contract_lint.json`, `guide_quality_qa_gate.json`, `guide_quality_report_v2.json`,
+  `source_coverage_report.json`, `guide_quality_rubric_score.json`) plus a closed golden spec, a 130-check test, a harness with a
+  safe local mode, and `docs/GUIDE_QUALITY_BASELINE_HARNESS.md`. Run against two local app job artifact dirs
+  (`local_operator_baseline_run=closed_summary_only`) it produced a measured `baseline_status=failed` —
+  `reasoning_leak_status=fail` on both runs, `numeric_math_status=not_available`, `reference_relative_completeness_status` +
+  `figure_handling_status` honest `needs_future_metric`, `known_numbers=[]`. That measured failure is what Slice 150 triaged.
 
 ### Previously (Slice 148, now trunk `74ddf76`)
 - **Slice 148 (Judge Path Freeze / Calibration Decision Checkpoint, docs-only)** froze the synthetic offline-judge path

@@ -6238,3 +6238,38 @@ not expose the fields the metrics need (here: numeric `total`, concept/section/
 figure labels). Running on real artifacts surfaced those as honest gaps
 (`numeric_math_status=not_available`, two `needs_future_metric` families) instead of
 letting "all green synthetic" masquerade as a measured product baseline.
+
+## Measured baseline failures override planned style audit (2026-06-18)
+Slice 149's measured baseline came back `baseline_status=failed` with
+`reasoning_leak_status=fail` on **both** local app runs (`app_run_1`, `app_run_2`).
+The provisional plan had Slice 150 as a style/preset output audit. **A measured
+failure takes priority over a planned broad audit:** Slice 150 was redirected to
+triage the first measured failure instead, and the style/preset audit is deferred
+until that first failure is handled or classified.
+
+- **Slice 150 triaged the reasoning-leak failure with a local-only closed review.**
+  It inspected only local gitignored app job artifacts and app guide files and
+  emitted **closed category tokens only** — no guide/source/OCR/table/caption text,
+  no leaking phrase, no count, no filename, no path, no raw artifact JSON.
+- **Baseline mapping confirmed correct (no code change).** The baseline whitelists
+  `reasoning_leak_count` from `guide_quality_contract_lint.json` and maps
+  `count > 0 → fail`; both runs carry a real positive count, so the `fail` is
+  faithful — not a baseline interpretation bug. No baseline / contract-lint /
+  generation code was touched (`baseline_mapping_changed=false`).
+- **Mixed root cause, honestly recorded.** `app_run_2` is a **true** reasoning leak
+  (`internal_reasoning_phrase`, matched with both-sided word boundaries; reproduced
+  count validated within ±2 of the artifact). `app_run_1` is a **detector false
+  positive** (`detector_boundary_false_positive`): the substring detector counts the
+  factual intensifiers `"actually "` / `"presumably"` as hedges. `overall_decision=
+  true_leak_confirmed`; `next_step=first_measured_reasoning_leak_fix`.
+- **Operator-authorization boundary held.** The prompt-contract fix is proven warranted but
+  **not applied** — generation prompts stay unchanged pending an explicit operator
+  decision in a later slice. The `app_run_1` false positive (and the baseline's
+  `any count > 0 → hard fail` escalation) are recorded as a parallel
+  `contract_lint_false_positive_hardening` candidate, not actioned here.
+
+**Why:** the measured baseline exists to drive real fixes; letting a planned audit
+run ahead of a measured `fail` would bury the first concrete quality regression the
+harness was built to catch. Triaging it first — and proving the true-leak vs
+false-positive split before touching any prompt or detector — keeps the fix narrow,
+evidence-based, and within the privacy invariant.
