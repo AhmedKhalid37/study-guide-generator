@@ -5,7 +5,85 @@
 
 ---
 
-## Slice 148 — **Judge Path Freeze / Calibration Decision Checkpoint (lean, docs-only)**, on `slice148-quality-safety-judge-path-freeze-checkpoint`. **NOT COMMITTED.**
+## Slice 149 — **Measured Guide Quality Baseline Harness (reuse existing wired artifacts)**, on `slice149-measured-guide-quality-baseline-harness`. **NOT COMMITTED.**
+
+- **Part 0 completed:** Slice 148 was committed as `74ddf76` ("Slice 148: Freeze judge path and redirect to measured
+  baseline"), fast-forward merged to trunk `chrome-renderer-v1` (`effc9d9..74ddf76`), and pushed with a normal `git push` (no
+  force-push). The ambiguous `next_step` token `measured_guide_quality_baseline_real_public_fixture_harness` was corrected to
+  `measured_guide_quality_baseline_existing_artifacts_harness` before committing. Final trunk status before branching Slice 149
+  was clean; **no docker compose config was run**; the Slice 60 trace stash remains parked and untouched.
+- **What this slice is:** a pure, deterministic, stdlib-only **baseline aggregator / diff harness** that scores a *real, locally
+  generated* guide by **reusing existing wired artifacts** — it is **not** a new evaluator stack. It reads the existing
+  exact-name artifact JSON from a caller-provided local job directory, extracts **closed scalar statuses/counts only**, compares
+  them against a committed **closed golden spec**, and emits a closed aggregate baseline record (plus an optional trend diff). It
+  reruns no checks, reads no PDFs/guides/`clean.md`/source/OCR/table/caption text, writes nothing to the repo, and calls no
+  provider/model/cloud/local LLM. Advisory and non-blocking.
+- **Reuse, do not rebuild (enforced):** math verification, guide-quality contract lint, the QA gate, source coverage, report v2,
+  and the rubric are **not** reimplemented. New logic is limited to the thin aggregator/diff plus two deferred new metrics.
+- **Existing wired artifacts reused (exact names):** `math_verification.json`, `guide_quality_contract_lint.json`,
+  `guide_quality_qa_gate.json`, `guide_quality_report_v2.json`, `source_coverage_report.json`, and
+  `guide_quality_rubric_score.json` (advisory/supporting only). **Required core:** contract lint + QA gate + math verification.
+- **Metric families (all present):** `reasoning_leak_status` (**headline, first-class** — from contract lint primary, QA gate
+  fallback; fail when leak count > 0), `numeric_math_status` (from `math_verification.json`; spec-relative numeric scoring
+  deferred to `needs_future_metric` while golden `known_numbers` is empty), `guide_quality_qa_gate_status`,
+  `source_coverage_status`, `structure_contract_status` (contract lint sections / report v2), `reference_relative_completeness_status`
+  (`needs_future_metric` — artifacts expose no safe concept/section labels to match without parsing guide text),
+  `figure_handling_status` (`needs_future_metric` — no safe figure-id-level signal), `artifact_existence_status`.
+- **`reasoning_leak_status` is the headline metric** and a first-class regression guard (reasoning-leak was an original real
+  failure mode); it is never buried under generic guide quality.
+- **Privacy / fixture policy (held):** source/reference PDFs and generated guide outputs stay **local and gitignored**; the only
+  committed artifact is the **golden spec** (closed facts/labels/expectations — not copied source text) plus, when run, **closed
+  aggregate metrics**. No private paths/filenames/raw artifact JSON/source/guide/OCR/table/caption text is committed. The
+  collector never returns or prints the artifact directory path.
+- **Local operator baseline now run (closed summary only).** The harness gained a safe **local mode**
+  (`validate_guide_quality_baseline_harness.py --golden-spec … --artifact-dir … --run-label …`) that reads only the exact-name
+  wired artifact JSONs from a caller-provided **local gitignored** job dir and prints a **closed aggregate summary only** — never
+  the dir path, never raw artifact JSON, never source/guide/OCR/table/caption text, snippets, formulas, filenames, or paths. It
+  exits nonzero only on a harness error (unreadable golden spec / missing `--artifact-dir`), never because a metric is honestly
+  `not_available` / `needs_future_metric` / `fail`. Synthetic self-test behavior is preserved when no `--artifact-dir` is passed.
+  - `local_operator_baseline_run = closed_summary_only`
+  - `baseline_status = failed` (worst-of across both runs; advisory/non-blocking — **not** a gate)
+  - `baseline_run_count = 2` · `baseline_run_labels: app_run_1, app_run_2`
+  - Source/reference material, generated guides, and the copied app job artifacts stay **local and gitignored** (under
+    `local_operator_baselines/`, ignored via `.git/info/exclude`) — **none committed**.
+  - **app_run_1 (closed metric statuses):** `reasoning_leak_status: fail` · `numeric_math_status: not_available` ·
+    `guide_quality_qa_gate_status: warning` · `source_coverage_status: warning` · `structure_contract_status: pass` ·
+    `reference_relative_completeness_status: needs_future_metric` · `figure_handling_status: needs_future_metric` ·
+    `artifact_existence_status: pass`.
+  - **app_run_2 (closed metric statuses):** `reasoning_leak_status: fail` · `numeric_math_status: not_available` ·
+    `guide_quality_qa_gate_status: warning` · `source_coverage_status: not_observed` · `structure_contract_status: pass` ·
+    `reference_relative_completeness_status: needs_future_metric` · `figure_handling_status: needs_future_metric` ·
+    `artifact_existence_status: pass`.
+  - **Honest gaps (not "covered"):** `reference_relative_completeness_status` and `figure_handling_status` both degrade to
+    `needs_future_metric` on the real runs — `metric_family_present=true`, `metric_value_measured=false`,
+    `gap_reason=existing_artifacts_do_not_expose_safe_labels_or_visual_counts`. `numeric_math_status=not_available` because the
+    real `math_verification.json` summary exposes no closed `total` counter to drive the metric.
+  - **known_numbers policy:** golden `known_numbers=[]` (no operator-confirmed closed numbers); `spec_relative_numeric_status =
+    needs_operator_known_numbers`. The `numeric_spec_relative_scoring_needs_future_metric` warning is recorded on both runs.
+  - `next_step = run_local_operator_baseline_or_style_audit_after_local_run` (the local baseline has now run, so Slice 150 is
+    unblocked per `local_operator_baseline_run = closed_summary_only`).
+- **Files changed:** `M docs/CURRENT_TASK.md`, `M docs/NEXT_CHAT_HANDOFF.md`, `M docs/DECISIONS.md`,
+  `?? pipeline/guide_quality_baseline.py`, `?? test_scripts/test_guide_quality_baseline.py`,
+  `?? test_scripts/validate_guide_quality_baseline_harness.py`,
+  `?? test_scripts/fixtures/guide_quality_baseline/nn_iris_local_golden_spec.json`,
+  `?? docs/GUIDE_QUALITY_BASELINE_HARNESS.md`. **Slice 149 remains NOT committed.** No `local_operator_baselines/` file is
+  tracked or committed.
+- **Validation (all green):** `test_guide_quality_baseline.py` (130 passed / 0 failed — now includes local-mode tests on
+  synthetic temp dirs only), `validate_guide_quality_baseline_harness.py` synthetic self-test (`baseline_harness_status=ok`,
+  exit 0) plus two real local-mode runs (`app_run_1`, `app_run_2`: `baseline_harness_status=ok`, exit 0, closed summary only),
+  `compileall api pipeline test_scripts` clean; existing producers unchanged and green (math verifier 74, contract lint 83, QA
+  gate 177, report v2 100, rubric 63); quality-safety adapter/calibration/floor harnesses re-run green; `git diff --check` clean;
+  no-leak sweep clean. Docker not required (no production/API/UI behavior changed); **no docker compose config run.**
+- **Out of scope / unchanged:** no LLM judge, no `quality_judge.py`/`nn3.json`/`judge_response_nn3.json`/`quality.jsonl`, no
+  prompt tuning, no repair, no rebuilding wired checks, no `api/server.py`/routes/frontend/Builder/Ask-Guide change, no
+  generation/provider/render/export/OCR/table/visual change, no `judge_ready`/`repair_ready`/`artifact_write_ready`/
+  `ui_display_ready` flip.
+- **Next recommended slice:** **Slice 150 — Style/Preset Output Audit using the baseline** (run the baseline locally across
+  style/generator presets and compare closed aggregate metrics; still advisory, still no committed private content).
+
+---
+
+## Slice 148 — **Judge Path Freeze / Calibration Decision Checkpoint (lean, docs-only)**, on `slice148-quality-safety-judge-path-freeze-checkpoint`. **Committed `74ddf76`, merged + pushed to `chrome-renderer-v1`.**
 
 - **Part 0 completed:** Slice 147 was committed as `effc9d9`, fast-forward merged to trunk `chrome-renderer-v1`
   (`1f01231..effc9d9`), and pushed with a normal `git push` (no force-push). Final trunk status before branching Slice 148 was

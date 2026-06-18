@@ -1,0 +1,43 @@
+{
+  "version": 1,
+  "kind": "guide_quality_baseline_golden_spec",
+  "fixture_id": "nn_iris_local_golden_spec",
+  "fixture_mode": "local_gitignored_source",
+  "source_material_committed": false,
+  "generated_guide_committed": false,
+  "provenance_status": "operator_local_only",
+  "required_concepts": [
+    "neural_network_forward_pass",
+    "activation_function",
+    "softmax_output",
+    "cross_entropy_loss",
+    "iris_classification_context"
+  ],
+  "key_facts": [
+    "forward_pass_uses_weights_bias_activation",
+    "softmax_outputs_probabilities",
+    "cross_entropy_penalizes_low_probability_true_class"
+  ],
+  "known_numbers": [],
+  "must_not_claim": [
+    "unsupported_exact_accuracy_claim",
+    "unsupported_training_dataset_size",
+    "unsupported_hidden_layer_count"
+  ],
+  "expected_sections": [
+    "concept_overview",
+    "worked_example",
+    "exam_practice",
+    "common_mistakes"
+  ],
+  "expected_figures_or_diagrams": [
+    {
+      "id": "nn_architecture_diagram",
+      "expected_status": "expected_or_explained_missing"
+    }
+  ],
+  "warnings": [
+    "source_material_local_gitignored",
+    "known_numbers_deferred_until_local_operator_spec"
+  ]
+}

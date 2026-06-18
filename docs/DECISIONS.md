@@ -6147,3 +6147,94 @@ That is **superseded**: do **not** commit source/reference PDFs for Slice 149.
 them would duplicate logic and risk drift. Reusing them — and committing only the
 golden spec plus closed aggregate metrics — gives a real, reproducible baseline
 without ever placing private content (or even a public PDF) in git.
+
+## Slice 149 implements the measured baseline as a reuse-only aggregator (2026-06-18)
+Slice 149 lands `pipeline/guide_quality_baseline.py` as a pure, deterministic,
+stdlib-only **aggregator / diff harness over existing wired artifacts** — *not* a
+new evaluator stack. The "reuse, do not rebuild" decision above is now enforced in
+code and tests.
+
+- **Reuse, do not rebuild (enforced).** The module reruns none of the wired
+  checks. It opens only the exact artifact names — `math_verification.json`,
+  `guide_quality_contract_lint.json`, `guide_quality_qa_gate.json`,
+  `guide_quality_report_v2.json`, `source_coverage_report.json`,
+  `guide_quality_rubric_score.json` (advisory) — from a caller-provided local job
+  directory and copies **only whitelisted integer counts / booleans / a small
+  closed set of status tokens**. It never preserves raw artifact bodies, `claims`
+  text, `source_name` filenames, `checks` instructions, paths, or free strings.
+  Required core artifacts: contract lint + QA gate + math verification.
+- **Metric families.** `reasoning_leak_status`, `numeric_math_status`,
+  `guide_quality_qa_gate_status`, `source_coverage_status`,
+  `structure_contract_status`, `reference_relative_completeness_status`,
+  `figure_handling_status`, `artifact_existence_status`.
+- **`reasoning_leak_status` is the headline, first-class metric** (reasoning-leak
+  was an original real failure mode). Source: `guide_quality_contract_lint.json`
+  primary (`reasoning_leak_count`), `guide_quality_qa_gate.json` fallback; it is a
+  hard `fail` when the leak count is > 0 and is never folded into a generic
+  guide-quality score.
+- **Honest deferral over fabrication.** `reference_relative_completeness_status`
+  and `figure_handling_status` resolve to `needs_future_metric` because the wired
+  artifacts expose no concept/section/figure labels that can be matched against
+  the golden spec **without parsing guide text** — which is forbidden. Likewise
+  spec-relative numeric scoring is deferred (`needs_future_metric` warning) while
+  golden `known_numbers` is empty; the numeric metric still reports the
+  artifact-derived status. Missing artifacts → closed `not_available` / `missing`;
+  malformed JSON → closed `malformed`. No subsystem is invented to fill a gap.
+- **Local gitignored fixture + committed golden spec policy (code-level).** The
+  only committed fixture is `test_scripts/fixtures/guide_quality_baseline/
+  nn_iris_local_golden_spec.json` — closed facts/labels/expectations only; the
+  golden-spec loader strips path-like / content-bearing strings. Source/reference
+  PDFs and generated guides stay local/gitignored. The collector accepts a
+  directory but **never returns, prints, or embeds that path** (or any filename
+  beyond the exact safe artifact names). Committed output is closed aggregate
+  metrics + trend snapshots only.
+- **`local_operator_baseline_run=closed_summary_only` (updated 2026-06-18).** The
+  harness was patched with a safe local mode and then **run against two real local
+  app job artifact directories** (`app_run_1`, `app_run_2`) copied into the
+  gitignored `local_operator_baselines/` tree. Both produced closed aggregate
+  summaries only (`baseline_harness_status=ok`, exit 0); aggregate
+  `baseline_status=failed` (advisory worst-of: `reasoning_leak_status=fail` on both
+  real runs). `reference_relative_completeness_status` and `figure_handling_status`
+  remained `needs_future_metric` (real gaps, not coverage); `numeric_math_status`
+  was `not_available` (real `math_verification.json` exposes no closed `total`
+  counter); `known_numbers` stayed `[]` →
+  `spec_relative_numeric_status=needs_operator_known_numbers`. See the next decision
+  entry for why the slice was not complete until this run happened.
+- **Still advisory / non-blocking.** No `judge_ready`/`repair_ready`/
+  `artifact_write_ready`/`ui_display_ready` flip; no LLM judge; no
+  `quality_judge.py`/`nn3.json`/`judge_response_nn3.json`/`quality.jsonl`; no
+  prompt tuning; no repair; no API/frontend/generation/provider/render/export/OCR
+  change.
+
+**Why:** building the baseline as a thin reuse-only aggregator gives a real,
+reproducible measurement loop with zero risk of drift from the tuned producers and
+zero risk of leaking private content — and deferring the two genuinely new metrics
+(rather than parsing guide text) keeps the privacy invariant intact while still
+recording exactly where future measurement work is needed.
+
+## A measured baseline slice is not complete until run on real local artifacts (2026-06-18)
+A measured-baseline slice (Slice 149) is **not complete on the synthetic harness
+alone**. Synthetic validation proves the *tool*, not the *product baseline*.
+
+- The slice required a **local operator run** of the harness over at least one real
+  local app job artifact directory, recording **closed aggregate metrics only**
+  (`local_operator_baseline_run=closed_summary_only`). This was satisfied by running
+  the new local mode against `app_run_1` and `app_run_2` under the gitignored
+  `local_operator_baselines/` tree.
+- **Local mode is closed-summary-only.** It reads only the exact-name wired artifact
+  JSONs from a caller-provided dir and prints closed status tokens + closed warning
+  labels — never the dir path, raw artifact JSON, source/guide/OCR/table/caption
+  text, snippets, formulas, filenames, or paths. It exits nonzero only on a harness
+  error, never on an honest `not_available`/`needs_future_metric`/`fail` metric.
+- **Slice 150 is blocked until `local_operator_baseline_run=closed_summary_only`**
+  (now satisfied). Slice 149 itself remains uncommitted pending operator approval.
+- **Local material stays uncommitted.** `local_operator_baselines/` (Claude guides,
+  app guides, copied app job artifacts, source/reference PDFs) is ignored via
+  `.git/info/exclude`; only the golden spec + closed aggregate metrics are
+  committable.
+
+**Why:** a green synthetic harness can still hide the fact that real artifacts do
+not expose the fields the metrics need (here: numeric `total`, concept/section/
+figure labels). Running on real artifacts surfaced those as honest gaps
+(`numeric_math_status=not_available`, two `needs_future_metric` families) instead of
+letting "all green synthetic" masquerade as a measured product baseline.
