@@ -9,7 +9,9 @@ app's output discipline and depth approach a human-authored reference guide.
 Product goal (distilled — no source evidence embedded)
 ------------------------------------------------------
 Comprehensive exam guides should: assume zero prior knowledge; never leak the
-model's own reasoning or uncertainty; never fabricate math; stay numerically
+model's own reasoning, uncertainty, prompt/user-intent analysis, planning notes,
+process narration, or meta-commentary (Slice 151 hardened the final-output
+hygiene clause after a measured reasoning leak); never fabricate math; stay numerically
 self-consistent; finish every worked example; show all arithmetic; build beginner
 intuition for hard mechanics; put high-yield reference data in labelled tables;
 include the required consolidation sections; and teach in a confident, exam-focused
@@ -83,6 +85,12 @@ _CORE_RULES: tuple[str, ...] = (
     "\"I think\", \"let's infer\", \"confusing\", \"unclear\", \"I'm not sure\", "
     "\"presumably\", or \"the slide is\". If a source is ambiguous, choose the most "
     "defensible reading and state it plainly.",
+    "Output only the finished study guide. The guide must contain only "
+    "student-facing study content — never internal reasoning, hidden analysis, "
+    "analysis of the prompt or instructions, commentary on what the prompt or user "
+    "is asking for, planning or drafting notes, process narration about what you "
+    "are about to do, or meta-commentary about the guide itself. Start directly "
+    "with the guide's content and include nothing that is not part of the guide.",
     "Never fabricate math. State a formula, derivative, or numeric result only if "
     "it is taken from the source or computed by you with the steps shown. If you "
     "are not certain of a closed form, describe the behaviour in words instead of "

@@ -6273,3 +6273,75 @@ run ahead of a measured `fail` would bury the first concrete quality regression 
 harness was built to catch. Triaging it first — and proving the true-leak vs
 false-positive split before touching any prompt or detector — keeps the fix narrow,
 evidence-based, and within the privacy invariant.
+
+## Measured reasoning-leak failures are fixed before style audit (2026-06-18)
+Slice 149's measured baseline failed on reasoning leak; Slice 150 confirmed one
+**true** leak (`app_run_2`, `internal_reasoning_phrase`) and one **detector false
+positive** (`app_run_1`, `detector_boundary_false_positive`). Slice 151 applies the
+**first narrow leak-prevention fix** rather than starting the planned style/preset
+audit — the measured true leak takes priority.
+
+- **Fix type `prompt_contract_hardening`, at the shared chokepoint.** The fix lives
+  in `pipeline/guide_quality_prompt_contract.py` `_CORE_RULES`, built by
+  `build_guide_quality_prompt_contract` and appended **last** in
+  `pipeline/run_llm_job.py` as the `## Guide Quality Contract` block. The core rules
+  are always included for **every** generation regardless of style/preset (including
+  custom styles) and read last, so the clause cannot be omitted or overridden. The
+  pre-existing rule #2 banned only hedge/uncertainty words; the new **final-output
+  hygiene** rule additionally bans the broader `internal_reasoning_phrase` category:
+  internal reasoning, hidden analysis, prompt/instruction analysis, user-intent
+  commentary, planning/drafting notes, process narration, and meta-commentary —
+  requiring the final guide to contain only student-facing study content. It does
+  **not** ask the model to reveal or summarise hidden reasoning.
+- **Narrow scope, nothing weakened.** No model/provider call, no repair, no judge,
+  no new/blocking gate, no request-schema/Builder/Ask/API/UI change, no
+  render/export/OCR/table/visual change. Reasoning-leak **detection** and the
+  baseline `count > 0 → fail` mapping are unchanged — the true leak is not
+  suppressed. The `app_run_1` detector false positive is **deferred**
+  (`contract_lint_false_positive_hardening`) as a Slice 152 candidate, not combined
+  here.
+- **Fix not claimed until measured.** `reasoning_leak_fix_local_regeneration_run=
+  not_run`, `fix_verification_status=pending_operator_regeneration`: the operator
+  must regenerate an app guide from the same local NN/Iris source and rerun the
+  Slice 149 local baseline against `app_run_3_reasoning_fix` before the fix can be
+  called effective. Committed records stay closed-vocabulary only.
+
+**Why:** a measured true leak is a real student-facing regression; the highest-
+leverage, lowest-risk first move is to harden the one shared, always-applied prompt
+chokepoint rather than tuning per-style text or building new machinery — and the fix
+must be proven by a fresh measured rerun, not asserted, so the baseline keeps its
+honesty.
+
+Style/preset audit remains deferred until the true leak is verified fixed or the
+next operator gate says otherwise.
+
+## Measured rerun verified the prompt fix; baseline is now blocked by the detector, not the leak (2026-06-18)
+The operator regenerated one app guide from the same local NN/Iris source on
+`slice151-first-measured-reasoning-leak-fix`; the exact-name artifacts were copied
+into ignored `app_run_3_reasoning_fix/` and the Slice 149 local baseline was rerun
+(`baseline_harness_status=ok`, closed-summary only). Result:
+`reasoning_leak_status=fail` — **but** the closed-record triage shows the genuine
+`internal_reasoning_phrase` that produced the `app_run_2` true leak is **absent**
+(boundary-aware true-reasoning-phrase hits = 0). The residual `reasoning_leak_count`
+is composed **only** of `detector_boundary_false_positive` hits — factual
+intensifiers (`"actually"`/`"presumably"`) the crude substring detector over-flags,
+the same secondary finding Slice 150 recorded on `app_run_1`.
+
+- **Verdict:** `fix_verification_status=blocked_by_contract_lint_false_positive`.
+  The `prompt_contract_hardening` **did remove the measured true leak**; it is **not**
+  claimed to flip the baseline green. The baseline cannot legitimately turn green
+  until the contract-lint reasoning-leak detector stops over-flagging intensifiers.
+- **Next:** `next_step=contract_lint_false_positive_hardening` — give the
+  reasoning-leak signatures word boundaries / context and reconsider the
+  `any count > 0 → hard fail` escalation, then re-baseline. Style/preset audit stays
+  deferred.
+- **Slice 151 remains uncommitted** pending the operator's commit-sequencing choice
+  (commit the verified prompt fix on its own, or land it together with the detector
+  hardening). Detection was **not** weakened and the old `app_run_1`/`app_run_2`
+  failures remain reproducible.
+
+**Why:** the regression guard did its job — it caught a real leak, the narrow prompt
+fix measurably removed it, and the remaining red is now a **known detector
+limitation**, not a student-facing leak. Recording that distinction honestly (true
+leak fixed, detector hardening owed) keeps the baseline trustworthy and prevents
+either over-claiming the fix or hiding the still-red metric.

@@ -113,6 +113,7 @@ def _scan_for_leak(node: Any, path: str = "") -> str | None:
 CORE_MARKERS = [
     "Resolve all ambiguity silently",
     "Never leak reasoning",
+    "Output only the finished study guide",
     "Never fabricate math",
     "Finish every worked example",
     "Show all arithmetic",
@@ -150,6 +151,41 @@ def test_core_rules_always_present() -> None:
     check("quick → warns core_only", CORE_ONLY in ctx["warnings"])
     # The contract must announce that it overrides weaker instructions.
     check("block asserts precedence", "take precedence" in block)
+
+
+def test_final_output_hygiene_clause() -> None:
+    # Slice 151: the first measured reasoning-leak fix. The shared, always-applied
+    # core contract must carry a final-output hygiene clause that bans not just
+    # hedge/uncertainty words (rule 2) but the broader internal_reasoning_phrase
+    # category: prompt/instruction analysis, user-intent commentary, planning or
+    # drafting notes, process narration, and meta-commentary. It must apply to
+    # every guide (including a minimal quick request) and appear exactly once so it
+    # cannot be silently omitted by a style/preset or duplicated.
+    HYGIENE_TERMS = [
+        "student-facing study content",
+        "internal reasoning",
+        "analysis of the prompt",
+        "what the prompt or user",
+        "planning or drafting notes",
+        "process narration",
+        "meta-commentary",
+    ]
+    for depth in ("quick", "balanced", "exhaustive"):
+        ctx = build_guide_quality_prompt_contract(output_depth=depth)
+        block = ctx["prompt_block"]
+        for term in HYGIENE_TERMS:
+            check(f"{depth}: hygiene clause has {term!r}", term in block)
+        # The anchor phrase must appear exactly once (no duplicated clause).
+        anchor = "Output only the finished study guide"
+        check(
+            f"{depth}: hygiene clause appears once",
+            block.count(anchor) == 1,
+            f"count={block.count(anchor)}",
+        )
+        # The clause must not ask the model to reveal/summarise its hidden reasoning.
+        lowered = block.lower()
+        for forbidden in ("reveal your reasoning", "summarize your reasoning", "explain your thinking"):
+            check(f"{depth}: clause never asks to expose reasoning ({forbidden})", forbidden not in lowered)
 
 
 def test_comprehensive_structure_for_exhaustive() -> None:
@@ -239,6 +275,7 @@ def test_no_leak_over_all_paths() -> None:
 
 def main() -> None:
     test_core_rules_always_present()
+    test_final_output_hygiene_clause()
     test_comprehensive_structure_for_exhaustive()
     test_preset_and_style_infer_comprehensive()
     test_explicit_comprehensive_overrides_inference()

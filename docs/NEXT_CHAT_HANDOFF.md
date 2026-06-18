@@ -6,47 +6,55 @@
 > stable overview see `PROJECT_CONTEXT.md`; canonical brief is `../CLAUDE.md`.
 
 ## Current position
-- **Working tree:** **Slice 150 (Reasoning Leak Baseline Failure Triage — closed-record only) — UNCOMMITTED** on branch
-  `slice150-reasoning-leak-baseline-failure-triage`, branched from updated `chrome-renderer-v1` after Slice 149 was committed,
-  fast-forward merged, and pushed. **Slice 149 is trunk commit `7e298b6`**.
-  - **Part 0 completed:** Slice 149 was committed as `7e298b6`, fast-forward merged to `chrome-renderer-v1`, and pushed with a
-    normal `git push` (no force-push; `74ddf76..7e298b6`). The measured failure (`baseline_status=failed`,
-    `reasoning_leak_status=fail` on both app runs) was committed as an honest baseline record, **not** hidden. Final trunk status
-    before branching Slice 150 was clean; **no docker compose config was run**; the Slice 60 trace stash remains parked and
-    untouched.
-  - **Slice 150 is a narrow closed-vocabulary triage, not a fix.** It triages the first measured baseline failure
-    (`reasoning_leak_status=fail` on `app_run_1`/`app_run_2`) into a closed root-cause record. No prompt tuning, no repair, no
-    generation change, no new gate, no rebuilt checks, no judge/provider/model/cloud/local-LLM call.
-  - **Baseline mapping verified correct (no code change).** The collector whitelists `reasoning_leak_count` from
-    `guide_quality_contract_lint.json` and maps `count > 0 → fail`; both local runs carry a real positive count (no matched text
-    stored), so the baseline correctly reports `fail`. **Not** a baseline interpretation bug. No baseline / contract-lint /
-    generation code was touched. `baseline_mapping_changed: false`.
-  - **Triage decision (closed record):**
-    - `app_run_1` → `triage_status=contract_lint_false_positive`, `leak_category=detector_boundary_false_positive`,
-      `fix_recommendation=contract_lint_hardening` (only factual-intensifier signatures `"actually "` / `"presumably"` fired —
-      the substring detector over-flags them as hedges).
-    - `app_run_2` → `triage_status=true_reasoning_leak_visible`, `leak_category=internal_reasoning_phrase`,
-      `fix_recommendation=prompt_contract_fix` (a genuine internal-reasoning phrase, matched with both-sided word boundaries;
-      PDF-extracted reproduced count validated within ±2 of the artifact `reasoning_leak_count`).
-    - `overall_decision=true_leak_confirmed` · `next_step=first_measured_reasoning_leak_fix`.
-  - **Operator-authorization boundary held.** A prompt-contract fix is proven warranted but **NOT applied** — generation prompts are
-    unchanged pending an explicit operator decision in a later slice. Secondary finding: the contract-lint detector + the
-    baseline `any count > 0 → hard fail` escalation over-flag clean intensifier prose → a future
-    `contract_lint_false_positive_hardening` candidate.
-  - **Local triage was closed-record only.** Inspected only local **gitignored** app artifacts/guides under
-    `local_operator_baselines/`; emitted closed category tokens only — no guide/source/OCR/table/caption text, no leaking phrase,
-    no count, no filename, no path, no raw artifact JSON committed or printed into docs. `local_operator_baselines/` stays ignored
-    via `.git/info/exclude`; nothing under it is tracked.
-  - **Validation (all green):** `test_guide_quality_baseline.py` (130 passed), `validate_guide_quality_baseline_harness.py`
-    synthetic self-test (`ok`, exit 0) plus the two reproducible local runs (`reasoning_leak_status=fail` unchanged),
-    `compileall api pipeline test_scripts` clean; `git diff --check` clean; no-leak sweep clean. Docker not required (no
-    production/API/UI change); no docker compose config run.
-  - **Files changed:** `M docs/CURRENT_TASK.md`, `M docs/NEXT_CHAT_HANDOFF.md`, `M docs/DECISIONS.md`. No code changed.
-    **Slice 150 remains NOT committed.**
-  - **Next expected slice:** **Slice 151 — First Measured Reasoning Leak Fix** (operator-authorized prompt-contract fix for the
-    `app_run_2` internal-reasoning leak; keep only if measured `reasoning_leak_status` improves), with a parallel
-    `contract_lint_false_positive_hardening` candidate. Style/preset audit stays deferred until the first measured failure is
-    handled.
+- **Working tree:** **Slice 151 (First Measured Reasoning Leak Fix — prompt-contract hardening) — UNCOMMITTED** on branch
+  `slice151-first-measured-reasoning-leak-fix`, branched from updated `chrome-renderer-v1` after Slice 150 was committed,
+  fast-forward merged, and pushed. **Slice 150 is trunk commit `d6f9f87`**.
+  - **Part 0 completed:** Slice 150 was committed as `d6f9f87`, fast-forward merged to `chrome-renderer-v1`, and pushed with a
+    normal `git push` (no force-push; `7e298b6..d6f9f87`). Final trunk status before branching Slice 151 was clean; **no docker
+    compose config was run**; the Slice 60 trace stash remains parked and untouched; `local_operator_baselines/` stayed
+    ignored/uncommitted.
+  - **Slice 151 is the first narrow measured reasoning-leak fix.** Fix type **`prompt_contract_hardening`**. The shared
+    chokepoint is `pipeline/guide_quality_prompt_contract.py` `_CORE_RULES` (always applied to **every** generation regardless
+    of style/preset, appended **last** in `pipeline/run_llm_job.py` as `## Guide Quality Contract`). One concise **final-output
+    hygiene** core rule was added that bans the broader `internal_reasoning_phrase` category — internal reasoning, hidden
+    analysis, prompt/instruction analysis, commentary on what the prompt/user is asking for, planning/drafting notes, process
+    narration, and meta-commentary — requiring only student-facing study content. It does **not** ask the model to reveal or
+    summarise hidden reasoning. No model call, no provider/render/export/OCR/table/visual/request-schema/Builder/Ask/API/UI
+    change, no new gate, no blocking behaviour, no judge/repair, detection unchanged.
+  - **Targeting:** `true_leak_target=app_run_2_internal_reasoning_phrase` · `app_run_1_false_positive_hardening=deferred`
+    (Slice 152 candidate; contract-lint detection untouched) · `generation_prompt_changed=true` · `provider_calls=false` ·
+    `judge_calls=false` · `repair_calls=false`.
+  - **Fix verification (honest) — MEASURED:** `reasoning_leak_fix_local_regeneration_run=closed_summary_only`,
+    `fix_verification_status=blocked_by_contract_lint_false_positive`. The operator regenerated one app guide from the same local
+    NN/Iris source on this branch; exact-name artifacts went into ignored `app_run_3_reasoning_fix/` and the Slice 149 harness
+    was rerun. `app_run_3` closed statuses: `reasoning_leak_status=fail`, `numeric_math_status=not_available`,
+    `guide_quality_qa_gate_status=warning`, `source_coverage_status=not_observed`, `structure_contract_status=warning`,
+    `reference_relative_completeness_status=needs_future_metric`, `figure_handling_status=needs_future_metric`,
+    `artifact_existence_status=pass`. **Closed-record triage:** the genuine `internal_reasoning_phrase` (the `app_run_2` true
+    leak) is **absent** in `app_run_3` (boundary-aware true-reasoning-phrase hits = 0); the residual `reasoning_leak_count>0` is
+    `detector_boundary_false_positive` only (factual intensifiers `"actually"`/`"presumably"`, same over-flag Slice 150 found on
+    `app_run_1`). So the prompt-contract hardening **removed the measured true leak**, but the baseline stays red because the
+    detector over-flags intensifiers. **Slice 151 is commit-ready as a verified true-leak fix, but the baseline will not turn
+    green until the detector is hardened — left to the operator's commit-sequencing decision; not committed.**
+    `next_step=contract_lint_false_positive_hardening`.
+  - **Validation (all green):** prompt contract (110), baseline tests (130), baseline harness synthetic self-test (`ok`) + three
+    reproducible local runs (`app_run_1`/`app_run_2`/`app_run_3_reasoning_fix`, all `baseline_harness_status=ok`,
+    `reasoning_leak_status=fail` — `app_run_3`'s `fail` is intensifier false-positive only), `compileall api pipeline
+    test_scripts` clean; `git diff --check` clean; no-leak sweep clean. Docker not required; no docker compose config run.
+  - **Files changed:** `M docs/CURRENT_TASK.md`, `M docs/NEXT_CHAT_HANDOFF.md`, `M docs/DECISIONS.md`,
+    `M pipeline/guide_quality_prompt_contract.py`, `M test_scripts/test_guide_quality_prompt_contract.py`.
+    **Slice 151 remains NOT committed.**
+  - **Next expected slice:** `contract_lint_false_positive_hardening` — the measured regeneration verified the prompt fix
+    removed the true leak, so the remaining work is to stop the contract-lint detector from over-flagging factual intensifiers
+    (word-boundary/context-aware signatures; revisit the `any count > 0 → hard fail` escalation) so the baseline can legitimately
+    turn green. Style/preset audit stays deferred.
+
+### Previously (Slice 150, now trunk `d6f9f87`)
+- **Slice 150 (Reasoning Leak Baseline Failure Triage — closed-record only)** triaged the Slice 149 measured failure into a
+  closed record (no code change): `app_run_1` → `contract_lint_false_positive` / `detector_boundary_false_positive`; `app_run_2`
+  → `true_reasoning_leak_visible` / `internal_reasoning_phrase`; `overall_decision=true_leak_confirmed`;
+  `next_step=first_measured_reasoning_leak_fix`. Baseline mapping confirmed correct (`count > 0 → fail`); generation prompts left
+  unchanged pending an operator decision (now actioned in Slice 151).
 
 ### Previously (Slice 149, now trunk `7e298b6`)
 - **Slice 149 (Measured Guide Quality Baseline Harness — reuse existing wired artifacts)** landed
