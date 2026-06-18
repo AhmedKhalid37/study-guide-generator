@@ -6742,3 +6742,30 @@ candidate values, producing false numeric failures for natural guide text. Span-
 false contradictions while preserving real mismatch/contradiction detection, the counts-only record,
 the frozen judge (`judge_ready=false`, `repair_ready=false`), and the recompute-first numeric strategy
 (this remains closed golden expectations, not a manual operator `known_numbers` runtime).
+
+## Phase 0 `overall_10` is Layer-1 deterministic-only and separate from `shippable` (Slice 162)
+Phase 0 `overall_10` is currently **Layer-1 deterministic-only** and is kept a **separate field** from
+`shippable`. `compute_phase0_overall_10(...)` starts at `10.0` and subtracts bounded, closed penalties
+for the deterministic detectors (clamped to `[0.0, 10.0]`, one decimal); the envelope always carries
+`overall_score_kind=layer1_deterministic_only` and `layer2_judge_included=false`. It does **not** claim
+full premium/local 9.5/9.0 product-quality scoring until the dev-time **reference-anchored Layer-2
+judge** is added (that judge stays separate from the frozen production offline judge and is **not**
+executed in this slice). `shippable` reflects only the Layer-1 blocking gates; the advisory
+mock-question shortfall reduces the score but never sets `shippable=false` on its own.
+
+Phase 0 regression records (`build_phase0_regression_record(...)`, kind `phase0_eval_regression_record`)
+are **closed/safe summaries only** — lecture/source/tier/run labels, `overall_10`, `shippable`,
+blocking-check ids, per-check statuses, regression status/delta, and closed warnings. They **never**
+contain candidate/source/guide/OCR/table/caption text, snippets, paths, filenames, hashes, byte counts,
+or provider payloads. The append-only JSONL writer takes a **caller-supplied directory only** (no
+default into `jobs/` or `local_operator_baselines/`), reads no private file, and **rejects** any record
+that is not a `phase0_eval_regression_record` or that carries a forbidden field or secret-ish token.
+`compare_phase0_regression(...)` flags a regression on a `>0.3` `overall_10` drop versus a previous green
+run on the same lecture/model, or on any previously passing blocking check that now fails.
+
+**Why:** the deterministic envelope gives Phase 0 a stable, committable score/record shape now, while
+the explicit `overall_score_kind`/`layer2_judge_included=false` labels prevent it from being mistaken for
+the final product-quality score before the reference-anchored judge exists. Closed records keep the
+regression history safe to persist/commit without leaking any private guide/source material, and the
+frozen production offline judge (`judge_ready=false`, `repair_ready=false`, unoverrideable) plus the
+recompute-first numeric strategy are preserved.

@@ -11,8 +11,10 @@ pure records to an output path after the schema is validated.
 """
 from __future__ import annotations
 
+import json
 import math
 import re
+from pathlib import Path
 from typing import Any
 
 VERSION = 1
@@ -102,6 +104,77 @@ REGRESSION_RECORD_STATUSES = frozenset({"shape_only", "not_persisted"})
 # frozen by construction (judge_ready/repair_ready never true here).
 PHASE0_LAYER1_KIND = "quality_safety_phase0_layer1_score"
 PHASE0_COVERAGE_THRESHOLD = 0.90
+
+# Phase 0 overall score + regression record (Slice 162). ``overall_10`` here is a
+# bounded, deterministic Layer-1-only envelope: it starts at 10.0 and subtracts
+# closed penalties for the deterministic detectors. It is explicitly NOT the
+# final premium/local 9.5/9.0 product-quality score -- that belongs to the later,
+# separate dev-time reference-anchored Layer-2 judge -- so the envelope always
+# carries overall_score_kind=layer1_deterministic_only and layer2_judge_included=
+# False. The frozen production offline judge stays frozen by construction here:
+# judge_ready/repair_ready are never True and cannot be overridden. Regression
+# records are closed summaries (lecture id, source quality, tier, counts/statuses
+# and bounded numerics) only; they never carry candidate/source/guide/OCR text,
+# snippets, paths, filenames, hashes, byte counts, or provider payloads.
+PHASE0_OVERALL_SCORE_KIND = "layer1_deterministic_only"
+PHASE0_REGRESSION_RECORD_KIND = "phase0_eval_regression_record"
+PHASE0_MODEL_TIERS = frozenset({"premium", "local", "unknown"})
+PHASE0_BLOCKING_CHECK_IDS = frozenset(
+    {"leaked_reasoning", "numeric_correctness", "worked_answer_completeness", "coverage"}
+)
+PHASE0_REGRESSION_STATUSES = frozenset(
+    {"record_only", "not_compared", "regressed", "green", "not_comparable"}
+)
+# Bounded Layer-1 penalties subtracted from a 10.0 start; the total is clamped to
+# [0.0, 10.0]. Blocking detectors carry large penalties; the advisory
+# mock-question shortfall carries a small one and never sets shippable=False on
+# its own. Coverage shortfall is scaled by how far below the threshold it falls.
+PHASE0_PENALTY_LEAKED_REASONING = 6.0
+PHASE0_PENALTY_NUMERIC = 6.0
+PHASE0_PENALTY_WORKED = 4.0
+PHASE0_PENALTY_COVERAGE_MAX = 4.0
+PHASE0_PENALTY_MOCK = 0.5
+# A drop of more than this versus a previous green run on the same lecture/model
+# counts as a regression (per the master roadmap).
+PHASE0_REGRESSION_DROP_THRESHOLD = 0.3
+PHASE0_COMPARE_WARNINGS = (
+    "lecture_mismatch",
+    "model_tier_mismatch",
+    "previous_overall_missing",
+    "current_overall_missing",
+)
+# Field names that must never appear in a Phase 0 regression record. The JSONL
+# writer rejects any record carrying one of these, so no raw candidate/source/
+# guide/OCR/table/caption text, snippet, path, filename, hash, byte count, or
+# provider payload/prompt/response can be persisted.
+PHASE0_FORBIDDEN_RECORD_KEYS = frozenset(
+    {
+        "candidate_text",
+        "candidate",
+        "snippet",
+        "snippets",
+        "text",
+        "source_text",
+        "guide_text",
+        "ocr_text",
+        "table_text",
+        "caption",
+        "captions",
+        "filename",
+        "path",
+        "sha256",
+        "hash",
+        "bytes",
+        "byte_count",
+        "prompt",
+        "response",
+        "payload",
+        "raw_json",
+        "evidence",
+        "quote",
+        "quotes",
+    }
+)
 
 
 class GoldenPairSpecError(ValueError):
@@ -645,6 +718,335 @@ def _phase0_mock_check(mock: dict[str, Any]) -> dict[str, Any]:
         "count": count,
         "min_required": minimum,
     }
+
+
+def compute_phase0_overall_10(layer1_record: Any) -> dict[str, Any]:
+    """Compute the bounded, deterministic Phase 0 Layer-1 overall envelope.
+
+    Takes a record produced by :func:`score_phase0_layer1` and returns a closed,
+    JSON-serializable envelope that holds a separate ``overall_10`` and
+    ``shippable``. ``overall_10`` starts at 10.0 and subtracts bounded penalties
+    for the deterministic detectors, clamped to ``[0.0, 10.0]`` and rounded to one
+    decimal. It is Layer-1 deterministic-only and does NOT include any Layer-2
+    judge score: the envelope always reports
+    ``overall_score_kind=layer1_deterministic_only`` and
+    ``layer2_judge_included=False``. ``shippable`` mirrors the Layer-1 blocking
+    gates only; the advisory mock-question shortfall reduces ``overall_10`` but
+    never sets ``shippable=False`` on its own. The frozen production offline judge
+    stays frozen: ``judge_ready`` and ``repair_ready`` are always ``False`` here
+    and cannot be overridden. No file, provider, model, or judge is touched.
+    """
+    checks = _phase0_checks_by_id(layer1_record)
+    blocking_checks = _safe_blocking_failures(
+        layer1_record.get("blocking_checks") if isinstance(layer1_record, dict) else None
+    )
+
+    score = 10.0
+    penalties: dict[str, float] = {}
+
+    if _phase0_check_failed(checks, "leaked_reasoning"):
+        penalties["leaked_reasoning"] = PHASE0_PENALTY_LEAKED_REASONING
+    if _phase0_check_failed(checks, "numeric_correctness"):
+        penalties["numeric_correctness"] = PHASE0_PENALTY_NUMERIC
+    if _phase0_check_failed(checks, "worked_answer_completeness"):
+        penalties["worked_answer_completeness"] = PHASE0_PENALTY_WORKED
+
+    coverage = checks.get("coverage")
+    if isinstance(coverage, dict) and coverage.get("status") == "failed":
+        ratio = coverage.get("coverage_ratio")
+        threshold = coverage.get("threshold")
+        shortfall = 1.0
+        if (
+            isinstance(ratio, (int, float))
+            and not isinstance(ratio, bool)
+            and isinstance(threshold, (int, float))
+            and not isinstance(threshold, bool)
+            and threshold > 0
+        ):
+            shortfall = max(0.0, min(1.0, (threshold - ratio) / threshold))
+        penalties["coverage"] = round(PHASE0_PENALTY_COVERAGE_MAX * shortfall, 4)
+
+    mock = checks.get("mock_question_count")
+    if isinstance(mock, dict) and mock.get("status") == "warning":
+        penalties["mock_question_count"] = PHASE0_PENALTY_MOCK
+
+    score -= sum(penalties.values())
+    overall_10 = max(0.0, min(10.0, round(score, 1)))
+
+    return {
+        "kind": "quality_safety_phase0_overall",
+        "overall_10": overall_10,
+        "overall_score_kind": PHASE0_OVERALL_SCORE_KIND,
+        "layer2_judge_included": False,
+        "shippable": not blocking_checks,
+        "blocking_checks": blocking_checks,
+        "penalties": {key: penalties[key] for key in sorted(penalties)},
+        "judge_ready": False,
+        "repair_ready": False,
+    }
+
+
+def build_phase0_regression_record(
+    layer1_record: Any,
+    *,
+    run_id: Any,
+    model_tier: Any,
+    candidate_id: Any = None,
+    previous_overall_10: Any = None,
+) -> dict[str, Any]:
+    """Build a closed, append-safe Phase 0 regression record.
+
+    Summarizes one Layer-1 scoring run into a record that is safe to persist or
+    commit: it holds only the lecture id, source quality, run/model labels, the
+    deterministic ``overall_10`` and ``shippable``, blocking-check ids, per-check
+    statuses, and bounded numerics. It never carries candidate/source/guide/OCR/
+    table/caption text, snippets, paths, filenames, hashes, byte counts, or
+    provider payloads. ``overall_10`` is Layer-1 deterministic-only
+    (``layer2_judge_included=False``) and the frozen production offline judge stays
+    frozen (``judge_ready``/``repair_ready`` always ``False``). When a previous
+    ``overall_10`` is supplied the numeric delta is recorded, but the authoritative
+    regression verdict is produced separately by :func:`compare_phase0_regression`.
+    """
+    envelope = compute_phase0_overall_10(layer1_record)
+    overall_10 = envelope["overall_10"]
+    record = layer1_record if isinstance(layer1_record, dict) else {}
+
+    previous = _safe_score(previous_overall_10)
+    if previous is None:
+        regression_status = "record_only"
+        delta_overall_10: float | None = None
+    else:
+        regression_status = "not_compared"
+        delta_overall_10 = (
+            round(overall_10 - previous, 4) if overall_10 is not None else None
+        )
+
+    reference_status = record.get("reference_anchored_judge_status")
+    if reference_status not in REFERENCE_JUDGE_STATUSES:
+        reference_status = "not_run"
+
+    return {
+        "version": VERSION,
+        "kind": PHASE0_REGRESSION_RECORD_KIND,
+        "lecture_id": _safe_phase0_lecture_id(record.get("lecture_id")),
+        "source_quality": _safe_phase0_source_quality(record.get("source_quality")),
+        "run_id": _safe_meta(run_id, "synthetic_run"),
+        "model_tier": _safe_model_tier(model_tier),
+        "candidate_id": _safe_candidate_id(candidate_id),
+        "overall_10": overall_10,
+        "overall_score_kind": PHASE0_OVERALL_SCORE_KIND,
+        "layer2_judge_included": False,
+        "shippable": envelope["shippable"],
+        "blocking_checks": envelope["blocking_checks"],
+        "layer1_status": _safe_layer1_status(record.get("layer1_status")),
+        "check_statuses": _phase0_check_statuses(record),
+        "judge_ready": False,
+        "repair_ready": False,
+        "reference_anchored_judge_status": reference_status,
+        "regression_status": regression_status,
+        "previous_overall_10": previous,
+        "delta_overall_10": delta_overall_10,
+        "warnings": _safe_string_list(record.get("warnings")),
+    }
+
+
+def append_phase0_regression_record_jsonl(path: Path, record: dict[str, Any]) -> None:
+    """Append one Phase 0 regression record as a compact JSON line.
+
+    Append-only; never reads a private file. The parent directory must be
+    supplied by the caller (there is no default path into ``jobs/`` or
+    ``local_operator_baselines/``). The record must be a
+    ``phase0_eval_regression_record`` and is rejected if it carries any forbidden
+    field (raw text, snippet, path, filename, hash, byte count, payload) or any
+    secret-ish token, so no private material can ever be persisted.
+    """
+    _assert_phase0_regression_record_safe(record)
+    line = json.dumps(record, sort_keys=True, separators=(",", ":"))
+    with Path(path).open("a", encoding="utf-8") as handle:
+        handle.write(line + "\n")
+
+
+def compare_phase0_regression(
+    current_record: Any, previous_record: Any
+) -> dict[str, Any]:
+    """Compare two Phase 0 regression records and return a closed verdict.
+
+    Per the master roadmap, a run regresses if its ``overall_10`` drops by more
+    than ``PHASE0_REGRESSION_DROP_THRESHOLD`` versus a previous green run on the
+    same lecture/model, or if any previously passing blocking check now fails.
+    Returns closed tokens/numerics only; never reads a file or any private
+    material. When the records are not comparable (missing, lecture/model
+    mismatch, or a missing ``overall_10``) the status is ``not_comparable``.
+    """
+    warnings: set[str] = set()
+    current = current_record if isinstance(current_record, dict) else {}
+    previous = previous_record if isinstance(previous_record, dict) else {}
+
+    if not current or not previous:
+        return _phase0_not_comparable(warnings)
+
+    if current.get("lecture_id") != previous.get("lecture_id"):
+        warnings.add("lecture_mismatch")
+    if current.get("model_tier") != previous.get("model_tier"):
+        warnings.add("model_tier_mismatch")
+
+    current_score = _safe_score(current.get("overall_10"))
+    previous_score = _safe_score(previous.get("overall_10"))
+    if current_score is None:
+        warnings.add("current_overall_missing")
+    if previous_score is None:
+        warnings.add("previous_overall_missing")
+
+    if (
+        warnings & {"lecture_mismatch", "model_tier_mismatch"}
+        or current_score is None
+        or previous_score is None
+    ):
+        return _phase0_not_comparable(warnings)
+
+    overall_delta = round(current_score - previous_score, 4)
+    blocking_regression_count = _phase0_blocking_regression_count(current, previous)
+
+    if overall_delta < -PHASE0_REGRESSION_DROP_THRESHOLD or blocking_regression_count:
+        status = "regressed"
+    else:
+        status = "green"
+
+    return {
+        "kind": "quality_safety_phase0_regression_compare",
+        "regression_status": status,
+        "overall_delta": overall_delta,
+        "blocking_regression_count": blocking_regression_count,
+        "warnings": _ordered(warnings, PHASE0_COMPARE_WARNINGS),
+    }
+
+
+def _phase0_not_comparable(warnings: set[str]) -> dict[str, Any]:
+    return {
+        "kind": "quality_safety_phase0_regression_compare",
+        "regression_status": "not_comparable",
+        "overall_delta": None,
+        "blocking_regression_count": 0,
+        "warnings": _ordered(warnings, PHASE0_COMPARE_WARNINGS),
+    }
+
+
+def _phase0_blocking_regression_count(
+    current: dict[str, Any], previous: dict[str, Any]
+) -> int:
+    current_statuses = _safe_check_statuses(current.get("check_statuses"))
+    previous_statuses = _safe_check_statuses(previous.get("check_statuses"))
+    count = 0
+    for check_id in PHASE0_BLOCKING_CHECK_IDS:
+        if (
+            previous_statuses.get(check_id) == "passed"
+            and current_statuses.get(check_id) == "failed"
+        ):
+            count += 1
+    return count
+
+
+def _phase0_checks_by_id(layer1_record: Any) -> dict[str, dict[str, Any]]:
+    if not isinstance(layer1_record, dict):
+        return {}
+    checks = layer1_record.get("checks")
+    if not isinstance(checks, list):
+        return {}
+    out: dict[str, dict[str, Any]] = {}
+    for item in checks:
+        if isinstance(item, dict) and item.get("id") in CHECK_IDS:
+            out[str(item["id"])] = item
+    return out
+
+
+def _phase0_check_failed(checks: dict[str, dict[str, Any]], check_id: str) -> bool:
+    check = checks.get(check_id)
+    return isinstance(check, dict) and check.get("status") == "failed"
+
+
+def _phase0_check_statuses(layer1_record: dict[str, Any]) -> dict[str, str]:
+    checks = _phase0_checks_by_id(layer1_record)
+    statuses: dict[str, str] = {}
+    for check_id in CHECK_IDS:
+        check = checks.get(check_id)
+        status = check.get("status") if isinstance(check, dict) else None
+        if status in CHECK_STATUSES:
+            statuses[check_id] = str(status)
+    return statuses
+
+
+def _safe_check_statuses(value: Any) -> dict[str, str]:
+    if not isinstance(value, dict):
+        return {}
+    out: dict[str, str] = {}
+    for key, status in value.items():
+        if key in CHECK_IDS and status in CHECK_STATUSES:
+            out[str(key)] = str(status)
+    return out
+
+
+def _safe_layer1_status(value: Any) -> str:
+    return str(value) if value in REPORT_STATUSES else "unknown"
+
+
+def _safe_model_tier(value: Any) -> str:
+    if isinstance(value, str) and value in PHASE0_MODEL_TIERS:
+        return value
+    return "unknown"
+
+
+def _safe_candidate_id(value: Any) -> str | None:
+    if value is None:
+        return None
+    if not isinstance(value, str):
+        return None
+    stripped = value.strip()
+    if not stripped or len(stripped) > 80 or _SECRETISH_RE.search(stripped):
+        return None
+    if not re.fullmatch(r"[A-Za-z0-9_.:-]+", stripped):
+        return None
+    return stripped
+
+
+def _safe_phase0_lecture_id(value: Any) -> str:
+    if value in REQUIRED_GOLDEN_PAIR_IDS:
+        return str(value)
+    return "unknown"
+
+
+def _safe_phase0_source_quality(value: Any) -> str:
+    if isinstance(value, str) and value in SOURCE_QUALITIES:
+        return value
+    return "unknown"
+
+
+def _assert_phase0_regression_record_safe(record: Any) -> None:
+    if not isinstance(record, dict):
+        raise ValueError("phase0 regression record must be a mapping")
+    if record.get("kind") != PHASE0_REGRESSION_RECORD_KIND:
+        raise ValueError("not a phase0 regression record")
+    forbidden = _collect_forbidden_keys(record)
+    if forbidden:
+        raise ValueError(f"forbidden record fields: {sorted(forbidden)}")
+    try:
+        blob = json.dumps(record, sort_keys=True)
+    except (TypeError, ValueError) as exc:
+        raise ValueError("phase0 regression record is not JSON-serializable") from exc
+    if _SECRETISH_RE.search(blob):
+        raise ValueError("phase0 regression record contains forbidden tokens")
+
+
+def _collect_forbidden_keys(node: Any) -> set[str]:
+    found: set[str] = set()
+    if isinstance(node, dict):
+        for key, value in node.items():
+            if isinstance(key, str) and key.lower() in PHASE0_FORBIDDEN_RECORD_KEYS:
+                found.add(key.lower())
+            found |= _collect_forbidden_keys(value)
+    elif isinstance(node, (list, tuple)):
+        for item in node:
+            found |= _collect_forbidden_keys(item)
+    return found
 
 
 def _require_safe_label(value: Any, field: str) -> str:

@@ -5,7 +5,62 @@
 
 ---
 
-## Slice 161 — **Phase 0 Layer-1 deterministic scorer on the real golden pair**, on `slice161-phase0-layer1-deterministic-scorer`. **NOT COMMITTED.**
+## Slice 162 — **Phase 0 overall score + regression record shape/persistence**, on `slice162-phase0-overall-score-regression-record`. **NOT COMMITTED.**
+
+- **Part 0 completed:** Slice 161 was committed as `e76173f` ("Slice 161: Add Phase 0 Layer-1 deterministic scorer"),
+  fast-forward merged to trunk `chrome-renderer-v1` (`4e652bd..e76173f`), and pushed with a normal `git push` (no
+  force-push). Final trunk status was clean; **no docker compose config was run**; **Docker was not run**; the Slice 60
+  trace stash remains parked and untouched; `local_operator_baselines/` stayed ignored/uncommitted; no private material
+  was committed. The Phase 0 Layer-1 deterministic scorer is now committed; numeric label-internal parameters stay
+  ignored while genuine wrong answers still fail; the production offline judge remains frozen
+  (`judge_ready=false`, `repair_ready=false`).
+- **phase=Phase 0 — Eval harness + fact-sheet skeleton** (active; phase order unchanged).
+- **slice=162**
+- **phase0_overall_10_present=true** — `compute_phase0_overall_10(layer1_record)` in
+  `pipeline/quality_safety_eval_harness.py`. Pure/deterministic. Takes a `score_phase0_layer1` record and returns a
+  closed envelope with a **separate** `overall_10` and `shippable`. `overall_10` starts at `10.0` and subtracts bounded
+  closed penalties (leaked_reasoning/numeric/worked_answer large; coverage scaled by shortfall; mock-question small),
+  clamped to `[0.0, 10.0]` and rounded to one decimal.
+- **overall_score_kind=layer1_deterministic_only** — the envelope always reports
+  `overall_score_kind=layer1_deterministic_only` and **layer2_judge_included=false**; this `overall_10` is **not** the
+  final premium/local 9.5/9.0 product-quality score (that belongs to the later, separate dev-time reference-anchored
+  Layer-2 judge). `shippable` mirrors **only** the Layer-1 blocking gates; the advisory mock-question shortfall reduces
+  `overall_10` but never sets `shippable=false` on its own. `judge_ready`/`repair_ready` are always `false` here and
+  **unoverrideable** (verified against a tampered input record).
+- **phase0_regression_record_shape_present=true** — `build_phase0_regression_record(layer1_record, *, run_id,
+  model_tier, candidate_id=None, previous_overall_10=None)` returns a closed `phase0_eval_regression_record`: version,
+  kind, `lecture_id` (closed to `nn3`/`ensemble`/`unknown`), `source_quality`, sanitized `run_id`/`model_tier`
+  (`premium`/`local`/`unknown`)/optional safe `candidate_id`, `overall_10`, `overall_score_kind`,
+  `layer2_judge_included=false`, `shippable`, `blocking_checks`, `layer1_status`, per-check `check_statuses`,
+  `judge_ready=false`/`repair_ready=false`, `reference_anchored_judge_status`, `regression_status`,
+  optional `previous_overall_10`/`delta_overall_10`, closed `warnings`. **No** candidate/source/guide/OCR/table/caption
+  text, snippet, path, filename, hash, byte count, or provider payload — verified by a forbidden-key sweep and the
+  hostile-canary sweep.
+- **phase0_regression_jsonl_writer_present=true** — `append_phase0_regression_record_jsonl(path, record)` appends one
+  compact JSON line; append-only; **caller-supplied parent dir only** (no default into `jobs/` or
+  `local_operator_baselines/`); reads no private file. It **rejects** any record that is not a
+  `phase0_eval_regression_record` or that carries a forbidden field or secret-ish token. Tested in a temp dir only
+  (exactly one line per call; forbidden field + wrong kind rejected).
+- **regression comparison** — `compare_phase0_regression(current_record, previous_record)` returns a closed verdict
+  (`regression_status=green|regressed|not_comparable`, `overall_delta`, `blocking_regression_count`, closed
+  `warnings`). Per the roadmap: **regress** if `overall_10` drops by more than `0.3` vs a previous green run on the same
+  lecture/model, or if any previously passing blocking check now fails. Lecture/model-tier mismatch or a missing
+  `overall_10` ⇒ `not_comparable`.
+- **golden_pair_ids=nn3,ensemble** — unchanged real Phase 0 pair; a record for any other lecture id degrades its
+  `lecture_id` to the closed `unknown` token rather than carrying it (verified).
+- **production_offline_judge_frozen=true**, **judge_ready=false**, **repair_ready=false**,
+  **dev_time_reference_anchored_eval_status=not_built_yet** (the dev-time reference-anchored Layer-2 judge stays
+  separate and is **not executed** in this slice), **numeric_strategy=recompute_first_not_manual_known_numbers**.
+  No frontend/API/production-job changes; no repair; reasoning-leak detection reused and **not weakened**.
+- **Validation (host):** `compileall api pipeline test_scripts` clean;
+  `test_quality_safety_eval_harness.py` **199/0** (was 151/0); `test_quality_safety_recompute_verifier.py` 99/0;
+  `test_quality_safety_unified_qa.py` 73/0; `test_guide_quality_baseline.py` 207/0;
+  `validate_guide_quality_baseline_harness.py` ok; `git diff --check` clean. **Docker not run.**
+- **next_step=phase0_reference_anchored_judge_skeleton_or_fact_sheet_schema_integration.** **Slice 162 is NOT committed.**
+
+---
+
+## Slice 161 — **Phase 0 Layer-1 deterministic scorer on the real golden pair**, on `slice161-phase0-layer1-deterministic-scorer`. **COMMITTED `e76173f`.**
 
 - **Part 0 completed:** Slice 160 was committed as `4e652bd` ("Slice 160: Add Phase 0 golden pair eval skeleton"),
   fast-forward merged to trunk `chrome-renderer-v1` (`da795a8..4e652bd`), and pushed with a normal `git push` (no

@@ -6,14 +6,30 @@
 > stable overview see `PROJECT_CONTEXT.md`; canonical brief is `../CLAUDE.md`.
 
 ## Current position
-- **Working tree:** **Slice 161 (Phase 0 Layer-1 deterministic scorer on the real golden pair) — UNCOMMITTED**
-  on branch `slice161-phase0-layer1-deterministic-scorer`, branched from updated `chrome-renderer-v1` after Slice 160
-  was committed, fast-forward merged, and pushed. **Slice 160 is trunk commit `4e652bd`**; Slice 159 is `da795a8`.
-  - **Part 0 completed:** Slice 160 ("Add Phase 0 golden pair eval skeleton") was committed as `4e652bd`, fast-forward
-    merged to `chrome-renderer-v1` (`da795a8..4e652bd`), and pushed with a normal `git push` (no force-push).
-    The Phase 0 golden-pair specs (`nn3`, `ensemble`) are now **committed**. Final trunk status was clean; **no docker
-    compose config was run**; **Docker was not run**; the Slice 60 trace stash remains parked and untouched;
-    `local_operator_baselines/` stayed ignored/uncommitted; no private material was committed.
+- **Working tree:** **Slice 162 (Phase 0 overall score + regression record shape/persistence) — UNCOMMITTED**
+  on branch `slice162-phase0-overall-score-regression-record`, branched from updated `chrome-renderer-v1` after Slice 161
+  was committed, fast-forward merged, and pushed. **Slice 161 is trunk commit `e76173f`**; Slice 160 is `4e652bd`.
+  - **Part 0 completed:** Slice 161 ("Add Phase 0 Layer-1 deterministic scorer") was committed as `e76173f`, fast-forward
+    merged to `chrome-renderer-v1` (`4e652bd..e76173f`), and pushed with a normal `git push` (no force-push). Final trunk
+    status was clean; **no docker compose config was run**; **Docker was not run**; the Slice 60 trace stash remains
+    parked and untouched; `local_operator_baselines/` stayed ignored/uncommitted; no private material was committed.
+  - **Slice 162 (code) added the Phase 0 overall score + regression record shape/persistence** in
+    `pipeline/quality_safety_eval_harness.py`: `compute_phase0_overall_10(layer1_record)` returns a closed envelope with
+    a **separate** deterministic `overall_10` (10.0 minus bounded closed penalties, clamped to `[0.0,10.0]`, one decimal)
+    and `shippable`, always tagged `overall_score_kind=layer1_deterministic_only` + `layer2_judge_included=false` (it is
+    **not** the final 9.5/9.0 product score — that is the later, separate dev-time reference-anchored Layer-2 judge);
+    `build_phase0_regression_record(...)` returns a closed `phase0_eval_regression_record` (lecture/source/tier/run
+    labels, `overall_10`, `shippable`, `blocking_checks`, `check_statuses`, regression status/delta, closed warnings —
+    **no** candidate/source/guide/OCR text, snippet, path, filename, hash, byte count, or payload);
+    `append_phase0_regression_record_jsonl(path, record)` is an append-only, caller-supplied-dir-only JSONL writer that
+    rejects wrong-kind/forbidden-field/secret-ish records; `compare_phase0_regression(...)` flags a regression on a
+    `>0.3` `overall_10` drop or a newly failing blocking check (else `green`/`not_comparable`). `judge_ready`/
+    `repair_ready` stay hard-`false` and unoverrideable; reasoning-leak detection reused and **not weakened**; no
+    frontend/API/production-job changes; no repair; no Layer-2 execution. Tests `test_quality_safety_eval_harness.py`
+    **199/0** (was 151/0). `production_offline_judge_frozen=true`, `judge_ready=false`, `repair_ready=false`,
+    `dev_time_reference_anchored_eval_status=not_built_yet`,
+    `numeric_strategy=recompute_first_not_manual_known_numbers`.
+    **next_step=phase0_reference_anchored_judge_skeleton_or_fact_sheet_schema_integration**. **Slice 162 is NOT committed.**
   - **Slice 161 (code) added the Phase 0 Layer-1 deterministic scorer:** `score_phase0_layer1(candidate_text,
     golden_spec, *, ...)` in `pipeline/quality_safety_eval_harness.py` — pure, in-memory, deterministic; validates the
     golden-pair spec and runs the five closed Layer-1 detectors
@@ -24,10 +40,10 @@
     **`overall_10` is left unscored (`None`)** (a real 0–10 score is owned by the separate, later dev-time
     reference-anchored judge). Reasoning-leak detection reused and **not weakened**; reads no file/source/guide/OCR/
     provider/model/judge; no JSONL persistence; no repair; frontend + API routes untouched. Tests
-    `test_quality_safety_eval_harness.py` **140/0** (was 105/0). `production_offline_judge_frozen=true`,
+    `test_quality_safety_eval_harness.py` **151/0**. `production_offline_judge_frozen=true`,
     `judge_ready=false`, `repair_ready=false`, `dev_time_reference_anchored_eval_status=not_built_yet`,
     `numeric_strategy=recompute_first_not_manual_known_numbers`.
-    **next_step=phase0_overall_score_regression_record_shape_or_reference_judge_skeleton**. **Slice 161 is NOT committed.**
+    **Slice 161 is now trunk commit `e76173f`** (Slice 162 builds the overall-score envelope + regression record on top).
   - **Slice 160 (code) added the real Phase 0 golden-pair layer:** closed authored fixtures
     `test_scripts/fixtures/quality_safety/golden_pairs/{nn3,ensemble}.json`; a separate strict loader in
     `pipeline/quality_safety_eval_harness.py` (`load_golden_pair_spec` / `load_golden_pair_specs` — requires exactly

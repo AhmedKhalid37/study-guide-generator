@@ -12,6 +12,7 @@ import ast
 import json
 import re
 import sys
+import tempfile
 from pathlib import Path
 from typing import Any
 
@@ -20,8 +21,12 @@ sys.path.insert(0, str(REPO))
 
 from pipeline.quality_safety_eval_harness import (  # noqa: E402
     GoldenPairSpecError,
+    append_phase0_regression_record_jsonl,
+    build_phase0_regression_record,
     build_phase0_report_skeleton,
     build_quality_safety_regression_record,
+    compare_phase0_regression,
+    compute_phase0_overall_10,
     load_golden_pair_spec,
     load_golden_pair_specs,
     load_quality_safety_fixture_spec,
@@ -1075,6 +1080,384 @@ def test_phase0_scorer_rejects_synthetic_and_judge_frozen() -> None:
     )
 
 
+FORBIDDEN_RECORD_KEYS = (
+    "candidate_text",
+    "candidate",
+    "snippet",
+    "snippets",
+    "source_text",
+    "guide_text",
+    "ocr_text",
+    "table_text",
+    "caption",
+    "captions",
+    "filename",
+    "path",
+    "sha256",
+    "hash",
+    "bytes",
+    "byte_count",
+    "prompt",
+    "response",
+    "payload",
+    "raw_json",
+    "evidence",
+    "quote",
+)
+
+
+def collect_record_keys(node: Any) -> set[str]:
+    found: set[str] = set()
+    if isinstance(node, dict):
+        for key, value in node.items():
+            if isinstance(key, str):
+                found.add(key.lower())
+            found |= collect_record_keys(value)
+    elif isinstance(node, (list, tuple)):
+        for item in node:
+            found |= collect_record_keys(item)
+    return found
+
+
+def test_phase0_overall_clean_candidate_high_and_shippable() -> None:
+    for lecture_id in ("nn3", "ensemble"):
+        spec = load_golden_pair_spec(read_golden_pair(lecture_id))
+        record = score_phase0_layer1(golden_candidate(spec), spec)
+        envelope = compute_phase0_overall_10(record)
+        check(
+            f"{lecture_id} overall clean is 10.0 and shippable",
+            envelope["overall_10"] == 10.0 and envelope["shippable"] is True,
+            str(envelope),
+        )
+        check(
+            f"{lecture_id} overall_10 and shippable are separate fields",
+            "overall_10" in envelope
+            and "shippable" in envelope
+            and isinstance(envelope["overall_10"], float)
+            and isinstance(envelope["shippable"], bool),
+            str(envelope),
+        )
+        check(
+            f"{lecture_id} overall is layer1 deterministic-only, no layer2 judge",
+            envelope["overall_score_kind"] == "layer1_deterministic_only"
+            and envelope["layer2_judge_included"] is False,
+            str(envelope),
+        )
+        check(
+            f"{lecture_id} overall keeps production judge frozen",
+            envelope["judge_ready"] is False and envelope["repair_ready"] is False,
+        )
+        no_canary(f"{lecture_id} phase0 overall envelope", envelope)
+
+
+def test_phase0_overall_leaked_reasoning_lowers_and_blocks() -> None:
+    spec = load_golden_pair_spec(read_golden_pair("nn3"))
+    clean = compute_phase0_overall_10(score_phase0_layer1(golden_candidate(spec), spec))
+    leaked = compute_phase0_overall_10(
+        score_phase0_layer1(
+            golden_candidate(spec, extra_lines=["Wait, actually this is unclear, so we'll trust it."]),
+            spec,
+        )
+    )
+    check(
+        "phase0 overall leaked reasoning not shippable and lower",
+        leaked["shippable"] is False and leaked["overall_10"] < clean["overall_10"],
+        str(leaked),
+    )
+    check(
+        "phase0 overall leaked reasoning stays in range",
+        0.0 <= leaked["overall_10"] <= 10.0,
+        str(leaked["overall_10"]),
+    )
+
+
+def test_phase0_overall_missing_numeric_lowers_and_blocks() -> None:
+    spec = load_golden_pair_spec(read_golden_pair("nn3"))
+    clean = compute_phase0_overall_10(score_phase0_layer1(golden_candidate(spec), spec))
+    reduced = spec["ground_truth_numerics"][:-1]
+    missing = compute_phase0_overall_10(
+        score_phase0_layer1(golden_candidate(spec, numerics=reduced), spec)
+    )
+    check(
+        "phase0 overall missing numeric not shippable and lower",
+        missing["shippable"] is False and missing["overall_10"] < clean["overall_10"],
+        str(missing),
+    )
+
+
+def test_phase0_overall_low_mock_is_advisory_only() -> None:
+    spec = load_golden_pair_spec(read_golden_pair("nn3"))
+    clean = compute_phase0_overall_10(score_phase0_layer1(golden_candidate(spec), spec))
+    low = compute_phase0_overall_10(
+        score_phase0_layer1(golden_candidate(spec, mock_count=2), spec)
+    )
+    check(
+        "phase0 overall low mock stays shippable",
+        low["shippable"] is True,
+        str(low),
+    )
+    check(
+        "phase0 overall low mock may reduce but not below shippable contract",
+        low["overall_10"] <= clean["overall_10"] and low["overall_10"] >= 9.0,
+        str(low["overall_10"]),
+    )
+
+
+def test_phase0_overall_judge_frozen_unoverrideable() -> None:
+    spec = load_golden_pair_spec(read_golden_pair("nn3"))
+    # Even if a caller hands a tampered layer1 record claiming judge readiness,
+    # the deterministic overall envelope must report the frozen booleans.
+    record = score_phase0_layer1(golden_candidate(spec), spec)
+    tampered = dict(record)
+    tampered["judge_ready"] = True
+    tampered["repair_ready"] = True
+    envelope = compute_phase0_overall_10(tampered)
+    check(
+        "phase0 overall judge frozen despite tampered input",
+        envelope["judge_ready"] is False and envelope["repair_ready"] is False,
+        str(envelope),
+    )
+
+
+def test_phase0_regression_record_closed_and_safe() -> None:
+    for lecture_id in ("nn3", "ensemble"):
+        spec = load_golden_pair_spec(read_golden_pair(lecture_id))
+        record = score_phase0_layer1(golden_candidate(spec), spec)
+        regression = build_phase0_regression_record(
+            record,
+            run_id="synthetic_run",
+            model_tier="premium",
+            candidate_id="cand-001",
+        )
+        check(
+            f"{lecture_id} regression record kind",
+            regression["kind"] == "phase0_eval_regression_record",
+            str(regression["kind"]),
+        )
+        check(
+            f"{lecture_id} regression record preserves lecture/source/tier label",
+            regression["lecture_id"] == lecture_id
+            and regression["source_quality"] == spec["source_quality"]
+            and regression["model_tier"] == "premium",
+            str(regression),
+        )
+        check(
+            f"{lecture_id} regression record overall separate from shippable",
+            isinstance(regression["overall_10"], float)
+            and isinstance(regression["shippable"], bool)
+            and regression["overall_score_kind"] == "layer1_deterministic_only"
+            and regression["layer2_judge_included"] is False,
+            str(regression),
+        )
+        check(
+            f"{lecture_id} regression record judge frozen",
+            regression["judge_ready"] is False and regression["repair_ready"] is False,
+        )
+        check(
+            f"{lecture_id} regression record default status record_only",
+            regression["regression_status"] == "record_only"
+            and regression["previous_overall_10"] is None
+            and regression["delta_overall_10"] is None,
+            str(regression),
+        )
+        present_keys = collect_record_keys(regression)
+        leaked_keys = [key for key in FORBIDDEN_RECORD_KEYS if key in present_keys]
+        check(
+            f"{lecture_id} regression record has no forbidden field keys",
+            leaked_keys == [],
+            str(leaked_keys),
+        )
+        # Serializable to JSON deterministically.
+        first = json.dumps(regression, sort_keys=True)
+        second = json.dumps(
+            build_phase0_regression_record(
+                record,
+                run_id="synthetic_run",
+                model_tier="premium",
+                candidate_id="cand-001",
+            ),
+            sort_keys=True,
+        )
+        check(f"{lecture_id} regression record deterministic JSON", first == second)
+        no_canary(f"{lecture_id} phase0 regression record", regression)
+
+
+def test_phase0_regression_record_sanitizes_hostile_labels() -> None:
+    spec = load_golden_pair_spec(read_golden_pair("nn3"))
+    record = score_phase0_layer1(golden_candidate(spec), spec)
+    regression = build_phase0_regression_record(
+        record,
+        run_id=HOSTILE_PATH,
+        model_tier="enterprise",
+        candidate_id=HOSTILE_URL,
+    )
+    check(
+        "phase0 regression hostile run_id sanitized",
+        regression["run_id"] == "synthetic_run",
+        str(regression["run_id"]),
+    )
+    check(
+        "phase0 regression unknown tier defaults",
+        regression["model_tier"] == "unknown",
+        str(regression["model_tier"]),
+    )
+    check(
+        "phase0 regression hostile candidate_id dropped",
+        regression["candidate_id"] is None,
+        str(regression["candidate_id"]),
+    )
+    no_canary("phase0 regression hostile labels", regression)
+
+
+def test_phase0_regression_jsonl_writer_appends_one_line() -> None:
+    spec = load_golden_pair_spec(read_golden_pair("nn3"))
+    record = score_phase0_layer1(golden_candidate(spec), spec)
+    regression = build_phase0_regression_record(
+        record, run_id="synthetic_run", model_tier="local"
+    )
+    with tempfile.TemporaryDirectory() as tmp:
+        target = Path(tmp) / "phase0_regression.jsonl"
+        append_phase0_regression_record_jsonl(target, regression)
+        append_phase0_regression_record_jsonl(target, regression)
+        text = target.read_text(encoding="utf-8")
+        lines = [line for line in text.splitlines() if line]
+        check(
+            "phase0 jsonl writer appends exactly one line per call",
+            len(lines) == 2,
+            str(len(lines)),
+        )
+        check(
+            "phase0 jsonl writer writes compact parseable lines",
+            all(
+                json.loads(line)["kind"] == "phase0_eval_regression_record"
+                for line in lines
+            ),
+            text,
+        )
+        # Writer must reject a record carrying a forbidden field.
+        unsafe = dict(regression)
+        unsafe["candidate_text"] = "anything"
+        rejected = False
+        try:
+            append_phase0_regression_record_jsonl(target, unsafe)
+        except ValueError:
+            rejected = True
+        check("phase0 jsonl writer rejects forbidden field", rejected)
+        # Wrong kind is also rejected.
+        rejected_kind = False
+        try:
+            append_phase0_regression_record_jsonl(target, {"kind": "other"})
+        except ValueError:
+            rejected_kind = True
+        check("phase0 jsonl writer rejects wrong kind", rejected_kind)
+
+
+def test_phase0_regression_compare_flags_drop() -> None:
+    spec = load_golden_pair_spec(read_golden_pair("nn3"))
+    clean = score_phase0_layer1(golden_candidate(spec), spec)
+    previous = build_phase0_regression_record(clean, run_id="prev", model_tier="premium")
+    # Same blocking-pass profile but a synthetically lower overall_10 (> 0.3 drop).
+    current = dict(previous)
+    current["overall_10"] = round(previous["overall_10"] - 0.4, 4)
+    verdict = compare_phase0_regression(current, previous)
+    check(
+        "phase0 compare flags >0.3 drop as regressed",
+        verdict["regression_status"] == "regressed"
+        and verdict["overall_delta"] == -0.4,
+        str(verdict),
+    )
+    # A small drop within tolerance stays green.
+    small = dict(previous)
+    small["overall_10"] = round(previous["overall_10"] - 0.2, 4)
+    green = compare_phase0_regression(small, previous)
+    check(
+        "phase0 compare small drop stays green",
+        green["regression_status"] == "green",
+        str(green),
+    )
+
+
+def test_phase0_regression_compare_flags_blocking_check() -> None:
+    spec = load_golden_pair_spec(read_golden_pair("nn3"))
+    clean = score_phase0_layer1(golden_candidate(spec), spec)
+    previous = build_phase0_regression_record(clean, run_id="prev", model_tier="premium")
+    leaked = score_phase0_layer1(
+        golden_candidate(spec, extra_lines=["Wait, actually unclear, so we'll trust it."]),
+        spec,
+    )
+    current = build_phase0_regression_record(leaked, run_id="cur", model_tier="premium")
+    verdict = compare_phase0_regression(current, previous)
+    check(
+        "phase0 compare flags newly failing blocking check",
+        verdict["regression_status"] == "regressed"
+        and verdict["blocking_regression_count"] >= 1,
+        str(verdict),
+    )
+
+
+def test_phase0_regression_compare_not_comparable() -> None:
+    nn3 = load_golden_pair_spec(read_golden_pair("nn3"))
+    ensemble = load_golden_pair_spec(read_golden_pair("ensemble"))
+    nn3_record = build_phase0_regression_record(
+        score_phase0_layer1(golden_candidate(nn3), nn3),
+        run_id="a",
+        model_tier="premium",
+    )
+    ensemble_record = build_phase0_regression_record(
+        score_phase0_layer1(golden_candidate(ensemble), ensemble),
+        run_id="b",
+        model_tier="premium",
+    )
+    cross = compare_phase0_regression(nn3_record, ensemble_record)
+    check(
+        "phase0 compare different lectures not comparable",
+        cross["regression_status"] == "not_comparable"
+        and "lecture_mismatch" in cross["warnings"],
+        str(cross),
+    )
+    tier_mismatch = build_phase0_regression_record(
+        score_phase0_layer1(golden_candidate(nn3), nn3),
+        run_id="c",
+        model_tier="local",
+    )
+    tier = compare_phase0_regression(nn3_record, tier_mismatch)
+    check(
+        "phase0 compare different tiers not comparable",
+        tier["regression_status"] == "not_comparable"
+        and "model_tier_mismatch" in tier["warnings"],
+        str(tier),
+    )
+
+
+def test_phase0_regression_records_only_nn3_and_ensemble() -> None:
+    # The real golden pair stays exactly {nn3, ensemble}; a record for any other
+    # lecture id degrades to the closed "unknown" token rather than carrying it.
+    nn3 = load_golden_pair_spec(read_golden_pair("nn3"))
+    record = score_phase0_layer1(golden_candidate(nn3), nn3)
+    tampered = dict(record)
+    tampered["lecture_id"] = "some_other_lecture"
+    regression = build_phase0_regression_record(
+        tampered, run_id="x", model_tier="premium"
+    )
+    check(
+        "phase0 regression rejects non-golden lecture id",
+        regression["lecture_id"] == "unknown",
+        str(regression["lecture_id"]),
+    )
+    for lecture_id in ("nn3", "ensemble"):
+        spec = load_golden_pair_spec(read_golden_pair(lecture_id))
+        kept = build_phase0_regression_record(
+            score_phase0_layer1(golden_candidate(spec), spec),
+            run_id="y",
+            model_tier="premium",
+        )
+        check(
+            f"{lecture_id} regression keeps real golden lecture id",
+            kept["lecture_id"] == lecture_id,
+            str(kept["lecture_id"]),
+        )
+
+
 def test_import_hygiene() -> None:
     source_path = REPO / "pipeline" / "quality_safety_eval_harness.py"
     tree = ast.parse(source_path.read_text(encoding="utf-8"))
@@ -1146,6 +1529,18 @@ def run() -> int:
     test_phase0_scorer_worked_answer_unresolved_blocks()
     test_phase0_scorer_no_raw_material_leak()
     test_phase0_scorer_rejects_synthetic_and_judge_frozen()
+    test_phase0_overall_clean_candidate_high_and_shippable()
+    test_phase0_overall_leaked_reasoning_lowers_and_blocks()
+    test_phase0_overall_missing_numeric_lowers_and_blocks()
+    test_phase0_overall_low_mock_is_advisory_only()
+    test_phase0_overall_judge_frozen_unoverrideable()
+    test_phase0_regression_record_closed_and_safe()
+    test_phase0_regression_record_sanitizes_hostile_labels()
+    test_phase0_regression_jsonl_writer_appends_one_line()
+    test_phase0_regression_compare_flags_drop()
+    test_phase0_regression_compare_flags_blocking_check()
+    test_phase0_regression_compare_not_comparable()
+    test_phase0_regression_records_only_nn3_and_ensemble()
     test_import_hygiene()
     print(f"\nquality_safety_eval_harness: {PASS} passed, {FAIL} failed")
     return 1 if FAIL else 0
