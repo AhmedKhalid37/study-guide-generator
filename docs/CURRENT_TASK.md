@@ -5,7 +5,70 @@
 
 ---
 
-## Slice 152 — **Contract-Lint False-Positive Hardening (detector boundary)**, on `slice152-contract-lint-false-positive-hardening`. **NOT COMMITTED.**
+## Slice 153 — **App-Pipeline Baseline Provenance Gate**, on `slice153-app-pipeline-baseline-provenance-gate`. **NOT COMMITTED.**
+
+- **Part 0 completed:** Slice 152 was committed as `a1dfdd4` ("Slice 152: Harden reasoning leak detector boundaries"),
+  fast-forward merged to trunk `chrome-renderer-v1` (`d5d528a..a1dfdd4`), and pushed with a normal `git push` (no force-push).
+  Final trunk status before branching Slice 153 was clean; **no docker compose config was run**; the Slice 60 trace stash remains
+  parked and untouched; `local_operator_baselines/` stayed ignored/uncommitted.
+- **What this slice is:** an operator **provenance gate**, not a feature. It verifies the full app pipeline after Slice 151
+  prompt-contract hardening and Slice 152 detector hardening by generating one fresh local NN/Iris app guide on the **restarted**
+  runtime and recording closed aggregate baseline metrics for `app_run_5_app_pipeline_verified`. No code change. No prompt/detector/
+  baseline-logic change. No style/preset audit.
+- **Operator action performed:** the running app was restarted/recreated on this working tree (trunk = Slice 151 + 152), confirmed
+  live (`/api/health` ok), and one fresh app guide was generated from the same local NN/Iris source with settings close to
+  `app_run_3`/`app_run_4`. The 6 exact-name artifacts were copied into the ignored
+  `local_operator_baselines/nn_iris/app_job_artifacts/app_run_5_app_pipeline_verified/`. No generated guide or raw artifact was
+  committed.
+- **Provenance VERIFIED (the key result):** `runtime_refreshed_after_slice152=true`. The app's stored contract-lint artifact reports
+  `reasoning_leak_count=1`, and recomputing the **hardened working-tree detector** over the **same** fresh guide also yields `1`
+  (pre-fix `app_run_4` was `2`). Matching counts prove the running app served the Slice 152 hardened detector — app-pipeline
+  provenance is genuine, not a deterministic recompute.
+- **Honest measured outcome — a genuine residual leak, NOT a false positive:** the single hit is a **context-gated intensifier**
+  (high-precision phrase tier = 0; intensifier tier = 1), classified in closed vocabulary as a **line-initial `actually` discourse
+  marker** (`branch=LINE_START`, not a markdown heading/list marker, not mid-sentence). Per Slice 152's deliberate design a
+  sentence/line-initial `Actually,`/`Presumably,` is an **intended true positive** (self-correction tone in settled prose), so this
+  is a real reasoning-leak that the Slice 151 prompt contract did not suppress — **not** a detector boundary false positive.
+  Hardening the detector to drop line-initial intensifiers would weaken true-positive detection (forbidden), so the fix belongs in
+  the prompt contract.
+- **`app_run_5_app_pipeline_verified` closed baseline (summary only):**
+  - `reasoning_leak_status: fail` (1 genuine line-initial intensifier discourse marker)
+  - `numeric_math_status: not_available`
+  - `guide_quality_qa_gate_status: warning`
+  - `source_coverage_status: not_observed`
+  - `structure_contract_status: warning`
+  - `reference_relative_completeness_status: needs_future_metric`
+  - `figure_handling_status: needs_future_metric`
+  - `artifact_existence_status: pass`
+  - `baseline_status: failed`
+- **Gate record:**
+  - `app_pipeline_baseline_provenance_gate: run`
+  - `status: warning` (provenance verification **succeeded**; the gate's hoped-for `reasoning_leak_status=pass` was **not** met
+    because a genuine residual leak remains — recorded honestly, not hidden)
+  - `runtime_refreshed_after_slice152: true`
+  - `local_operator_material_committed: false`
+  - `raw_artifact_json_committed: false`
+  - `generated_guide_committed: false`
+  - `provider_calls: true` (one fresh app generation through the normal pipeline)
+  - `judge_calls: false`
+  - `repair_calls: false`
+  - `next_step: reasoning_leak_fix_iteration_2`
+- **Decision rule applied:** `reasoning_leak_status=fail` → closed triage → category is a genuine line-initial intensifier
+  discourse marker (a true positive, not a detector limitation) → `next_step=reasoning_leak_fix_iteration_2` (tighten the prompt
+  contract / final-output hygiene to suppress sentence-initial self-correction discourse markers). Detector hardening iteration is
+  **not** indicated — the detector is behaving as designed. Style/preset audit stays deferred until the reasoning-leak baseline is
+  green or explicitly waived.
+- **Files changed:** `M docs/CURRENT_TASK.md`, `M docs/NEXT_CHAT_HANDOFF.md`, `M docs/DECISIONS.md`. No code changes.
+- **Validation (all green):** contract lint (150), QA gate (177), baseline tests (130), baseline harness synthetic self-test
+  (`ok`), prompt contract (110), `compileall api pipeline test_scripts` clean; `app_run_5_app_pipeline_verified` local harness run
+  (`baseline_harness_status=ok`, statuses above); `git diff --check` clean; no-leak sweep clean. Docker used only to restart the
+  local app; **no docker compose config run.**
+- **Slice 153 is commit-ready (docs only) but remains UNCOMMITTED per the gate.** First action next chat: commit Slice 153 docs on
+  its branch, then proceed to `reasoning_leak_fix_iteration_2`.
+
+---
+
+## Slice 152 — **Contract-Lint False-Positive Hardening (detector boundary)**, on `slice152-contract-lint-false-positive-hardening`. **Committed `a1dfdd4`, merged + pushed to `chrome-renderer-v1`.**
 
 - **Part 0 completed:** Slice 151 was committed as `d5d528a` ("Slice 151: Harden guide prompt contract against reasoning
   leaks"), fast-forward merged to trunk `chrome-renderer-v1` (`d6f9f87..d5d528a`), and pushed with a normal `git push` (no

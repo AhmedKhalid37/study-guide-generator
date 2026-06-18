@@ -6,54 +6,55 @@
 > stable overview see `PROJECT_CONTEXT.md`; canonical brief is `../CLAUDE.md`.
 
 ## Current position
-- **Working tree:** **Slice 152 (Contract-Lint False-Positive Hardening — detector boundary) — UNCOMMITTED** on branch
-  `slice152-contract-lint-false-positive-hardening`, branched from updated `chrome-renderer-v1` after Slice 151 was committed,
-  fast-forward merged, and pushed. **Slice 151 is trunk commit `d5d528a`**.
-  - **Part 0 completed:** Slice 151 was committed as `d5d528a`, fast-forward merged to `chrome-renderer-v1`, and pushed with a
-    normal `git push` (no force-push; `d6f9f87..d5d528a`). Final trunk status before branching Slice 152 was clean; **no docker
+- **Working tree:** **Slice 153 (App-Pipeline Baseline Provenance Gate) — UNCOMMITTED** on branch
+  `slice153-app-pipeline-baseline-provenance-gate`, branched from updated `chrome-renderer-v1` after Slice 152 was committed,
+  fast-forward merged, and pushed. **Slice 152 is trunk commit `a1dfdd4`**.
+  - **Part 0 completed:** Slice 152 was committed as `a1dfdd4`, fast-forward merged to `chrome-renderer-v1`, and pushed with a
+    normal `git push` (no force-push; `d5d528a..a1dfdd4`). Final trunk status before branching Slice 153 was clean; **no docker
     compose config was run**; the Slice 60 trace stash remains parked and untouched; `local_operator_baselines/` stayed
     ignored/uncommitted.
-  - **Slice 152 hardens the contract-lint reasoning-leak detector boundary.** Fix type
-    **`contract_lint_detector_boundary_hardening`** in `pipeline/guide_quality_contract_lint.py`. The old detector summed raw
-    `lowered.count(sig)` over a flat list including `"actually,"`/`"actually "`/`"presumably"`, so mid-sentence factual
-    intensifiers over-flagged as leaks (the `detector_boundary_false_positive` Slices 150–151 isolated). It now uses two tiers:
-    (1) **high-precision phrases** matched with **word boundaries** (existing internal-reasoning/uncertainty phrases plus added
-    prompt/user-intent, planning/drafting, and "deciding what to include" phrases), and (2) **context-gated intensifiers**
-    (`"actually"`/`"presumably"`) counted **only** when sentence-initial (discourse marker), never mid-sentence factual prose.
-  - **Output shape unchanged** — `reasoning_leak_count`/`reasoning_leak_status`/`warning_count`/warning tokens identical; only
-    the counting logic moved. `false_positive_target=detector_boundary_false_positive` · `true_leak_detection_preserved=true` ·
-    `prompt_contract_changed=false` · `baseline_mapping_changed=false` · `provider_calls=false` · `judge_calls=false` ·
-    `repair_calls=false`. No model call, no provider/render/export/OCR/table/visual/request-schema/Builder/Ask/API/UI change, no
-    new gate, no blocking behaviour, no judge/repair. Detection NOT weakened (`count > 0 → fail` mapping intact).
-  - **Synthetic detector verification:** `synthetic_false_positive_cases=pass` (factual `"actually"`/`"presumably"` prose and a
-    `"unclearly"` substring case count **0** and `passed`); `synthetic_true_positive_cases=pass` (internal reasoning,
-    user-intent, prompt-meta, planning/drafting, deciding-what-to-include, process narration, and a sentence-initial intensifier
-    marker all count `>= 1` and warn; no matched phrase stored).
-  - **Local measured verification — Option B recompute, CLOSED:** `detector_hardening_local_recompute_run=closed_summary_only`,
-    `detector_hardening_verification_status=pass`. The operator regenerated one fresh app guide on this branch, but the running app
-    was still serving the **pre-fix** detector (not restarted), so the fresh job's stored contract-lint artifact baked in a pre-fix
-    `reasoning_leak_count=2` (both bare mid-sentence `"actually "`). The hardened detector over the **same** fresh guide counts
-    **0**. Per operator decision (Option B) the hardened detector was re-run **deterministically** over the fresh guide to produce
-    the `app_run_4_detector_hardened` contract-lint artifact (other measured artifacts copied as generated; no aggregator patch, no
-    hidden leak failure). Harness on `app_run_4_detector_hardened`: `reasoning_leak_status=pass`, `artifact_existence=pass`,
-    `qa_gate=warning`, `structure_contract=warning`, `numeric_math=not_available`, `source_coverage=not_observed`,
-    `reference_relative_completeness=needs_future_metric`, `figure_handling=needs_future_metric`, `baseline_status=warning`
-    (remaining warnings are pre-existing measured observations outside Slice 152's scope). The stale
-    `app_run_1`/`app_run_2`/`app_run_3_reasoning_fix` artifacts still report `reasoning_leak_status=fail` when rerun (expected; old
-    counts; record preserved). **Slice 152 is commit-ready but remains UNCOMMITTED per the gate.**
-  - **Validation (all green):** contract lint (150, was 83), QA gate (177), baseline tests (130), baseline harness synthetic
-    self-test (`ok`), prompt contract (110 — Slice 151 holds), contract integration (24), release validation (234), three
-    reproducible local runs (`reasoning_leak_status=fail` unchanged, stale-count record preserved); `compileall api pipeline
-    test_scripts` clean; `git diff --check` clean; no-leak sweep clean. Docker not required; no docker compose config run.
-  - **Files changed:** `M docs/CURRENT_TASK.md`, `M docs/NEXT_CHAT_HANDOFF.md`, `M docs/DECISIONS.md`,
-    `M pipeline/guide_quality_contract_lint.py`, `M test_scripts/test_guide_quality_contract_lint.py`.
-    **Slice 152 remains NOT committed.**
-  - **Next expected slice:** `style_preset_audit_gate_or_source_coverage_gap` — detector hardening is verified on a fresh local
-    app run (`app_run_4_detector_hardened`: `reasoning_leak_status=pass`), so Slice 152 is commit-ready. **First action next chat:**
-    commit Slice 152 (docs + `pipeline/guide_quality_contract_lint.py` + `test_scripts/test_guide_quality_contract_lint.py`) on
-    its branch, then proceed to the `style_preset_audit` (or `source_coverage_gap`) gate. Both stay deferred until explicitly
-    started. **If the operator wants artifact provenance to be the app pipeline (not a deterministic recompute), restart the app on
-    this working tree and regenerate before committing.**
+  - **Slice 153 is an operator provenance gate (no code change).** It verifies the full app pipeline after Slice 151 prompt
+    hardening + Slice 152 detector hardening: the running app was **restarted** on this working tree, confirmed live
+    (`/api/health` ok), and one fresh NN/Iris guide was generated with settings close to `app_run_3`/`app_run_4`. The 6 exact-name
+    artifacts went into the ignored `app_run_5_app_pipeline_verified/`.
+  - **Provenance VERIFIED:** `runtime_refreshed_after_slice152=true`. The app's stored contract-lint artifact reports
+    `reasoning_leak_count=1`, and the **hardened working-tree detector** recomputed over the **same** fresh guide also yields `1`
+    (pre-fix `app_run_4` was `2`) — proving the running app served the Slice 152 detector. App-pipeline provenance is genuine.
+  - **Honest outcome — genuine residual leak, NOT a false positive:** the one hit is a **context-gated intensifier**
+    (high-precision phrase tier = 0; intensifier tier = 1), classified closed-vocabulary as a **line-initial `actually` discourse
+    marker** (`branch=LINE_START`; not a markdown heading/list marker; not mid-sentence). Slice 152 deliberately treats
+    sentence/line-initial `Actually,`/`Presumably,` as an **intended true positive** (self-correction tone), so this is a real
+    leak the Slice 151 prompt contract did not suppress — **not** a detector boundary false positive. Detector hardening to ignore
+    it would weaken true-positive detection (forbidden); the fix belongs in the prompt contract.
+  - **`app_run_5_app_pipeline_verified` closed baseline:** `reasoning_leak_status=fail` (1 line-initial intensifier),
+    `numeric_math_status=not_available`, `guide_quality_qa_gate_status=warning`, `source_coverage_status=not_observed`,
+    `structure_contract_status=warning`, `reference_relative_completeness_status=needs_future_metric`,
+    `figure_handling_status=needs_future_metric`, `artifact_existence_status=pass`, `baseline_status=failed`.
+  - **Gate record:** `app_pipeline_baseline_provenance_gate=run`, `status=warning` (provenance verification succeeded; hoped-for
+    `reasoning_leak_status=pass` not met — recorded honestly, not hidden), `runtime_refreshed_after_slice152=true`,
+    `local_operator_material_committed=false`, `raw_artifact_json_committed=false`, `generated_guide_committed=false`,
+    `provider_calls=true` (one fresh app generation), `judge_calls=false`, `repair_calls=false`,
+    `next_step=reasoning_leak_fix_iteration_2`.
+  - **Validation (all green):** contract lint (150), QA gate (177), baseline tests (130), baseline harness synthetic self-test
+    (`ok`), prompt contract (110), `compileall api pipeline test_scripts` clean; `app_run_5_app_pipeline_verified` local harness
+    run (`baseline_harness_status=ok`, statuses above); `git diff --check` clean; no-leak sweep clean. Docker used only to restart
+    the local app; **no docker compose config run.**
+  - **Files changed:** `M docs/CURRENT_TASK.md`, `M docs/NEXT_CHAT_HANDOFF.md`, `M docs/DECISIONS.md`. No code changes.
+    **Slice 153 remains NOT committed.**
+  - **Next expected slice:** `reasoning_leak_fix_iteration_2` — a narrow prompt-contract / final-output-hygiene hardening that
+    discourages sentence/line-initial self-correction discourse markers (`Actually,`/`Presumably,`), then a fresh measured
+    regeneration to confirm the app-pipeline `reasoning_leak_status` turns green. **First action next chat:** commit Slice 153 docs
+    on its branch, then start `reasoning_leak_fix_iteration_2`. Style/preset audit stays deferred until the reasoning-leak baseline
+    is green or explicitly waived.
+
+### Previously (Slice 152, now trunk `a1dfdd4`)
+- **Slice 152 (Contract-Lint False-Positive Hardening — detector boundary)** replaced the flat raw-substring signature list in
+  `pipeline/guide_quality_contract_lint.py` with two tiers: high-precision phrases matched with **word boundaries**, and
+  **context-gated intensifiers** (`"actually"`/`"presumably"`) counted **only** when sentence-initial. Output shape unchanged; no
+  baseline/aggregator change; synthetic false-positive and true-positive cases pass; true-leak detection preserved. Verified on a
+  fresh local run (`app_run_4_detector_hardened`) via deterministic recompute (the app had not yet been restarted onto the
+  hardened detector — Slice 153 then restarted it and confirmed app-pipeline provenance directly). No model/provider/judge/repair/
+  API/UI change.
 
 ### Previously (Slice 151, now trunk `d5d528a`)
 - **Slice 151 (First Measured Reasoning Leak Fix — prompt-contract hardening)** added one concise final-output hygiene core rule

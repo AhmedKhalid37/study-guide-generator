@@ -6418,3 +6418,40 @@ false positives Slice 152 removes, not a genuine leak.
 — produced the residual red, and a deterministic recompute of the unchanged pure
 detector function over the real fresh guide is a faithful measured verification that
 avoids burning another generation while keeping the record honest about provenance.
+
+## App-pipeline provenance verified after restart; a genuine residual leak remains (2026-06-18)
+Slice 153 (App-Pipeline Baseline Provenance Gate) closed the provenance question
+Slice 152 left open. The operator restarted the running app on this working tree
+(trunk = Slice 151 + 152), confirmed it live, and generated one fresh NN/Iris guide.
+The app's stored `guide_quality_contract_lint.json` reports `reasoning_leak_count=1`,
+and recomputing the **hardened working-tree detector** over the **same** fresh guide
+also yields `1` (pre-fix `app_run_4` was `2`). The matching counts prove the running
+app now serves the Slice 152 hardened detector — so `runtime_refreshed_after_slice152=
+true` and app-pipeline provenance is genuine (not a deterministic recompute).
+
+- **The measured app-pipeline baseline is `reasoning_leak_status=fail`, and that is
+  recorded honestly — not hidden, not mapped away.** The single hit is a context-gated
+  intensifier (high-precision phrase tier = 0; intensifier tier = 1), classified in
+  closed vocabulary as a **line-initial `actually` discourse marker** (`branch=
+  LINE_START`; not a markdown heading/list marker; not mid-sentence). Slice 152
+  deliberately treats sentence/line-initial `Actually,`/`Presumably,` as an intended
+  true positive (self-correction tone in settled, student-facing prose), so this is a
+  **genuine residual reasoning leak** that the Slice 151 prompt contract did not yet
+  suppress — **not** a detector boundary false positive.
+- **Decision:** the fix belongs in the **prompt contract**, not the detector. Hardening
+  the detector to drop line-initial intensifiers would weaken true-positive detection
+  (forbidden). So `next_step=reasoning_leak_fix_iteration_2` — a narrow prompt-contract /
+  final-output-hygiene hardening that discourages sentence/line-initial self-correction
+  discourse markers, followed by another measured regeneration. **Style/preset audit
+  stays deferred** until the reasoning-leak baseline is green or explicitly waived.
+- **Gate record:** `app_pipeline_baseline_provenance_gate=run`, `status=warning`
+  (provenance verification succeeded; the hoped-for app-pipeline `reasoning_leak_status=
+  pass` was not met), `baseline_status=failed`, `provider_calls=true` (one fresh app
+  generation), `judge_calls=false`, `repair_calls=false`, no local material / raw
+  artifact / generated guide committed. Slice 153 is docs-only and left **uncommitted**.
+
+**Why:** the gate did exactly its job — it confirmed the runtime is now the hardened
+code *and* surfaced a real residual leak that the deterministic-recompute path in
+Slice 152 could not have caught. Recording the genuine `fail` (rather than declaring
+victory on the recompute) keeps the baseline trustworthy and routes the next fix to the
+correct layer (prompt, not detector).
