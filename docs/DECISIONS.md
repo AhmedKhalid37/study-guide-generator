@@ -6037,3 +6037,113 @@ gated on calibration) or a private operator calibration pass.
 `numeric_infrastructure_frozen=true`; `quality_safety_surface_frozen=true`;
 `quality_safety_blocking=false`; `judge_ready=false`; `repair_ready=false`;
 `next_step=advisory_offline_judge_artifact_writer_design_or_stop_for_private_calibration`.
+
+## Pause synthetic judge path after Slice 147; resume only after real calibration (2026-06-18)
+The offline judge scaffold is now **frozen at synthetic-only**: contract design,
+schema fixtures, synthetic offline judge core, calibration gate protocol, synthetic
+calibration gate harness, advisory artifact design, and the pure/unwired artifact
+adapter all exist — but **nothing is calibrated against real material**. Slice 148
+is a deliberate **stop/redirect**, not another judge-infrastructure slice.
+
+- **What is frozen.** All seven scaffold pieces above are complete at synthetic
+  level only. No writer, no job wiring, no UI display, no judge execution, no
+  provider/model/cloud/local-LLM call has been built on top of them.
+- **Why stop here.** Continuing to writer / UI / job integration *before* real
+  calibration would create **false confidence** — a polished pipeline whose scores
+  have never been checked against a real generated guide. The deterministic Quality
+  Safety floor **remains the source of truth**; the judge adds nothing trustworthy
+  until calibrated.
+- **Frozen readiness.** `calibration_status=synthetic_only`,
+  `private_operator_judge_calibration_run=not_run`, `artifact_write_ready=false`,
+  `ui_display_ready=false`, `judge_ready=false`, `repair_ready=false`.
+  (`artifact_shape_ready=true` is allowed — the shape is proven — but it never
+  implies write/display readiness.)
+- **What future judge work requires before resuming.** (1) an explicit operator
+  decision to resume; (2) a real private closed-record calibration pass; (3) any
+  committed records must be **closed-vocabulary only**; (4) **no** raw private
+  material and **no** raw judge outputs may ever be committed.
+- **Conservative default path.** Move to a **measured guide-quality baseline** on
+  real material instead of extending the synthetic judge stack.
+
+**Why:** the synthetic scaffold has gone as far as it usefully can without real
+data. The honest next move is to measure actual generated-guide quality, not to
+keep polishing an uncalibrated judge.
+
+## Privacy does not mean synthetic-only (2026-06-18)
+A recurring failure mode in this unit has been conflating *"keep private material
+out of git"* with *"only ever use synthetic data."* They are different. The
+correct policy:
+
+- **Private materials remain forbidden in git** — private student/source decks,
+  private generated guides, private source/OCR/table/caption text, private
+  paths/filenames, raw judge outputs, provider payloads, model prompts/responses,
+  and private runtime artifacts must never be committed.
+- **Public/redistributable benchmark fixtures are a different category.** They may
+  be committed in a future measured-baseline slice **only when** provenance /
+  licensing / public status is **verified and documented**.
+- **Golden specs** for public benchmark fixtures may be committed (closed
+  facts/labels/expectations, not copied source text).
+- **Closed aggregate metrics / scores** from public benchmark runs may be
+  committed.
+- **Full generated guide outputs remain uncommitted by default** unless a later
+  explicit benchmark policy allows a sanitized/public artifact.
+- **If public/redistributable status is not verified, do not commit the fixture —
+  stop and report.**
+
+**Why:** treating synthetic-only as the privacy boundary blocked real measurement
+for no good reason. The real boundary is *private vs. public/redistributable*, plus
+*closed aggregate metrics vs. raw content*. This unlocks measured quality work
+without weakening any privacy invariant.
+
+## Slice 149 measured baseline must reuse existing wired artifacts (2026-06-18)
+The measured guide-quality baseline (Slice 149) **must reuse existing wired
+artifacts** rather than rebuilding a parallel Quality Safety stack.
+
+- **Existing wired baseline inputs** (read where present from a real, locally
+  generated golden job): `math_verification.json`,
+  `guide_quality_contract_lint.json`, `guide_quality_qa_gate.json`,
+  `guide_quality_report_v2.json`, `source_coverage_report.json`, and
+  `guide_quality_rubric_score.json` (advisory/supporting signal only).
+- **Slice 149 must not reimplement already-wired checks** (math verification,
+  contract lint, QA gate, source coverage) unless a missing metric is *proven*
+  necessary. New metrics are limited to genuine gaps:
+  reference-relative completeness vs the committed golden spec, figure/diagram
+  handling status, and a thin baseline aggregator/diff format.
+- **Reasoning-leak is a headline, first-class metric — not optional.** It was one
+  of the original real failure modes. The existing
+  `guide_quality_contract_lint.json` path already detects reasoning-leak
+  signatures using safe counts / closed tokens, so Slice 149 must surface it as a
+  first-class score / regression guard.
+- **Baseline metric families:** `reasoning_leak_status`, `numeric_math_status`,
+  `guide_quality_qa_gate_status`, `source_coverage_status`,
+  `structure_contract_status`, `reference_relative_completeness_status`,
+  `figure_handling_status`, `artifact_existence_status`.
+
+**Fixture policy for Slice 149 (corrected — do not commit the PDF).** Earlier
+wording suggested committing the public fixture PDF once provenance was verified.
+That is **superseded**: do **not** commit source/reference PDFs for Slice 149.
+
+- Golden source/reference PDFs and generated guide outputs **stay local and
+  gitignored by default**.
+- Slice 149 may run **locally** against a real fixture (e.g. the NN/Iris material)
+  only if the operator has it locally and confirms it is safe to use locally.
+- The committed repo artifact for the baseline is the **golden spec**, not the PDF.
+  The golden spec may contain facts / labels / closed expectations, **not** copied
+  source text.
+- The baseline may commit **closed aggregate scores and trend snapshots**.
+- The baseline must **not** commit generated guide text, source text,
+  OCR/table/caption text, extracted snippets, copied formulas, screenshots,
+  PDF/DOCX/ZIP artifacts, paths, filenames, provider payloads, or raw runtime
+  artifacts.
+- **Preferred working model:** (1) operator keeps fixture PDFs/guides local and
+  gitignored; (2) agent verifies required local files exist *without printing
+  private paths or filenames* beyond safe generic labels; (3) agent generates a
+  guide locally; (4) agent reads the existing exact-name artifacts from that job;
+  (5) agent compares closed artifact summaries against the committed golden spec;
+  (6) agent writes/updates a committed baseline summary containing **only** closed
+  aggregate metrics.
+
+**Why:** the wired artifacts already encode the expensive, tuned checks; rebuilding
+them would duplicate logic and risk drift. Reusing them — and committing only the
+golden spec plus closed aggregate metrics — gives a real, reproducible baseline
+without ever placing private content (or even a public PDF) in git.
