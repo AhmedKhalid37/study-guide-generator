@@ -6,14 +6,28 @@
 > stable overview see `PROJECT_CONTEXT.md`; canonical brief is `../CLAUDE.md`.
 
 ## Current position
-- **Working tree:** **Slice 160 (Phase 0 real golden-pair eval harness skeleton — `nn3` + `ensemble`) — UNCOMMITTED**
-  on branch `slice160-phase0-real-golden-pair-eval-skeleton`, branched from updated `chrome-renderer-v1` after Slice 159
-  was committed, fast-forward merged, and pushed. **Slice 159 is trunk commit `da795a8`**; Slice 158 is `3a44c91`.
-  - **Part 0 completed:** Slice 159 ("Adopt master roadmap Phase 0 grounding") was committed as `da795a8`, fast-forward
-    merged to `chrome-renderer-v1` (`3a44c91..da795a8`), and pushed with a normal `git push` (no force-push).
-    `docs/GUIDEFORGE_MASTER_ROADMAP.md` is now **committed and authoritative**. Final trunk status was clean; **no docker
+- **Working tree:** **Slice 161 (Phase 0 Layer-1 deterministic scorer on the real golden pair) — UNCOMMITTED**
+  on branch `slice161-phase0-layer1-deterministic-scorer`, branched from updated `chrome-renderer-v1` after Slice 160
+  was committed, fast-forward merged, and pushed. **Slice 160 is trunk commit `4e652bd`**; Slice 159 is `da795a8`.
+  - **Part 0 completed:** Slice 160 ("Add Phase 0 golden pair eval skeleton") was committed as `4e652bd`, fast-forward
+    merged to `chrome-renderer-v1` (`da795a8..4e652bd`), and pushed with a normal `git push` (no force-push).
+    The Phase 0 golden-pair specs (`nn3`, `ensemble`) are now **committed**. Final trunk status was clean; **no docker
     compose config was run**; **Docker was not run**; the Slice 60 trace stash remains parked and untouched;
     `local_operator_baselines/` stayed ignored/uncommitted; no private material was committed.
+  - **Slice 161 (code) added the Phase 0 Layer-1 deterministic scorer:** `score_phase0_layer1(candidate_text,
+    golden_spec, *, ...)` in `pipeline/quality_safety_eval_harness.py` — pure, in-memory, deterministic; validates the
+    golden-pair spec and runs the five closed Layer-1 detectors
+    (`leaked_reasoning`, `numeric_correctness`, `coverage`, `mock_question_count`, `worked_answer_completeness`) over a
+    **caller-supplied candidate string**, returning a closed **counts-only** record. Golden-pair gating tightens the
+    contract: every authored numeric is required (missing/contradicted ⇒ **blocking**) and coverage below `0.90` is
+    **blocking**; mock-question count is advisory/non-blocking. `shippable` reflects only Layer-1 blocking gates;
+    **`overall_10` is left unscored (`None`)** (a real 0–10 score is owned by the separate, later dev-time
+    reference-anchored judge). Reasoning-leak detection reused and **not weakened**; reads no file/source/guide/OCR/
+    provider/model/judge; no JSONL persistence; no repair; frontend + API routes untouched. Tests
+    `test_quality_safety_eval_harness.py` **140/0** (was 105/0). `production_offline_judge_frozen=true`,
+    `judge_ready=false`, `repair_ready=false`, `dev_time_reference_anchored_eval_status=not_built_yet`,
+    `numeric_strategy=recompute_first_not_manual_known_numbers`.
+    **next_step=phase0_overall_score_regression_record_shape_or_reference_judge_skeleton**. **Slice 161 is NOT committed.**
   - **Slice 160 (code) added the real Phase 0 golden-pair layer:** closed authored fixtures
     `test_scripts/fixtures/quality_safety/golden_pairs/{nn3,ensemble}.json`; a separate strict loader in
     `pipeline/quality_safety_eval_harness.py` (`load_golden_pair_spec` / `load_golden_pair_specs` — requires exactly
@@ -23,7 +37,7 @@
     provider/model call, no JSONL persistence, no repair. Tests `test_quality_safety_eval_harness.py` **105/0** (was
     52/0). `production_offline_judge_frozen=true`, `judge_ready=false`, `repair_ready=false`,
     `dev_time_reference_anchored_eval_status=skeleton_only`, `numeric_strategy=recompute_first_not_manual_known_numbers`.
-    **next_step=phase0_layer1_deterministic_scorer_real_pair**. **Slice 160 is NOT committed.**
+    **Slice 160 is now trunk commit `4e652bd`** (Slice 161 consumes its golden-pair specs).
   - **`docs/GUIDEFORGE_MASTER_ROADMAP.md` is now the authoritative phase order** (added this slice; it did not previously
     exist in the repo). **Phase 0 — Eval harness + fact-sheet skeleton — is active.** Do **not** reorder phases. Do **not**
     start figures/tables/OCR/prompt-tuning/style-audit/product-fix until Phase 0 exit criteria are met and recorded.
@@ -40,10 +54,12 @@
     `reusable_after_refactor` = `quality_safety_eval_harness.py`, `quality_safety_unified_qa.py`, synthetic fixtures (as
     unit tests only); `archived_frozen_do_not_extend` = the offline-judge stack + the synthetic numeric-drift
     producer/adapters/validators; `unrelated_current_baseline` = the live `guide_quality_*` measurement layer.
-  - **Next slice: `phase0_real_golden_pair_eval_harness_skeleton`** — build the real `nn3` + `ensemble` golden-pair
-    fixtures (`ground_truth_numerics` incl. `Gini weight_gt_176 = 0.20`), Layer-1 blocking scorer on real decks, the
-    separate dev-time reference-anchored judge, `overall_10`+`shippable` separated, and append-only regression JSONL —
-    reusing the recompute-first foundation, never the frozen synthetic apparatus. **Slice 159 remains NOT committed.**
+  - **Next slice: `phase0_overall_score_regression_record_shape_or_reference_judge_skeleton`** — with the Layer-1
+    deterministic scorer in place (Slice 161), the next step is either the Phase 0 overall-score regression-record
+    *shape* (still shape-only / no JSONL persistence yet) or the **separate** dev-time reference-anchored eval judge
+    skeleton — reusing the recompute-first foundation, never the frozen production offline judge or the synthetic
+    apparatus. `overall_10` stays separate from `shippable`; production judge stays frozen. **Slice 161 is NOT
+    committed.**
 
 ### Previously (Slice 158, now trunk `3a44c91`)
 - **Slice 158 (Lean QA-gate warning triage).** Docs-only triage of why `app_run_6` reads `baseline_status=warning`

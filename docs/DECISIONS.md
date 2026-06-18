@@ -6688,3 +6688,57 @@ invariants forbid both private-material leakage and a manual `known_numbers` tru
 expectations as a closed, strictly-validated, whitelist-keyed fixture set satisfies the scoreboard need
 while making leakage and known_numbers drift structurally impossible, and the frozen production judge
 cannot be flipped from this skeleton. Next slice: `phase0_layer1_deterministic_scorer_real_pair`.
+
+## Slice 161 — Phase 0 Layer-1 deterministic scorer is pure/in-memory over closed expectations + caller text
+
+- **Decision:** the Phase 0 Layer-1 deterministic scorer (`score_phase0_layer1`) is **pure and
+  in-memory**: it consumes the closed golden-pair expectation spec (topics, ground-truth numeric
+  labels/values/tolerances, mock-question minimum, tier targets) plus **candidate text supplied by the
+  caller**, and returns a closed, counts-only, JSON-serializable record. It **does not read private
+  files** (no source/reference document, `clean.md`, OCR/caption/table text, raw artifacts), **does not
+  execute a judge**, **does not repair**, and **does not turn the golden numerics into a general manual
+  `known_numbers` runtime path** — numeric correctness in the running pipeline stays recompute-first.
+- **Decision:** golden-pair gating **tightens** the synthetic Layer-1 contract for the real pair: every
+  authored numeric is **required**, so a missing or contradicted numeric is a **blocking** failure, and
+  topic coverage below the `0.90` threshold is **blocking**; `mock_question_count` stays **advisory /
+  non-blocking**. `shippable` is therefore gated **only** on the deterministic Layer-1 blocking checks;
+  advisory warnings never flip it on their own.
+- **Decision:** `overall_10` is kept a **distinct field from `shippable`** and is left **unscored
+  (`None`)** in this deterministic path (`overall_10_basis="layer1_deterministic_not_scored"`); a real
+  0–10 quality score is owned by the later, **separate** dev-time reference-anchored eval judge and must
+  not be faked from Layer-1. `judge_ready`/`repair_ready` are hard `False` with **no override** in the
+  scorer (verified even when a `reference_anchored_judge_status` is supplied), so the production offline
+  judge stays frozen by construction.
+- **Decision:** the record carries **counts/closed statuses only** — the numeric check drops its
+  per-target detail and any extracted candidate values; coverage drops its `missing_topics` list — so no
+  raw candidate text, snippets, matched values, paths, filenames, hashes, or byte counts can ride along.
+  Reasoning-leak detection is **reused unchanged** (not weakened).
+
+**Why:** Phase 0 needs a usable deterministic scoring path on the real golden pair without resurrecting
+the frozen synthetic judge apparatus or leaking private material. Reusing the existing closed detectors,
+tightening only the gating the roadmap requires (required numerics, coverage threshold), and emitting a
+counts-only record keeps the scorer honest, leak-proof, and clearly separated from the Layer-2 judge.
+Next slice: `phase0_overall_score_regression_record_shape_or_reference_judge_skeleton`.
+
+## Slice 161 (patch) — Phase 0 numeric check ignores label-internal parameters
+
+- **Decision:** the `numeric_correctness` check now **strips the matched authored-label span from the
+  line before extracting candidate numbers** (`_strip_label_spans`). Authored exam labels routinely
+  embed numeric parameters — e.g. `htop(pw=0.5,sw=0.37)`, `SoftMax(1.43)`, `CE(-ln 0.57)`,
+  `gini_weight_gt_176` — and those label-internal numbers (0.5, 0.37, 0.57, 1.43, a spurious trailing
+  37, 176, …) **must not** be read as candidate answer values or as numeric contradictions. The check
+  locates each contiguous run of line tokens equal to the label's normalized token sequence, drops that
+  raw span, and extracts numbers only from the remainder (typically the right-hand-side answer after
+  `=`, `:`, or `≈`). When the label tokens are not found as a contiguous run the line is returned
+  unchanged, so **general contradiction detection is never weakened** (multi-occurrence and multi-value
+  lines still surface real contradictions, e.g. `Gini weight_gt_176 = 0.42` vs `= 0.19`).
+- **Decision:** the test helper no longer appends a synthetic `_out` suffix to dodge the detector; golden
+  candidates now write the **natural** `<label> = <value>` form. The fix is local to
+  `pipeline/quality_safety_eval_harness.py`; the committed golden-pair specs (`nn3`, `ensemble`) are
+  unchanged and the golden-pair set stays exactly `{nn3, ensemble}`.
+
+**Why:** the prior `_NUMBER_RE`-only scan treated decimals inside realistic labels as contradictory
+candidate values, producing false numeric failures for natural guide text. Span-stripping fixes the
+false contradictions while preserving real mismatch/contradiction detection, the counts-only record,
+the frozen judge (`judge_ready=false`, `repair_ready=false`), and the recompute-first numeric strategy
+(this remains closed golden expectations, not a manual operator `known_numbers` runtime).

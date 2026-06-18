@@ -5,7 +5,71 @@
 
 ---
 
-## Slice 160 — **Phase 0 real golden-pair eval harness skeleton (`nn3` + `ensemble`)**, on `slice160-phase0-real-golden-pair-eval-skeleton`. **NOT COMMITTED.**
+## Slice 161 — **Phase 0 Layer-1 deterministic scorer on the real golden pair**, on `slice161-phase0-layer1-deterministic-scorer`. **NOT COMMITTED.**
+
+- **Part 0 completed:** Slice 160 was committed as `4e652bd` ("Slice 160: Add Phase 0 golden pair eval skeleton"),
+  fast-forward merged to trunk `chrome-renderer-v1` (`da795a8..4e652bd`), and pushed with a normal `git push` (no
+  force-push). Final trunk status was clean; **no docker compose config was run**; **Docker was not run**; the Slice 60
+  trace stash remains parked and untouched; `local_operator_baselines/` stayed ignored/uncommitted; no private material
+  was committed. The Phase 0 golden-pair specs (`nn3`, `ensemble`) are now committed.
+- **phase=Phase 0 — Eval harness + fact-sheet skeleton** (active; phase order unchanged).
+- **slice=161**
+- **phase0_layer1_deterministic_scorer_present=true** — `score_phase0_layer1(candidate_text, golden_spec, *, ...)` in
+  `pipeline/quality_safety_eval_harness.py`. Pure, in-memory, deterministic. It validates the golden-pair spec, runs the
+  five closed Layer-1 detectors over the **caller-supplied candidate string** and the closed authored expectation spec,
+  and returns a closed, JSON-serializable, **counts-only** record. It reads **no file**, no source/reference document,
+  no `clean.md`, no OCR/caption/table text, no provider payload, no model, and no judge.
+- **golden_pair_ids=nn3,ensemble** — unchanged real Phase 0 pair; the scorer rejects the synthetic Slice 108 fixtures as
+  golden pairs (verified by test).
+- **layer1_checks=leaked_reasoning,numeric_correctness,coverage,mock_q_count,worked_answer_completeness** — implemented
+  via the existing closed detectors (reasoning-leak detection reused, **not weakened**):
+  - `leaked_reasoning` — reused `_check_leaked_reasoning`; counts only (signature + structural), **blocking**, no
+    matched text.
+  - `numeric_correctness` — golden pairs require **every** authored numeric, so any **missing or contradicted** numeric
+    is a **blocking** fail. Reshaped to counts only: `expected_count`, `matched_count`, `missing_count`,
+    `mismatch_count` (the detailed per-target list / any extracted candidate values are **dropped** from the record).
+    **Patch:** before extracting candidate numbers the check now **strips the matched authored-label span**
+    (`_strip_label_spans`), so label-internal parameters (e.g. `pw=0.5`, `sw=0.37`, `-ln 0.57`, `1.43`, the `176` in
+    `gini_weight_gt_176`) are **not** read as candidate answers or contradictions; only the right-hand-side answer after
+    `=`/`:`/`≈` is read. When the label tokens are not a contiguous run the line is left unchanged, so general
+    contradiction detection is **not weakened** (e.g. `Gini weight_gt_176 = 0.42` vs `= 0.19` still fails).
+  - `coverage` — lowercase/punctuation-stripped/whitespace-collapsed topic matching; `coverage_ratio` vs
+    `threshold=0.90`; **blocking only when below threshold**. Reshaped to counts only (`expected_topic_count`,
+    `matched_topic_count`, `coverage_ratio`, `threshold`); the authored `missing_topics` list is **dropped**.
+  - `mock_question_count` — advisory only (`status=warning` when below `min_required`), **non-blocking**; does not
+    alone make `shippable=false`.
+  - `worked_answer_completeness` — reused detector; unresolved final-answer markers are a **blocking** fail; counts
+    only.
+- **Record shape:** `lecture_id`, `source_quality`, `tier_targets`, `layer1_status`, `layer1_summary`, **separate
+  `overall_10` and `shippable`**, `blocking_checks`, `checks`, `judge_ready=false`, `repair_ready=false`,
+  `reference_anchored_judge_status` (`not_run` default), `regression_record_status` (`shape_only` default), `warnings`.
+  - **`overall_10` is intentionally left unscored (`None`)** with `overall_10_basis="layer1_deterministic_not_scored"`
+    — a real 0–10 quality score is owned by the later, **separate** dev-time reference-anchored eval judge, not this
+    deterministic path; it must not pretend to include a Layer-2 judge score.
+  - **`shippable` reflects only the deterministic Layer-1 blocking gates** (it is `false` iff any blocking check fails);
+    advisory checks never block on their own.
+- **production_offline_judge_frozen=true**, **judge_ready=false**, **repair_ready=false** — hard-coded with no override
+  path in the scorer (verified by test even when a `reference_anchored_judge_status` is supplied).
+- **dev_time_reference_anchored_eval_status=not_built_yet** (status field present and separate; judge not built/executed).
+- **numeric_strategy=recompute_first_not_manual_known_numbers** — the golden `ground_truth_numerics` remain closed
+  authored **expectation** specs scored against caller text; **not** a general operator-typed known_numbers runtime path.
+- **Boundaries honored:** no Layer-2 judge execution; no provider/model/cloud/local-LLM call; no filesystem reading of
+  private guides; no JSONL persistence (shape-only); no repair; reasoning-leak detection unweakened; no aggregator/eval
+  patched to hide warnings/failures; frontend and API routes untouched.
+- **Validation (green):** `compileall api pipeline test_scripts` (exit 0); `test_quality_safety_eval_harness.py`
+  **151/0** (was 105/0; +3 regression tests for natural decimal-bearing labels and the natural ensemble
+  contradiction/mismatch); `test_quality_safety_recompute_verifier.py` **99/0**; `test_quality_safety_unified_qa.py`
+  **73/0**; `test_guide_quality_baseline.py` **207/0**; `validate_guide_quality_baseline_harness.py` ok;
+  `git diff --check` clean. **Docker not run; no docker compose config run.**
+- **label_internal_parameter_patch=applied** — `_strip_label_spans` removes matched-label spans before numeric
+  extraction so realistic labels (`htop(pw=0.5,sw=0.37)`, `SoftMax(1.43)`, `CE(-ln 0.57)`, `gini_weight_gt_176`) no
+  longer create false contradictions; tests use the natural label forms (no underscore `_out` dodge). Committed
+  golden-pair specs (`nn3`, `ensemble`) unchanged; golden-pair set still exactly `{nn3, ensemble}`.
+- **next_step=phase0_overall_score_regression_record_shape_or_reference_judge_skeleton**.
+
+---
+
+## Slice 160 — **Phase 0 real golden-pair eval harness skeleton (`nn3` + `ensemble`)**, on `slice160-phase0-real-golden-pair-eval-skeleton`. **COMMITTED `4e652bd`; merged to trunk; pushed.**
 
 - **Part 0 completed:** Slice 159 was committed as `da795a8` ("Slice 159: Adopt master roadmap Phase 0 grounding"),
   fast-forward merged to trunk `chrome-renderer-v1` (`3a44c91..da795a8`), and pushed with a normal `git push` (no

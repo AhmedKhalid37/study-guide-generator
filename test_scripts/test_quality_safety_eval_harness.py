@@ -27,6 +27,7 @@ from pipeline.quality_safety_eval_harness import (  # noqa: E402
     load_quality_safety_fixture_spec,
     run_quality_safety_eval,
     run_quality_safety_layer1_checks,
+    score_phase0_layer1,
 )
 
 GOLDEN_PAIR_DIR = REPO / "test_scripts" / "fixtures" / "quality_safety" / "golden_pairs"
@@ -633,6 +634,447 @@ def test_phase0_report_skeleton_judge_frozen() -> None:
     check("phase0 skeleton requires validated golden pair", raised)
 
 
+def golden_candidate(
+    spec: dict[str, Any],
+    *,
+    topics: list[str] | None = None,
+    numerics: list[dict[str, Any]] | None = None,
+    mock_count: int | None = None,
+    extra_lines: list[str] | None = None,
+) -> str:
+    """Build a synthetic candidate guide string for one golden-pair spec.
+
+    Uses only the closed authored expectation labels/values; no private guide,
+    source, or reference material. Mock questions use the ``Q<n>.`` convention
+    the harness recognizes, and contain no ``?`` so the leak detector is not
+    triggered outside genuine reasoning leaks injected by a test.
+    """
+    use_topics = spec["expected_topics"] if topics is None else topics
+    use_numerics = spec["ground_truth_numerics"] if numerics is None else numerics
+    count = spec["min_mock_questions"] if mock_count is None else mock_count
+    lines = ["# Synthetic Golden Candidate"]
+    lines.append("Covered topics: " + "; ".join(use_topics) + ".")
+    for item in use_numerics:
+        # Write the authored label verbatim followed by ``= <value>``; no
+        # synthetic ``_out`` suffix is appended. The numeric check strips the
+        # matched label span (including any label-internal parameters such as
+        # ``pw=0.5`` or ``-ln 0.57``) before reading the candidate value, so the
+        # answer on the right-hand side is the only number extracted.
+        lines.append(f"{item['label']} = {item['value']}")
+    lines.append("## Worked Answer")
+    lines.append("Solution: substitute the values and the computation completes.")
+    lines.append("## Practice Questions")
+    for index in range(count):
+        lines.append(f"Q{index + 1}. Restate the computed value for item {index + 1}.")
+    if extra_lines:
+        lines.extend(extra_lines)
+    return "\n".join(lines)
+
+
+def phase0_check(record: dict[str, Any], check_id: str) -> dict[str, Any]:
+    for item in record.get("checks", []):
+        if item.get("id") == check_id:
+            return item
+    raise AssertionError(check_id)
+
+
+REQUIRED_PHASE0_FIELDS = (
+    "lecture_id",
+    "source_quality",
+    "layer1_status",
+    "shippable",
+    "overall_10",
+    "blocking_checks",
+    "checks",
+    "judge_ready",
+    "repair_ready",
+    "reference_anchored_judge_status",
+    "regression_record_status",
+)
+
+
+def test_phase0_scorer_clean_candidate_passes() -> None:
+    for lecture_id in ("nn3", "ensemble"):
+        spec = load_golden_pair_spec(read_golden_pair(lecture_id))
+        record = score_phase0_layer1(golden_candidate(spec), spec)
+        check(
+            f"{lecture_id} clean candidate has all required fields",
+            all(field in record for field in REQUIRED_PHASE0_FIELDS),
+            str([f for f in REQUIRED_PHASE0_FIELDS if f not in record]),
+        )
+        check(
+            f"{lecture_id} clean candidate shippable and passes",
+            record["shippable"] is True
+            and record["layer1_status"] == "passed"
+            and record["blocking_checks"] == [],
+            str(record["blocking_checks"]) + " " + str(record["layer1_status"]),
+        )
+        check(
+            f"{lecture_id} clean numeric passes",
+            phase0_check(record, "numeric_correctness")["status"] == "passed"
+            and phase0_check(record, "numeric_correctness")["missing_count"] == 0
+            and phase0_check(record, "numeric_correctness")["mismatch_count"] == 0,
+            str(phase0_check(record, "numeric_correctness")),
+        )
+        check(
+            f"{lecture_id} clean coverage passes at/above threshold",
+            phase0_check(record, "coverage")["status"] == "passed"
+            and phase0_check(record, "coverage")["threshold"] == 0.90,
+            str(phase0_check(record, "coverage")),
+        )
+        check(
+            f"{lecture_id} clean leak and worked pass",
+            phase0_check(record, "leaked_reasoning")["status"] == "passed"
+            and phase0_check(record, "worked_answer_completeness")["status"] == "passed",
+            str(record["checks"]),
+        )
+        check(
+            f"{lecture_id} judge frozen",
+            record["judge_ready"] is False and record["repair_ready"] is False,
+        )
+        check(
+            f"{lecture_id} reference judge separate and not run",
+            record["reference_anchored_judge_status"] == "not_run",
+        )
+        check(
+            f"{lecture_id} overall_10 separate from shippable",
+            record["overall_10"] is None and isinstance(record["shippable"], bool),
+        )
+        no_canary(f"{lecture_id} phase0 clean record", record)
+
+
+def test_phase0_scorer_leaked_reasoning_blocks() -> None:
+    spec = load_golden_pair_spec(read_golden_pair("nn3"))
+    candidate = golden_candidate(
+        spec, extra_lines=["Wait, actually this step is unclear, so we'll trust it."]
+    )
+    record = score_phase0_layer1(candidate, spec)
+    leak = phase0_check(record, "leaked_reasoning")
+    check(
+        "phase0 leak fails and blocks shipping",
+        leak["status"] == "failed"
+        and "leaked_reasoning" in record["blocking_checks"]
+        and record["shippable"] is False,
+        str(record["blocking_checks"]),
+    )
+    check(
+        "phase0 leak record counts only",
+        "matches" not in leak and "line" not in json.dumps(leak).lower(),
+        str(leak),
+    )
+    check(
+        "phase0 leak omits matched text",
+        not any(find_in_serialized(record, term) for term in ["Wait", "actually", "unclear", "we'll trust"]),
+    )
+
+
+def test_phase0_scorer_missing_numeric_blocks() -> None:
+    spec = load_golden_pair_spec(read_golden_pair("nn3"))
+    reduced = spec["ground_truth_numerics"][:-1]
+    record = score_phase0_layer1(golden_candidate(spec, numerics=reduced), spec)
+    numeric = phase0_check(record, "numeric_correctness")
+    check(
+        "phase0 missing numeric fails and blocks",
+        numeric["status"] == "failed"
+        and numeric["missing_count"] >= 1
+        and "numeric_correctness" in record["blocking_checks"]
+        and record["shippable"] is False,
+        str(numeric),
+    )
+
+
+def test_phase0_scorer_ensemble_gini_weight_numeric() -> None:
+    spec = load_golden_pair_spec(read_golden_pair("ensemble"))
+    gini = next(
+        item for item in spec["ground_truth_numerics"] if item["label"] == "gini_weight_gt_176"
+    )
+    check("ensemble gini weight_gt_176 expectation is 0.20", gini["value"] == 0.20)
+
+    without_gini = [
+        item for item in spec["ground_truth_numerics"] if item["label"] != "gini_weight_gt_176"
+    ]
+    missing_record = score_phase0_layer1(
+        golden_candidate(spec, numerics=without_gini), spec
+    )
+    missing_numeric = phase0_check(missing_record, "numeric_correctness")
+    check(
+        "ensemble missing gini weight_gt_176 fails numeric",
+        missing_numeric["status"] == "failed"
+        and missing_numeric["missing_count"] >= 1
+        and missing_record["shippable"] is False,
+        str(missing_numeric),
+    )
+
+    full_record = score_phase0_layer1(golden_candidate(spec), spec)
+    full_numeric = phase0_check(full_record, "numeric_correctness")
+    check(
+        "ensemble all numerics including gini weight_gt_176 pass",
+        full_numeric["status"] == "passed"
+        and full_numeric["missing_count"] == 0
+        and full_numeric["mismatch_count"] == 0
+        and full_record["shippable"] is True,
+        str(full_numeric),
+    )
+
+
+# Realistic authored numeric labels that embed numeric parameters (weights,
+# softmax inputs, a ``-ln`` argument). These exercise the fix that strips the
+# matched label span before reading the candidate answer, so label-internal
+# decimals like 0.5, 0.37 or 0.57 are never read as candidate answers or as
+# contradictions. No underscore-joined synthetic suffix is used to dodge the
+# detector -- the labels are the natural exam forms.
+NATURAL_NN3_NUMERICS = [
+    {"label": "htop(pw=0.5,sw=0.37)", "value": 0.572, "tol": 0.01},
+    {"label": "Rset(pw=0.5,sw=0.37)", "value": 0.09, "tol": 0.01},
+    {"label": "Rver(pw=0.5,sw=0.37)", "value": 0.86, "tol": 0.01},
+    {"label": "SoftMax(1.43)", "value": 0.69, "tol": 0.01},
+    {"label": "CE(-ln 0.57)", "value": 0.56, "tol": 0.01},
+]
+
+
+def natural_nn3_spec() -> dict[str, Any]:
+    """A valid nn3 golden-pair spec whose numeric labels are natural exam forms.
+
+    Reuses the committed nn3 topics/mock/tier expectations but swaps in the
+    realistic parameter-bearing numeric labels. The strict golden-pair loader
+    still validates it, and the golden-pair set stays exactly {nn3, ensemble};
+    only the in-memory numeric labels differ for this regression test.
+    """
+    return load_golden_pair_spec(
+        {**read_golden_pair("nn3"), "ground_truth_numerics": NATURAL_NN3_NUMERICS}
+    )
+
+
+def test_phase0_numeric_ignores_label_internal_parameters() -> None:
+    spec = natural_nn3_spec()
+    # Candidate writes each natural label verbatim followed by ``= <answer>``;
+    # e.g. ``htop(pw=0.5,sw=0.37) = 0.572`` and ``CE(-ln 0.57) = 0.56``.
+    record = score_phase0_layer1(golden_candidate(spec), spec)
+    numeric = phase0_check(record, "numeric_correctness")
+    check(
+        "natural decimal-bearing labels pass numeric_correctness",
+        numeric["status"] == "passed"
+        and numeric["missing_count"] == 0
+        and numeric["mismatch_count"] == 0
+        and numeric["matched_count"] == len(NATURAL_NN3_NUMERICS),
+        str(numeric),
+    )
+    check(
+        "natural decimal-bearing labels do not block shipping",
+        record["shippable"] is True
+        and "numeric_correctness" not in record["blocking_checks"],
+        str(record["blocking_checks"]),
+    )
+    # Label-internal parameters (0.5, 0.37, 0.57, 1.43) and the spurious trailing
+    # 37 must not surface as found values or contradictions: record is counts-only.
+    blob = json.dumps(record, sort_keys=True)
+    check(
+        "natural numeric record is counts only (no found values / raw labels)",
+        "found_values" not in blob
+        and "distinct_value_count" not in blob
+        and "pw=0.5" not in blob
+        and "sw=0.37" not in blob
+        and "-ln 0.57" not in blob,
+        blob[:80],
+    )
+    no_canary("phase0 natural numeric record", record)
+    check(
+        "natural numeric judge stays frozen and overall_10 separate",
+        record["judge_ready"] is False
+        and record["repair_ready"] is False
+        and record["overall_10"] is None
+        and isinstance(record["shippable"], bool),
+        str(record["judge_ready"]),
+    )
+
+
+def test_phase0_numeric_natural_wrong_answer_still_fails() -> None:
+    spec = natural_nn3_spec()
+    # Flip a single answer to a clearly wrong value while keeping the realistic
+    # parameter-bearing label: ``htop(pw=0.5,sw=0.37) = 0.999``.
+    wrong = [
+        {**item, "value": 0.999} if item["label"] == "htop(pw=0.5,sw=0.37)" else item
+        for item in NATURAL_NN3_NUMERICS
+    ]
+    record = score_phase0_layer1(golden_candidate(spec, numerics=wrong), spec)
+    numeric = phase0_check(record, "numeric_correctness")
+    check(
+        "natural wrong answer fails numeric_correctness and blocks",
+        numeric["status"] == "failed"
+        and numeric["mismatch_count"] >= 1
+        and "numeric_correctness" in record["blocking_checks"]
+        and record["shippable"] is False,
+        str(numeric),
+    )
+
+
+def test_phase0_numeric_ensemble_natural_contradiction_and_mismatch() -> None:
+    spec = load_golden_pair_spec(read_golden_pair("ensemble"))
+
+    # Authored expectation: Gini weight_gt_176 = 0.20. The clean candidate
+    # passes (covered by the clean-candidate test); here confirm a wrong single
+    # value still fails, using the natural spaced form ``Gini weight_gt_176``.
+    for wrong_value in (0.42, 0.19):
+        mutated = [
+            {**item, "value": wrong_value}
+            if item["label"] == "gini_weight_gt_176"
+            else item
+            for item in spec["ground_truth_numerics"]
+        ]
+        record = score_phase0_layer1(golden_candidate(spec, numerics=mutated), spec)
+        numeric = phase0_check(record, "numeric_correctness")
+        check(
+            f"ensemble gini wrong value {wrong_value} fails numeric_correctness",
+            numeric["status"] == "failed"
+            and numeric["mismatch_count"] >= 1
+            and "numeric_correctness" in record["blocking_checks"]
+            and record["shippable"] is False,
+            str(numeric),
+        )
+
+    # Two contradictory answers for the same authored label still fail as a
+    # contradiction (the clean candidate already states 0.20; add 0.42 and 0.19).
+    contradiction = score_phase0_layer1(
+        golden_candidate(
+            spec,
+            extra_lines=[
+                "Gini weight_gt_176 = 0.42",
+                "Gini weight_gt_176 = 0.19",
+            ],
+        ),
+        spec,
+    )
+    numeric = phase0_check(contradiction, "numeric_correctness")
+    check(
+        "ensemble gini contradictory answers fail and block",
+        numeric["status"] == "failed"
+        and numeric["mismatch_count"] >= 1
+        and "numeric_correctness" in contradiction["blocking_checks"]
+        and contradiction["shippable"] is False,
+        str(numeric),
+    )
+    check(
+        "ensemble contradiction record stays counts only and judge frozen",
+        "found_values" not in json.dumps(contradiction, sort_keys=True)
+        and contradiction["judge_ready"] is False
+        and contradiction["repair_ready"] is False,
+        str(numeric),
+    )
+    no_canary("phase0 ensemble contradiction record", contradiction)
+
+
+def test_phase0_scorer_coverage_below_threshold_blocks() -> None:
+    spec = load_golden_pair_spec(read_golden_pair("nn3"))
+    # Drop two of ten topics -> 0.8 coverage, below the 0.90 threshold.
+    reduced_topics = spec["expected_topics"][:-2]
+    record = score_phase0_layer1(golden_candidate(spec, topics=reduced_topics), spec)
+    coverage = phase0_check(record, "coverage")
+    check(
+        "phase0 coverage below threshold fails and blocks",
+        coverage["status"] == "failed"
+        and coverage["blocking"] is True
+        and coverage["coverage_ratio"] is not None
+        and coverage["coverage_ratio"] < 0.90
+        and "coverage" in record["blocking_checks"]
+        and record["shippable"] is False,
+        str(coverage),
+    )
+
+
+def test_phase0_scorer_mock_below_min_is_advisory() -> None:
+    spec = load_golden_pair_spec(read_golden_pair("nn3"))
+    record = score_phase0_layer1(golden_candidate(spec, mock_count=3), spec)
+    mock = phase0_check(record, "mock_question_count")
+    check(
+        "phase0 mock below minimum is advisory warning",
+        mock["status"] == "warning" and mock["blocking"] is False,
+        str(mock),
+    )
+    check(
+        "phase0 mock below minimum alone does not block shipping",
+        record["shippable"] is True and record["blocking_checks"] == [],
+        str(record["blocking_checks"]),
+    )
+
+
+def test_phase0_scorer_worked_answer_unresolved_blocks() -> None:
+    spec = load_golden_pair_spec(read_golden_pair("nn3"))
+    candidate = golden_candidate(
+        spec,
+        extra_lines=["## Worked Answer", "Solution: answer missing for this step."],
+    )
+    record = score_phase0_layer1(candidate, spec)
+    worked = phase0_check(record, "worked_answer_completeness")
+    check(
+        "phase0 worked answer unresolved fails and blocks",
+        worked["status"] == "failed"
+        and "worked_answer_completeness" in record["blocking_checks"]
+        and record["shippable"] is False,
+        str(worked),
+    )
+
+
+def test_phase0_scorer_no_raw_material_leak() -> None:
+    spec = load_golden_pair_spec(read_golden_pair("nn3"))
+    hostile_candidate = "\n".join(
+        [
+            golden_candidate(spec),
+            HOSTILE_PATH,
+            HOSTILE_URL,
+            HOSTILE_AUTH,
+            HOSTILE_DATA,
+            HOSTILE_OCR,
+            HOSTILE_PROVIDER,
+        ]
+    )
+    record = score_phase0_layer1(hostile_candidate, spec)
+    no_canary("phase0 hostile candidate record", record)
+    blob = json.dumps(record, sort_keys=True).lower()
+    check(
+        "phase0 record exposes no raw candidate text or paths",
+        not any(token in blob for token in ("relu = ", "covered topics", "/home/", ".pdf", "sha256", "bytes")),
+        blob[:80],
+    )
+    check(
+        "phase0 record numeric is counts only (no found values)",
+        "found_values" not in blob and "distinct_value_count" not in blob,
+    )
+    # Deterministic, repeatable serialization.
+    first = json.dumps(score_phase0_layer1(golden_candidate(spec), spec), sort_keys=True)
+    second = json.dumps(score_phase0_layer1(golden_candidate(spec), spec), sort_keys=True)
+    check("phase0 scorer deterministic serialization", first == second)
+
+
+def test_phase0_scorer_rejects_synthetic_and_judge_frozen() -> None:
+    # Synthetic Slice 108 fixtures are not valid Phase 0 golden pairs.
+    synthetic = base_fixture()
+    rejected = False
+    try:
+        score_phase0_layer1(good_candidate(), synthetic)
+    except GoldenPairSpecError:
+        rejected = True
+    check("phase0 scorer rejects synthetic fixture as golden pair", rejected)
+
+    # Even with a reference-anchored status passed in, production judge stays
+    # frozen and overall_10 stays unscored/separate.
+    spec = load_golden_pair_spec(read_golden_pair("ensemble"))
+    record = score_phase0_layer1(
+        golden_candidate(spec),
+        spec,
+        reference_anchored_judge_status="ok",
+        regression_record_status="not_persisted",
+    )
+    check(
+        "phase0 scorer judge stays frozen despite reference status",
+        record["judge_ready"] is False
+        and record["repair_ready"] is False
+        and record["reference_anchored_judge_status"] == "ok"
+        and record["regression_record_status"] == "not_persisted"
+        and record["overall_10"] is None,
+        str(record["reference_anchored_judge_status"]),
+    )
+
+
 def test_import_hygiene() -> None:
     source_path = REPO / "pipeline" / "quality_safety_eval_harness.py"
     tree = ast.parse(source_path.read_text(encoding="utf-8"))
@@ -692,6 +1134,18 @@ def run() -> int:
     test_golden_pair_no_raw_material_fields()
     test_golden_pair_rejects_synthetic_fixtures()
     test_phase0_report_skeleton_judge_frozen()
+    test_phase0_scorer_clean_candidate_passes()
+    test_phase0_scorer_leaked_reasoning_blocks()
+    test_phase0_scorer_missing_numeric_blocks()
+    test_phase0_scorer_ensemble_gini_weight_numeric()
+    test_phase0_numeric_ignores_label_internal_parameters()
+    test_phase0_numeric_natural_wrong_answer_still_fails()
+    test_phase0_numeric_ensemble_natural_contradiction_and_mismatch()
+    test_phase0_scorer_coverage_below_threshold_blocks()
+    test_phase0_scorer_mock_below_min_is_advisory()
+    test_phase0_scorer_worked_answer_unresolved_blocks()
+    test_phase0_scorer_no_raw_material_leak()
+    test_phase0_scorer_rejects_synthetic_and_judge_frozen()
     test_import_hygiene()
     print(f"\nquality_safety_eval_harness: {PASS} passed, {FAIL} failed")
     return 1 if FAIL else 0

@@ -92,6 +92,17 @@ ALLOWED_NUMERIC_KEYS = frozenset({"label", "value", "tol"})
 REFERENCE_JUDGE_STATUSES = frozenset({"not_run", "missing", "miscalibrated", "ok"})
 REGRESSION_RECORD_STATUSES = frozenset({"shape_only", "not_persisted"})
 
+# Phase 0 Layer-1 deterministic scorer (Slice 161). The scorer runs the closed
+# Layer-1 detectors over one validated golden-pair spec and candidate text the
+# caller supplies. Golden pairs treat every authored numeric as required, so a
+# missing or contradicted numeric is a blocking failure; coverage below the
+# threshold is also blocking. ``overall_10`` is intentionally left unscored here
+# (a real 0-10 quality score is owned by the later, separate dev-time
+# reference-anchored eval judge) and the frozen production offline judge stays
+# frozen by construction (judge_ready/repair_ready never true here).
+PHASE0_LAYER1_KIND = "quality_safety_phase0_layer1_score"
+PHASE0_COVERAGE_THRESHOLD = 0.90
+
 
 class GoldenPairSpecError(ValueError):
     """Raised when a Phase 0 golden-pair spec is malformed or out of contract."""
@@ -101,6 +112,12 @@ _NON_ALNUM_RE = re.compile(r"[^a-z0-9]+")
 _NUMBER_RE = re.compile(
     r"(?<![A-Za-z0-9_])-?(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][+-]?\d+)?(?![A-Za-z0-9_])"
 )
+# Alphanumeric run tokenizer used to locate an authored label's span inside a
+# candidate line so label-internal numeric parameters are not read as answers.
+# Matches the token boundaries that ``_normalize`` produces (it collapses every
+# non-``[a-z0-9]`` run to a single space), so a label's normalized tokens line
+# up with the line's raw tokens one-for-one.
+_TOKEN_RE = re.compile(r"[A-Za-z0-9]+")
 _SECRETISH_RE = re.compile(
     r"(https?://|/home/|/mnt/|/tmp/|\\\\|[A-Za-z]:\\|authorization|bearer|"
     r"api[_-]?key|data:|base64|provider payload|ocr|caption|table text|"
@@ -450,6 +467,186 @@ def build_phase0_report_skeleton(
     }
 
 
+def score_phase0_layer1(
+    candidate_text: Any,
+    golden_spec: Any,
+    *,
+    reference_anchored_judge_status: str = "not_run",
+    regression_record_status: str = "shape_only",
+) -> dict[str, Any]:
+    """Score caller-supplied candidate guide text against one golden-pair spec.
+
+    Pure, deterministic, in-memory Layer-1 scoring. It reads only the candidate
+    string and the closed authored expectation spec (topics, ground-truth
+    numeric labels/values/tolerances, mock-question minimum, tier targets) and
+    runs the five closed Layer-1 detectors: ``leaked_reasoning``,
+    ``numeric_correctness``, ``worked_answer_completeness``, ``coverage``, and
+    ``mock_question_count``. It never reads a file, source/reference document,
+    ``clean.md``, OCR/caption/table text, provider payload, model, or judge.
+
+    Phase 0 golden-pair gating tightens the synthetic Layer-1 contract: every
+    authored numeric is required, so any missing or contradicted numeric is a
+    blocking failure, and topic coverage below ``PHASE0_COVERAGE_THRESHOLD`` is
+    blocking. ``shippable`` reflects only the deterministic Layer-1 blocking
+    gates; advisory checks (mock-question count) never block on their own.
+
+    The returned record is closed and JSON-serializable and holds counts/closed
+    statuses only -- no raw candidate text, snippets, matched values, topic
+    labels, paths, filenames, hashes, or byte counts. ``overall_10`` is left
+    unscored (a 0-10 quality score is owned by the later, separate dev-time
+    reference-anchored eval judge, not this deterministic path) and is kept a
+    distinct field from ``shippable``. The frozen production offline judge stays
+    frozen by construction: this path always reports ``judge_ready=False`` and
+    ``repair_ready=False`` with no override. It is not a manual operator
+    known_numbers runtime; the closed golden expectations drive it. It does not
+    persist any JSONL record.
+    """
+    spec = load_golden_pair_spec(golden_spec)
+
+    report_warnings: set[str] = set()
+    if not isinstance(candidate_text, str):
+        report_warnings.add("candidate_markdown_missing")
+        candidate_text = ""
+
+    if reference_anchored_judge_status not in REFERENCE_JUDGE_STATUSES:
+        reference_anchored_judge_status = "not_run"
+    if regression_record_status not in REGRESSION_RECORD_STATUSES:
+        regression_record_status = "shape_only"
+
+    leaked = _check_leaked_reasoning(candidate_text, report_warnings)
+    numeric = _phase0_numeric_check(
+        _check_numeric_correctness(candidate_text, spec, report_warnings)
+    )
+    worked = _check_worked_answer_completeness(candidate_text, report_warnings)
+    coverage = _phase0_coverage_check(
+        _check_coverage(candidate_text, spec, report_warnings)
+    )
+    mock = _phase0_mock_check(
+        _check_mock_question_count(candidate_text, spec, report_warnings)
+    )
+    checks = [leaked, numeric, worked, coverage, mock]
+
+    blocking_checks = [
+        check["id"]
+        for check in checks
+        if check.get("blocking") and check.get("status") == "failed" and check["id"] in CHECK_IDS
+    ]
+    layer1_status = _layer1_status(
+        checks=checks,
+        blocking_failures=blocking_checks,
+        warning_count=len(report_warnings),
+        truncated=False,
+    )
+
+    return {
+        "version": VERSION,
+        "kind": PHASE0_LAYER1_KIND,
+        "lecture_id": spec["lecture_id"],
+        "source_quality": spec["source_quality"],
+        "tier_targets": dict(spec.get("tier_targets", {})),
+        "layer1_status": layer1_status,
+        "layer1_summary": {
+            "blocking_failure_count": len(blocking_checks),
+            "advisory_warning_count": len(report_warnings),
+            "check_count": len(checks),
+            "expected_topic_count": int(coverage.get("expected_topic_count") or 0),
+            "matched_topic_count": int(coverage.get("matched_topic_count") or 0),
+            "numeric_expected_count": int(numeric.get("expected_count") or 0),
+            "numeric_matched_count": int(numeric.get("matched_count") or 0),
+            "numeric_missing_count": int(numeric.get("missing_count") or 0),
+            "numeric_mismatch_count": int(numeric.get("mismatch_count") or 0),
+            "mock_question_count": int(mock.get("count") or 0),
+        },
+        "shippable": not blocking_checks,
+        "overall_10": _safe_score(None),
+        "overall_10_basis": "layer1_deterministic_not_scored",
+        "blocking_checks": blocking_checks,
+        "checks": checks,
+        "judge_ready": False,
+        "repair_ready": False,
+        "reference_anchored_judge_status": reference_anchored_judge_status,
+        "regression_record_status": regression_record_status,
+        "warnings": _ordered(report_warnings, REPORT_WARNING_ORDER),
+    }
+
+
+def _phase0_numeric_check(numeric: dict[str, Any]) -> dict[str, Any]:
+    """Reshape the numeric check to counts-only golden-pair semantics.
+
+    Golden pairs require every authored numeric, so any missing or mismatched
+    numeric is a blocking failure. Drops the detailed per-target list (including
+    any extracted candidate values) so the record carries counts only.
+    """
+    if numeric.get("status") == "not_applicable":
+        return {
+            "id": "numeric_correctness",
+            "status": "not_applicable",
+            "blocking": False,
+            "expected_count": 0,
+            "matched_count": 0,
+            "missing_count": 0,
+            "mismatch_count": 0,
+        }
+    expected = int(numeric.get("target_count") or 0)
+    matched = int(numeric.get("pass_count") or 0)
+    missing = int(numeric.get("missing_count") or 0)
+    mismatch = int(numeric.get("fail_count") or 0)
+    failed = bool(missing or mismatch)
+    return {
+        "id": "numeric_correctness",
+        "status": "failed" if failed else "passed",
+        "blocking": failed,
+        "expected_count": expected,
+        "matched_count": matched,
+        "missing_count": missing,
+        "mismatch_count": mismatch,
+    }
+
+
+def _phase0_coverage_check(coverage: dict[str, Any]) -> dict[str, Any]:
+    """Reshape coverage to counts-only and make below-threshold blocking.
+
+    Drops the authored ``missing_topics`` list so the record carries counts and
+    the coverage ratio only.
+    """
+    if coverage.get("status") == "not_applicable":
+        return {
+            "id": "coverage",
+            "status": "not_applicable",
+            "blocking": False,
+            "expected_topic_count": 0,
+            "matched_topic_count": 0,
+            "coverage_ratio": None,
+            "threshold": PHASE0_COVERAGE_THRESHOLD,
+        }
+    expected = int(coverage.get("expected_count") or 0)
+    matched = int(coverage.get("observed_count") or 0)
+    ratio = coverage.get("coverage_ratio")
+    below = isinstance(ratio, (int, float)) and not isinstance(ratio, bool) and ratio < PHASE0_COVERAGE_THRESHOLD
+    return {
+        "id": "coverage",
+        "status": "failed" if below else "passed",
+        "blocking": bool(below),
+        "expected_topic_count": expected,
+        "matched_topic_count": matched,
+        "coverage_ratio": ratio,
+        "threshold": PHASE0_COVERAGE_THRESHOLD,
+    }
+
+
+def _phase0_mock_check(mock: dict[str, Any]) -> dict[str, Any]:
+    """Reshape the mock-question count to the advisory golden-pair shape."""
+    count = int(mock.get("mock_question_count") or 0)
+    minimum = int(mock.get("minimum_required") or 0)
+    return {
+        "id": "mock_question_count",
+        "status": "passed" if count >= minimum else "warning",
+        "blocking": False,
+        "count": count,
+        "min_required": minimum,
+    }
+
+
 def _require_safe_label(value: Any, field: str) -> str:
     label = _safe_golden_label(value)
     if label is None:
@@ -665,7 +862,7 @@ def _check_numeric_correctness(
         values: list[float] = []
         for line_norm, line in normalized_lines:
             if label_norm and label_norm in line_norm:
-                values.extend(_extract_numbers(line))
+                values.extend(_extract_numbers(_strip_label_spans(line, label_norm)))
         unique_values = _dedupe_floats(values)
         if not unique_values:
             missing_count += 1
@@ -944,6 +1141,50 @@ def _finite_float(value: Any) -> float | None:
     if not math.isfinite(number):
         return None
     return number
+
+
+def _strip_label_spans(line: str, label_norm: str) -> str:
+    """Remove every occurrence of the matched label from ``line``.
+
+    The Phase 0 numeric check finds an authored label on a line and then reads
+    the candidate answer value from that same line. Authored labels routinely
+    embed numeric parameters -- for example ``pw=0.5``, ``sw=0.37`` or
+    ``-ln 0.57`` -- and those label-internal numbers must never be counted as
+    candidate answer values or as numeric contradictions. We locate each
+    contiguous run of line tokens that equals the label's normalized token
+    sequence and drop that raw span (parameters and all), leaving only the
+    surrounding text -- typically the right-hand-side answer after a ``=``,
+    ``:`` or ``≈`` -- for number extraction. The line is returned unchanged when
+    the label tokens are not found as a contiguous run, so general contradiction
+    detection is never weakened.
+    """
+    label_tokens = label_norm.split()
+    if not label_tokens:
+        return line
+    raw_tokens = [
+        (match.group(0).lower(), match.start(), match.end())
+        for match in _TOKEN_RE.finditer(line)
+    ]
+    width = len(label_tokens)
+    spans: list[tuple[int, int]] = []
+    index = 0
+    while index + width <= len(raw_tokens):
+        window = raw_tokens[index : index + width]
+        if [token for token, _, _ in window] == label_tokens:
+            spans.append((window[0][1], window[-1][2]))
+            index += width
+        else:
+            index += 1
+    if not spans:
+        return line
+    pieces: list[str] = []
+    cursor = 0
+    for start, end in spans:
+        pieces.append(line[cursor:start])
+        pieces.append(" ")
+        cursor = end
+    pieces.append(line[cursor:])
+    return "".join(pieces)
 
 
 def _extract_numbers(line: str) -> list[float]:
