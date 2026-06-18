@@ -6769,3 +6769,27 @@ the final product-quality score before the reference-anchored judge exists. Clos
 regression history safe to persist/commit without leaking any private guide/source material, and the
 frozen production offline judge (`judge_ready=false`, `repair_ready=false`, unoverrideable) plus the
 recompute-first numeric strategy are preserved.
+
+## The Phase 0 reference-anchored judge is a dev-time eval contract, not a production gate (Slice 163)
+The Phase 0 reference-anchored judge is a **dev-time eval contract, not a production shippability gate.**
+Slice 163 defines the prompt/schema/sanitization/calibration **only** (closed helper module
+`pipeline/quality_safety_reference_judge.py` plus closed constants in `quality_safety_eval_harness.py`):
+seven closed axes (`conceptual_depth`, `beginner_friendliness`, `explanation_quality`,
+`comparison_quality`, `memory_support`, `mock_question_quality`, `density_anti_bloat`), per-axis integer
+`0..5`, a calibration step requiring the reference (the Claude 9–10 benchmark) to score `≥ 4` on every
+axis or the run is discarded as `miscalibrated`, and a ≤15-word evidence-quote limit. It **does not**
+execute provider/model/cloud/local-LLM calls, **does not** store raw prompts/responses or quotes beyond
+the sanitized ≤15-word synthetic test quotes, **does not** call or extend the frozen offline-judge core,
+**does not** unfreeze `judge_ready`/`repair_ready`, and **does not** blend Layer-2 scores into
+`overall_10` (which stays Layer-1 deterministic-only). `build_phase0_regression_record(...)` accepts an
+optional, defensively-re-validated `reference_judge_summary` that defaults to
+`reference_anchored_judge_status=not_run` + `layer2_judge_included=false` and only flips
+`layer2_judge_included=true` when the supplied summary is fully calibrated and `ok`.
+
+**Why:** the roadmap (§A3) requires *two judges kept separate* — a dev-time, reference-anchored eval
+judge (allowed/required, run locally with the operator's own key, committing only closed numbers +
+<15-word quotes) and the production offline-judge-as-shippability-gate (frozen). Defining the dev-time
+judge as a pure, unwired **contract** first lets the prompt/score/calibration/privacy boundary be
+reviewed and tested in isolation — with synthetic strings only — before any execution or runner exists,
+without weakening the deterministic blocking that actually gates shipping and without risking the frozen
+production judge.

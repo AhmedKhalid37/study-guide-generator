@@ -176,6 +176,45 @@ PHASE0_FORBIDDEN_RECORD_KEYS = frozenset(
     }
 )
 
+# --- Phase 0 Layer-2 dev-time reference-anchored judge contract (Slice 163) ---
+# Closed contract constants for the dev-time, reference-anchored eval judge. This
+# judge scores a candidate guide *relative to a Claude reference guide* (the 9-10
+# benchmark) on a 0-5 integer scale per axis, with a calibration step (the judge
+# must also score the reference itself >= the floor on every axis or the run is
+# discarded as miscalibrated). It is a DEV-TIME EVAL contract, NOT the frozen
+# production offline judge and NOT a production shippability gate: nothing in this
+# module executes a provider/model call, persists prompts/responses, blends a
+# Layer-2 score into ``overall_10``, or flips ``judge_ready``/``repair_ready``.
+# The prompt construction and output sanitization live in the pure, unwired helper
+# module ``pipeline/quality_safety_reference_judge.py`` (which imports these
+# constants); the harness here only stores a sanitized, closed Layer-2 *summary*
+# when a caller explicitly supplies one to a regression record, and that summary
+# never carries evidence quotes, raw model output, prompts, paths, or any other
+# forbidden material.
+PHASE0_REFERENCE_JUDGE_AXES = (
+    "conceptual_depth",
+    "beginner_friendliness",
+    "explanation_quality",
+    "comparison_quality",
+    "memory_support",
+    "mock_question_quality",
+    "density_anti_bloat",
+)
+PHASE0_REFERENCE_JUDGE_AXIS_SET = frozenset(PHASE0_REFERENCE_JUDGE_AXES)
+PHASE0_REFERENCE_AXIS_SCORE_MIN = 0
+PHASE0_REFERENCE_AXIS_SCORE_MAX = 5
+# The reference (the Claude 9-10 benchmark) must score at least this on every axis
+# or the run is miscalibrated and the candidate scores are discarded for scoring.
+PHASE0_REFERENCE_CALIBRATION_MIN = 4
+PHASE0_EVIDENCE_QUOTE_MAX_WORDS = 15
+PHASE0_REFERENCE_JUDGE_RESULT_STATUSES = frozenset(
+    {"not_run", "ok", "miscalibrated", "invalid_output", "blocked", "skipped"}
+)
+PHASE0_REFERENCE_JUDGE_CALIBRATION_STATUSES = frozenset(
+    {"not_run", "ok", "miscalibrated"}
+)
+PHASE0_REFERENCE_JUDGE_SUMMARY_KIND = "quality_safety_phase0_reference_judge_summary"
+
 
 class GoldenPairSpecError(ValueError):
     """Raised when a Phase 0 golden-pair spec is malformed or out of contract."""
@@ -793,6 +832,7 @@ def build_phase0_regression_record(
     model_tier: Any,
     candidate_id: Any = None,
     previous_overall_10: Any = None,
+    reference_judge_summary: Any = None,
 ) -> dict[str, Any]:
     """Build a closed, append-safe Phase 0 regression record.
 
@@ -802,10 +842,20 @@ def build_phase0_regression_record(
     statuses, and bounded numerics. It never carries candidate/source/guide/OCR/
     table/caption text, snippets, paths, filenames, hashes, byte counts, or
     provider payloads. ``overall_10`` is Layer-1 deterministic-only
-    (``layer2_judge_included=False``) and the frozen production offline judge stays
-    frozen (``judge_ready``/``repair_ready`` always ``False``). When a previous
+    (``layer2_judge_included=False`` unless an explicitly-supplied, fully
+    calibrated Layer-2 summary is carried) and the frozen production offline judge
+    stays frozen (``judge_ready``/``repair_ready`` always ``False``). When a previous
     ``overall_10`` is supplied the numeric delta is recorded, but the authoritative
     regression verdict is produced separately by :func:`compare_phase0_regression`.
+
+    ``reference_judge_summary`` is an optional, already-sanitized closed Layer-2
+    reference-anchored judge summary (produced by
+    ``quality_safety_reference_judge.phase0_reference_judge_regression_summary``).
+    It is defensively re-validated here: evidence quotes and any unknown/forbidden
+    fields are dropped, statuses are closed, and ``layer2_judge_included`` is set
+    ``True`` only when the result is fully calibrated and ``ok``. Crucially, a
+    Layer-2 summary NEVER changes ``overall_10`` in this slice -- ``overall_10``
+    stays Layer-1 deterministic-only.
     """
     envelope = compute_phase0_overall_10(layer1_record)
     overall_10 = envelope["overall_10"]
@@ -825,6 +875,16 @@ def build_phase0_regression_record(
     if reference_status not in REFERENCE_JUDGE_STATUSES:
         reference_status = "not_run"
 
+    reference_summary = _safe_reference_judge_summary(reference_judge_summary)
+    layer2_included = reference_summary["layer2_judge_included"]
+    # Only a deliberately-supplied summary may override the Layer-1 path's status,
+    # and only with a token the legacy field's closed vocabulary recognizes.
+    if (
+        isinstance(reference_judge_summary, dict)
+        and reference_summary["status"] in REFERENCE_JUDGE_STATUSES
+    ):
+        reference_status = reference_summary["status"]
+
     return {
         "version": VERSION,
         "kind": PHASE0_REGRESSION_RECORD_KIND,
@@ -835,7 +895,7 @@ def build_phase0_regression_record(
         "candidate_id": _safe_candidate_id(candidate_id),
         "overall_10": overall_10,
         "overall_score_kind": PHASE0_OVERALL_SCORE_KIND,
-        "layer2_judge_included": False,
+        "layer2_judge_included": layer2_included,
         "shippable": envelope["shippable"],
         "blocking_checks": envelope["blocking_checks"],
         "layer1_status": _safe_layer1_status(record.get("layer1_status")),
@@ -843,6 +903,7 @@ def build_phase0_regression_record(
         "judge_ready": False,
         "repair_ready": False,
         "reference_anchored_judge_status": reference_status,
+        "reference_anchored_judge": reference_summary,
         "regression_status": regression_status,
         "previous_overall_10": previous,
         "delta_overall_10": delta_overall_10,
@@ -1018,6 +1079,65 @@ def _safe_phase0_source_quality(value: Any) -> str:
     if isinstance(value, str) and value in SOURCE_QUALITIES:
         return value
     return "unknown"
+
+
+def _safe_reference_judge_summary(value: Any) -> dict[str, Any]:
+    """Return a closed, persist-safe Layer-2 reference-judge summary.
+
+    Defensive re-validation of a sanitized summary supplied by a caller (produced
+    by ``quality_safety_reference_judge.phase0_reference_judge_regression_summary``).
+    Returns a closed dict holding only closed statuses and bounded integer axis
+    scores -- never evidence quotes, raw model output, prompts, paths, filenames,
+    hashes, byte counts, or any other forbidden material. ``judge_ready`` and
+    ``repair_ready`` are always ``False``; ``layer2_judge_included`` is ``True``
+    only when the result is fully calibrated and ``ok``. A missing/invalid summary
+    degrades to a closed ``not_run`` summary.
+    """
+    if not isinstance(value, dict):
+        status, calibration = "not_run", "not_run"
+    else:
+        status = value.get("status")
+        if status not in PHASE0_REFERENCE_JUDGE_RESULT_STATUSES:
+            status = "invalid_output"
+        calibration = value.get("calibration_status")
+        if calibration not in PHASE0_REFERENCE_JUDGE_CALIBRATION_STATUSES:
+            calibration = "not_run"
+    included = status == "ok" and calibration == "ok"
+    summary: dict[str, Any] = {
+        "kind": PHASE0_REFERENCE_JUDGE_SUMMARY_KIND,
+        "status": status,
+        "calibration_status": calibration,
+        "layer2_judge_included": included,
+        "axis_count": 0,
+        "judge_ready": False,
+        "repair_ready": False,
+    }
+    raw = value if isinstance(value, dict) else {}
+    candidate_scores = _safe_reference_axis_scores(raw.get("candidate_axis_scores"))
+    reference_scores = _safe_reference_axis_scores(raw.get("reference_axis_scores"))
+    # Candidate scores are only meaningful (and only retained) when calibrated/ok.
+    if included and candidate_scores:
+        summary["candidate_axis_scores"] = candidate_scores
+        summary["axis_count"] = len(candidate_scores)
+    if reference_scores:
+        summary["reference_axis_scores"] = reference_scores
+    return summary
+
+
+def _safe_reference_axis_scores(value: Any) -> dict[str, int]:
+    """Keep only closed axis keys mapped to bounded integer scores (0..5)."""
+    if not isinstance(value, dict):
+        return {}
+    out: dict[str, int] = {}
+    for axis in PHASE0_REFERENCE_JUDGE_AXES:
+        score = value.get(axis)
+        if (
+            isinstance(score, int)
+            and not isinstance(score, bool)
+            and PHASE0_REFERENCE_AXIS_SCORE_MIN <= score <= PHASE0_REFERENCE_AXIS_SCORE_MAX
+        ):
+            out[axis] = score
+    return out
 
 
 def _assert_phase0_regression_record_safe(record: Any) -> None:

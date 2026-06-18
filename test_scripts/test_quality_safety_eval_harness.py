@@ -34,6 +34,13 @@ from pipeline.quality_safety_eval_harness import (  # noqa: E402
     run_quality_safety_layer1_checks,
     score_phase0_layer1,
 )
+from pipeline.quality_safety_reference_judge import (  # noqa: E402
+    AXES as REFERENCE_JUDGE_AXES,
+    EVIDENCE_QUOTE_MAX_WORDS,
+    build_phase0_reference_judge_prompt,
+    phase0_reference_judge_regression_summary,
+    sanitize_phase0_reference_judge_output,
+)
 
 GOLDEN_PAIR_DIR = REPO / "test_scripts" / "fixtures" / "quality_safety" / "golden_pairs"
 FORBIDDEN_FIXTURE_KEYS = (
@@ -1458,6 +1465,401 @@ def test_phase0_regression_records_only_nn3_and_ensemble() -> None:
         )
 
 
+def synthetic_reference_judge_raw(
+    *,
+    reference_score: int = 5,
+    candidate_score: int = 4,
+    evidence: bool = True,
+    long_quote: bool = False,
+    extra: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    """Build a tiny synthetic Layer-2 judge output (no real guide material)."""
+    raw: dict[str, Any] = {
+        "candidate_scores": {axis: candidate_score for axis in REFERENCE_JUDGE_AXES},
+        "reference_scores": {axis: reference_score for axis in REFERENCE_JUDGE_AXES},
+    }
+    if evidence:
+        if long_quote:
+            quote = " ".join(["padding"] * (EVIDENCE_QUOTE_MAX_WORDS + 5))
+        else:
+            quote = "clear synthetic explanation with a worked step"
+        raw["evidence"] = {axis: quote for axis in REFERENCE_JUDGE_AXES}
+    if extra:
+        raw.update(extra)
+    return raw
+
+
+def test_reference_judge_axes_are_exactly_seven() -> None:
+    check(
+        "reference judge axes are exactly the required seven",
+        REFERENCE_JUDGE_AXES
+        == (
+            "conceptual_depth",
+            "beginner_friendliness",
+            "explanation_quality",
+            "comparison_quality",
+            "memory_support",
+            "mock_question_quality",
+            "density_anti_bloat",
+        ),
+        str(REFERENCE_JUDGE_AXES),
+    )
+    check("reference judge has seven axes", len(REFERENCE_JUDGE_AXES) == 7)
+
+
+def test_reference_judge_prompt_builder_contract() -> None:
+    prompt = build_phase0_reference_judge_prompt(
+        "synthetic reference guide text",
+        "synthetic candidate guide text",
+        read_golden_pair("nn3"),
+    )
+    check(
+        "reference judge prompt kind and lecture id",
+        prompt["kind"] == "quality_safety_phase0_reference_judge_prompt"
+        and prompt["lecture_id"] == "nn3",
+        str({k: prompt[k] for k in ("kind", "lecture_id")}),
+    )
+    check(
+        "reference judge prompt exposes 0-5 axis range and 15-word quote limit",
+        prompt["axis_score_min"] == 0
+        and prompt["axis_score_max"] == 5
+        and prompt["evidence_quote_max_words"] == 15
+        and prompt["reference_calibration_min"] == 4,
+        str(prompt),
+    )
+    blob = json.dumps(prompt).lower()
+    check(
+        "reference judge prompt frames candidate vs reference benchmark",
+        "candidate" in blob and "reference" in blob and "benchmark" in blob,
+    )
+    check(
+        "reference judge prompt requires calibration and strict json",
+        "calibrat" in blob and "strict json" in blob,
+    )
+    check(
+        "reference judge prompt requires short evidence quote with 15-word limit",
+        "evidence quote" in blob and "15 words" in blob,
+    )
+    check(
+        "reference judge prompt is frozen (judge/repair not ready)",
+        prompt["judge_ready"] is False and prompt["repair_ready"] is False,
+    )
+
+
+def test_reference_judge_prompt_builder_is_pure_no_io() -> None:
+    source = (REPO / "pipeline" / "quality_safety_reference_judge.py").read_text(
+        encoding="utf-8"
+    )
+    tree = ast.parse(source)
+    imports: list[str] = []
+    calls: list[str] = []
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Import):
+            imports.extend(alias.name for alias in node.names)
+        elif isinstance(node, ast.ImportFrom):
+            imports.append(node.module or "")
+        elif isinstance(node, ast.Call):
+            func = node.func
+            if isinstance(func, ast.Attribute):
+                calls.append(func.attr)
+            elif isinstance(func, ast.Name):
+                calls.append(func.id)
+    forbidden_import_prefixes = (
+        "api",
+        "frontend",
+        "requests",
+        "urllib",
+        "httpx",
+        "openai",
+        "anthropic",
+        "google",
+        "boto",
+        "pipeline.provider",
+        "pipeline.llm",
+        "pipeline.ocr",
+        "pipeline.pdf_renderer",
+        "pipeline.run_llm_job",
+    )
+    bad_imports = [name for name in imports if name.startswith(forbidden_import_prefixes)]
+    check("reference judge module no forbidden imports", bad_imports == [], str(bad_imports))
+    forbidden_calls = {
+        "urlopen",
+        "post",
+        "socket",
+        "create_connection",
+        "open",
+        "write_text",
+        "write_bytes",
+    }
+    bad_calls = sorted(set(calls) & forbidden_calls)
+    check(
+        "reference judge module makes no network/model/file-write calls",
+        bad_calls == [],
+        str(bad_calls),
+    )
+
+
+def test_reference_judge_sanitizer_accepts_valid_output() -> None:
+    sanitized = sanitize_phase0_reference_judge_output(
+        synthetic_reference_judge_raw(), read_golden_pair("nn3")
+    )
+    check(
+        "reference judge sanitizer returns ok calibrated result",
+        sanitized["status"] == "ok"
+        and sanitized["calibration_status"] == "ok"
+        and sanitized["layer2_judge_included"] is True,
+        str(sanitized),
+    )
+    check(
+        "reference judge sanitizer retains closed candidate axis scores",
+        set(sanitized["candidate_axis_scores"]) == set(REFERENCE_JUDGE_AXES)
+        and all(0 <= v <= 5 for v in sanitized["candidate_axis_scores"].values()),
+        str(sanitized.get("candidate_axis_scores")),
+    )
+    check(
+        "reference judge sanitizer keeps frozen booleans",
+        sanitized["judge_ready"] is False and sanitized["repair_ready"] is False,
+    )
+
+
+def test_reference_judge_sanitizer_rejects_unknown_axis() -> None:
+    raw = synthetic_reference_judge_raw()
+    raw["candidate_scores"]["totally_unknown_axis"] = 3
+    sanitized = sanitize_phase0_reference_judge_output(raw, read_golden_pair("nn3"))
+    check(
+        "reference judge sanitizer rejects unknown axis as invalid_output",
+        sanitized["status"] == "invalid_output"
+        and sanitized["layer2_judge_included"] is False
+        and "candidate_axis_scores" not in sanitized,
+        str(sanitized),
+    )
+
+
+def test_reference_judge_sanitizer_rejects_out_of_range_score() -> None:
+    raw = synthetic_reference_judge_raw(candidate_score=6)
+    sanitized = sanitize_phase0_reference_judge_output(raw, read_golden_pair("nn3"))
+    check(
+        "reference judge sanitizer rejects score outside 0..5",
+        sanitized["status"] == "invalid_output"
+        and sanitized["layer2_judge_included"] is False,
+        str(sanitized),
+    )
+    raw_low = synthetic_reference_judge_raw(candidate_score=-1)
+    sanitized_low = sanitize_phase0_reference_judge_output(raw_low, read_golden_pair("nn3"))
+    check(
+        "reference judge sanitizer rejects negative score",
+        sanitized_low["status"] == "invalid_output",
+        str(sanitized_low),
+    )
+
+
+def test_reference_judge_sanitizer_drops_long_evidence_quote() -> None:
+    raw = synthetic_reference_judge_raw(long_quote=True)
+    sanitized = sanitize_phase0_reference_judge_output(raw, read_golden_pair("nn3"))
+    check(
+        "reference judge sanitizer stays ok but drops over-long quotes",
+        sanitized["status"] == "ok"
+        and sanitized["evidence_quote_dropped_count"] >= 1
+        and "evidence" not in sanitized,
+        str(sanitized),
+    )
+    short = sanitize_phase0_reference_judge_output(
+        synthetic_reference_judge_raw(), read_golden_pair("nn3")
+    )
+    check(
+        "reference judge sanitizer keeps short (<=15 word) synthetic quotes",
+        isinstance(short.get("evidence"), dict)
+        and all(
+            len(q.split()) <= EVIDENCE_QUOTE_MAX_WORDS
+            for q in short["evidence"].values()
+        ),
+        str(short.get("evidence")),
+    )
+
+
+def test_reference_judge_sanitizer_marks_miscalibrated() -> None:
+    raw = synthetic_reference_judge_raw(reference_score=3)
+    sanitized = sanitize_phase0_reference_judge_output(raw, read_golden_pair("nn3"))
+    check(
+        "reference judge sanitizer marks miscalibrated when reference axis < 4",
+        sanitized["status"] == "miscalibrated"
+        and sanitized["calibration_status"] == "miscalibrated",
+        str(sanitized),
+    )
+    check(
+        "miscalibrated result does not include layer2 and discards candidate scores",
+        sanitized["layer2_judge_included"] is False
+        and "candidate_axis_scores" not in sanitized,
+        str(sanitized),
+    )
+    check(
+        "miscalibrated result keeps frozen booleans",
+        sanitized["judge_ready"] is False and sanitized["repair_ready"] is False,
+    )
+
+
+def test_reference_judge_sanitizer_strips_hostile_fields() -> None:
+    # ``evidence=False`` keeps the focus on hostile EXTRA fields: the dev-time
+    # sanitized result is allowed to retain its own short (<=15 word) evidence
+    # quotes, but it must never copy raw model output, prompts, source text,
+    # paths, urls, or data URIs that ride along in the raw judge output.
+    raw = synthetic_reference_judge_raw(
+        evidence=False,
+        extra={
+            "model_response": HOSTILE_PROVIDER,
+            "raw_prompt": HOSTILE_AUTH,
+            "source_text": HOSTILE_OCR,
+            "path": HOSTILE_PATH,
+            "url": HOSTILE_URL,
+            "image": HOSTILE_DATA,
+        },
+    )
+    sanitized = sanitize_phase0_reference_judge_output(raw, read_golden_pair("nn3"))
+    present_keys = collect_record_keys(sanitized)
+    leaked_keys = [key for key in FORBIDDEN_RECORD_KEYS if key in present_keys]
+    check(
+        "reference judge sanitizer drops forbidden field keys",
+        leaked_keys == [],
+        str(leaked_keys),
+    )
+    hostile_keys = [
+        key
+        for key in ("model_response", "raw_prompt", "source_text", "path", "url", "image")
+        if key in present_keys
+    ]
+    check(
+        "reference judge sanitizer drops hostile extra fields",
+        hostile_keys == [],
+        str(hostile_keys),
+    )
+    no_canary("reference judge sanitized output", sanitized)
+
+
+def test_reference_judge_regression_summary_is_record_safe() -> None:
+    sanitized = sanitize_phase0_reference_judge_output(
+        synthetic_reference_judge_raw(), read_golden_pair("nn3")
+    )
+    summary = phase0_reference_judge_regression_summary(sanitized)
+    present_keys = collect_record_keys(summary)
+    leaked_keys = [key for key in FORBIDDEN_RECORD_KEYS if key in present_keys]
+    check(
+        "reference judge regression summary drops evidence/quote keys",
+        leaked_keys == [] and "evidence" not in present_keys,
+        str(leaked_keys),
+    )
+    check(
+        "reference judge regression summary stays closed and included",
+        summary["status"] == "ok"
+        and summary["calibration_status"] == "ok"
+        and summary["layer2_judge_included"] is True,
+        str(summary),
+    )
+    no_canary("reference judge regression summary", summary)
+
+
+def test_reference_judge_layer2_integration_into_regression_record() -> None:
+    spec = load_golden_pair_spec(read_golden_pair("nn3"))
+    layer1 = score_phase0_layer1(golden_candidate(spec), spec)
+    overall_baseline = build_phase0_regression_record(
+        layer1, run_id="r", model_tier="premium"
+    )["overall_10"]
+
+    ok_summary = phase0_reference_judge_regression_summary(
+        sanitize_phase0_reference_judge_output(
+            synthetic_reference_judge_raw(), read_golden_pair("nn3")
+        )
+    )
+    included = build_phase0_regression_record(
+        layer1,
+        run_id="r",
+        model_tier="premium",
+        reference_judge_summary=ok_summary,
+    )
+    check(
+        "ok layer2 summary sets layer2_judge_included true",
+        included["layer2_judge_included"] is True
+        and included["reference_anchored_judge"]["status"] == "ok",
+        str(included["reference_anchored_judge"]),
+    )
+    check(
+        "layer2 summary never blends into layer1 overall_10",
+        included["overall_10"] == overall_baseline
+        and included["overall_score_kind"] == "layer1_deterministic_only",
+        str(included["overall_10"]),
+    )
+    check(
+        "layer2 integration keeps production judge frozen",
+        included["judge_ready"] is False and included["repair_ready"] is False,
+    )
+    present_keys = collect_record_keys(included)
+    leaked_keys = [key for key in FORBIDDEN_RECORD_KEYS if key in present_keys]
+    check("layer2 regression record has no forbidden keys", leaked_keys == [], str(leaked_keys))
+    no_canary("layer2 regression record", included)
+
+    miscal_summary = phase0_reference_judge_regression_summary(
+        sanitize_phase0_reference_judge_output(
+            synthetic_reference_judge_raw(reference_score=3), read_golden_pair("nn3")
+        )
+    )
+    miscalibrated = build_phase0_regression_record(
+        layer1,
+        run_id="r",
+        model_tier="premium",
+        reference_judge_summary=miscal_summary,
+    )
+    check(
+        "miscalibrated layer2 summary keeps layer2_judge_included false",
+        miscalibrated["layer2_judge_included"] is False
+        and miscalibrated["reference_anchored_judge"]["status"] == "miscalibrated",
+        str(miscalibrated["reference_anchored_judge"]),
+    )
+
+
+def test_reference_judge_default_record_is_not_run() -> None:
+    spec = load_golden_pair_spec(read_golden_pair("nn3"))
+    layer1 = score_phase0_layer1(golden_candidate(spec), spec)
+    record = build_phase0_regression_record(layer1, run_id="r", model_tier="premium")
+    check(
+        "default regression record layer2 not included and reference not run",
+        record["layer2_judge_included"] is False
+        and record["reference_anchored_judge_status"] == "not_run"
+        and record["reference_anchored_judge"]["status"] == "not_run",
+        str(record["reference_anchored_judge"]),
+    )
+    check(
+        "default regression record overall stays layer1 deterministic only",
+        record["overall_score_kind"] == "layer1_deterministic_only",
+        str(record["overall_score_kind"]),
+    )
+    # The default record (with the new closed sub-summary) is still JSONL-safe.
+    import tempfile as _tempfile
+
+    with _tempfile.TemporaryDirectory() as tmp:
+        target = Path(tmp) / "phase0_regression.jsonl"
+        append_phase0_regression_record_jsonl(target, record)
+        lines = [line for line in target.read_text(encoding="utf-8").splitlines() if line]
+        check("default record with layer2 summary still appends one line", len(lines) == 1)
+
+
+def test_reference_judge_prompt_stays_within_nn3_ensemble() -> None:
+    for lecture_id in ("nn3", "ensemble"):
+        prompt = build_phase0_reference_judge_prompt(
+            "ref", "cand", read_golden_pair(lecture_id)
+        )
+        check(
+            f"reference judge prompt lecture id {lecture_id}",
+            prompt["lecture_id"] == lecture_id,
+        )
+    rejected = False
+    try:
+        build_phase0_reference_judge_prompt(
+            "ref", "cand", {**read_golden_pair("nn3"), "lecture_id": "other_lecture"}
+        )
+    except GoldenPairSpecError:
+        rejected = True
+    check("reference judge prompt rejects non-golden lecture id", rejected)
+
+
 def test_import_hygiene() -> None:
     source_path = REPO / "pipeline" / "quality_safety_eval_harness.py"
     tree = ast.parse(source_path.read_text(encoding="utf-8"))
@@ -1541,6 +1943,19 @@ def run() -> int:
     test_phase0_regression_compare_flags_blocking_check()
     test_phase0_regression_compare_not_comparable()
     test_phase0_regression_records_only_nn3_and_ensemble()
+    test_reference_judge_axes_are_exactly_seven()
+    test_reference_judge_prompt_builder_contract()
+    test_reference_judge_prompt_builder_is_pure_no_io()
+    test_reference_judge_sanitizer_accepts_valid_output()
+    test_reference_judge_sanitizer_rejects_unknown_axis()
+    test_reference_judge_sanitizer_rejects_out_of_range_score()
+    test_reference_judge_sanitizer_drops_long_evidence_quote()
+    test_reference_judge_sanitizer_marks_miscalibrated()
+    test_reference_judge_sanitizer_strips_hostile_fields()
+    test_reference_judge_regression_summary_is_record_safe()
+    test_reference_judge_layer2_integration_into_regression_record()
+    test_reference_judge_default_record_is_not_run()
+    test_reference_judge_prompt_stays_within_nn3_ensemble()
     test_import_hygiene()
     print(f"\nquality_safety_eval_harness: {PASS} passed, {FAIL} failed")
     return 1 if FAIL else 0

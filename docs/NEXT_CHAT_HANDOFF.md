@@ -6,14 +6,37 @@
 > stable overview see `PROJECT_CONTEXT.md`; canonical brief is `../CLAUDE.md`.
 
 ## Current position
-- **Working tree:** **Slice 162 (Phase 0 overall score + regression record shape/persistence) — UNCOMMITTED**
-  on branch `slice162-phase0-overall-score-regression-record`, branched from updated `chrome-renderer-v1` after Slice 161
-  was committed, fast-forward merged, and pushed. **Slice 161 is trunk commit `e76173f`**; Slice 160 is `4e652bd`.
-  - **Part 0 completed:** Slice 161 ("Add Phase 0 Layer-1 deterministic scorer") was committed as `e76173f`, fast-forward
-    merged to `chrome-renderer-v1` (`4e652bd..e76173f`), and pushed with a normal `git push` (no force-push). Final trunk
-    status was clean; **no docker compose config was run**; **Docker was not run**; the Slice 60 trace stash remains
-    parked and untouched; `local_operator_baselines/` stayed ignored/uncommitted; no private material was committed.
-  - **Slice 162 (code) added the Phase 0 overall score + regression record shape/persistence** in
+- **Working tree:** **Slice 163 (Phase 0 dev-time reference-anchored judge contract skeleton) — UNCOMMITTED**
+  on branch `slice163-phase0-reference-anchored-judge-contract`, branched from updated `chrome-renderer-v1` after Slice 162
+  was committed, fast-forward merged, and pushed. **Slice 162 is trunk commit `06496d0`**; Slice 161 is `e76173f`.
+  - **Part 0 completed:** Slice 162 ("Add Phase 0 overall score regression record") was committed as `06496d0`,
+    fast-forward merged to `chrome-renderer-v1` (`e76173f..06496d0`), and pushed with a normal `git push` (no
+    force-push). Final trunk status was clean; **no docker compose config was run**; **Docker was not run**; the Slice 60
+    trace stash remains parked and untouched; `local_operator_baselines/` stayed ignored/uncommitted; no private material
+    was committed.
+  - **Slice 163 (code) added the Phase 0 dev-time reference-anchored Layer-2 judge contract skeleton** (roadmap §A3) in a
+    new pure/unwired helper module `pipeline/quality_safety_reference_judge.py` plus closed contract constants in
+    `pipeline/quality_safety_eval_harness.py`. This is **separate** from the frozen production offline judge and is
+    **not** a shippability gate. Seven closed axes (`conceptual_depth`, `beginner_friendliness`, `explanation_quality`,
+    `comparison_quality`, `memory_support`, `mock_question_quality`, `density_anti_bloat`), per-axis **integer 0..5**.
+    `build_phase0_reference_judge_prompt(reference_text, candidate_text, golden_spec)` validates the golden pair (lecture
+    id stays `{nn3, ensemble}`) and returns an **in-memory messages object for a caller to send later** — **no**
+    provider/model call, **no** file write; the instruction frames the reference as the 9–10 benchmark, candidate scored
+    relative to it, 0–5 axes, calibration requires reference ≥ 4 on every axis, strict JSON only, and ≤
+    `evidence_quote_max_words=15`-word per-axis quotes. `sanitize_phase0_reference_judge_output(raw, golden_spec)`
+    validates closed axes + 0..5 scores, enforces the ≤15-word quote limit, drops unknown/forbidden fields, classifies
+    bad shapes as `invalid_output`, and marks `miscalibrated` (discarding candidate scores) when any reference axis < 4.
+    `phase0_reference_judge_regression_summary(...)` yields a record-safe summary that **drops evidence quotes entirely**;
+    `build_phase0_regression_record(...)` gained an optional, defensively-re-validated `reference_judge_summary` whose
+    default keeps `reference_anchored_judge_status=not_run` + `layer2_judge_included=false` and which **never** blends
+    into `overall_10` (stays Layer-1 deterministic-only). **No judge was executed**; no provider/model/cloud/local-LLM
+    call; the old frozen offline-judge core was not called/extended; no repair; no API/frontend/production-job changes;
+    reasoning-leak detection reused and **not weakened**. Tests `test_quality_safety_eval_harness.py` **238/0** (was
+    199/0). `production_offline_judge_frozen=true`, `judge_ready=false`, `repair_ready=false`,
+    `numeric_strategy=recompute_first_not_manual_known_numbers`.
+    **next_step=phase0_fact_sheet_schema_eval_integration_or_reference_judge_runner_design**. **Slice 163 is NOT
+    committed.**
+  - **Slice 162 (code) added the Phase 0 overall score + regression record shape/persistence** (now trunk `06496d0`) in
     `pipeline/quality_safety_eval_harness.py`: `compute_phase0_overall_10(layer1_record)` returns a closed envelope with
     a **separate** deterministic `overall_10` (10.0 minus bounded closed penalties, clamped to `[0.0,10.0]`, one decimal)
     and `shippable`, always tagged `overall_score_kind=layer1_deterministic_only` + `layer2_judge_included=false` (it is
@@ -29,7 +52,7 @@
     **199/0** (was 151/0). `production_offline_judge_frozen=true`, `judge_ready=false`, `repair_ready=false`,
     `dev_time_reference_anchored_eval_status=not_built_yet`,
     `numeric_strategy=recompute_first_not_manual_known_numbers`.
-    **next_step=phase0_reference_anchored_judge_skeleton_or_fact_sheet_schema_integration**. **Slice 162 is NOT committed.**
+    **Slice 162 is now trunk commit `06496d0`** (Slice 163 builds the dev-time reference-anchored judge contract on top).
   - **Slice 161 (code) added the Phase 0 Layer-1 deterministic scorer:** `score_phase0_layer1(candidate_text,
     golden_spec, *, ...)` in `pipeline/quality_safety_eval_harness.py` — pure, in-memory, deterministic; validates the
     golden-pair spec and runs the five closed Layer-1 detectors
