@@ -6660,3 +6660,31 @@ Encoding the phase order and the frozen-vs-reusable boundary in one authoritativ
 the existing code against it before writing more — prevents a third drift and lets the next slice build
 the real golden-pair harness on the recompute-first foundation instead of resurrecting the frozen
 synthetic stack. Next slice: `phase0_real_golden_pair_eval_harness_skeleton`.
+
+## Slice 160 — Phase 0 golden-pair fixtures are closed expectation specs (not source/reference docs, not manual known_numbers)
+
+- **Decision:** the Phase 0 real golden pair is **exactly** `{nn3, ensemble}`, authored as closed
+  expectation specs under `test_scripts/fixtures/quality_safety/golden_pairs/`. Each spec carries only
+  `lecture_id`, `title`, `source_quality`, `expected_topics`, `ground_truth_numerics`
+  (label/value/tolerance), `min_mock_questions`, and `tier_targets`. The loader
+  (`load_golden_pair_spec` / `load_golden_pair_specs`) is a **separate strict** layer from the synthetic
+  Slice 108 fixture loader: it *raises* on contract violations instead of degrading, rejects unknown
+  keys (so raw source/guide/OCR/caption material cannot ride along), and requires the set to be exactly
+  `{nn3, ensemble}`. The old synthetic fixtures do not pass as golden pairs.
+- **Decision:** these golden-pair fixtures are **closed authored expectation data only** — they are
+  **not** private source/reference documents and **not** a general operator-typed `known_numbers`
+  runtime mechanism. They exist solely so the Phase 0 eval scoreboard has ground truth to score
+  against; numeric correctness in the running pipeline remains **recompute-first**.
+- **Decision:** the Phase 0 report skeleton (`build_phase0_report_skeleton`) keeps `overall_10`
+  (a future Layer-2 score) **separate** from `shippable` (Layer-1 determinism), and hard-codes
+  `judge_ready=false` / `repair_ready=false` with **no override path** — the production offline judge
+  stays frozen by construction. The dev-time reference-anchored judge is tracked via a separate
+  `reference_anchored_judge_status` field but is **not built/executed** in this slice
+  (`not_run`). No JSONL regression persistence yet (`regression_record_status=shape_only`); no
+  provider/model call; no repair.
+
+**Why:** the roadmap explicitly requires ground-truth numerics for the eval scoreboard, but the standing
+invariants forbid both private-material leakage and a manual `known_numbers` truth path. Authoring the
+expectations as a closed, strictly-validated, whitelist-keyed fixture set satisfies the scoreboard need
+while making leakage and known_numbers drift structurally impossible, and the frozen production judge
+cannot be flipped from this skeleton. Next slice: `phase0_layer1_deterministic_scorer_real_pair`.

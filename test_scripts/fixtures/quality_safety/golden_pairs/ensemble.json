@@ -1,0 +1,33 @@
+{
+  "version": 1,
+  "kind": "quality_safety_golden_pair",
+  "lecture_id": "ensemble",
+  "title": "Ensemble Methods Golden Pair",
+  "source_quality": "ambiguous_animation_frames",
+  "expected_topics": [
+    "decision trees",
+    "Gini impurity",
+    "bagging",
+    "random forest",
+    "out-of-bag error",
+    "proximity matrix",
+    "missing data imputation",
+    "AdaBoost",
+    "stump selection",
+    "weighted error",
+    "amount of say",
+    "sample reweighting",
+    "boosting vs bagging"
+  ],
+  "ground_truth_numerics": [
+    {"label": "gini_chest_pain", "value": 0.47, "tol": 0.01},
+    {"label": "gini_blocked_arteries", "value": 0.50, "tol": 0.01},
+    {"label": "gini_weight_gt_176", "value": 0.20, "tol": 0.01},
+    {"label": "total_error_stump_1", "value": 0.125, "tol": 0.005},
+    {"label": "amount_of_say_half_ln_7", "value": 0.97, "tol": 0.02},
+    {"label": "proximity_4_3", "value": 0.80, "tol": 0.01},
+    {"label": "weighted_weight_impute", "value": 198.5, "tol": 0.5}
+  ],
+  "min_mock_questions": 8,
+  "tier_targets": {"premium": 9.5, "local": 9.0}
+}

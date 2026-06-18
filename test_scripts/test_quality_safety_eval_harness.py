@@ -19,11 +19,33 @@ REPO = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO))
 
 from pipeline.quality_safety_eval_harness import (  # noqa: E402
+    GoldenPairSpecError,
+    build_phase0_report_skeleton,
     build_quality_safety_regression_record,
+    load_golden_pair_spec,
+    load_golden_pair_specs,
     load_quality_safety_fixture_spec,
     run_quality_safety_eval,
     run_quality_safety_layer1_checks,
 )
+
+GOLDEN_PAIR_DIR = REPO / "test_scripts" / "fixtures" / "quality_safety" / "golden_pairs"
+FORBIDDEN_FIXTURE_KEYS = (
+    "source_text",
+    "guide_text",
+    "ocr_text",
+    "captions",
+    "caption",
+    "raw_json",
+    "path",
+    "filename",
+    "sha256",
+    "bytes",
+)
+
+
+def read_golden_pair(lecture_id: str) -> dict[str, Any]:
+    return json.loads((GOLDEN_PAIR_DIR / f"{lecture_id}.json").read_text(encoding="utf-8"))
 
 PASS = 0
 FAIL = 0
@@ -394,6 +416,223 @@ def test_run_quality_safety_eval_wrapper() -> None:
     check("wrapper record run id", result["record"]["run_id"] == "synthetic_wrapper")
 
 
+def test_golden_pair_set_is_exactly_nn3_and_ensemble() -> None:
+    nn3_raw = read_golden_pair("nn3")
+    ensemble_raw = read_golden_pair("ensemble")
+    specs = load_golden_pair_specs([nn3_raw, ensemble_raw])
+    check(
+        "golden pair set is exactly nn3 and ensemble",
+        set(specs) == {"nn3", "ensemble"},
+        str(sorted(specs)),
+    )
+    check(
+        "golden pair kind closed",
+        all(spec["kind"] == "quality_safety_golden_pair" for spec in specs.values()),
+    )
+
+    # Incomplete and over-complete sets are rejected.
+    raised_incomplete = False
+    try:
+        load_golden_pair_specs([nn3_raw])
+    except GoldenPairSpecError:
+        raised_incomplete = True
+    check("golden pair incomplete set rejected", raised_incomplete)
+
+    raised_duplicate = False
+    try:
+        load_golden_pair_specs([nn3_raw, ensemble_raw, ensemble_raw])
+    except GoldenPairSpecError:
+        raised_duplicate = True
+    check("golden pair duplicate/extra rejected", raised_duplicate)
+
+    no_canary("golden pair specs", specs)
+
+
+def test_golden_pair_nn3_topics_and_numerics() -> None:
+    spec = load_golden_pair_spec(read_golden_pair("nn3"))
+    check("nn3 lecture id", spec["lecture_id"] == "nn3")
+    check("nn3 source quality clean", spec["source_quality"] == "clean")
+    required_topics = {
+        "ReLU",
+        "ReLU derivative",
+        "network architecture",
+        "forward pass",
+        "ArgMax",
+        "SoftMax",
+        "SoftMax derivative",
+        "Cross-Entropy",
+        "CE vs SSR",
+        "training/inference pipeline",
+    }
+    check(
+        "nn3 required topics present",
+        required_topics.issubset(set(spec["expected_topics"])),
+        str(sorted(required_topics - set(spec["expected_topics"]))),
+    )
+    numerics = {item["label"]: (item["value"], item["tol"]) for item in spec["ground_truth_numerics"]}
+    expected_numerics = {
+        "htop_pw0.5_sw0.37": (0.572, 0.01),
+        "rset_pw0.5_sw0.37": (0.09, 0.01),
+        "rver_pw0.5_sw0.37": (0.86, 0.01),
+        "softmax_1.43": (0.69, 0.01),
+        "cross_entropy_neg_ln_0.57": (0.56, 0.01),
+    }
+    check(
+        "nn3 required numerics present with values/tolerances",
+        all(numerics.get(label) == vt for label, vt in expected_numerics.items()),
+        str(numerics),
+    )
+    check("nn3 min mock questions", spec["min_mock_questions"] == 8)
+
+
+def test_golden_pair_ensemble_topics_and_numerics() -> None:
+    spec = load_golden_pair_spec(read_golden_pair("ensemble"))
+    check("ensemble lecture id", spec["lecture_id"] == "ensemble")
+    check(
+        "ensemble source quality ambiguous frames",
+        spec["source_quality"] == "ambiguous_animation_frames",
+    )
+    numerics = {item["label"]: (item["value"], item["tol"]) for item in spec["ground_truth_numerics"]}
+    check(
+        "ensemble gini weight_gt_176 = 0.20",
+        numerics.get("gini_weight_gt_176") == (0.20, 0.01),
+        str(numerics.get("gini_weight_gt_176")),
+    )
+    for label, value in (
+        ("gini_chest_pain", 0.47),
+        ("gini_blocked_arteries", 0.50),
+        ("total_error_stump_1", 0.125),
+        ("amount_of_say_half_ln_7", 0.97),
+        ("proximity_4_3", 0.80),
+        ("weighted_weight_impute", 198.5),
+    ):
+        check(
+            f"ensemble numeric {label}",
+            numerics.get(label, (None,))[0] == value,
+            str(numerics.get(label)),
+        )
+    check("ensemble min mock questions", spec["min_mock_questions"] == 8)
+
+
+def test_golden_pair_tier_targets() -> None:
+    for lecture_id in ("nn3", "ensemble"):
+        spec = load_golden_pair_spec(read_golden_pair(lecture_id))
+        check(
+            f"{lecture_id} tier targets premium 9.5 local 9.0",
+            spec["tier_targets"] == {"premium": 9.5, "local": 9.0},
+            str(spec["tier_targets"]),
+        )
+
+
+def test_golden_pair_no_raw_material_fields() -> None:
+    for lecture_id in ("nn3", "ensemble"):
+        raw = read_golden_pair(lecture_id)
+        forbidden_present = [key for key in FORBIDDEN_FIXTURE_KEYS if key in raw]
+        check(
+            f"{lecture_id} fixture has no raw material keys",
+            forbidden_present == [],
+            str(forbidden_present),
+        )
+        no_canary(f"{lecture_id} golden fixture", raw)
+
+    # The loader rejects any unknown key, so raw material cannot ride along.
+    raised = False
+    try:
+        load_golden_pair_spec({**read_golden_pair("nn3"), "source_text": "anything"})
+    except GoldenPairSpecError:
+        raised = True
+    check("golden loader rejects raw material key", raised)
+
+
+def test_golden_pair_rejects_synthetic_fixtures() -> None:
+    # The old synthetic Quality Safety fixtures must NOT pass as real golden pairs.
+    for name in ("clean_neural_networks_synthetic", "ambiguous_ensemble_synthetic"):
+        path = REPO / "test_scripts" / "fixtures" / "quality_safety" / f"{name}.json"
+        raw = json.loads(path.read_text(encoding="utf-8"))
+        rejected = False
+        try:
+            load_golden_pair_spec(raw)
+        except GoldenPairSpecError:
+            rejected = True
+        check(f"synthetic fixture {name} rejected as golden pair", rejected)
+
+    rejected_set = False
+    try:
+        load_golden_pair_specs(
+            [
+                json.loads((REPO / "test_scripts" / "fixtures" / "quality_safety" / "clean_neural_networks_synthetic.json").read_text(encoding="utf-8")),
+                json.loads((REPO / "test_scripts" / "fixtures" / "quality_safety" / "ambiguous_ensemble_synthetic.json").read_text(encoding="utf-8")),
+            ]
+        )
+    except GoldenPairSpecError:
+        rejected_set = True
+    check("synthetic fixtures not treated as golden pair set", rejected_set)
+
+
+def test_phase0_report_skeleton_judge_frozen() -> None:
+    spec = load_golden_pair_spec(read_golden_pair("nn3"))
+
+    # Shape-only skeleton with no Layer-1 run yet.
+    skeleton = build_phase0_report_skeleton(spec)
+    for field in (
+        "lecture_id",
+        "source_quality",
+        "tier_targets",
+        "layer1_status",
+        "layer1_summary",
+        "overall_10",
+        "shippable",
+        "blocking_checks",
+        "judge_ready",
+        "repair_ready",
+        "reference_anchored_judge_status",
+        "regression_record_status",
+    ):
+        check(f"phase0 skeleton has field {field}", field in skeleton)
+    check("phase0 judge_ready false", skeleton["judge_ready"] is False)
+    check("phase0 repair_ready false", skeleton["repair_ready"] is False)
+    check(
+        "phase0 reference judge separate and not run",
+        skeleton["reference_anchored_judge_status"] == "not_run",
+    )
+    check("phase0 regression record shape only", skeleton["regression_record_status"] == "shape_only")
+    check(
+        "phase0 overall_10 and shippable separate fields",
+        skeleton["overall_10"] is None and skeleton["shippable"] is False,
+    )
+
+    # Even with a Layer-1 report attached, judge readiness stays frozen and
+    # overall_10 (Layer-2 score) stays separate from Layer-1 shippability.
+    layer1 = run_quality_safety_layer1_checks(good_candidate(), base_fixture())
+    populated = build_phase0_report_skeleton(
+        spec,
+        layer1,
+        reference_anchored_judge_status="ok",
+        regression_record_status="not_persisted",
+    )
+    check("phase0 populated judge_ready still false", populated["judge_ready"] is False)
+    check("phase0 populated repair_ready still false", populated["repair_ready"] is False)
+    check(
+        "phase0 populated overall_10 separate from shippable",
+        populated["overall_10"] is None
+        and isinstance(populated["shippable"], bool)
+        and populated["layer1_status"] is not None,
+    )
+    check(
+        "phase0 reference judge status closed-but-separate",
+        populated["reference_anchored_judge_status"] == "ok"
+        and populated["judge_ready"] is False,
+    )
+    no_canary("phase0 skeleton", populated)
+
+    raised = False
+    try:
+        build_phase0_report_skeleton({"kind": "quality_safety_fixture"})
+    except GoldenPairSpecError:
+        raised = True
+    check("phase0 skeleton requires validated golden pair", raised)
+
+
 def test_import_hygiene() -> None:
     source_path = REPO / "pipeline" / "quality_safety_eval_harness.py"
     tree = ast.parse(source_path.read_text(encoding="utf-8"))
@@ -446,6 +685,13 @@ def run() -> int:
     test_regression_record()
     test_no_leak_sweep()
     test_run_quality_safety_eval_wrapper()
+    test_golden_pair_set_is_exactly_nn3_and_ensemble()
+    test_golden_pair_nn3_topics_and_numerics()
+    test_golden_pair_ensemble_topics_and_numerics()
+    test_golden_pair_tier_targets()
+    test_golden_pair_no_raw_material_fields()
+    test_golden_pair_rejects_synthetic_fixtures()
+    test_phase0_report_skeleton_judge_frozen()
     test_import_hygiene()
     print(f"\nquality_safety_eval_harness: {PASS} passed, {FAIL} failed")
     return 1 if FAIL else 0

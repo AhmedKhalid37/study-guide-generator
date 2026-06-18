@@ -6,13 +6,24 @@
 > stable overview see `PROJECT_CONTEXT.md`; canonical brief is `../CLAUDE.md`.
 
 ## Current position
-- **Working tree:** **Slice 159 (Master Roadmap adoption + Phase 0 eval-harness grounding) — UNCOMMITTED (docs-only
-  grounding)** on branch `slice159-master-roadmap-phase0-eval-grounding`, branched from updated `chrome-renderer-v1`
-  after Slice 158 was committed, fast-forward merged, and pushed. **Slice 158 is trunk commit `3a44c91`**.
-  - **Part 0 completed:** Slice 158 was committed as `3a44c91`, fast-forward merged to `chrome-renderer-v1`
-    (`5ab92f0..3a44c91`), and pushed with a normal `git push` (no force-push). Final trunk status was clean; **no docker
-    compose config was run**; the Slice 60 trace stash remains parked and untouched; `local_operator_baselines/` stayed
-    ignored/uncommitted; no private material was committed.
+- **Working tree:** **Slice 160 (Phase 0 real golden-pair eval harness skeleton — `nn3` + `ensemble`) — UNCOMMITTED**
+  on branch `slice160-phase0-real-golden-pair-eval-skeleton`, branched from updated `chrome-renderer-v1` after Slice 159
+  was committed, fast-forward merged, and pushed. **Slice 159 is trunk commit `da795a8`**; Slice 158 is `3a44c91`.
+  - **Part 0 completed:** Slice 159 ("Adopt master roadmap Phase 0 grounding") was committed as `da795a8`, fast-forward
+    merged to `chrome-renderer-v1` (`3a44c91..da795a8`), and pushed with a normal `git push` (no force-push).
+    `docs/GUIDEFORGE_MASTER_ROADMAP.md` is now **committed and authoritative**. Final trunk status was clean; **no docker
+    compose config was run**; **Docker was not run**; the Slice 60 trace stash remains parked and untouched;
+    `local_operator_baselines/` stayed ignored/uncommitted; no private material was committed.
+  - **Slice 160 (code) added the real Phase 0 golden-pair layer:** closed authored fixtures
+    `test_scripts/fixtures/quality_safety/golden_pairs/{nn3,ensemble}.json`; a separate strict loader in
+    `pipeline/quality_safety_eval_harness.py` (`load_golden_pair_spec` / `load_golden_pair_specs` — requires exactly
+    `{nn3, ensemble}`, rejects unknown keys/raw material, raises instead of degrading) and `build_phase0_report_skeleton`
+    (scoreboard *shape*: separate `overall_10`/`shippable`, `blocking_checks`, `reference_anchored_judge_status`,
+    `regression_record_status`, with `judge_ready`/`repair_ready` hard-`False`, no override). No Layer-2 execution, no
+    provider/model call, no JSONL persistence, no repair. Tests `test_quality_safety_eval_harness.py` **105/0** (was
+    52/0). `production_offline_judge_frozen=true`, `judge_ready=false`, `repair_ready=false`,
+    `dev_time_reference_anchored_eval_status=skeleton_only`, `numeric_strategy=recompute_first_not_manual_known_numbers`.
+    **next_step=phase0_layer1_deterministic_scorer_real_pair**. **Slice 160 is NOT committed.**
   - **`docs/GUIDEFORGE_MASTER_ROADMAP.md` is now the authoritative phase order** (added this slice; it did not previously
     exist in the repo). **Phase 0 — Eval harness + fact-sheet skeleton — is active.** Do **not** reorder phases. Do **not**
     start figures/tables/OCR/prompt-tuning/style-audit/product-fix until Phase 0 exit criteria are met and recorded.

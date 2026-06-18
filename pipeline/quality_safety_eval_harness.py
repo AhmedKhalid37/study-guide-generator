@@ -63,6 +63,39 @@ BLOCKING_CHECK_IDS = frozenset(
     {"leaked_reasoning", "numeric_correctness", "worked_answer_completeness"}
 )
 
+# --- Phase 0 real golden-pair layer (Slice 160) -----------------------------
+# A separate, strict layer over the synthetic Slice 108 fixtures above. The two
+# real golden-pair specs (nn3, ensemble) are closed authored *expectation* data
+# only (topics, ground-truth numeric labels/values/tolerances, mock-question
+# minimum, tier targets). They are NOT private source/reference documents and
+# NOT a general operator-typed known_numbers runtime path. The production
+# offline judge stays frozen here by construction: the Phase 0 report skeleton
+# always reports judge_ready=False / repair_ready=False with no override.
+GOLDEN_PAIR_KIND = "quality_safety_golden_pair"
+PHASE0_REPORT_KIND = "quality_safety_phase0_report"
+REQUIRED_GOLDEN_PAIR_IDS = ("nn3", "ensemble")
+ALLOWED_GOLDEN_PAIR_KEYS = frozenset(
+    {
+        "version",
+        "kind",
+        "lecture_id",
+        "title",
+        "source_quality",
+        "expected_topics",
+        "ground_truth_numerics",
+        "min_mock_questions",
+        "tier_targets",
+        "fixture_ref",
+    }
+)
+ALLOWED_NUMERIC_KEYS = frozenset({"label", "value", "tol"})
+REFERENCE_JUDGE_STATUSES = frozenset({"not_run", "missing", "miscalibrated", "ok"})
+REGRESSION_RECORD_STATUSES = frozenset({"shape_only", "not_persisted"})
+
+
+class GoldenPairSpecError(ValueError):
+    """Raised when a Phase 0 golden-pair spec is malformed or out of contract."""
+
 _SAFE_ID_RE = re.compile(r"[^a-z0-9 _.-]+")
 _NON_ALNUM_RE = re.compile(r"[^a-z0-9]+")
 _NUMBER_RE = re.compile(
@@ -268,6 +301,241 @@ def build_quality_safety_regression_record(
         "delta_vs_prev": delta_vs_prev,
         "regressed": regressed,
     }
+
+
+def load_golden_pair_spec(
+    data: Any, *, expected_lecture_id: str | None = None
+) -> dict[str, Any]:
+    """Strictly validate a single Phase 0 golden-pair spec.
+
+    Unlike ``load_quality_safety_fixture_spec`` (which silently degrades), this
+    raises ``GoldenPairSpecError`` on any contract violation, because golden
+    pairs are authored specs that must be correct. Unknown keys are rejected so
+    no raw source/guide/OCR/caption material can ride along. Returns a
+    normalized, JSON-serializable closed spec; never reads any file.
+    """
+    if not isinstance(data, dict):
+        raise GoldenPairSpecError("golden pair spec must be a mapping")
+
+    unknown = set(data) - ALLOWED_GOLDEN_PAIR_KEYS
+    if unknown:
+        raise GoldenPairSpecError(f"unknown golden pair keys: {sorted(unknown)}")
+
+    kind = data.get("kind", GOLDEN_PAIR_KIND)
+    if kind != GOLDEN_PAIR_KIND:
+        raise GoldenPairSpecError(f"unexpected golden pair kind: {kind!r}")
+
+    lecture_id = data.get("lecture_id")
+    if lecture_id not in REQUIRED_GOLDEN_PAIR_IDS:
+        raise GoldenPairSpecError(f"unknown golden pair lecture_id: {lecture_id!r}")
+    if expected_lecture_id is not None and lecture_id != expected_lecture_id:
+        raise GoldenPairSpecError(
+            f"lecture_id {lecture_id!r} does not match expected {expected_lecture_id!r}"
+        )
+
+    source_quality = data.get("source_quality")
+    if not isinstance(source_quality, str) or source_quality not in SOURCE_QUALITIES:
+        raise GoldenPairSpecError(f"invalid source_quality: {source_quality!r}")
+
+    title = _require_safe_label(data.get("title"), "title")
+    expected_topics = _require_topics(data.get("expected_topics"))
+    numerics = _require_numerics(data.get("ground_truth_numerics"))
+
+    min_mock = data.get("min_mock_questions")
+    if isinstance(min_mock, bool) or not isinstance(min_mock, int) or min_mock < 0:
+        raise GoldenPairSpecError(f"invalid min_mock_questions: {min_mock!r}")
+
+    tier_targets = _require_tier_targets(data.get("tier_targets"))
+
+    return {
+        "version": VERSION,
+        "kind": GOLDEN_PAIR_KIND,
+        "lecture_id": lecture_id,
+        "title": title,
+        "source_quality": source_quality,
+        "expected_topics": expected_topics,
+        "ground_truth_numerics": numerics,
+        "min_mock_questions": min_mock,
+        "tier_targets": tier_targets,
+    }
+
+
+def load_golden_pair_specs(raw_specs: Any) -> dict[str, dict[str, Any]]:
+    """Validate a collection of golden-pair specs as the Phase 0 set.
+
+    The set must be exactly ``{nn3, ensemble}`` with no duplicates and no extra
+    lecture ids. Returns a dict keyed by lecture_id. Pure; performs no file IO.
+    """
+    if not isinstance(raw_specs, (list, tuple)):
+        raise GoldenPairSpecError("golden pair specs must be a list")
+
+    specs: dict[str, dict[str, Any]] = {}
+    for raw in raw_specs:
+        spec = load_golden_pair_spec(raw)
+        lecture_id = spec["lecture_id"]
+        if lecture_id in specs:
+            raise GoldenPairSpecError(f"duplicate golden pair lecture_id: {lecture_id}")
+        specs[lecture_id] = spec
+
+    present = set(specs)
+    required = set(REQUIRED_GOLDEN_PAIR_IDS)
+    if present != required:
+        raise GoldenPairSpecError(
+            f"golden pair set must be exactly {sorted(required)}, got {sorted(present)}"
+        )
+    return specs
+
+
+def build_phase0_report_skeleton(
+    golden_pair_spec: Any,
+    layer1_report: dict[str, Any] | None = None,
+    *,
+    overall_10: Any = None,
+    reference_anchored_judge_status: str = "not_run",
+    regression_record_status: str = "shape_only",
+) -> dict[str, Any]:
+    """Build the Phase 0 scoreboard record skeleton for one golden pair.
+
+    Holds the shape that later slices fill in: Layer-1 deterministic summary,
+    a separate ``overall_10`` and ``shippable``, blocking checks, and tier
+    targets. The dev-time reference-anchored judge status is tracked here but is
+    kept entirely separate from the frozen production offline judge: this record
+    always reports ``judge_ready=False`` and ``repair_ready=False`` and exposes
+    no way to flip them. No provider/model is called; no JSONL is persisted.
+    """
+    if (
+        not isinstance(golden_pair_spec, dict)
+        or golden_pair_spec.get("kind") != GOLDEN_PAIR_KIND
+    ):
+        raise GoldenPairSpecError(
+            "phase0 report requires a validated golden pair spec"
+        )
+
+    if reference_anchored_judge_status not in REFERENCE_JUDGE_STATUSES:
+        reference_anchored_judge_status = "not_run"
+    if regression_record_status not in REGRESSION_RECORD_STATUSES:
+        regression_record_status = "shape_only"
+
+    layer1 = (
+        layer1_report
+        if isinstance(layer1_report, dict) and layer1_report.get("kind") == LAYER1_KIND
+        else None
+    )
+    if layer1 is not None:
+        layer1_status = layer1.get("status")
+        layer1_summary = layer1.get("summary")
+        shippable = bool(layer1.get("shippable"))
+        blocking_checks = _safe_blocking_failures(layer1.get("blocking_failures"))
+    else:
+        layer1_status = "not_run"
+        layer1_summary = None
+        shippable = False
+        blocking_checks = []
+
+    return {
+        "version": VERSION,
+        "kind": PHASE0_REPORT_KIND,
+        "lecture_id": golden_pair_spec["lecture_id"],
+        "source_quality": golden_pair_spec["source_quality"],
+        "tier_targets": dict(golden_pair_spec.get("tier_targets", {})),
+        "layer1_status": layer1_status,
+        "layer1_summary": layer1_summary,
+        "overall_10": _safe_score(overall_10),
+        "shippable": shippable,
+        "blocking_checks": blocking_checks,
+        "judge_ready": False,
+        "repair_ready": False,
+        "reference_anchored_judge_status": reference_anchored_judge_status,
+        "regression_record_status": regression_record_status,
+    }
+
+
+def _require_safe_label(value: Any, field: str) -> str:
+    label = _safe_golden_label(value)
+    if label is None:
+        raise GoldenPairSpecError(f"invalid {field}: {value!r}")
+    return label
+
+
+def _require_topics(value: Any) -> list[str]:
+    if not isinstance(value, list) or not value:
+        raise GoldenPairSpecError("expected_topics must be a non-empty list")
+    topics: list[str] = []
+    seen: set[str] = set()
+    for item in value:
+        topic = _safe_golden_label(item)
+        if topic is None:
+            raise GoldenPairSpecError(f"invalid expected_topic: {item!r}")
+        key = _normalize(topic)
+        if key in seen:
+            continue
+        seen.add(key)
+        topics.append(topic)
+    if not topics:
+        raise GoldenPairSpecError("expected_topics resolved to empty")
+    return topics
+
+
+def _require_numerics(value: Any) -> list[dict[str, float | str]]:
+    if not isinstance(value, list) or not value:
+        raise GoldenPairSpecError("ground_truth_numerics must be a non-empty list")
+    numerics: list[dict[str, float | str]] = []
+    seen: set[str] = set()
+    for item in value:
+        if not isinstance(item, dict):
+            raise GoldenPairSpecError(f"invalid numeric target: {item!r}")
+        extra = set(item) - ALLOWED_NUMERIC_KEYS
+        if extra:
+            raise GoldenPairSpecError(f"unknown numeric keys: {sorted(extra)}")
+        label = _safe_golden_label(item.get("label"))
+        if label is None:
+            raise GoldenPairSpecError(f"invalid numeric label: {item.get('label')!r}")
+        expected = _finite_float(item.get("value"))
+        if expected is None:
+            raise GoldenPairSpecError(f"invalid numeric value for {label}")
+        tol = _finite_float(item.get("tol"))
+        if tol is None or tol < 0:
+            raise GoldenPairSpecError(f"invalid numeric tolerance for {label}")
+        key = _normalize(label)
+        if key in seen:
+            raise GoldenPairSpecError(f"duplicate numeric label: {label}")
+        seen.add(key)
+        numerics.append({"label": label, "value": float(expected), "tol": float(tol)})
+    return numerics
+
+
+def _require_tier_targets(value: Any) -> dict[str, float]:
+    if not isinstance(value, dict):
+        raise GoldenPairSpecError("tier_targets must be a mapping")
+    extra = set(value) - set(TIER_KEYS)
+    if extra:
+        raise GoldenPairSpecError(f"unknown tier keys: {sorted(extra)}")
+    targets: dict[str, float] = {}
+    for key in TIER_KEYS:
+        score = _finite_float(value.get(key))
+        if score is None or not 0.0 <= score <= 10.0:
+            raise GoldenPairSpecError(f"invalid tier target for {key}: {value.get(key)!r}")
+        targets[key] = float(score)
+    return targets
+
+
+def _safe_golden_label(value: Any) -> str | None:
+    """Return a closed authored label, or None if unsafe/invalid.
+
+    Preserves authored case and math/slash punctuation (e.g. ``ReLU``,
+    ``Cross-Entropy``, ``training/inference pipeline``, ``htop_pw0.5_sw0.37``)
+    while rejecting any secret-ish, path-ish, URL-ish, or raw-material content.
+    """
+    if not isinstance(value, str):
+        return None
+    cleaned = " ".join(value.split())
+    if not cleaned or len(cleaned) > 100:
+        return None
+    if _SECRETISH_RE.search(cleaned):
+        return None
+    if not re.search(r"[A-Za-z0-9]", cleaned):
+        return None
+    return cleaned
 
 
 def _load_expected_topics(value: Any, warnings: set[str]) -> list[str]:

@@ -5,6 +5,47 @@
 
 ---
 
+## Slice 160 — **Phase 0 real golden-pair eval harness skeleton (`nn3` + `ensemble`)**, on `slice160-phase0-real-golden-pair-eval-skeleton`. **NOT COMMITTED.**
+
+- **Part 0 completed:** Slice 159 was committed as `da795a8` ("Slice 159: Adopt master roadmap Phase 0 grounding"),
+  fast-forward merged to trunk `chrome-renderer-v1` (`3a44c91..da795a8`), and pushed with a normal `git push` (no
+  force-push). `docs/GUIDEFORGE_MASTER_ROADMAP.md` is now committed and authoritative. Final trunk status was clean;
+  **no docker compose config was run**; **Docker was not run**; the Slice 60 trace stash remains parked and untouched;
+  `local_operator_baselines/` stayed ignored/uncommitted; no private material was committed.
+- **phase=Phase 0 — Eval harness + fact-sheet skeleton** (active; phase order unchanged).
+- **slice=160**
+- **phase0_real_golden_pair_fixtures_present=true** — `test_scripts/fixtures/quality_safety/golden_pairs/nn3.json`
+  and `test_scripts/fixtures/quality_safety/golden_pairs/ensemble.json`.
+- **golden_pair_ids=nn3,ensemble** — the loader requires the set to be **exactly** `{nn3, ensemble}` (incomplete,
+  duplicate, extra, or unknown lecture ids are rejected). The old synthetic Quality Safety fixtures do **not** pass as
+  golden pairs (distinct `kind` + lecture id) — verified by test.
+- **What this slice added (code):**
+  - `pipeline/quality_safety_eval_harness.py` — a **separate strict** golden-pair layer beside the synthetic Slice 108
+    layer: `GoldenPairSpecError`, `load_golden_pair_spec(...)` (closed-shape validator that *raises* instead of
+    degrading; rejects unknown keys so no raw source/guide/OCR/caption material can ride along; preserves authored
+    case + math/slash punctuation in labels), `load_golden_pair_specs(...)` (enforces exactly `{nn3, ensemble}`), and
+    `build_phase0_report_skeleton(...)`.
+  - The Phase 0 report skeleton holds the scoreboard *shape* for later slices: `lecture_id`, `source_quality`,
+    `tier_targets`, `layer1_status`, `layer1_summary`, **separate `overall_10` and `shippable`**, `blocking_checks`,
+    `judge_ready`, `repair_ready`, `reference_anchored_judge_status` (`not_run|missing|miscalibrated|ok`),
+    `regression_record_status` (`shape_only|not_persisted`). **`judge_ready`/`repair_ready` are hard-coded `False`
+    with no override** — the production offline judge stays frozen by construction.
+- **Boundaries honored:** no Layer-2 judge execution; **no provider/model call**; no JSONL regression persistence
+  (shape-only); no repair; recompute-first numeric strategy preserved (these `ground_truth_numerics` are closed
+  authored *expectation* specs for the scoreboard, **not** a general operator-typed known_numbers runtime path); the
+  dev-time reference-anchored eval judge stays **separate** from the frozen production offline judge and is **not yet
+  executed** (`reference_anchored_judge_status=not_run`).
+- **production_offline_judge_frozen=true**, **judge_ready=false**, **repair_ready=false**.
+- **dev_time_reference_anchored_eval_status=skeleton_only** (status field present; judge not built/executed).
+- **numeric_strategy=recompute_first_not_manual_known_numbers**.
+- **Validation (green):** `compileall api pipeline test_scripts` (exit 0); `test_quality_safety_eval_harness.py`
+  **105/0** (was 52/0); `test_quality_safety_recompute_verifier.py` **99/0**; `test_quality_safety_unified_qa.py`
+  **73/0**; `test_guide_quality_baseline.py` **207/0**; `validate_guide_quality_baseline_harness.py` ok;
+  `git diff --check` clean. **Docker not run; no docker compose config run.**
+- **next_step=phase0_layer1_deterministic_scorer_real_pair**.
+
+---
+
 ## Slice 159 — **Master Roadmap adoption + Phase 0 eval-harness grounding**, on `slice159-master-roadmap-phase0-eval-grounding`. **NOT COMMITTED (docs-only grounding).**
 
 - **Part 0 completed:** Slice 158 was committed as `3a44c91` ("Slice 158: Triage remaining QA gate warning"),
