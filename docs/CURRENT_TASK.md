@@ -5,7 +5,73 @@
 
 ---
 
-## Slice 155 — **Source Coverage / Completeness Baseline Gap**, on `slice155-source-coverage-completeness-baseline-gap`. **NOT COMMITTED.**
+## Slice 156 — **Closed Local Guide Coverage Baseline**, on `slice156-closed-local-guide-coverage-baseline`. **NOT COMMITTED.**
+
+- **Part 0 completed:** Slice 155 was committed as `35c6b71` ("Slice 155: Observe source coverage baseline
+  status"), fast-forward merged to trunk `chrome-renderer-v1` (`1dae76f..35c6b71`), and pushed with a normal
+  `git push` (no force-push). Final trunk status before branching Slice 156 was clean; **no docker compose config
+  was run**; the Slice 60 trace stash remains parked and untouched; `local_operator_baselines/` stayed
+  ignored/uncommitted.
+- **Goal:** make `reference_relative_completeness_status` and `figure_handling_status` measurable (off
+  `needs_future_metric`) using a **closed local-only guide-text scanner** that emits closed counts/statuses only,
+  reading a local gitignored generated-guide text file — never committing the guide text or snippets.
+- **Implementation (closed-count scanner, no new evaluator stack):**
+  - `pipeline/guide_quality_baseline.py`: added `collect_guide_quality_baseline_guide_text_metrics(guide_text,
+    golden_spec)` (deterministic lowercase + punctuation-strip + whitespace-collapse + alias matching) returning
+    **closed counts/statuses only** — never text, snippets, matched aliases, paths, or filenames. Added optional
+    `guide_text_metrics=` to `build_guide_quality_baseline_record(...)`; when supplied it observes the two metrics
+    from the closed counts (source `guide_text_scan`) and embeds a closed `guide_text_coverage` counts block.
+    Without it, legacy `needs_future_metric` derivation is unchanged. Closed figure "explained-missing" markers
+    (e.g. "cannot be reproduced", "diagram explained") count an expected figure as handled. No OCR / PDF parse /
+    image inspection / LLM call.
+  - Golden spec extended with closed alias checks only: `reference_completeness_checks`, `figure_handling_checks`,
+    `section_coverage_checks` (short concept labels + general educational aliases; path-like aliases stripped by
+    normalization).
+  - `test_scripts/validate_guide_quality_baseline_harness.py`: added optional `--guide-text` local mode (reads the
+    file, computes closed coverage, surfaces closed counts; path/text/alias never printed; path-leak guard extended
+    to the guide-text path). Omitting `--guide-text` preserves prior behavior.
+- **Closed flags:**
+  - `closed_local_guide_coverage_baseline=run`
+  - `local_guide_text_available=true`
+  - `local_guide_text_committed=false`
+  - `raw_guide_text_committed=false`
+  - `snippet_committed=false`
+  - `source_pdf_parsed=false`
+  - `ocr_used=false`
+  - `lmm_or_judge_used=false`
+  - `reference_relative_completeness_status_before=needs_future_metric`
+  - `reference_relative_completeness_status_after=pass`
+  - `figure_handling_status_before=needs_future_metric`
+  - `figure_handling_status_after=pass`
+  - `source_coverage_status=pass`
+  - `reasoning_leak_status=pass`
+  - `baseline_status=warning`
+  - `next_step=style_preset_audit_gate`
+- **Measured `app_run_6_reasoning_fix_iteration_2` (with `--guide-text`, closed counts only):**
+  `reference_relative_completeness_status=pass` (`matched_reference_check_count=4`, `missing_reference_check_count=0`),
+  `figure_handling_status=pass` (`matched_figure_check_count=1`, `missing_figure_check_count=0`), section coverage
+  `matched_section_check_count=2` of `section_check_count=3`, `baseline_status=warning` (still driven by the QA-gate
+  warning + numeric `not_available`, **not** by the new metrics — no failure hidden). Without `--guide-text` both
+  metrics correctly stay `needs_future_metric` (`local_guide_text_available=false`). No matched-alias text, snippet,
+  or path recorded.
+- **Local guide text:** copied the local job's `clean.md` into the gitignored path
+  `local_operator_baselines/nn_iris/app_guide_text/app_run_6_reasoning_fix_iteration_2.clean.local.md` (confirmed
+  ignored); read only at runtime to compute closed counts. **Not committed; contents never pasted.**
+- **Files changed:** `M docs/CURRENT_TASK.md`, `M docs/NEXT_CHAT_HANDOFF.md`, `M docs/DECISIONS.md`,
+  `M docs/GUIDE_QUALITY_BASELINE_HARNESS.md`, `M pipeline/guide_quality_baseline.py`,
+  `M test_scripts/test_guide_quality_baseline.py`, `M test_scripts/validate_guide_quality_baseline_harness.py`,
+  `M test_scripts/fixtures/guide_quality_baseline/nn_iris_local_golden_spec.json`.
+- **Validation (all green):** baseline tests (207, was 131; +15 Slice 156 synthetic cases + 1 stdlib-allow update),
+  baseline harness synthetic self-test (`ok`), prompt contract (143), contract lint (150), QA gate (177),
+  `compileall api pipeline test_scripts` clean; `app_run_6` local harness both modes (without `--guide-text` →
+  metrics `needs_future_metric`; with `--guide-text` → `reference`/`figure` both `pass`); `git diff --check` clean;
+  no-leak sweep clean. **Docker was NOT run; no docker compose config was run.**
+- **Next gate:** `style_preset_audit_gate` — reasoning-leak, source coverage, reference completeness, and figure
+  handling now all read green for `app_run_6`. **Slice 156 remains UNCOMMITTED.**
+
+---
+
+## Slice 155 — **Source Coverage / Completeness Baseline Gap**, on `slice155-source-coverage-completeness-baseline-gap`. **Committed `35c6b71`, merged + pushed to `chrome-renderer-v1`.**
 
 - **Part 0 completed:** Slice 154 was committed as `1dae76f` ("Slice 154: Harden prompt contract for line-initial
   discourse leaks"), fast-forward merged to trunk `chrome-renderer-v1` (`af606d4..1dae76f`), and pushed with a normal

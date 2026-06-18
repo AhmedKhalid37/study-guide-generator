@@ -26,10 +26,22 @@ Strict boundaries (do not weaken):
   cloud / local-LLM / render / OCR / job-runtime imports.
 - **Advisory + non-blocking.** This is a measurement baseline, not a gate.
 
+Slice 156 — optional closed local guide-text coverage:
+
+- A caller may pass an **in-memory guide-text string** (read locally from a
+  gitignored guide file by the CLI) to
+  ``collect_guide_quality_baseline_guide_text_metrics``. The scanner matches the
+  golden spec's closed concept/section/figure check labels + aliases against the
+  text and returns **closed counts and statuses only** — never the text, a
+  snippet, a matched alias, a path, or a filename. No OCR / PDF parse / image
+  inspection / LLM call. This lets ``reference_relative_completeness_status`` and
+  ``figure_handling_status`` become observed instead of ``needs_future_metric``.
+
 Public surface:
   - ``normalize_guide_quality_baseline_golden_spec(data) -> dict``
   - ``collect_guide_quality_baseline_artifacts(artifact_dir, *, artifact_names=None) -> dict``
-  - ``build_guide_quality_baseline_record(golden_spec, artifacts, *, run_metadata=None) -> dict``
+  - ``collect_guide_quality_baseline_guide_text_metrics(guide_text, golden_spec) -> dict``
+  - ``build_guide_quality_baseline_record(golden_spec, artifacts, *, run_metadata=None, guide_text_metrics=None) -> dict``
   - ``compare_guide_quality_baseline_records(current_record, previous_record=None) -> dict``
   - ``serialize_guide_quality_baseline_record(record) -> str``
 """
@@ -37,6 +49,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 from typing import Any
 
 # =============================================================================
@@ -182,6 +195,24 @@ _GOLDEN_LIST_FIELDS = (
     "expected_sections",
 )
 
+# Slice 156 — golden-spec closed alias-check fields (closed labels only, no text).
+# Each entry: {"id": label, "aliases": [label, ...], plus a flag column}.
+GOLDEN_REFERENCE_CHECKS = "reference_completeness_checks"
+GOLDEN_FIGURE_CHECKS = "figure_handling_checks"
+GOLDEN_SECTION_CHECKS = "section_coverage_checks"
+_GOLDEN_CHECK_FIELDS = (GOLDEN_REFERENCE_CHECKS, GOLDEN_FIGURE_CHECKS, GOLDEN_SECTION_CHECKS)
+
+# Safe, closed marker phrases that count an expected figure as *handled* even when
+# it could not be reproduced (the guide explicitly explained the missing visual).
+# Synthetic / general educational phrases only — never copied from private guides.
+_FIGURE_EXPLANATION_MARKERS = (
+    "diagram explained",
+    "figure explained",
+    "visual idea",
+    "cannot be reproduced",
+    "if the visual cannot be reproduced",
+)
+
 
 # =============================================================================
 # Safe coercion helpers
@@ -299,6 +330,12 @@ def normalize_guide_quality_baseline_golden_spec(data: Any) -> dict[str, Any]:
         warnings.append("expected_figures_not_a_list")
     spec["expected_figures_or_diagrams"] = figures
 
+    # Slice 156 — closed alias checks (reference completeness / figures / sections).
+    for field in _GOLDEN_CHECK_FIELDS:
+        spec[field] = _normalize_checks(
+            data.get(field), field, with_required=(field != GOLDEN_FIGURE_CHECKS), warnings=warnings
+        )
+
     # Carry through only closed warning labels supplied by the spec author.
     spec_warnings: list[str] = []
     raw_warnings = data.get("warnings")
@@ -312,6 +349,54 @@ def normalize_guide_quality_baseline_golden_spec(data: Any) -> dict[str, Any]:
     # Drop duplicate normalization warnings deterministically.
     spec["normalization_warnings"] = sorted(set(warnings))
     return spec
+
+
+def _normalize_checks(
+    raw: Any, field: str, *, with_required: bool, warnings: list[str]
+) -> list[dict[str, Any]]:
+    """Normalize a list of closed alias-checks; strip unsafe/path-like labels.
+
+    Each returned check carries a closed ``id`` label, a de-duplicated list of
+    closed ``aliases`` labels, and either a boolean ``required`` (reference /
+    section checks) or a closed ``expected_status`` label (figure checks). Any
+    path-like / content-bearing / over-long alias is dropped, never preserved.
+    """
+    checks: list[dict[str, Any]] = []
+    if raw is None:
+        return checks
+    if not isinstance(raw, list):
+        warnings.append(f"{field}_not_a_list")
+        return checks
+    for item in raw:
+        if not isinstance(item, dict):
+            warnings.append(f"{field}_entry_dropped")
+            continue
+        check_id = _safe_label(item.get("id"))
+        if check_id is None:
+            warnings.append(f"{field}_entry_dropped")
+            continue
+        aliases: list[str] = []
+        raw_aliases = item.get("aliases")
+        if isinstance(raw_aliases, list):
+            for alias in raw_aliases:
+                label = _safe_label(alias)
+                if label is None:
+                    continue
+                if label.lower() not in {a.lower() for a in aliases}:
+                    aliases.append(label)
+            if len(aliases) != len(raw_aliases):
+                warnings.append(f"{field}_aliases_dropped")
+        elif raw_aliases is not None:
+            warnings.append(f"{field}_aliases_not_a_list")
+        check: dict[str, Any] = {"id": check_id, "aliases": aliases}
+        if with_required:
+            check["required"] = bool(item.get("required", True))
+        else:
+            check["expected_status"] = (
+                _safe_label(item.get("expected_status")) or "expected_or_explained_missing"
+            )
+        checks.append(check)
+    return checks
 
 
 def _empty_golden_spec(warnings: list[str], *, valid: bool) -> dict[str, Any]:
@@ -328,6 +413,8 @@ def _empty_golden_spec(warnings: list[str], *, valid: bool) -> dict[str, Any]:
     for field in _GOLDEN_LIST_FIELDS:
         spec[field] = []
     spec["expected_figures_or_diagrams"] = []
+    for field in _GOLDEN_CHECK_FIELDS:
+        spec[field] = []
     spec["spec_warnings"] = []
     spec["normalization_warnings"] = sorted(set(warnings))
     return spec
@@ -433,6 +520,126 @@ def _extract_artifact_scalars(logical: str, data: dict[str, Any]) -> dict[str, A
             counts[key] = value
 
     return _artifact_entry(PRESENCE_PRESENT, status=status, counts=counts)
+
+
+# =============================================================================
+# Closed local guide-text coverage scanner (Slice 156)
+# =============================================================================
+
+# Closed guide-text metric keys (counts + statuses only — never text/aliases).
+_GUIDE_TEXT_COUNT_KEYS = (
+    "required_reference_check_count",
+    "matched_reference_check_count",
+    "missing_reference_check_count",
+    "expected_figure_check_count",
+    "matched_figure_check_count",
+    "missing_figure_check_count",
+    "section_check_count",
+    "matched_section_check_count",
+    "missing_section_check_count",
+)
+
+
+def _normalize_text_for_match(text: str) -> str:
+    """Deterministic normalization: lowercase, drop punctuation, collapse spaces."""
+    lowered = text.lower()
+    cleaned = re.sub(r"[^a-z0-9]+", " ", lowered)
+    return " ".join(cleaned.split())
+
+
+def _phrase_present(padded_text: str, phrase: str) -> bool:
+    """Token-boundary membership test against a space-padded normalized text."""
+    normalized = _normalize_text_for_match(phrase)
+    if not normalized:
+        return False
+    return f" {normalized} " in padded_text
+
+
+def _check_matched(check: dict[str, Any], padded_text: str) -> bool:
+    if _phrase_present(padded_text, str(check.get("id", ""))):
+        return True
+    for alias in check.get("aliases", []):
+        if _phrase_present(padded_text, str(alias)):
+            return True
+    return False
+
+
+def _empty_guide_text_metrics(*, available: bool, malformed: bool) -> dict[str, Any]:
+    status = METRIC_NOT_AVAILABLE if malformed else METRIC_NEEDS_FUTURE
+    metrics: dict[str, Any] = {"guide_text_available": available}
+    for key in _GUIDE_TEXT_COUNT_KEYS:
+        metrics[key] = 0
+    metrics["reference_relative_completeness_status"] = status
+    metrics["figure_handling_status"] = status
+    return metrics
+
+
+def _reference_status(required_count: int, matched_count: int) -> str:
+    if required_count == 0:
+        return METRIC_NEEDS_FUTURE
+    if matched_count >= required_count:
+        return METRIC_PASS
+    if matched_count == 0:
+        return METRIC_FAIL
+    return METRIC_WARNING
+
+
+def _figure_status(expected_count: int, handled_count: int) -> str:
+    if expected_count == 0:
+        return METRIC_NEEDS_FUTURE
+    if handled_count >= expected_count:
+        return METRIC_PASS
+    if handled_count == 0:
+        return METRIC_FAIL
+    return METRIC_WARNING
+
+
+def collect_guide_quality_baseline_guide_text_metrics(
+    guide_text: Any, golden_spec: Any
+) -> dict[str, Any]:
+    """Scan in-memory guide text against the golden spec's closed alias checks.
+
+    Returns **closed counts and statuses only** — never the guide text, a
+    snippet, a matched alias, a path, or a filename. Matching is deterministic
+    (lowercase + punctuation-stripped + whitespace-collapsed, with alias support).
+    No OCR / PDF parse / image inspection / LLM call.
+    """
+    spec = normalize_guide_quality_baseline_golden_spec(golden_spec)
+    if not isinstance(guide_text, str):
+        return _empty_guide_text_metrics(available=False, malformed=True)
+    padded = f" {_normalize_text_for_match(guide_text)} "
+    if padded.strip() == "":
+        return _empty_guide_text_metrics(available=False, malformed=False)
+
+    ref_checks = spec.get(GOLDEN_REFERENCE_CHECKS, [])
+    fig_checks = spec.get(GOLDEN_FIGURE_CHECKS, [])
+    sec_checks = spec.get(GOLDEN_SECTION_CHECKS, [])
+
+    required_refs = [c for c in ref_checks if c.get("required")]
+    required_count = len(required_refs)
+    matched_refs = sum(1 for c in required_refs if _check_matched(c, padded))
+
+    expected_count = len(fig_checks)
+    any_marker = any(_phrase_present(padded, marker) for marker in _FIGURE_EXPLANATION_MARKERS)
+    handled_figs = sum(1 for c in fig_checks if _check_matched(c, padded) or any_marker)
+
+    section_count = len(sec_checks)
+    matched_sections = sum(1 for c in sec_checks if _check_matched(c, padded))
+
+    return {
+        "guide_text_available": True,
+        "required_reference_check_count": required_count,
+        "matched_reference_check_count": matched_refs,
+        "missing_reference_check_count": required_count - matched_refs,
+        "expected_figure_check_count": expected_count,
+        "matched_figure_check_count": handled_figs,
+        "missing_figure_check_count": expected_count - handled_figs,
+        "section_check_count": section_count,
+        "matched_section_check_count": matched_sections,
+        "missing_section_check_count": section_count - matched_sections,
+        "reference_relative_completeness_status": _reference_status(required_count, matched_refs),
+        "figure_handling_status": _figure_status(expected_count, handled_figs),
+    }
 
 
 # =============================================================================
@@ -587,12 +794,16 @@ def _derive_artifact_existence(artifacts: dict[str, Any]) -> dict[str, str]:
 
 
 def build_guide_quality_baseline_record(
-    golden_spec: Any, artifacts: Any, *, run_metadata: Any = None
+    golden_spec: Any, artifacts: Any, *, run_metadata: Any = None, guide_text_metrics: Any = None
 ) -> dict[str, Any]:
     """Build a closed aggregate baseline record from a golden spec + artifacts.
 
     Never embeds raw artifact bodies, paths, filenames, or content — only closed
-    statuses, counts, and percentages derived from whitelisted scalars.
+    statuses, counts, and percentages derived from whitelisted scalars. When
+    ``guide_text_metrics`` (the closed output of
+    ``collect_guide_quality_baseline_guide_text_metrics``) is provided, the
+    reference-completeness and figure-handling metrics are observed from those
+    closed counts instead of staying ``needs_future_metric``.
     """
     spec = normalize_guide_quality_baseline_golden_spec(golden_spec)
     arts = artifacts if isinstance(artifacts, dict) else {}
@@ -607,8 +818,18 @@ def build_guide_quality_baseline_record(
     metrics["guide_quality_qa_gate_status"] = _derive_qa_gate(arts)
     metrics["source_coverage_status"] = _derive_source_coverage(arts)
     metrics["structure_contract_status"] = _derive_structure_contract(arts)
-    metrics["reference_relative_completeness_status"] = _derive_reference_relative_completeness(spec)
-    metrics["figure_handling_status"] = _derive_figure_handling(spec, arts)
+
+    guide_text_view = _resolve_guide_text_metrics(guide_text_metrics)
+    if guide_text_view is not None:
+        metrics["reference_relative_completeness_status"] = _metric(
+            guide_text_view["reference_relative_completeness_status"], "guide_text_scan"
+        )
+        metrics["figure_handling_status"] = _metric(
+            guide_text_view["figure_handling_status"], "guide_text_scan"
+        )
+    else:
+        metrics["reference_relative_completeness_status"] = _derive_reference_relative_completeness(spec)
+        metrics["figure_handling_status"] = _derive_figure_handling(spec, arts)
     metrics["artifact_existence_status"] = _derive_artifact_existence(arts)
 
     artifact_inputs = _artifact_inputs_view(arts)
@@ -633,6 +854,7 @@ def build_guide_quality_baseline_record(
         "artifact_inputs": artifact_inputs,
         "metrics": {name: metrics[name] for name in _METRIC_FAMILIES},
         "summary": summary,
+        "guide_text_coverage": _guide_text_coverage_view(guide_text_view),
         "trend": {
             "status": TREND_NO_PREVIOUS,
             "improved_metric_count": 0,
@@ -641,6 +863,38 @@ def build_guide_quality_baseline_record(
         "warnings": sorted(set(warnings)),
     }
     return record
+
+
+def _resolve_guide_text_metrics(guide_text_metrics: Any) -> dict[str, Any] | None:
+    """Coerce caller-provided guide-text metrics to a closed, trusted shape.
+
+    Returns None when no guide-text metrics were supplied (preserves the legacy
+    needs_future_metric derivation). Any unexpected/non-closed value is replaced
+    with a safe closed default — text/snippets/aliases can never enter here.
+    """
+    if not isinstance(guide_text_metrics, dict):
+        return None
+    view: dict[str, Any] = {"guide_text_available": bool(guide_text_metrics.get("guide_text_available"))}
+    for key in _GUIDE_TEXT_COUNT_KEYS:
+        value = _safe_int(guide_text_metrics.get(key))
+        view[key] = value if value is not None and value >= 0 else 0
+    for status_key in ("reference_relative_completeness_status", "figure_handling_status"):
+        token = guide_text_metrics.get(status_key)
+        view[status_key] = token if token in _METRIC_TOKENS else METRIC_NEEDS_FUTURE
+    return view
+
+
+def _guide_text_coverage_view(guide_text_view: dict[str, Any] | None) -> dict[str, Any]:
+    """Closed counts-only view embedded in the record (no text, ever)."""
+    if guide_text_view is None:
+        view: dict[str, Any] = {"guide_text_available": False}
+        for key in _GUIDE_TEXT_COUNT_KEYS:
+            view[key] = 0
+        return view
+    view = {"guide_text_available": bool(guide_text_view.get("guide_text_available"))}
+    for key in _GUIDE_TEXT_COUNT_KEYS:
+        view[key] = int(guide_text_view.get(key, 0))
+    return view
 
 
 def _artifact_inputs_view(artifacts: dict[str, Any]) -> dict[str, str]:

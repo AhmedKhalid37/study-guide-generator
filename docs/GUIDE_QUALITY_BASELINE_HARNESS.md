@@ -38,7 +38,28 @@ Golden spec: `test_scripts/fixtures/guide_quality_baseline/nn_iris_local_golden_
 
    (Equivalently, call `collect_guide_quality_baseline_artifacts(...)` then
    `build_guide_quality_baseline_record(golden_spec, artifacts)` directly.)
-4. The output / record contains **closed aggregate metrics only** (closed status
+4. *(Optional, Slice 156)* To observe `reference_relative_completeness_status`
+   and `figure_handling_status` instead of `needs_future_metric`, also pass a
+   **local gitignored generated-guide text file** (e.g. a copy of the job's
+   `clean.md`) via `--guide-text`:
+
+   ```
+   python test_scripts/validate_guide_quality_baseline_harness.py \
+     --golden-spec test_scripts/fixtures/guide_quality_baseline/nn_iris_local_golden_spec.json \
+     --artifact-dir <local_gitignored_job_artifact_dir> \
+     --guide-text <local_gitignored_guide_text_file> \
+     --run-label app_run_1
+   ```
+
+   The guide text is read **only** to compute closed coverage counts/statuses by
+   matching the golden spec's closed concept/section/figure check labels +
+   aliases (lowercase + punctuation-stripped + whitespace-collapsed). The path,
+   the text, any snippet, and any matched alias are **never** printed, returned,
+   or committed. No OCR / PDF parse / image inspection / LLM call. Keep the guide
+   text file gitignored (e.g. under `local_operator_baselines/`). When
+   `--guide-text` is omitted, behavior is unchanged (both metrics stay
+   `needs_future_metric`).
+5. The output / record contains **closed aggregate metrics only** (closed status
    tokens + closed warning labels). Headline metric: `reasoning_leak_status`.
    Local mode exits nonzero only on a harness error (unreadable golden spec /
    missing `--artifact-dir`), never because a metric is honestly `not_available`,

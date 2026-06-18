@@ -6,48 +6,57 @@
 > stable overview see `PROJECT_CONTEXT.md`; canonical brief is `../CLAUDE.md`.
 
 ## Current position
-- **Working tree:** **Slice 155 (Source Coverage / Completeness Baseline Gap) — UNCOMMITTED** on branch
-  `slice155-source-coverage-completeness-baseline-gap`, branched from updated `chrome-renderer-v1` after Slice 154 was committed,
-  fast-forward merged, and pushed. **Slice 154 is trunk commit `1dae76f`**.
-  - **Part 0 completed:** Slice 154 was committed as `1dae76f`, fast-forward merged to `chrome-renderer-v1`, and pushed with a
-    normal `git push` (no force-push; `af606d4..1dae76f`). Final trunk status before branching Slice 155 was clean; **no docker
+- **Working tree:** **Slice 156 (Closed Local Guide Coverage Baseline) — UNCOMMITTED** on branch
+  `slice156-closed-local-guide-coverage-baseline`, branched from updated `chrome-renderer-v1` after Slice 155 was committed,
+  fast-forward merged, and pushed. **Slice 155 is trunk commit `35c6b71`**.
+  - **Part 0 completed:** Slice 155 was committed as `35c6b71`, fast-forward merged to `chrome-renderer-v1`, and pushed with a
+    normal `git push` (no force-push; `1dae76f..35c6b71`). Final trunk status before branching Slice 156 was clean; **no docker
     compose config was run**; the Slice 60 trace stash remains parked and untouched; `local_operator_baselines/` stayed
-    ignored/uncommitted. (Three Slice 154 doc lines carrying fingerprint-level source provenance were softened to the closed
-    label `source_match_verified=true` before committing — no source hash / byte count / source fingerprint was committed.)
-  - **Slice 155 closes the next measured baseline gap (Outcome A — existing artifact mapping fixed).** `app_run_6` had
-    `source_coverage_status=not_observed` even though `source_coverage_report.json` is an existing, wired artifact. Root cause: a
-    closed-token mismatch in the baseline aggregator. The producer's **top-level** report status token is `completed`
-    (`pipeline/source_coverage_report.py::_top_level_status`); the **per-source** token is `complete`. The aggregator's
-    `_derive_source_coverage` (`pipeline/guide_quality_baseline.py`) only mapped `{"complete", "ok"}` → pass, so a fully-covered
-    source's `completed` top status fell through to `not_observed`. The QA gate already handled `completed` correctly, and the
-    aggregator's own synthetic test used a `complete` fixture the producer never emits — so the gap was masked, not absent data.
-  - **Fix (narrow, closed-token only):** added `"completed"` to the pass set in `_derive_source_coverage`; added the real
-    producer top-level token `("completed", "pass")` as a regression case in `test_source_coverage_status_derivation`. No
-    detector / prompt-contract / QA-gate / producer / API / UI / renderer / export / OCR / table / visual / judge / repair change.
-  - **Closed flags:** `source_coverage_gap_investigation=run`, `status=ok`, `app_run_6_baseline_reference=closed_summary_only`,
-    `reasoning_leak_status=pass`, `baseline_status=warning`, `source_coverage_status_before=not_observed`,
-    `source_coverage_status_after=pass`, `source_coverage_artifact_present=true`, `source_coverage_closed_fields_available=true`,
-    `source_coverage_mapping_changed=true`, `reference_relative_completeness_status=needs_future_metric`,
-    `figure_handling_status=needs_future_metric`, `next_step=reference_completeness_or_figure_gap`.
-  - **Reference completeness / figure handling stay `needs_future_metric` (verified):** existing wired artifacts expose no
-    concept/section labels or figure ids matchable to the golden spec without parsing guide text/images; source coverage exposes
-    only a closed `visual_candidate_pages` counter. Gap reasons: `existing_artifacts_do_not_expose_safe_reference_labels`,
-    `source_coverage_report_lacks_visual_closed_counts`. Not faked.
-  - **Local artifact inspection** of `app_run_6`/`app_run_5` `source_coverage_report.json` was key/status/count-only (top-level
-    keys, `status=completed`, per-source `status=complete`, summary key names, int-ness of counts) — no raw JSON, filenames,
-    paths, page/OCR text, captions, or extracted source material printed or committed.
-  - **Validation (all green):** baseline tests (131, was 130), baseline harness synthetic self-test (`ok`), reasoning-leak
-    protection — prompt contract (143), contract lint (150), QA gate (177), `compileall api pipeline test_scripts` clean;
-    `app_run_6` local harness rerun (`source_coverage_status` `not_observed`→`pass`, `reasoning_leak_status=pass`,
-    `baseline_status=warning`); `app_run_5` local harness rerun (`source_coverage_status=pass` now, `reasoning_leak_status=fail`
-    still → `baseline_status=failed` — no failure hidden); `git diff --check` clean; no-leak sweep clean. **Docker was NOT run; no
-    docker compose config was run.**
+    ignored/uncommitted.
+  - **Slice 156 makes reference completeness + figure handling measurable via a closed local guide-text scanner.** New
+    `collect_guide_quality_baseline_guide_text_metrics(guide_text, golden_spec)` in `pipeline/guide_quality_baseline.py`
+    deterministically matches the golden spec's closed concept/section/figure check labels + aliases (lowercase +
+    punctuation-strip + whitespace-collapse) and returns **closed counts/statuses only** — never text, snippets, matched
+    aliases, paths, or filenames. `build_guide_quality_baseline_record(...)` gained optional `guide_text_metrics=`; when
+    supplied it observes `reference_relative_completeness_status` + `figure_handling_status` from the closed counts (source
+    `guide_text_scan`) and embeds a closed `guide_text_coverage` counts block. Without it, legacy `needs_future_metric`
+    derivation is unchanged. No OCR / PDF parse / image inspection / LLM call; no producer/API/UI/render/export/judge/repair change.
+  - **Golden spec** extended with closed alias checks only: `reference_completeness_checks`, `figure_handling_checks`,
+    `section_coverage_checks` (short concept labels + general educational aliases; path-like aliases stripped on normalization).
+  - **Harness** (`validate_guide_quality_baseline_harness.py`) gained optional `--guide-text <local_gitignored_file>` local
+    mode: reads the file, computes closed coverage, surfaces closed counts; path/text/alias never printed; path-leak guard
+    extended to the guide-text path. Omitting `--guide-text` preserves prior behavior.
+  - **Closed flags:** `closed_local_guide_coverage_baseline=run`, `local_guide_text_available=true`,
+    `local_guide_text_committed=false`, `raw_guide_text_committed=false`, `snippet_committed=false`, `source_pdf_parsed=false`,
+    `ocr_used=false`, `lmm_or_judge_used=false`, `reference_relative_completeness_status_before=needs_future_metric`,
+    `reference_relative_completeness_status_after=pass`, `figure_handling_status_before=needs_future_metric`,
+    `figure_handling_status_after=pass`, `source_coverage_status=pass`, `reasoning_leak_status=pass`, `baseline_status=warning`,
+    `next_step=style_preset_audit_gate`.
+  - **Measured `app_run_6_reasoning_fix_iteration_2` (closed counts only):** with `--guide-text`,
+    `reference_relative_completeness_status=pass` (`matched_reference_check_count=4`, `missing_reference_check_count=0`),
+    `figure_handling_status=pass` (`matched_figure_check_count=1`, `missing_figure_check_count=0`), sections `2/3`,
+    `baseline_status=warning` (still driven by QA-gate warning + numeric `not_available`, **not** the new metrics — no failure
+    hidden). Without `--guide-text` both metrics correctly stay `needs_future_metric`. No matched-alias text, snippet, or path
+    recorded. The local guide text (`local_operator_baselines/nn_iris/app_guide_text/…clean.local.md`) was confirmed ignored,
+    read only at runtime, **not committed**.
+  - **Validation (all green):** baseline tests (207, was 131; +15 Slice 156 synthetic cases + stdlib-allow update), baseline
+    harness synthetic self-test (`ok`), prompt contract (143), contract lint (150), QA gate (177),
+    `compileall api pipeline test_scripts` clean; `app_run_6` local harness both modes; `git diff --check` clean; no-leak sweep
+    clean. **Docker was NOT run; no docker compose config was run.**
   - **Files changed:** `M docs/CURRENT_TASK.md`, `M docs/NEXT_CHAT_HANDOFF.md`, `M docs/DECISIONS.md`,
-    `M pipeline/guide_quality_baseline.py`, `M test_scripts/test_guide_quality_baseline.py`. **Slice 155 remains NOT committed.**
-  - **Next expected slice / first action next chat:** commit Slice 155 on its branch, then `reference_completeness_or_figure_gap`
-    — both reference completeness and figure handling need a *new closed-field artifact* before they can leave `needs_future_metric`
-    (do not parse guides/PDFs without an explicit approved closed-count reader slice). The style/preset audit
-    (`style_preset_audit_gate`) is also now unblocked (reasoning-leak + source coverage both green).
+    `M docs/GUIDE_QUALITY_BASELINE_HARNESS.md`, `M pipeline/guide_quality_baseline.py`,
+    `M test_scripts/test_guide_quality_baseline.py`, `M test_scripts/validate_guide_quality_baseline_harness.py`,
+    `M test_scripts/fixtures/guide_quality_baseline/nn_iris_local_golden_spec.json`. **Slice 156 remains NOT committed.**
+  - **Next expected slice / first action next chat:** commit Slice 156 on its branch, then `style_preset_audit_gate` — the
+    style/preset audit is now fully unblocked (reasoning-leak, source coverage, reference completeness, and figure handling all
+    read green for `app_run_6`). `numeric_math_status` stays `not_available` until a known-numbers spec is supplied (separate gap).
+
+### Previously (Slice 155, now trunk `35c6b71`)
+- **Slice 155 (Source Coverage / Completeness Baseline Gap)** fixed a closed-token mismatch: the source coverage producer's
+  top-level report status token is `completed` (`pipeline/source_coverage_report.py::_top_level_status`) while
+  `_derive_source_coverage` only mapped `{"complete", "ok"}` → pass, so a fully-covered source fell through to `not_observed`.
+  Added `"completed"` to the pass set + a regression test. `app_run_6` `source_coverage_status` `not_observed`→`pass`; no
+  producer/detector/QA-gate/prompt change.
 
 ### Previously (Slice 154, now trunk `1dae76f`)
 - **Slice 154 (Reasoning Leak Fix Iteration 2)** added one concise rule to the shared `_CORE_RULES` chokepoint in

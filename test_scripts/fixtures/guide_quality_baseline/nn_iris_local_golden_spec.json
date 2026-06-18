@@ -36,6 +36,52 @@
       "expected_status": "expected_or_explained_missing"
     }
   ],
+  "reference_completeness_checks": [
+    {
+      "id": "forward_pass",
+      "aliases": ["forward pass", "forward propagation"],
+      "required": true
+    },
+    {
+      "id": "activation_function",
+      "aliases": ["activation function", "activation"],
+      "required": true
+    },
+    {
+      "id": "softmax_output",
+      "aliases": ["softmax", "output probabilities", "probability distribution"],
+      "required": true
+    },
+    {
+      "id": "cross_entropy_loss",
+      "aliases": ["cross entropy", "cross-entropy", "negative log likelihood"],
+      "required": true
+    }
+  ],
+  "figure_handling_checks": [
+    {
+      "id": "neural_network_architecture_diagram",
+      "aliases": ["neural network diagram", "network architecture", "architecture diagram", "architecture", "diagram"],
+      "expected_status": "expected_or_explained_missing"
+    }
+  ],
+  "section_coverage_checks": [
+    {
+      "id": "worked_examples",
+      "aliases": ["worked example", "step-by-step example", "calculation example"],
+      "required": true
+    },
+    {
+      "id": "common_mistakes",
+      "aliases": ["common mistake", "common mistakes", "pitfall"],
+      "required": true
+    },
+    {
+      "id": "exam_practice",
+      "aliases": ["exam practice", "practice question", "exam question"],
+      "required": true
+    }
+  ],
   "warnings": [
     "source_material_local_gitignored",
     "known_numbers_deferred_until_local_operator_spec"

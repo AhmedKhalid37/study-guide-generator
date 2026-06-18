@@ -6546,3 +6546,36 @@ read mismatch, so correcting the mapping (and locking the real producer token in
 turns the metric honestly green without widening the evaluator stack. The completeness and
 figure metrics, by contrast, have no safe closed fields in the current artifacts, so they
 stay explicitly deferred rather than invented.
+
+## Local guide text may be read for closed-count coverage metrics only (2026-06-18)
+Slice 156 needed `reference_relative_completeness_status` and `figure_handling_status` to
+leave `needs_future_metric`, but the existing wired artifacts expose no concept/section/figure
+labels matchable to the golden spec (per Slice 155). Rather than build an LLM judge or parse
+source PDFs/images, the slice added a **closed local-only guide-text scanner**
+(`collect_guide_quality_baseline_guide_text_metrics` in `pipeline/guide_quality_baseline.py`).
+
+- **Decision:** a caller may read a **local, gitignored** generated-guide text file (e.g. a
+  copy of the job's `clean.md`) purely to compute **closed counts/statuses**. The scanner
+  deterministically normalizes (lowercase + punctuation-strip + whitespace-collapse) and
+  matches the golden spec's closed concept/section/figure check labels + aliases. It returns
+  **only** integer counts and closed status tokens — never the text, a snippet, a matched
+  alias, a path, or a filename. No OCR, PDF parse, image inspection, or LLM call. The
+  reference/figure metrics are observed from those counts only when `guide_text_metrics=` is
+  supplied to `build_guide_quality_baseline_record(...)`; otherwise the legacy
+  `needs_future_metric` derivation is unchanged.
+- **Decision:** the golden spec carries closed alias checks only
+  (`reference_completeness_checks`, `figure_handling_checks`, `section_coverage_checks`) —
+  short concept labels + general educational aliases; path-like / content-bearing aliases are
+  stripped on normalization. Figure "explained-missing" marker phrases (e.g.
+  "cannot be reproduced", "diagram explained") count an expected figure as handled.
+- **Decision (no-leak):** no raw guide text, snippet, matched alias, or local path may be
+  committed or printed. The harness `--guide-text` mode keeps the path-leak guard and surfaces
+  closed counts only; the local guide text stays under gitignored `local_operator_baselines/`.
+- **Measured result:** `app_run_6` reads `reference_relative_completeness_status=pass` (4/4
+  required) and `figure_handling_status=pass` (1/1); `baseline_status` stays `warning` (driven
+  by the QA-gate warning + numeric `not_available`, not the new metrics — no failure hidden).
+
+**Why:** this turns two deferred metrics honestly measurable with a tiny, deterministic,
+stdlib-only string scanner that never emits content, instead of either faking the result or
+standing up a heavier evaluator/judge stack. Reading guide text is scoped to closed-count
+computation only and the text never leaves the local machine.

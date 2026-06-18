@@ -379,6 +379,261 @@ def test_figure_handling_needs_future_metric() -> None:
         check("figure handling deferred", metric["status"] == "needs_future_metric")
 
 
+# --- Slice 156: closed local guide-text coverage scanner --------------------
+
+
+def _coverage_golden_spec() -> dict:
+    """Golden spec carrying closed alias checks (Slice 156)."""
+    spec = _golden_spec()
+    spec["reference_completeness_checks"] = [
+        {"id": "softmax_output", "aliases": ["softmax", "output probabilities"], "required": True},
+        {"id": "cross_entropy_loss", "aliases": ["cross entropy", "negative log likelihood"], "required": True},
+    ]
+    spec["figure_handling_checks"] = [
+        {
+            "id": "nn_architecture_diagram",
+            "aliases": ["architecture diagram", "network architecture"],
+            "expected_status": "expected_or_explained_missing",
+        }
+    ]
+    spec["section_coverage_checks"] = [
+        {"id": "worked_examples", "aliases": ["worked example", "step-by-step example"], "required": True},
+        {"id": "common_mistakes", "aliases": ["common mistake", "pitfall"], "required": True},
+    ]
+    return spec
+
+
+def test_golden_spec_accepts_closed_alias_checks() -> None:
+    spec = gqb.normalize_guide_quality_baseline_golden_spec(_coverage_golden_spec())
+    refs = spec[gqb.GOLDEN_REFERENCE_CHECKS]
+    figs = spec[gqb.GOLDEN_FIGURE_CHECKS]
+    secs = spec[gqb.GOLDEN_SECTION_CHECKS]
+    check("reference checks retained", len(refs) == 2 and refs[0]["id"] == "softmax_output")
+    check("reference check required flag", refs[0]["required"] is True)
+    check("reference check aliases retained", "softmax" in refs[0]["aliases"])
+    check("figure check expected_status", figs[0]["expected_status"] == "expected_or_explained_missing")
+    check("figure check has no required flag", "required" not in figs[0])
+    check("section checks retained", len(secs) == 2)
+
+
+def test_golden_spec_strips_unsafe_alias_paths() -> None:
+    data = _coverage_golden_spec()
+    data["reference_completeness_checks"] = [
+        {
+            "id": "softmax_output",
+            "aliases": ["softmax", CANARY_PATH, "/etc/passwd", "leaked.pdf", "data:text/plain;base64,AAA"],
+            "required": True,
+        }
+    ]
+    spec = gqb.normalize_guide_quality_baseline_golden_spec(data)
+    serialized = json.dumps(spec)
+    check("alias path canary stripped", CANARY_PATH not in serialized)
+    check("alias etc passwd stripped", "/etc/passwd" not in serialized)
+    check("alias pdf-like stripped", "leaked.pdf" not in serialized)
+    check("alias data uri stripped", "data:text/plain" not in serialized)
+    check("safe alias retained", "softmax" in spec[gqb.GOLDEN_REFERENCE_CHECKS][0]["aliases"])
+    check(
+        "aliases-dropped warning recorded",
+        any("aliases_dropped" in w for w in spec["normalization_warnings"]),
+    )
+
+
+def test_guide_text_scanner_returns_closed_counts_only() -> None:
+    spec = _coverage_golden_spec()
+    text = (
+        "The softmax produces output probabilities. Cross entropy is the loss. "
+        "A worked example walks through it. The architecture diagram shows layers."
+    )
+    metrics = gqb.collect_guide_quality_baseline_guide_text_metrics(text, spec)
+    serialized = json.dumps(metrics)
+    # Only closed scalar keys may appear — no text, snippets, or matched aliases.
+    for key in metrics:
+        if key == "guide_text_available":
+            check("available is bool", isinstance(metrics[key], bool))
+            continue
+        if key.endswith("_status"):
+            check(f"{key} is closed token", metrics[key] in gqb._METRIC_TOKENS)
+            continue
+        check(f"{key} is int count", isinstance(metrics[key], int) and not isinstance(metrics[key], bool))
+    check("scanner does not leak guide text", "softmax produces output" not in serialized)
+    check("scanner does not leak matched alias phrase", "output probabilities" not in serialized)
+    check("scanner does not leak word worked", "worked example walks" not in serialized)
+
+
+def test_guide_text_reference_pass_warning_fail() -> None:
+    spec = _coverage_golden_spec()
+    all_text = "softmax output. cross entropy loss is used."
+    m_pass = gqb.collect_guide_quality_baseline_guide_text_metrics(all_text, spec)
+    check("reference all matched -> pass", m_pass["reference_relative_completeness_status"] == "pass")
+    check("reference matched count 2", m_pass["matched_reference_check_count"] == 2)
+    check("reference missing count 0", m_pass["missing_reference_check_count"] == 0)
+
+    some_text = "softmax output is shown but the other loss is absent here."
+    m_warn = gqb.collect_guide_quality_baseline_guide_text_metrics(some_text, spec)
+    check("reference some matched -> warning", m_warn["reference_relative_completeness_status"] == "warning")
+    check("reference matched count 1", m_warn["matched_reference_check_count"] == 1)
+
+    none_text = "this guide talks about unrelated gardening topics only."
+    m_fail = gqb.collect_guide_quality_baseline_guide_text_metrics(none_text, spec)
+    check("reference none matched -> fail", m_fail["reference_relative_completeness_status"] == "fail")
+    check("reference matched count 0", m_fail["matched_reference_check_count"] == 0)
+
+
+def test_guide_text_reference_needs_future_when_no_checks() -> None:
+    spec = _golden_spec()  # no reference_completeness_checks
+    metrics = gqb.collect_guide_quality_baseline_guide_text_metrics("any text here", spec)
+    check(
+        "no reference checks -> needs_future_metric",
+        metrics["reference_relative_completeness_status"] == "needs_future_metric",
+    )
+    check("required reference count 0", metrics["required_reference_check_count"] == 0)
+
+
+def test_guide_text_figure_pass_warning_fail() -> None:
+    spec = _coverage_golden_spec()
+    spec["figure_handling_checks"] = [
+        {"id": "fig_a", "aliases": ["architecture diagram"], "expected_status": "expected_or_explained_missing"},
+        {"id": "fig_b", "aliases": ["loss curve"], "expected_status": "expected_or_explained_missing"},
+    ]
+    both = gqb.collect_guide_quality_baseline_guide_text_metrics(
+        "the architecture diagram and the loss curve are shown.", spec
+    )
+    check("figures all handled -> pass", both["figure_handling_status"] == "pass")
+    check("figure matched count 2", both["matched_figure_check_count"] == 2)
+
+    one = gqb.collect_guide_quality_baseline_guide_text_metrics("only the architecture diagram appears.", spec)
+    check("figures some handled -> warning", one["figure_handling_status"] == "warning")
+
+    none = gqb.collect_guide_quality_baseline_guide_text_metrics("no visuals of any kind here.", spec)
+    check("figures none handled -> fail", none["figure_handling_status"] == "fail")
+
+
+def test_guide_text_figure_explained_missing_counts_as_handled() -> None:
+    spec = _coverage_golden_spec()
+    spec["figure_handling_checks"] = [
+        {"id": "fig_a", "aliases": ["architecture diagram"], "expected_status": "expected_or_explained_missing"}
+    ]
+    # No alias present, but a safe explanation marker is — counts as handled.
+    text = "If the visual cannot be reproduced, the network is described in prose instead."
+    metrics = gqb.collect_guide_quality_baseline_guide_text_metrics(text, spec)
+    check("explained-missing -> figure pass", metrics["figure_handling_status"] == "pass")
+    check("explained-missing matched count 1", metrics["matched_figure_check_count"] == 1)
+
+
+def test_guide_text_figure_needs_future_when_no_checks() -> None:
+    spec = _golden_spec()
+    spec["figure_handling_checks"] = []
+    metrics = gqb.collect_guide_quality_baseline_guide_text_metrics("any text", spec)
+    check("no figure checks -> needs_future_metric", metrics["figure_handling_status"] == "needs_future_metric")
+    check("expected figure count 0", metrics["expected_figure_check_count"] == 0)
+
+
+def test_guide_text_missing_or_malformed_input() -> None:
+    spec = _coverage_golden_spec()
+    empty = gqb.collect_guide_quality_baseline_guide_text_metrics("   ", spec)
+    check("empty text not available", empty["guide_text_available"] is False)
+    check("empty text reference needs_future", empty["reference_relative_completeness_status"] == "needs_future_metric")
+    check("empty text figure needs_future", empty["figure_handling_status"] == "needs_future_metric")
+
+    malformed = gqb.collect_guide_quality_baseline_guide_text_metrics(None, spec)
+    check("malformed text not available", malformed["guide_text_available"] is False)
+    check("malformed reference not_available", malformed["reference_relative_completeness_status"] == "not_available")
+    check("malformed figure not_available", malformed["figure_handling_status"] == "not_available")
+
+
+def test_record_uses_guide_text_metrics_when_provided() -> None:
+    with tempfile.TemporaryDirectory() as tmp:
+        directory = Path(tmp)
+        _all_clean(directory)
+        arts = gqb.collect_guide_quality_baseline_artifacts(directory)
+        spec = _coverage_golden_spec()
+        gtm = gqb.collect_guide_quality_baseline_guide_text_metrics(
+            "softmax output probabilities. cross entropy loss. architecture diagram. worked example.",
+            spec,
+        )
+        record = gqb.build_guide_quality_baseline_record(spec, arts, guide_text_metrics=gtm)
+        ref = record["metrics"]["reference_relative_completeness_status"]
+        fig = record["metrics"]["figure_handling_status"]
+        check("record reference observed pass", ref["status"] == "pass")
+        check("record reference source is scan", ref["source"] == "guide_text_scan")
+        check("record figure observed pass", fig["status"] == "pass")
+        cov = record["guide_text_coverage"]
+        check("record coverage available", cov["guide_text_available"] is True)
+        check("record coverage has matched count", cov["matched_reference_check_count"] == 2)
+        # No guide-text content may appear in the serialized record.
+        serialized = gqb.serialize_guide_quality_baseline_record(record)
+        check("record drops guide text", "output probabilities" not in serialized)
+        check("record drops worked example phrase", "worked example" not in serialized)
+
+
+def test_record_without_guide_text_stays_needs_future() -> None:
+    with tempfile.TemporaryDirectory() as tmp:
+        directory = Path(tmp)
+        _all_clean(directory)
+        arts = gqb.collect_guide_quality_baseline_artifacts(directory)
+        record = gqb.build_guide_quality_baseline_record(_coverage_golden_spec(), arts)
+        check(
+            "no guide text keeps reference needs_future",
+            record["metrics"]["reference_relative_completeness_status"]["status"] == "needs_future_metric",
+        )
+        check(
+            "no guide text keeps figure needs_future",
+            record["metrics"]["figure_handling_status"]["status"] == "needs_future_metric",
+        )
+        check("coverage view marks unavailable", record["guide_text_coverage"]["guide_text_available"] is False)
+
+
+def test_local_mode_guide_text_hides_path_and_text() -> None:
+    v = _load_validator()
+    with tempfile.TemporaryDirectory() as tmp:
+        directory = Path(tmp)
+        _all_clean(directory)
+        spec_path = directory / "spec.json"
+        spec_path.write_text(json.dumps(_coverage_golden_spec()), encoding="utf-8")
+        guide_path = directory / "guide.local.md"
+        guide_path.write_text(
+            "softmax output probabilities. cross entropy loss. architecture diagram. worked example.",
+            encoding="utf-8",
+        )
+        summary = v.run_local_baseline(spec_path, directory, "app_run_guidetext", guide_path)
+        serialized = json.dumps(summary, sort_keys=True)
+        check("guide-text mode harness ok", summary["baseline_harness_status"] == "ok")
+        check("guide-text available true", summary["local_guide_text_available"] is True)
+        check("guide-text reference pass", summary["reference_relative_completeness_status"] == "pass")
+        check("guide-text figure pass", summary["figure_handling_status"] == "pass")
+        check("guide-text closed counts surfaced", summary.get("matched_reference_check_count") == 2)
+        check("guide-text mode hides guide path", str(guide_path) not in serialized)
+        check("guide-text mode hides artifact path", str(directory) not in serialized)
+        check("guide-text mode hides text", "output probabilities" not in serialized)
+        check("guide-text mode hides matched alias", "worked example" not in serialized)
+
+
+def test_local_mode_guide_text_deterministic() -> None:
+    v = _load_validator()
+    with tempfile.TemporaryDirectory() as tmp:
+        directory = Path(tmp)
+        _all_clean(directory)
+        spec_path = directory / "spec.json"
+        spec_path.write_text(json.dumps(_coverage_golden_spec()), encoding="utf-8")
+        guide_path = directory / "guide.local.md"
+        guide_path.write_text("softmax output probabilities. cross entropy loss.", encoding="utf-8")
+        a = v.run_local_baseline(spec_path, directory, "app_run_det", guide_path)
+        b = v.run_local_baseline(spec_path, directory, "app_run_det", guide_path)
+        check("guide-text local mode deterministic", json.dumps(a, sort_keys=True) == json.dumps(b, sort_keys=True))
+
+
+def test_guide_text_forbidden_canary_does_not_survive() -> None:
+    spec = _coverage_golden_spec()
+    text = f"softmax output. {CANARY_KEY} {CANARY_PATH} {CANARY_TEXT} cross entropy loss."
+    metrics = gqb.collect_guide_quality_baseline_guide_text_metrics(text, spec)
+    serialized = json.dumps(metrics)
+    check("canary key not in scanner output", CANARY_KEY not in serialized)
+    check("canary path not in scanner output", CANARY_PATH not in serialized)
+    check("canary text not in scanner output", CANARY_TEXT not in serialized)
+    check("no keylike survives scanner", not KEYLIKE.search(serialized))
+    check("no pathlike survives scanner", not PATHLIKE.search(serialized))
+
+
 def test_artifact_existence_status() -> None:
     # all required present -> pass
     with tempfile.TemporaryDirectory() as tmp:
@@ -605,7 +860,7 @@ def test_module_is_stdlib_only() -> None:
         for line in source.splitlines()
         if line.strip().startswith(("import ", "from "))
     ]
-    allowed_modules = {"__future__", "json", "os", "typing"}
+    allowed_modules = {"__future__", "json", "os", "re", "typing"}
     for line in import_lines:
         # Each import must resolve to a stdlib module on the allowed list.
         module = line.split()[1].split(".")[0]
@@ -644,6 +899,20 @@ def main() -> int:
     test_structure_status_from_contract_lint()
     test_reference_relative_completeness_needs_future_metric()
     test_figure_handling_needs_future_metric()
+    test_golden_spec_accepts_closed_alias_checks()
+    test_golden_spec_strips_unsafe_alias_paths()
+    test_guide_text_scanner_returns_closed_counts_only()
+    test_guide_text_reference_pass_warning_fail()
+    test_guide_text_reference_needs_future_when_no_checks()
+    test_guide_text_figure_pass_warning_fail()
+    test_guide_text_figure_explained_missing_counts_as_handled()
+    test_guide_text_figure_needs_future_when_no_checks()
+    test_guide_text_missing_or_malformed_input()
+    test_record_uses_guide_text_metrics_when_provided()
+    test_record_without_guide_text_stays_needs_future()
+    test_local_mode_guide_text_hides_path_and_text()
+    test_local_mode_guide_text_deterministic()
+    test_guide_text_forbidden_canary_does_not_survive()
     test_artifact_existence_status()
     test_trend_comparison()
     test_deterministic_serialization()

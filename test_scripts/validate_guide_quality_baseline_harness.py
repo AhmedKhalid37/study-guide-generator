@@ -48,6 +48,7 @@ sys.path.insert(0, str(REPO))
 from pipeline.guide_quality_baseline import (  # noqa: E402
     build_guide_quality_baseline_record,
     collect_guide_quality_baseline_artifacts,
+    collect_guide_quality_baseline_guide_text_metrics,
     compare_guide_quality_baseline_records,
     normalize_guide_quality_baseline_golden_spec,
     serialize_guide_quality_baseline_record,
@@ -70,6 +71,19 @@ _METRIC_FAMILIES = (
     "reference_relative_completeness_status",
     "figure_handling_status",
     "artifact_existence_status",
+)
+
+# Closed guide-text coverage counts surfaced in local mode when --guide-text given.
+_GUIDE_TEXT_COUNT_KEYS = (
+    "required_reference_check_count",
+    "matched_reference_check_count",
+    "missing_reference_check_count",
+    "expected_figure_check_count",
+    "matched_figure_check_count",
+    "missing_figure_check_count",
+    "section_check_count",
+    "matched_section_check_count",
+    "missing_section_check_count",
 )
 
 # Synthetic canaries that must never survive into the serialized closed record.
@@ -144,7 +158,12 @@ def _clean_artifacts(directory: Path) -> None:
     )
 
 
-def run_local_baseline(golden_spec_path: object, artifact_dir: object, run_label: object) -> dict:
+def run_local_baseline(
+    golden_spec_path: object,
+    artifact_dir: object,
+    run_label: object,
+    guide_text_path: object = None,
+) -> dict:
     """Read a local artifact dir and return a closed-summary-only dict.
 
     Never includes the artifact directory path or any raw artifact body. On a
@@ -152,6 +171,10 @@ def run_local_baseline(golden_spec_path: object, artifact_dir: object, run_label
     ``baseline_harness_status`` is ``error`` (caller maps that to a nonzero exit).
     Honest measurement outcomes (including ``failed``/``partial``/``skipped``
     baseline status) return ``baseline_harness_status`` ``ok``.
+
+    When ``guide_text_path`` is given, the local gitignored guide text is read
+    only to compute **closed coverage counts/statuses** — the path, the text, any
+    snippet, and any matched alias are never printed or returned.
     """
     label = _safe_run_label(run_label)
 
@@ -175,10 +198,32 @@ def run_local_baseline(golden_spec_path: object, artifact_dir: object, run_label
             "error": "artifact_dir_not_found",
         }
 
+    # Optional local guide text → closed coverage metrics only (text never kept).
+    guide_text_metrics = None
+    guide_text_available = False
+    if guide_text_path is not None:
+        try:
+            guide_text = Path(str(guide_text_path)).read_text(encoding="utf-8")
+        except (OSError, ValueError):
+            return {
+                "validation_id": LOCAL_VALIDATION_ID,
+                "run_label": label,
+                "baseline_harness_status": "error",
+                "local_operator_baseline_run": "closed_summary_only",
+                "error": "guide_text_unreadable",
+            }
+        guide_text_metrics = collect_guide_quality_baseline_guide_text_metrics(guide_text, spec_data)
+        guide_text_available = bool(guide_text_metrics.get("guide_text_available"))
+        # Drop the local text reference immediately; only closed counts survive.
+        del guide_text
+
     # The collector returns closed scalars only and never echoes the dir path.
     artifacts = collect_guide_quality_baseline_artifacts(artifact_dir)
     record = build_guide_quality_baseline_record(
-        spec_data, artifacts, run_metadata={"local_operator_run": "closed_summary_only"}
+        spec_data,
+        artifacts,
+        run_metadata={"local_operator_run": "closed_summary_only"},
+        guide_text_metrics=guide_text_metrics,
     )
     metrics = record.get("metrics", {})
 
@@ -196,14 +241,24 @@ def run_local_baseline(golden_spec_path: object, artifact_dir: object, run_label
         "baseline_harness_status": "ok",
         "local_operator_baseline_run": "closed_summary_only",
         "baseline_status": record.get("status", "skipped"),
+        "local_guide_text_available": guide_text_available,
     }
     for family in _METRIC_FAMILIES:
         summary[family] = _status(family)
+    coverage = record.get("guide_text_coverage", {})
+    if guide_text_available and isinstance(coverage, dict):
+        for key in _GUIDE_TEXT_COUNT_KEYS:
+            value = coverage.get(key)
+            if isinstance(value, int) and not isinstance(value, bool):
+                summary[key] = value
     summary["warnings"] = list(record.get("warnings", []))
 
-    # Defensive last line of defense: the directory path must never appear.
+    # Defensive last line of defense: no local path may ever appear in output.
     rendered = json.dumps(summary, sort_keys=True)
-    if str(artifact_dir) in rendered:
+    leak_paths = [str(artifact_dir)]
+    if guide_text_path is not None:
+        leak_paths.append(str(guide_text_path))
+    if any(p and p in rendered for p in leak_paths):
         return {
             "validation_id": LOCAL_VALIDATION_ID,
             "run_label": label,
@@ -215,7 +270,9 @@ def run_local_baseline(golden_spec_path: object, artifact_dir: object, run_label
 
 
 def _run_local_mode(args: argparse.Namespace) -> int:
-    summary = run_local_baseline(args.golden_spec, args.artifact_dir, args.run_label)
+    summary = run_local_baseline(
+        args.golden_spec, args.artifact_dir, args.run_label, args.guide_text
+    )
     print(json.dumps(summary, sort_keys=True))
     return 1 if summary.get("baseline_harness_status") == "error" else 0
 
@@ -320,6 +377,14 @@ def main(argv: list[str] | None = None) -> int:
         "--run-label",
         default="local",
         help="Closed run label echoed in local-mode output (e.g. app_run_1).",
+    )
+    parser.add_argument(
+        "--guide-text",
+        default=None,
+        help=(
+            "Optional local gitignored generated-guide text file. Read only to "
+            "compute closed coverage counts/statuses; path/text never printed."
+        ),
     )
     args = parser.parse_args(argv)
 
