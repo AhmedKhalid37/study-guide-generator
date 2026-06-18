@@ -6626,3 +6626,37 @@ Records: `master_roadmap_adopted=true`, `authoritative_phase_order=GUIDEFORGE_MA
 production offline judge gate stays frozen (`judge_ready=false`, `repair_ready=false`); a dev-time
 reference-anchored eval judge is separate and allowed; numeric correctness is recompute-first, not
 manual `known_numbers`.
+
+## The Master Roadmap is the authoritative phase order; Phase 0 (eval harness + fact-sheet skeleton) comes first (2026-06-18)
+
+**Context (Slice 159, master-roadmap adoption + Phase 0 grounding):** `docs/GUIDEFORGE_MASTER_ROADMAP.md`
+was added to the repo (it did not exist before; copied in verbatim) and adopted as the **single
+source of truth for phase order and phase exit criteria**. Slice 159 is docs-only grounding: it
+reconciles the existing eval/fact-sheet/recompute code against the roadmap's Phase 0 so the next
+slice builds the real harness without confusing it with the frozen apparatus.
+
+- **Decision:** the prior `multi_guide_read_then_product_fix` plan is **superseded**. Phase 0 — eval
+  harness + fact-sheet skeleton — is first; phases must not be reordered; no later phase (figures/
+  tables, OCR, prompt tuning, style/preset audit, product fixes) starts before the current phase's
+  recorded exit criteria are met.
+- **Decision (frozen vs forward, recorded as a closed classification):** the recompute-first
+  foundation from the original numeric design (Slices 108–113: `quality_safety_fact_sheet.py`,
+  `quality_safety_recompute_verifier.py`, `quality_safety_canonical_matcher.py`,
+  `quality_safety_leak_scanner.py`) is **reusable for Phase 0**. The synthetic Quality-Safety drift
+  (≈ Slices 117–147: the fact-sheet producer, structured-numeric candidate adapter, operator
+  export validator, safe numeric extractor / extraction mappers / bundle adapter) **and** the
+  production offline-judge stack (`quality_safety_offline_judge_{core,schema,artifact_adapter}.py`)
+  are **archived/frozen — do not extend**. The live `guide_quality_*` measurement layer (Slices
+  149–157) is the current baseline, not the golden-pair harness.
+- **Decision (judges kept separate):** the production offline-judge-as-shippability-gate stays
+  **frozen** (`judge_ready=false`, `repair_ready=false`); the dev-time **reference-anchored** eval
+  judge (local, operator key, candidate vs Claude reference, closed scores + <15-word evidence
+  quotes) is **separate, allowed, and required** — and is **not yet built as its own module**.
+- **Decision (numeric truth):** correctness is **recompute-first**, never manual `known_numbers`;
+  the §0 invariant holds (an `unverified` value is never repaired into false confidence).
+
+**Why:** the project has drifted twice (synthetic-judge apparatus, then a measurement treadmill).
+Encoding the phase order and the frozen-vs-reusable boundary in one authoritative doc — and grounding
+the existing code against it before writing more — prevents a third drift and lets the next slice build
+the real golden-pair harness on the recompute-first foundation instead of resurrecting the frozen
+synthetic stack. Next slice: `phase0_real_golden_pair_eval_harness_skeleton`.

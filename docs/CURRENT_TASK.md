@@ -5,7 +5,64 @@
 
 ---
 
-## Slice 158 — **Lean QA-gate warning triage**, on `slice158-qa-gate-warning-triage`. **NOT COMMITTED (docs-only triage).**
+## Slice 159 — **Master Roadmap adoption + Phase 0 eval-harness grounding**, on `slice159-master-roadmap-phase0-eval-grounding`. **NOT COMMITTED (docs-only grounding).**
+
+- **Part 0 completed:** Slice 158 was committed as `3a44c91` ("Slice 158: Triage remaining QA gate warning"),
+  fast-forward merged to trunk `chrome-renderer-v1` (`5ab92f0..3a44c91`), and pushed with a normal `git push` (no
+  force-push). Final trunk status was clean; **no docker compose config was run**; the Slice 60 trace stash remains
+  parked and untouched; `local_operator_baselines/` stayed ignored/uncommitted; no private material was committed.
+- **phase=Phase 0 — Eval harness + fact-sheet skeleton**
+- **roadmap_authority=docs/GUIDEFORGE_MASTER_ROADMAP.md** (added this slice — copied in verbatim; it did **not**
+  previously exist in the repo). `roadmap_adopted=true`.
+- **previous_next_step_superseded=multi_guide_read_then_product_fix**
+- **current_next_step=phase0_eval_harness_real_golden_pair_skeleton**
+- **Closed findings (inspection of existing Phase 0-related code; code is source of truth):**
+  - `existing_eval_harness_present=true` — `pipeline/quality_safety_eval_harness.py` (Slice 108): pure synthetic-only
+    Layer-1 scorer (leaked_reasoning / numeric_correctness / worked_answer_completeness / coverage / mock_question_count)
+    + fixture loader + a regression-record *shape*. Synthetic-only; persists no JSONL; no Layer-2; no real golden pair.
+  - `existing_fact_sheet_schema_present=true` — `pipeline/quality_safety_fact_sheet.py` (Slice 110): fact-record +
+    fact-sheet schema (§B1/§B2) with provenance + verification-status vocab. Recompute-first foundation.
+  - `existing_recompute_verifier_present=true` — `pipeline/quality_safety_recompute_verifier.py` (Slice 111):
+    recompute-first **primary numeric truth path** (§B3); recomputes structured facts within tolerance.
+  - `existing_reference_anchored_judge_present=false` — only the **frozen production offline judge** exists
+    (`quality_safety_offline_judge_{core,schema,artifact_adapter}.py`, Slices 142–143) which forces
+    `judge_ready`/`repair_ready` to False. The Phase 0 **dev-time** reference-anchored eval judge (candidate vs Claude
+    reference, local, operator key, closed scores + <15-word quotes) is **not yet a separate built module** — must be
+    built, kept distinct from the frozen production judge.
+  - `existing_regression_record_present=shape_only` — `REGRESSION_KIND` + a "future JSONL record" builder exist, but
+    no append-only JSONL persistence is wired.
+  - `existing_real_golden_pair_fixtures_present=false` — only synthetic fixtures
+    (`test_scripts/fixtures/quality_safety/*_synthetic.json`); no real `nn3` / `ensemble` golden pair with
+    `expected_topics` + `ground_truth_numerics` (incl. `Gini weight_gt_176 = 0.20`) + `min_mock_questions` + `tier_targets`.
+  - `production_offline_judge_frozen=true`, `judge_ready=false`, `repair_ready=false`.
+  - `numeric_strategy=recompute_first_not_manual_known_numbers`.
+- **Component classification (existing modules vs Phase 0):**
+  - `reusable_for_phase0`: `quality_safety_fact_sheet.py` (schema §B1/§B2), `quality_safety_recompute_verifier.py`
+    (recompute-first truth path §B3), `quality_safety_canonical_matcher.py` (narrow canonical fallback §B4,
+    recompute-preserving), `quality_safety_leak_scanner.py` (leak blocking check §B6 — **do not weaken**).
+  - `reusable_after_refactor`: `quality_safety_eval_harness.py` (Layer-1 + fixture loader + regression-record shape —
+    needs real golden pair, JSONL persistence, `overall_10`/`shippable` separation, Layer-2 judge),
+    `quality_safety_unified_qa.py` (deterministic aggregation of Slices 108–113 — repoint at the real golden-pair path),
+    `test_scripts/fixtures/quality_safety/*_synthetic.json` (keep as unit tests, **not** the real golden pair).
+  - `archived_frozen_do_not_extend` (synthetic drift ≈ Slices 117–147 + production offline judge):
+    `quality_safety_offline_judge_{core,schema,artifact_adapter}.py`, `quality_safety_fact_sheet_producer.py`,
+    `quality_safety_operator_structured_numeric_export_validator.py`, `quality_safety_structured_numeric_candidate_adapter.py`,
+    `quality_safety_safe_numeric_extractor.py`, `quality_safety_numeric_extraction_mapper.py`,
+    `quality_safety_extraction_bundle_adapter.py`.
+  - `unrelated_current_baseline` (live wired measurement layer, Slices 149–157 — keep, not the golden-pair harness):
+    `guide_quality_{baseline,qa_gate,report_v2,rubric_score,contract_lint,prompt_contract}.py`,
+    `quality_safety_job_artifact.py`.
+  - `missing` (build next): real `nn3` + `ensemble` golden-pair fixtures with `ground_truth_numerics`; dev-time
+    Layer-2 reference-anchored eval judge (separate from the frozen production judge); `overall_10`+`shippable`
+    separated reporting wired to the real decks; append-only regression-record JSONL persistence.
+- **next_slice=phase0_real_golden_pair_eval_harness_skeleton**
+- **No code changed.** Docs-only grounding (one authoritative roadmap doc + short live-doc updates). **Docker NOT run;
+  no docker compose config was run.** `local_operator_baselines/` stayed ignored/uncommitted; no guide text/snippets/
+  raw artifacts/paths/fingerprints committed; Slice 60 stash untouched. **Slice 159 remains UNCOMMITTED.**
+
+---
+
+## Slice 158 — **Lean QA-gate warning triage**, on `slice158-qa-gate-warning-triage`. **Committed `3a44c91`, merged + pushed to `chrome-renderer-v1`.**
 
 - **Part 0 completed:** Slice 157 was committed as `5ab92f0` ("Slice 157: Add current app state inspection report"),
   fast-forward merged to trunk `chrome-renderer-v1` (`8f27091..5ab92f0`), and pushed with a normal `git push` (no

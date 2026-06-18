@@ -6,30 +6,39 @@
 > stable overview see `PROJECT_CONTEXT.md`; canonical brief is `../CLAUDE.md`.
 
 ## Current position
-- **Working tree:** **Slice 158 (Lean QA-gate warning triage) — UNCOMMITTED (docs-only triage)** on branch
-  `slice158-qa-gate-warning-triage`, branched from updated `chrome-renderer-v1` after Slice 157 was committed,
-  fast-forward merged, and pushed. **Slice 157 is trunk commit `5ab92f0`**.
-  - **Part 0 completed:** Slice 157 was committed as `5ab92f0`, fast-forward merged to `chrome-renderer-v1`, and pushed with a
-    normal `git push` (no force-push; `8f27091..5ab92f0`). Final trunk status was clean; **no docker compose config was run**;
-    the Slice 60 trace stash remains parked and untouched; `local_operator_baselines/` stayed ignored/uncommitted; no private
-    material was committed.
-  - **Slice 158 is a docs-only triage slice** — it explains why `app_run_6` still reads `baseline_status=warning`. The driver
-    is `guide_quality_qa_gate_status=warning`: the stored QA gate has `warning_count=2` of 5 checks — `math_verification`
-    (production math_verifier reported `mismatch>0`; real-vs-false-positive **unconfirmed**, needs private-guide read) and
-    `quality_report_v2` (closed tokens `source_page_signal_missing` / `missing_material_signal_missing` /
-    `coverage_signal_missing`). `reasoning_leak`, `required_structure`, `source_coverage` all pass. The baseline → gate mapping
-    is **correct** (not a mapping/threshold bug). `warning_root_category=mixed`.
-    `baseline_mapping_changed=false`, `qa_gate_changed=false`, `math_verifier_changed=false`. **No code changed.**
-  - **Strategic correction:** `docs/GUIDEFORGE_MASTER_ROADMAP.md` is now the authoritative phase order. The earlier
-    `next_step=multi_guide_read_then_product_fix` is **superseded** — `next_step=phase0_eval_harness_fact_sheet_skeleton`
-    (Phase 0: eval harness + fact-sheet skeleton). Records: `master_roadmap_adopted=true`,
-    `authoritative_phase_order=GUIDEFORGE_MASTER_ROADMAP.md`, `do_not_reorder_phases=true`,
-    `production_offline_judge_frozen=true`, `dev_time_reference_anchored_eval_allowed=true`,
-    `numeric_strategy=recompute_first_not_manual_known_numbers`.
-  - **Separate latent finding (not the warning driver, left unfixed):** the baseline reads top-level `summary` for every
-    artifact, but `math_verification.json` nests under `report.summary`, so `numeric_math_status=not_available`. Not patched —
-    flipping it to `FAIL` on unconfirmed mismatches would expand numeric measurement against the freeze; the production math
-    signal already surfaces through the QA gate. **Slice 158 remains NOT committed.**
+- **Working tree:** **Slice 159 (Master Roadmap adoption + Phase 0 eval-harness grounding) — UNCOMMITTED (docs-only
+  grounding)** on branch `slice159-master-roadmap-phase0-eval-grounding`, branched from updated `chrome-renderer-v1`
+  after Slice 158 was committed, fast-forward merged, and pushed. **Slice 158 is trunk commit `3a44c91`**.
+  - **Part 0 completed:** Slice 158 was committed as `3a44c91`, fast-forward merged to `chrome-renderer-v1`
+    (`5ab92f0..3a44c91`), and pushed with a normal `git push` (no force-push). Final trunk status was clean; **no docker
+    compose config was run**; the Slice 60 trace stash remains parked and untouched; `local_operator_baselines/` stayed
+    ignored/uncommitted; no private material was committed.
+  - **`docs/GUIDEFORGE_MASTER_ROADMAP.md` is now the authoritative phase order** (added this slice; it did not previously
+    exist in the repo). **Phase 0 — Eval harness + fact-sheet skeleton — is active.** Do **not** reorder phases. Do **not**
+    start figures/tables/OCR/prompt-tuning/style-audit/product-fix until Phase 0 exit criteria are met and recorded.
+  - **Slice 159 is a docs-only grounding slice** — it adopts the roadmap and reconciles the existing eval/fact-sheet/
+    recompute code against Phase 0. Closed findings: `existing_eval_harness_present=true` (synthetic Layer-1, Slice 108),
+    `existing_fact_sheet_schema_present=true` (Slice 110), `existing_recompute_verifier_present=true` (Slice 111,
+    recompute-first primary truth path), `existing_reference_anchored_judge_present=false` (only the **frozen production
+    offline judge** exists — the dev-time reference-anchored eval judge is not yet a separate module),
+    `existing_regression_record_present=shape_only` (no JSONL persistence), `existing_real_golden_pair_fixtures_present=false`
+    (only synthetic fixtures). `production_offline_judge_frozen=true`, `judge_ready=false`, `repair_ready=false`,
+    `numeric_strategy=recompute_first_not_manual_known_numbers`. **No code changed.**
+  - **Reuse map (see `CURRENT_TASK.md` for the full list):** `reusable_for_phase0` = `quality_safety_fact_sheet.py`,
+    `quality_safety_recompute_verifier.py`, `quality_safety_canonical_matcher.py`, `quality_safety_leak_scanner.py`;
+    `reusable_after_refactor` = `quality_safety_eval_harness.py`, `quality_safety_unified_qa.py`, synthetic fixtures (as
+    unit tests only); `archived_frozen_do_not_extend` = the offline-judge stack + the synthetic numeric-drift
+    producer/adapters/validators; `unrelated_current_baseline` = the live `guide_quality_*` measurement layer.
+  - **Next slice: `phase0_real_golden_pair_eval_harness_skeleton`** — build the real `nn3` + `ensemble` golden-pair
+    fixtures (`ground_truth_numerics` incl. `Gini weight_gt_176 = 0.20`), Layer-1 blocking scorer on real decks, the
+    separate dev-time reference-anchored judge, `overall_10`+`shippable` separated, and append-only regression JSONL —
+    reusing the recompute-first foundation, never the frozen synthetic apparatus. **Slice 159 remains NOT committed.**
+
+### Previously (Slice 158, now trunk `3a44c91`)
+- **Slice 158 (Lean QA-gate warning triage).** Docs-only triage of why `app_run_6` reads `baseline_status=warning`
+  (driver: `guide_quality_qa_gate_status=warning`; `math_verification` mismatch unconfirmed + `quality_report_v2`
+  signal-missing; baseline→gate mapping correct). Committed `3a44c91`, fast-forward merged + pushed to
+  `chrome-renderer-v1` (`5ab92f0..3a44c91`).
 
 ### Previously (Slice 157, now trunk `5ab92f0`)
 - **Slice 157 (Current App State Inspection Report).** Created `docs/GUIDEFORGE_CURRENT_STATE_INSPECTION.md` (12-section
