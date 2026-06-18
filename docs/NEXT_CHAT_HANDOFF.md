@@ -6,19 +6,35 @@
 > stable overview see `PROJECT_CONTEXT.md`; canonical brief is `../CLAUDE.md`.
 
 ## Current position
-- **Working tree:** **Slice 157 (Current App State Inspection Report) — UNCOMMITTED (inspection/docs only)** on branch
-  `slice157-current-app-state-inspection-report`, branched from updated `chrome-renderer-v1` after Slice 156 was committed,
-  fast-forward merged, and pushed. **Slice 156 is trunk commit `8f27091`**.
-  - **Part 0 completed:** Slice 156 was committed as `8f27091`, fast-forward merged to `chrome-renderer-v1`, and pushed with a
-    normal `git push` (no force-push; `35c6b71..8f27091`). Final trunk status before branching Slice 157 was clean; **no docker
-    compose config was run**; the Slice 60 trace stash remains parked and untouched; `local_operator_baselines/` stayed
-    ignored/uncommitted; no guide text/snippets/matched aliases/raw artifacts/private paths/private fingerprints were committed.
-  - **Slice 157 is an inspection/documentation slice only** — it created `docs/GUIDEFORGE_CURRENT_STATE_INSPECTION.md` (a full
-    12-section current-state report) and updated the live docs. No product feature, runtime, API, frontend, backend, pipeline,
-    or test change. `app_run_6` closed status (committed labels only): `reasoning_leak_status=pass`,
-    `source_coverage_status=pass`, `reference_relative_completeness_status=pass`, `figure_handling_status=pass`,
-    `baseline_status=warning`; remaining gap `numeric_math_status=not_available` + QA-gate warning. **Next recommended slice:**
-    numeric known-numbers spec → QA-gate warning triage → `style_preset_audit_gate`. **Slice 157 remains NOT committed.**
+- **Working tree:** **Slice 158 (Lean QA-gate warning triage) — UNCOMMITTED (docs-only triage)** on branch
+  `slice158-qa-gate-warning-triage`, branched from updated `chrome-renderer-v1` after Slice 157 was committed,
+  fast-forward merged, and pushed. **Slice 157 is trunk commit `5ab92f0`**.
+  - **Part 0 completed:** Slice 157 was committed as `5ab92f0`, fast-forward merged to `chrome-renderer-v1`, and pushed with a
+    normal `git push` (no force-push; `8f27091..5ab92f0`). Final trunk status was clean; **no docker compose config was run**;
+    the Slice 60 trace stash remains parked and untouched; `local_operator_baselines/` stayed ignored/uncommitted; no private
+    material was committed.
+  - **Slice 158 is a docs-only triage slice** — it explains why `app_run_6` still reads `baseline_status=warning`. The driver
+    is `guide_quality_qa_gate_status=warning`: the stored QA gate has `warning_count=2` of 5 checks — `math_verification`
+    (production math_verifier reported `mismatch>0`; real-vs-false-positive **unconfirmed**, needs private-guide read) and
+    `quality_report_v2` (closed tokens `source_page_signal_missing` / `missing_material_signal_missing` /
+    `coverage_signal_missing`). `reasoning_leak`, `required_structure`, `source_coverage` all pass. The baseline → gate mapping
+    is **correct** (not a mapping/threshold bug). `warning_root_category=mixed`.
+    `baseline_mapping_changed=false`, `qa_gate_changed=false`, `math_verifier_changed=false`. **No code changed.**
+  - **Strategic correction:** `docs/GUIDEFORGE_MASTER_ROADMAP.md` is now the authoritative phase order. The earlier
+    `next_step=multi_guide_read_then_product_fix` is **superseded** — `next_step=phase0_eval_harness_fact_sheet_skeleton`
+    (Phase 0: eval harness + fact-sheet skeleton). Records: `master_roadmap_adopted=true`,
+    `authoritative_phase_order=GUIDEFORGE_MASTER_ROADMAP.md`, `do_not_reorder_phases=true`,
+    `production_offline_judge_frozen=true`, `dev_time_reference_anchored_eval_allowed=true`,
+    `numeric_strategy=recompute_first_not_manual_known_numbers`.
+  - **Separate latent finding (not the warning driver, left unfixed):** the baseline reads top-level `summary` for every
+    artifact, but `math_verification.json` nests under `report.summary`, so `numeric_math_status=not_available`. Not patched —
+    flipping it to `FAIL` on unconfirmed mismatches would expand numeric measurement against the freeze; the production math
+    signal already surfaces through the QA gate. **Slice 158 remains NOT committed.**
+
+### Previously (Slice 157, now trunk `5ab92f0`)
+- **Slice 157 (Current App State Inspection Report).** Created `docs/GUIDEFORGE_CURRENT_STATE_INSPECTION.md` (12-section
+  current-state report) + live-doc updates. Inspection/docs only — no product/runtime/API/test change. Committed `5ab92f0`,
+  fast-forward merged + pushed to `chrome-renderer-v1` (`8f27091..5ab92f0`).
 
 ### Previously (Slice 156, now trunk `8f27091`)
 - **Slice 156 (Closed Local Guide Coverage Baseline).**

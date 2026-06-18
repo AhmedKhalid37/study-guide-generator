@@ -6579,3 +6579,50 @@ source PDFs/images, the slice added a **closed local-only guide-text scanner**
 stdlib-only string scanner that never emits content, instead of either faking the result or
 standing up a heavier evaluator/judge stack. Reading guide text is scoped to closed-count
 computation only and the text never leaves the local machine.
+
+## Measurement work is now subordinate to product quality; the QA-gate warning is a real gap, not a bug (2026-06-18)
+
+**Context (Slice 158, lean QA-gate warning triage):** the current best measured run
+(`app_run_6`) reads `baseline_status=warning`. Triage traced it to a single driver:
+`guide_quality_qa_gate_status=warning`. The stored QA gate has two warning checks of five —
+`math_verification` (the production math_verifier reported `mismatch>0` on the real guide) and
+`quality_report_v2` (closed tokens `source_page_signal_missing`, `missing_material_signal_missing`,
+`coverage_signal_missing`). `reasoning_leak`, `required_structure`, and `source_coverage` pass.
+The baseline → gate mapping (`gate.status=warning → warning`) is correct: this is **not** a
+mapping or threshold bug, it is the gate honestly surfacing real content/observability signals.
+
+- **Decision:** do **not** patch the gate, the baseline mapping, or the math_verifier in this
+  slice. A true/mixed product-content gap is recorded, not "fixed" by adjusting the measurement.
+  `warning_root_category=mixed`.
+- **Decision (numeric freeze upheld):** the math half of the warning (`mismatch>0`) is
+  **unconfirmed** — distinguishing true math errors from math_verifier false positives requires
+  reading the private guide's flagged expressions. Per the strategic direction, numeric work
+  must only **extend the existing production `math_verifier`** path, and only **when a real
+  generated guide is confirmed to expose a real math error**. No `known_numbers` / operator-typed
+  numeric infrastructure is added; the frozen synthetic judge path stays frozen.
+- **Decision (latent finding left unfixed, on purpose):** the baseline's
+  `_extract_artifact_scalars` reads top-level `data.get("summary")` for every artifact, but
+  `math_verification.json` nests its summary under `report.summary` (the QA gate's own
+  `_math_summary` reads it correctly). Hence `numeric_math_status=not_available`. Fixing the
+  nesting would surface the unconfirmed mismatches as `FAIL` and expand numeric measurement
+  against the freeze; the production math signal is already visible via the QA gate, so nothing
+  is hidden. Revisit only under a confirmed `production_math_verifier_gap_check`.
+
+**Why:** the measurement stack is now mature enough that further measurement tuning is no longer
+the bottleneck — real product quality is (figures, tables, style quality, worked examples, and
+actual multi-guide usage). Treating an honest advisory warning as a defect to silence, or
+standing up more synthetic numeric scaffolding, would be the measurement treadmill the project
+is deliberately stepping off. The forward path is to read real generated guides and fix the
+product, not the gauge.
+
+**Strategic correction (same slice, supersedes the "next" pick above):** the forward path is now
+governed by `docs/GUIDEFORGE_MASTER_ROADMAP.md`, which is the **authoritative phase order**. The
+earlier `next_step=multi_guide_read_then_product_fix` is **superseded**: the next step is **Phase 0
+— eval harness + fact-sheet skeleton** (`next_step=phase0_eval_harness_fact_sheet_skeleton`).
+Records: `master_roadmap_adopted=true`, `authoritative_phase_order=GUIDEFORGE_MASTER_ROADMAP.md`,
+`do_not_reorder_phases=true`, `production_offline_judge_frozen=true`,
+`dev_time_reference_anchored_eval_allowed=true`,
+`numeric_strategy=recompute_first_not_manual_known_numbers`. Phases must not be reordered; the
+production offline judge gate stays frozen (`judge_ready=false`, `repair_ready=false`); a dev-time
+reference-anchored eval judge is separate and allowed; numeric correctness is recompute-first, not
+manual `known_numbers`.

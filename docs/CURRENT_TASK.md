@@ -5,7 +5,64 @@
 
 ---
 
-## Slice 157 — **Current App State Inspection Report**, on `slice157-current-app-state-inspection-report`. **NOT COMMITTED (inspection/docs only).**
+## Slice 158 — **Lean QA-gate warning triage**, on `slice158-qa-gate-warning-triage`. **NOT COMMITTED (docs-only triage).**
+
+- **Part 0 completed:** Slice 157 was committed as `5ab92f0` ("Slice 157: Add current app state inspection report"),
+  fast-forward merged to trunk `chrome-renderer-v1` (`8f27091..5ab92f0`), and pushed with a normal `git push` (no
+  force-push). Final trunk status was clean; **no docker compose config was run**; the Slice 60 trace stash remains
+  parked and untouched; `local_operator_baselines/` stayed ignored/uncommitted; no private material was committed.
+- **Goal:** explain why the current best measured run (`app_run_6_reasoning_fix_iteration_2`) still reads
+  `guide_quality_qa_gate_status=warning` / `baseline_status=warning`. Lean triage — no new measurement infrastructure,
+  no `known_numbers`, no style audit, no figure/table work, no judge/repair, no private guide snippets.
+- **Closed triage result (`current_best_run=app_run_6`):**
+  - `guide_quality_qa_gate_status=warning`, `baseline_status=warning`, `numeric_math_status=not_available`.
+  - The QA gate's `warning_count=2` (of 5 checks; 3 passed): the `math_verification` check is `warning` and the
+    `quality_report_v2` check is `warning`. All of `reasoning_leak`, `required_structure`, `source_coverage` pass.
+  - **`math_verification` warning** = the production math_verifier ran on the real guide and reported `mismatch>0`
+    (closed token `math_verification_mismatch_present`). The stored gate reads the verifier's nested `report.summary`
+    correctly. Whether those mismatches are true math errors vs verifier false positives is **unconfirmed** — it would
+    require reading the private guide's flagged expressions.
+  - **`quality_report_v2` warning** = closed tokens `source_page_signal_missing`, `missing_material_signal_missing`,
+    `coverage_signal_missing` (no page-citation / coverage / missing-material signals detected) — an observability /
+    citation product gap, not a gate bug.
+  - **`baseline_status=warning` is driven solely by the QA gate** (`gate.status=warning → warning`). Every other
+    metric is `pass`/`not_available`; the baseline → gate mapping is **correct** (not a mapping or threshold bug).
+  - **Separate latent finding (NOT the warning driver, left unfixed):** the baseline's `_extract_artifact_scalars`
+    reads top-level `data.get("summary")` for every artifact, but `math_verification.json` nests its summary under
+    `report.summary` (the QA gate's own `_math_summary` reads it correctly). So the baseline's `numeric_math`
+    derivation never sees `total`/`mismatch`, yielding `numeric_math_status=not_available`. **Deliberately not
+    patched here** — surfacing the unconfirmed mismatches as `FAIL` would expand numeric measurement against the
+    numeric-freeze directive; the production math signal is already visible via the QA gate, so nothing is hidden.
+- **Closed triage tokens:**
+  - `qa_gate_warning_triage=run`
+  - `current_best_run=app_run_6`
+  - `guide_quality_qa_gate_status=warning`
+  - `numeric_math_status=not_available`
+  - `warning_root_category=mixed` (production math_verifier `mismatch>0` needing private-guide confirmation +
+    `quality_report_v2` coverage/citation signal-missing; the gate/baseline mapping itself is correct)
+  - `baseline_mapping_changed=false`
+  - `qa_gate_changed=false`
+  - `math_verifier_changed=false`
+  - `next_step=phase0_eval_harness_fact_sheet_skeleton`
+- **Strategic correction (supersedes the prior multi-guide/product-fix pick):** `docs/GUIDEFORGE_MASTER_ROADMAP.md`
+  is now the authoritative phase order. The earlier `next_step=multi_guide_read_then_product_fix` is **superseded** —
+  the next step is **Phase 0: eval harness + fact-sheet skeleton**, not multi-guide/product-fix work. Records:
+  - `master_roadmap_adopted=true`
+  - `authoritative_phase_order=GUIDEFORGE_MASTER_ROADMAP.md`
+  - `do_not_reorder_phases=true`
+  - `production_offline_judge_frozen=true`
+  - `dev_time_reference_anchored_eval_allowed=true`
+  - `numeric_strategy=recompute_first_not_manual_known_numbers`
+- **No code changed.** Docs-only triage (true/mixed product gap → do not fix product behavior here).
+- **Validation (all green on unchanged tree):** baseline (207), baseline harness, prompt contract (143), contract
+  lint (150), QA gate (177), `compileall api pipeline test_scripts`, `git diff --check`. Closed `app_run_6` harness
+  rerun confirms the statuses above (closed summary only). **Docker NOT run; no docker compose config was run.**
+- **`local_operator_baselines/` stayed ignored/uncommitted; no guide text/snippets/aliases/raw artifacts/paths/
+  fingerprints committed; Slice 60 stash untouched. Slice 158 remains UNCOMMITTED.**
+
+---
+
+## Slice 157 — **Current App State Inspection Report**, on `slice157-current-app-state-inspection-report`. **Committed `5ab92f0`, merged + pushed to `chrome-renderer-v1`.**
 
 - **Part 0 completed:** Slice 156 was committed as `8f27091` ("Slice 156: Observe reference completeness and figure
   handling via closed local guide-text scanner"), fast-forward merged to trunk `chrome-renderer-v1`
@@ -28,8 +85,8 @@
 - **Closed `app_run_6` status recorded (committed docs only):** `reasoning_leak_status=pass`,
   `source_coverage_status=pass`, `reference_relative_completeness_status=pass`, `figure_handling_status=pass`,
   `baseline_status=warning`; remaining gap `numeric_math_status=not_available` + QA-gate warning.
-- **Next recommended slice:** numeric known-numbers spec, then QA-gate warning triage, then `style_preset_audit_gate`.
-  **Slice 157 remains UNCOMMITTED (inspection slice).**
+- **Committed `5ab92f0`, fast-forward merged to `chrome-renderer-v1` (`8f27091..5ab92f0`), pushed (no force-push).**
+  Followed by Slice 158 (QA-gate warning triage) — see entry above.
 
 ---
 
