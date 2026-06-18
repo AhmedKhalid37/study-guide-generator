@@ -315,7 +315,18 @@ def test_qa_gate_status_derivation() -> None:
 
 
 def test_source_coverage_status_derivation() -> None:
-    for cov_status, expected in (("complete", "pass"), ("partial", "warning"), ("unreadable", "fail"), ("skipped", "not_observed")):
+    # "completed" is the producer's real top-level report status token
+    # (_top_level_status in pipeline/source_coverage_report.py); "complete" is the
+    # per-source token. Both must map to pass — the "completed" case is the Slice
+    # 155 regression guard for the not_observed mapping gap.
+    cases = (
+        ("completed", "pass"),
+        ("complete", "pass"),
+        ("partial", "warning"),
+        ("unreadable", "fail"),
+        ("skipped", "not_observed"),
+    )
+    for cov_status, expected in cases:
         with tempfile.TemporaryDirectory() as tmp:
             directory = Path(tmp)
             _all_clean(directory)

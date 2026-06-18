@@ -511,7 +511,11 @@ def _derive_source_coverage(artifacts: dict[str, Any]) -> dict[str, str]:
     if not _present(cov):
         return _metric(METRIC_NOT_AVAILABLE, "not_available")
     status = cov.get("status")
-    if status in {"complete", "ok"}:
+    # The producer's top-level report status token is "completed"
+    # (pipeline/source_coverage_report.py::_top_level_status); per-source status
+    # uses "complete". Accept both (plus "ok") so a fully-covered source maps to
+    # pass instead of silently falling through to not_observed.
+    if status in {"completed", "complete", "ok"}:
         return _metric(METRIC_PASS, "source_coverage_report")
     if status == "partial":
         return _metric(METRIC_WARNING, "source_coverage_report")

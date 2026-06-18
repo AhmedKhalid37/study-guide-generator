@@ -5,7 +5,63 @@
 
 ---
 
-## Slice 154 — **Reasoning Leak Fix Iteration 2 (prompt-contract line-initial discourse-marker hardening)**, on `slice154-reasoning-leak-fix-iteration-2`. **NOT COMMITTED.**
+## Slice 155 — **Source Coverage / Completeness Baseline Gap**, on `slice155-source-coverage-completeness-baseline-gap`. **NOT COMMITTED.**
+
+- **Part 0 completed:** Slice 154 was committed as `1dae76f` ("Slice 154: Harden prompt contract for line-initial
+  discourse leaks"), fast-forward merged to trunk `chrome-renderer-v1` (`af606d4..1dae76f`), and pushed with a normal
+  `git push` (no force-push). Final trunk status before branching Slice 155 was clean; **no docker compose config was run**;
+  the Slice 60 trace stash remains parked and untouched; `local_operator_baselines/` stayed ignored/uncommitted. (Three
+  Slice 154 doc lines that described the source attachment with fingerprint-level provenance were softened to the closed
+  label `source_match_verified=true` before committing, so no source hash / byte count / source fingerprint was committed.)
+- **Goal:** close the next measured baseline gap after the reasoning leak passed — `source_coverage_status=not_observed` on
+  `app_run_6_reasoning_fix_iteration_2`, despite `source_coverage_report.json` being an existing, wired artifact.
+- **Outcome A — existing artifact mapping fixed (the next gap is genuinely closed).** Inspection found a closed-token
+  mismatch in the baseline aggregator: the source coverage producer's **top-level** report status token is `completed`
+  (`pipeline/source_coverage_report.py::_top_level_status`), while the per-source token is `complete`. The baseline
+  aggregator's `_derive_source_coverage` (`pipeline/guide_quality_baseline.py`) only mapped `{"complete", "ok"}` → pass,
+  so a fully-covered source's `completed` top status silently fell through to `not_observed`. The QA gate already handled
+  `completed` correctly (only `{partial, unreadable}` count as incomplete there), and the baseline aggregator's own
+  synthetic test used a `complete` fixture the real producer never emits — so the gap was hidden, not a true absence of data.
+- **Fix (narrow, closed-token only):** added `"completed"` to the pass set in `_derive_source_coverage`; added the real
+  producer top-level token `("completed", "pass")` as a regression case in `test_source_coverage_status_derivation`. No
+  detector, prompt-contract, QA-gate, producer, API, UI, renderer, export, OCR, table, visual, judge, or repair change.
+- **Closed flags:**
+  - `source_coverage_gap_investigation=run`
+  - `status=ok`
+  - `app_run_6_baseline_reference=closed_summary_only`
+  - `reasoning_leak_status=pass`
+  - `baseline_status=warning`
+  - `source_coverage_status_before=not_observed`
+  - `source_coverage_status_after=pass`
+  - `source_coverage_artifact_present=true`
+  - `source_coverage_closed_fields_available=true`
+  - `source_coverage_mapping_changed=true`
+  - `reference_relative_completeness_status=needs_future_metric`
+  - `figure_handling_status=needs_future_metric`
+  - `next_step=reference_completeness_or_figure_gap`
+- **Reference completeness / figure handling stay deferred (verified, not assumed):** `_derive_reference_relative_completeness`
+  and `_derive_figure_handling` already explain that existing wired artifacts expose no concept/section labels or figure ids
+  that can be matched against the golden spec without parsing guide text or images. Source coverage exposes only a closed
+  `visual_candidate_pages` counter, not figure-id-level handling. Gap reasons: `existing_artifacts_do_not_expose_safe_reference_labels`,
+  `source_coverage_report_lacks_visual_closed_counts`. Both remain `needs_future_metric` — no faking.
+- **Local artifact inspection:** `app_run_6` (and `app_run_5`) `source_coverage_report.json` were inspected **key/status/count-only**
+  (top-level keys, `status=completed`, per-source `status=complete`, summary key names, int-ness of counts) — no raw JSON, source
+  filenames, paths, page text, snippets, OCR text, captions, or extracted source material were printed or committed.
+- **Files changed:** `M docs/CURRENT_TASK.md`, `M docs/NEXT_CHAT_HANDOFF.md`, `M docs/DECISIONS.md`,
+  `M pipeline/guide_quality_baseline.py`, `M test_scripts/test_guide_quality_baseline.py`.
+- **Validation (all green):** baseline tests (131, was 130), baseline harness synthetic self-test (`ok`), reasoning-leak protection
+  — prompt contract (143), contract lint (150), QA gate (177), `compileall api pipeline test_scripts` clean; `app_run_6` local
+  harness rerun (`source_coverage_status` `not_observed`→`pass`, `reasoning_leak_status=pass`, `baseline_status=warning`);
+  `app_run_5` local harness rerun (`source_coverage_status=pass` now, but `reasoning_leak_status=fail` still → `baseline_status=failed`
+  — the fix did not hide any failure); `git diff --check` clean; no-leak sweep clean. **Docker was NOT run; no docker compose config
+  was run.**
+- **Next gate:** `reference_completeness_or_figure_gap` — both need a new closed-field artifact before they can move off
+  `needs_future_metric`; style/preset audit (`style_preset_audit_gate`) remains available now that reasoning-leak and source
+  coverage both read green. **Slice 155 remains UNCOMMITTED.**
+
+---
+
+## Slice 154 — **Reasoning Leak Fix Iteration 2 (prompt-contract line-initial discourse-marker hardening)**, on `slice154-reasoning-leak-fix-iteration-2`. **Committed `1dae76f`, merged + pushed to `chrome-renderer-v1`.**
 
 - **Part 0 completed:** Slice 153 was committed as `af606d4` ("Slice 153: Verify app-pipeline baseline provenance"),
   fast-forward merged to trunk `chrome-renderer-v1` (`a1dfdd4..af606d4`), and pushed with a normal `git push` (no force-push).

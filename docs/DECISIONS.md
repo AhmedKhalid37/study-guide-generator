@@ -6510,3 +6510,39 @@ rather than a deterministic recompute. Matching the `app_run_5` source byte-for-
 the run settings isolates the prompt-contract change as the only meaningful difference, so
 the green reasoning-leak result is genuine and the now-unblocked style/preset audit can
 proceed.
+
+## Source coverage must be observed before completeness/figure metrics (2026-06-18)
+Slice 155 investigated why the measured baseline reported `source_coverage_status=not_observed`
+on `app_run_6_reasoning_fix_iteration_2` even though `source_coverage_report.json` is an
+existing, wired artifact. Root cause was a closed-token mismatch, not missing data: the
+producer's **top-level** report status token is `completed`
+(`pipeline/source_coverage_report.py::_top_level_status`) while the **per-source** token is
+`complete`, and the baseline aggregator's `_derive_source_coverage`
+(`pipeline/guide_quality_baseline.py`) only mapped `{"complete", "ok"}` → pass — so a
+fully-covered source's `completed` top status fell through to `not_observed`. The QA gate
+already treated `completed` as complete (only `{partial, unreadable}` are incomplete there),
+and the aggregator's own synthetic test used a `complete` fixture the producer never emits,
+which masked the gap.
+
+- **Decision (Outcome A):** add `"completed"` to the pass set in `_derive_source_coverage`
+  and add the real producer top-level token as a regression case
+  (`("completed", "pass")`) in `test_source_coverage_status_derivation`. The fix is
+  closed-token-only — no detector, prompt-contract, QA-gate, producer, API, UI, renderer,
+  export, OCR, table, visual, judge, or repair change. Result: `app_run_6`
+  `source_coverage_status` `not_observed`→`pass`; `app_run_5` source coverage also reads
+  `pass` but its `reasoning_leak_status=fail` keeps `baseline_status=failed` (no failure
+  hidden).
+- **Decision:** `reference_relative_completeness_status` and `figure_handling_status` stay
+  `needs_future_metric`. Existing wired artifacts expose no concept/section labels or figure
+  ids matchable to the golden spec without parsing guide text/images; source coverage exposes
+  only a closed `visual_candidate_pages` counter. Gap reasons recorded:
+  `existing_artifacts_do_not_expose_safe_reference_labels`,
+  `source_coverage_report_lacks_visual_closed_counts`. `next_step=reference_completeness_or_figure_gap`
+  — both require a *new closed-field artifact* before they can move, so they are deferred to a
+  separately-designed slice rather than faked by parsing guides/PDFs.
+
+**Why:** source coverage was already produced and stored; the only defect was a string-token
+read mismatch, so correcting the mapping (and locking the real producer token into a test)
+turns the metric honestly green without widening the evaluator stack. The completeness and
+figure metrics, by contrast, have no safe closed fields in the current artifacts, so they
+stay explicitly deferred rather than invented.
