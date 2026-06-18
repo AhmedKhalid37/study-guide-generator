@@ -6345,3 +6345,76 @@ fix measurably removed it, and the remaining red is now a **known detector
 limitation**, not a student-facing leak. Recording that distinction honestly (true
 leak fixed, detector hardening owed) keeps the baseline trustworthy and prevents
 either over-claiming the fix or hiding the still-red metric.
+
+## Detector-boundary false positives are hardened before style audit (2026-06-18)
+Slice 151 verified (by measured regeneration) that the prompt-contract fix removed
+the `app_run_2` true reasoning leak, but the baseline stayed red because the
+contract-lint detector over-flagged factual intensifiers
+(`detector_boundary_false_positive`). Slice 152 fixes the **detector boundary** in
+`pipeline/guide_quality_contract_lint.py` rather than starting the planned
+style/preset audit.
+
+- **Fix type `contract_lint_detector_boundary_hardening`.** The detector replaced a
+  flat raw-substring signature list (which counted `"actually"`/`"presumably"`
+  anywhere) with two tiers: high-precision phrases matched with **word boundaries**
+  (existing internal-reasoning/uncertainty phrases plus added prompt/user-intent,
+  planning/drafting, and "deciding what to include" phrases), and **context-gated
+  intensifiers** (`"actually"`/`"presumably"`) counted **only** when sentence-initial
+  (a self-correction discourse marker), never as mid-sentence factual prose.
+- **Nothing weakened, shape stable.** The reasoning-leak category and the baseline
+  `count > 0 → fail` mapping are intact; `reasoning_leak_count`/`reasoning_leak_status`
+  output shape is unchanged, so no baseline/aggregator change was needed
+  (`baseline_mapping_changed=false`, `prompt_contract_changed=false`). No model/
+  provider/judge/repair call, no API/UI/schema/render change.
+- **Synthetic-verified, measured-pending.** `synthetic_false_positive_cases=pass`
+  (factual intensifier prose now counts 0) and `synthetic_true_positive_cases=pass`
+  (all leak categories still count) prove the boundary in isolation. The measured
+  baseline cannot be re-validated from the stale local artifacts (they carry a
+  pre-fix count and there is no local `clean.md` to recompute without exposing
+  private guide text), so `detector_hardening_local_recompute_run=not_run`,
+  `detector_hardening_verification_status=pending_operator_regeneration`: the
+  operator regenerates a fresh guide (`app_run_4_detector_hardened`) and reruns the
+  harness to confirm the baseline turns green.
+
+**Why:** the residual red was a known detector limitation, not a student-facing
+leak; moving the factual-prose/leak boundary (instead of deleting the category or
+mapping `count > 0 → pass`) keeps genuine-leak detection while removing the false
+positive, and proving it with synthetic cases now plus an operator regeneration next
+keeps the baseline honest.
+
+Style/preset audit remains deferred until the reasoning-leak baseline is green or
+explicitly waived.
+
+## Detector hardening verified via Option B recompute on a fresh app run (2026-06-18)
+Closing the Slice 152 measured-verification gate. The operator regenerated one fresh
+app guide from the same local NN/Iris source on this branch, but the running app was
+**still serving the pre-fix detector module** (the process was not restarted after the
+Slice 152 edit), so the fresh job's stored `guide_quality_contract_lint.json` baked in
+a **pre-fix** `reasoning_leak_count=2` — both hits the bare substring `"actually "`
+used mid-sentence (the exact `detector_boundary_false_positive`). Running the hardened
+working-tree detector over the **same** fresh guide counts **0**, and the committed
+(HEAD/pre-fix) detector reproduces the **2** — directly confirming the two are the
+false positives Slice 152 removes, not a genuine leak.
+
+- **Decision (operator-chosen, Option B):** rather than block on another full app
+  regeneration, re-run the hardened detector **deterministically** over the fresh
+  guide's `clean.md` to produce the `app_run_4_detector_hardened` contract-lint
+  artifact; the other measured artifacts (`math_verification`, `qa_gate`,
+  `report_v2`, `source_coverage`, `rubric_score`) were copied as generated (Slice 152
+  does not touch them). The recompute is the legitimate hardened detector — **no
+  baseline aggregator was patched and no leak failure was hidden.** Provenance for the
+  contract-lint artifact is therefore "deterministic detector recompute over the fresh
+  guide", not "app pipeline output"; if app-pipeline provenance is later required, the
+  operator restarts the app on this tree and regenerates.
+- **Result:** harness on `app_run_4_detector_hardened` → `reasoning_leak_status=pass`,
+  `artifact_existence=pass`; remaining `qa_gate`/`structure_contract`/future-metric
+  warnings (`baseline_status=warning`) are pre-existing measured observations outside
+  Slice 152's scope. `detector_hardening_local_recompute_run=closed_summary_only`,
+  `detector_hardening_verification_status=pass`,
+  `next_step=style_preset_audit_gate_or_source_coverage_gap`. Slice 152 is commit-ready
+  but was left **uncommitted** at the operator's instruction for this gate.
+
+**Why:** the fresh regeneration revealed that running-process staleness — not the code
+— produced the residual red, and a deterministic recompute of the unchanged pure
+detector function over the real fresh guide is a faithful measured verification that
+avoids burning another generation while keeping the record honest about provenance.

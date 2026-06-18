@@ -54,13 +54,25 @@ WARNING_ORDER = [
 ]
 
 # --- Reasoning-leak signatures (generic English; not source content) ---------
-# Matched case-insensitively as substrings. Each hit increments a COUNT only; the
-# matched text is never stored. "?" is deliberately NOT scanned here: legitimate
-# mock-exam / self-test questions use it, so a question-mark heuristic would be
-# noisy. Phrase signatures are robust and deterministic.
-_LEAK_SIGNATURES: tuple[str, ...] = (
-    "actually,",
-    "actually ",
+# Slice 152 hardens the detector boundary so ordinary factual prose no longer
+# reads as a reasoning leak, while genuine internal-reasoning / prompt-meta /
+# planning / process-narration leaks still count. Each hit increments a COUNT
+# only; the matched text is never stored. "?" is deliberately NOT scanned:
+# legitimate mock-exam / self-test questions use it, so a question-mark heuristic
+# would be noisy.
+#
+# Two tiers:
+#  1. High-precision phrases — first-person reasoning/uncertainty, prompt/user
+#     analysis, planning/drafting, and "deciding what to include" commentary that
+#     should never appear in settled, student-facing prose. Matched with word
+#     boundaries (not raw substrings) so they cannot fire inside a longer word.
+#  2. Context-gated intensifiers ("actually" / "presumably"). These are perfectly
+#     normal mid-sentence factual intensifiers ("the model actually outputs ...",
+#     "this value is presumably rounded ...") and only read as a self-correction /
+#     reasoning leak when used as a *sentence-initial discourse marker*
+#     ("Actually, ...", "Presumably, ..."). Only the sentence-initial use counts.
+_REASONING_LEAK_PHRASES: tuple[str, ...] = (
+    # internal reasoning / uncertainty
     "it seems",
     "i think",
     "let's infer",
@@ -70,9 +82,48 @@ _LEAK_SIGNATURES: tuple[str, ...] = (
     "is unclear",
     "i'm not sure",
     "im not sure",
-    "presumably",
     "the slide is",
+    "my reasoning",
+    "let me think",
+    "let me reconsider",
+    # prompt / user-intent analysis
+    "the user wants",
+    "the user is asking",
+    "what the user wants",
+    "the prompt asks",
+    "the prompt is asking",
+    "the prompt wants",
+    # planning / drafting / deciding what to include
+    "here's my plan",
+    "i'm going to include",
+    "i should include",
+    "i will include",
+    "i'll include",
+    "i need to include",
+    "deciding what to include",
 )
+
+# Compiled once. Word boundaries on both sides keep a phrase from matching inside a
+# longer token (e.g. "is unclear" must not fire inside "unclearly").
+_PHRASE_RES: tuple[re.Pattern[str], ...] = tuple(
+    re.compile(r"\b" + re.escape(phrase) + r"\b", re.IGNORECASE)
+    for phrase in _REASONING_LEAK_PHRASES
+)
+
+# Context-gated intensifiers: count only when sentence-initial (start of text, after
+# sentence-ending punctuation, or at the start of a line / list / heading), i.e. used
+# as a discourse marker rather than a mid-sentence factual intensifier.
+_INTENSIFIER_RE = re.compile(
+    r"(?:^|[.!?][\"')\]]?\s+|\n[ \t]*(?:[#>*+\-]+[ \t]*)?)(?:actually|presumably)\b",
+    re.IGNORECASE,
+)
+
+
+def _count_reasoning_leaks(text: str) -> int:
+    """Boundary- and context-aware reasoning-leak count (never stores matches)."""
+    count = sum(len(rx.findall(text)) for rx in _PHRASE_RES)
+    count += len(_INTENSIFIER_RE.findall(text))
+    return count
 
 # --- Required-section aliases (comprehensive guides) -------------------------
 # Each required section is matched if ANY of its alias substrings appears in a
@@ -138,11 +189,10 @@ def _build(clean_markdown: Any, comprehensive: bool, max_items: Any) -> dict[str
         return _skipped(comprehensive, reason_warning=EMPTY_MARKDOWN)
 
     text = clean_markdown
-    lowered = text.lower()
     warnings: set[str] = set()
 
-    # 1. Reasoning leak — count banned signatures (never store the matched text).
-    leak_count = sum(lowered.count(sig) for sig in _LEAK_SIGNATURES)
+    # 1. Reasoning leak — boundary/context-aware count (never store the matched text).
+    leak_count = _count_reasoning_leaks(text)
 
     # 2. Required structure — heading alias matching (comprehensive only).
     heading_lines = [line for line in text.splitlines() if _HEADING_RE.match(line)]
@@ -174,9 +224,11 @@ def _build(clean_markdown: Any, comprehensive: bool, max_items: Any) -> dict[str
             observed=leak_count,
             expected=0,
             instruction=(
-                "Counts hedging/uncertainty signatures in explanatory prose. The "
-                "guide should read as settled fact; any hit is flagged (the matched "
-                "text is never stored)."
+                "Counts internal-reasoning / prompt-meta / planning signatures using "
+                "boundary- and context-aware matching (intensifiers count only when "
+                "sentence-initial, never as mid-sentence factual prose). The guide "
+                "should read as settled fact; any hit is flagged (the matched text is "
+                "never stored)."
             ),
         )
     )

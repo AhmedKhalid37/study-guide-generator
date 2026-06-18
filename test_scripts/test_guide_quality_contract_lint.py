@@ -187,6 +187,59 @@ def test_reasoning_leak_flagged_without_storing_phrase() -> None:
         check(f"leaky → does not store {phrase!r}", phrase not in flat)
 
 
+def test_intensifier_false_positives_not_counted() -> None:
+    # Slice 152: ordinary factual prose that uses "actually" / "presumably" as a
+    # mid-sentence intensifier must NOT count as a reasoning leak. These are the
+    # detector_boundary_false_positive cases that kept the measured baseline red.
+    factual = (
+        "## Softmax\n"
+        "The model actually outputs probabilities after softmax. "
+        "This value is presumably rounded in the worked example. "
+        "This step is actually just matrix multiplication, and the bias is "
+        "presumably small here.\n"
+    )
+    rep = build_guide_quality_contract_lint_report(factual, comprehensive=False)
+    s = rep["summary"]
+    check("factual intensifiers → zero leaks", s["reasoning_leak_count"] == 0, f"count={s['reasoning_leak_count']}")
+    leak_check = next(c for c in rep["checks"] if c["kind"] == "reasoning_leak")
+    check("factual intensifiers → reasoning_leak passed", leak_check["status"] == "passed")
+    check("factual intensifiers → no leak warning", "reasoning_leak_present" not in rep["warnings"])
+
+
+def test_phrase_boundary_not_substring() -> None:
+    # Boundary matching must not fire inside a longer token: "unclearly" must not
+    # match "is unclear" when there is no standalone phrase.
+    prose = "## Notes\nThe boundary is unclearly drawn but the rule is precise.\n"
+    rep = build_guide_quality_contract_lint_report(prose, comprehensive=False)
+    check("substring inside word → zero leaks", rep["summary"]["reasoning_leak_count"] == 0)
+
+
+def test_true_reasoning_leaks_still_counted() -> None:
+    # Slice 152 must NOT weaken detection of genuine internal-reasoning / prompt-meta
+    # / planning / process-narration leaks. Each synthetic leak line covers one
+    # category; all must still increment the count. Synthetic strings only.
+    cases = {
+        "internal_reasoning": "It seems the answer follows, and i think the rest is unclear.",
+        "user_intent": "The user wants a deeper proof, and what the user wants is more rigour.",
+        "prompt_meta": "The prompt asks for ten sections, and the prompt is asking for tables.",
+        "planning": "Here's my plan: i'm going to include three examples next.",
+        "deciding_inclusion": "I should include the derivation; deciding what to include is hard.",
+        "process_narration": "Let me think about this. Let me reconsider my reasoning before continuing.",
+        "intensifier_marker": "Actually, that is wrong. Presumably this needs revisiting.",
+    }
+    for label, line in cases.items():
+        rep = build_guide_quality_contract_lint_report(f"## H\n{line}\n", comprehensive=False)
+        s = rep["summary"]
+        check(f"true leak ({label}) counted", s["reasoning_leak_count"] >= 1, f"count={s['reasoning_leak_count']}")
+        leak_check = next(c for c in rep["checks"] if c["kind"] == "reasoning_leak")
+        check(f"true leak ({label}) warns", leak_check["status"] == "warning")
+        check(f"true leak ({label}) warning token", "reasoning_leak_present" in rep["warnings"])
+        # Never store the matched phrase.
+        flat = json.dumps(rep)
+        for fragment in ("user wants", "prompt asks", "my plan", "let me", "actually", "presumably"):
+            check(f"true leak ({label}) drops {fragment!r}", fragment not in flat.lower())
+
+
 def test_comprehensive_missing_sections_warns() -> None:
     thin = "# Guide\n\n## Core Topic\nSome prose only, no required sections.\n"
     rep = build_guide_quality_contract_lint_report(thin, comprehensive=True)
@@ -286,6 +339,9 @@ def main() -> None:
     test_empty_and_missing_degrade()
     test_clean_comprehensive_passes()
     test_reasoning_leak_flagged_without_storing_phrase()
+    test_intensifier_false_positives_not_counted()
+    test_phrase_boundary_not_substring()
+    test_true_reasoning_leaks_still_counted()
     test_comprehensive_missing_sections_warns()
     test_alias_sections_accepted()
     test_non_comprehensive_structure_not_applicable()
