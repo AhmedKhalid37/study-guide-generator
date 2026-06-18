@@ -6,13 +6,22 @@
 > stable overview see `PROJECT_CONTEXT.md`; canonical brief is `../CLAUDE.md`.
 
 ## Current position
-- **Working tree:** **Slice 156 (Closed Local Guide Coverage Baseline) — UNCOMMITTED** on branch
-  `slice156-closed-local-guide-coverage-baseline`, branched from updated `chrome-renderer-v1` after Slice 155 was committed,
-  fast-forward merged, and pushed. **Slice 155 is trunk commit `35c6b71`**.
-  - **Part 0 completed:** Slice 155 was committed as `35c6b71`, fast-forward merged to `chrome-renderer-v1`, and pushed with a
-    normal `git push` (no force-push; `1dae76f..35c6b71`). Final trunk status before branching Slice 156 was clean; **no docker
+- **Working tree:** **Slice 157 (Current App State Inspection Report) — UNCOMMITTED (inspection/docs only)** on branch
+  `slice157-current-app-state-inspection-report`, branched from updated `chrome-renderer-v1` after Slice 156 was committed,
+  fast-forward merged, and pushed. **Slice 156 is trunk commit `8f27091`**.
+  - **Part 0 completed:** Slice 156 was committed as `8f27091`, fast-forward merged to `chrome-renderer-v1`, and pushed with a
+    normal `git push` (no force-push; `35c6b71..8f27091`). Final trunk status before branching Slice 157 was clean; **no docker
     compose config was run**; the Slice 60 trace stash remains parked and untouched; `local_operator_baselines/` stayed
-    ignored/uncommitted.
+    ignored/uncommitted; no guide text/snippets/matched aliases/raw artifacts/private paths/private fingerprints were committed.
+  - **Slice 157 is an inspection/documentation slice only** — it created `docs/GUIDEFORGE_CURRENT_STATE_INSPECTION.md` (a full
+    12-section current-state report) and updated the live docs. No product feature, runtime, API, frontend, backend, pipeline,
+    or test change. `app_run_6` closed status (committed labels only): `reasoning_leak_status=pass`,
+    `source_coverage_status=pass`, `reference_relative_completeness_status=pass`, `figure_handling_status=pass`,
+    `baseline_status=warning`; remaining gap `numeric_math_status=not_available` + QA-gate warning. **Next recommended slice:**
+    numeric known-numbers spec → QA-gate warning triage → `style_preset_audit_gate`. **Slice 157 remains NOT committed.**
+
+### Previously (Slice 156, now trunk `8f27091`)
+- **Slice 156 (Closed Local Guide Coverage Baseline).**
   - **Slice 156 makes reference completeness + figure handling measurable via a closed local guide-text scanner.** New
     `collect_guide_quality_baseline_guide_text_metrics(guide_text, golden_spec)` in `pipeline/guide_quality_baseline.py`
     deterministically matches the golden spec's closed concept/section/figure check labels + aliases (lowercase +

@@ -5,7 +5,35 @@
 
 ---
 
-## Slice 156 — **Closed Local Guide Coverage Baseline**, on `slice156-closed-local-guide-coverage-baseline`. **NOT COMMITTED.**
+## Slice 157 — **Current App State Inspection Report**, on `slice157-current-app-state-inspection-report`. **NOT COMMITTED (inspection/docs only).**
+
+- **Part 0 completed:** Slice 156 was committed as `8f27091` ("Slice 156: Observe reference completeness and figure
+  handling via closed local guide-text scanner"), fast-forward merged to trunk `chrome-renderer-v1`
+  (`35c6b71..8f27091`), and pushed with a normal `git push` (no force-push). Final trunk status before branching Slice
+  157 was clean; **no docker compose config was run**; the Slice 60 trace stash remains parked and untouched;
+  `local_operator_baselines/` stayed ignored/uncommitted; no guide text/snippets/matched aliases/raw artifacts/private
+  paths/private fingerprints were committed.
+- **What this slice is:** a full current-state inspection / analysis / documentation report of the GuideForge app,
+  based on the live trunk after Slice 156. **Inspection only** — no product features, no runtime/API/frontend/
+  backend/pipeline logic change, no test change, no private `local_operator_baselines/` content inspected beyond
+  confirming the folder stays ignored.
+- **Created:** `docs/GUIDEFORGE_CURRENT_STATE_INSPECTION.md` (12 sections: Executive Summary, Architecture Overview,
+  User-Facing Feature Inventory, Backend API Inventory, Pipeline Module Inventory, Artifact Inventory, Quality Safety
+  + Measured Baseline History, Slice History Summary, Test/Validation Inventory, Gap/Risk Register, Recommended Next
+  10 Slices, New Chat Handoff). Closed labels only — no guide text, snippets, matched aliases, source text, raw
+  artifacts, hashes, byte counts, paths, screenshots, PDFs/DOCX/ZIPs, provider payloads, or secrets.
+- **Validation:** read-only repo inspection (`git log`, route/module/test enumeration) + fast suites — baseline (207),
+  prompt contract (143), contract lint (150), QA gate (177), `compileall api pipeline test_scripts` clean; `app_run_6`
+  local harness both modes (closed counts only). **Docker was NOT run; no docker compose config was run.**
+- **Closed `app_run_6` status recorded (committed docs only):** `reasoning_leak_status=pass`,
+  `source_coverage_status=pass`, `reference_relative_completeness_status=pass`, `figure_handling_status=pass`,
+  `baseline_status=warning`; remaining gap `numeric_math_status=not_available` + QA-gate warning.
+- **Next recommended slice:** numeric known-numbers spec, then QA-gate warning triage, then `style_preset_audit_gate`.
+  **Slice 157 remains UNCOMMITTED (inspection slice).**
+
+---
+
+## Slice 156 — **Closed Local Guide Coverage Baseline**, on `slice156-closed-local-guide-coverage-baseline`. **Committed `8f27091`, merged + pushed to `chrome-renderer-v1`.**
 
 - **Part 0 completed:** Slice 155 was committed as `35c6b71` ("Slice 155: Observe source coverage baseline
   status"), fast-forward merged to trunk `chrome-renderer-v1` (`1dae76f..35c6b71`), and pushed with a normal
