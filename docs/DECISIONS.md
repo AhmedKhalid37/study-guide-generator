@@ -6455,3 +6455,58 @@ code *and* surfaced a real residual leak that the deterministic-recompute path i
 Slice 152 could not have caught. Recording the genuine `fail` (rather than declaring
 victory on the recompute) keeps the baseline trustworthy and routes the next fix to the
 correct layer (prompt, not detector).
+
+## Reasoning-leak baseline must be green before style audit (2026-06-18)
+Slice 153 proved app-pipeline provenance (`runtime_refreshed_after_slice152=true`) but
+the measured app-pipeline baseline still **failed** the reasoning-leak metric on a
+single **line-initial discourse/intensifier marker** (a sentence opening with
+`Actually,` / `Presumably,` that the Slice 152 hardened detector intentionally counts
+as a true positive). Slice 154 (Reasoning Leak Fix Iteration 2) applies a **second
+prompt-contract hardening at the shared `_CORE_RULES` chokepoint**
+(`pipeline/guide_quality_prompt_contract.py`): one concise rule requiring direct
+instructional prose and forbidding a sentence/paragraph from opening with a
+conversational correction / reasoning discourse marker, rewriting it as a direct fact.
+The detector and baseline aggregator are unchanged — the fix belongs in the prompt, not
+in the metric.
+
+- **Decision:** the reasoning-leak metric must read green on a fresh app-pipeline
+  regeneration (or be explicitly waived) before the style/preset audit begins. Slice
+  154's fix is **not** claimed to work until an `app_run_6_reasoning_fix_iteration_2`
+  regeneration confirms it; until then `fix_verification_status=pending_operator_
+  regeneration`, `next_step=operator_regeneration_required`.
+
+**Why:** the residual is a genuine true positive, so weakening the detector or patching
+the aggregator to hide it would corrupt the baseline. Hardening the prompt and then
+re-measuring keeps the metric honest and is the only path that can legitimately turn the
+reasoning-leak status green; style/preset work waits on that signal.
+
+## Slice 154 second prompt-contract hardening VERIFIED on a fresh app-pipeline run (2026-06-18)
+The measured gate for Slice 154 was run, not assumed. The app image was rebuilt and the
+container restarted onto the Slice 154 working tree (the contract is COPY'd into the
+image, so a rebuild is required for the running app to serve the new rule), and one fresh
+NN/Iris app guide was regenerated through the normal pipeline with settings matching
+`app_run_5` (DeepSeek `deepseek-v4-pro`, generator preset `claude_review`, same custom
+style + section toggles, `strict_math` + `dual_explanation_mode` on, the same source as
+`app_run_5` (`source_match_verified=true`)). No one-off anti-leak
+user prompt was added; the fix was exercised only through the shared Guide Quality
+Contract.
+
+- **Result (`app_run_6_reasoning_fix_iteration_2`):** `reasoning_leak_status=pass`
+  (was `fail` for `app_run_5`), `structure_contract_status=pass` (was `warning`),
+  `baseline_status=warning` (was `failed`). The app's stored contract-lint artifact reports
+  `reasoning_leak_count=0` vs `1` for `app_run_5`, with the detector **unchanged** between
+  runs — so the drop to zero is attributable to the Slice 154 prompt-contract hardening,
+  not a detector or aggregator change.
+- **Decision:** `fix_verification_status=pass`,
+  `reasoning_leak_fix_iteration_2_local_regeneration_run=closed_summary_only`,
+  `next_step=source_coverage_gap_or_style_preset_audit_gate`. Slice 154 is **commit-ready**
+  (kept uncommitted only because this gate's scope was verify-then-stop). The residual
+  `qa_gate=warning` / `source_coverage=not_observed` / `needs_future_metric` statuses are
+  pre-existing baseline limitations unrelated to the reasoning-leak fix and move to the next
+  gate.
+
+**Why:** the gate's purpose was to prove the fix with a real app-pipeline regeneration
+rather than a deterministic recompute. Matching the `app_run_5` source byte-for-byte and
+the run settings isolates the prompt-contract change as the only meaningful difference, so
+the green reasoning-leak result is genuine and the now-unblocked style/preset audit can
+proceed.

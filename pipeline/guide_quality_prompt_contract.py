@@ -11,7 +11,8 @@ Product goal (distilled — no source evidence embedded)
 Comprehensive exam guides should: assume zero prior knowledge; never leak the
 model's own reasoning, uncertainty, prompt/user-intent analysis, planning notes,
 process narration, or meta-commentary (Slice 151 hardened the final-output
-hygiene clause after a measured reasoning leak); never fabricate math; stay numerically
+hygiene clause, and Slice 154 added a line-initial discourse-marker clause, after
+measured reasoning leaks); never fabricate math; stay numerically
 self-consistent; finish every worked example; show all arithmetic; build beginner
 intuition for hard mechanics; put high-yield reference data in labelled tables;
 include the required consolidation sections; and teach in a confident, exam-focused
@@ -91,6 +92,10 @@ _CORE_RULES: tuple[str, ...] = (
     "is asking for, planning or drafting notes, process narration about what you "
     "are about to do, or meta-commentary about the guide itself. Start directly "
     "with the guide's content and include nothing that is not part of the guide.",
+    "Use direct instructional prose. Do not begin a sentence or paragraph with a "
+    "conversational correction marker or reasoning/discourse marker such as "
+    "\"Actually,\" or \"Presumably,\"; state the corrected fact plainly and directly "
+    "instead.",
     "Never fabricate math. State a formula, derivative, or numeric result only if "
     "it is taken from the source or computed by you with the steps shown. If you "
     "are not certain of a closed form, describe the behaviour in words instead of "

@@ -188,6 +188,49 @@ def test_final_output_hygiene_clause() -> None:
             check(f"{depth}: clause never asks to expose reasoning ({forbidden})", forbidden not in lowered)
 
 
+def test_line_initial_discourse_marker_clause() -> None:
+    # Slice 154: the second measured reasoning-leak fix. app_run_5 (app-pipeline
+    # provenance) still failed the reasoning-leak metric on a single line-initial
+    # discourse/intensifier marker ("Actually," / "Presumably," opening a sentence)
+    # that the Slice 152 hardened detector intentionally counts as a true positive.
+    # The fix belongs in the prompt contract, not the detector: the shared, always-
+    # applied core contract must carry a concise clause that forbids beginning a
+    # sentence/paragraph with a conversational correction / discourse marker and tells
+    # the model to state the fact directly instead. It must apply to every guide
+    # (including a minimal quick request), appear exactly once, ask for direct
+    # instructional prose, name the line-initial markers as synthetic examples, and
+    # never ask the model to reveal hidden reasoning.
+    DISCOURSE_TERMS = [
+        "direct instructional prose",
+        "begin a sentence or paragraph",
+        "conversational correction marker",
+        "discourse marker",
+        "Actually,",
+        "Presumably,",
+    ]
+    anchor = "Use direct instructional prose"
+    for depth in ("quick", "balanced", "exhaustive"):
+        ctx = build_guide_quality_prompt_contract(output_depth=depth)
+        block = ctx["prompt_block"]
+        for term in DISCOURSE_TERMS:
+            check(f"{depth}: discourse clause has {term!r}", term in block)
+        # Appears exactly once — no style/preset can drop it, nor duplicate it.
+        check(
+            f"{depth}: discourse clause appears once",
+            block.count(anchor) == 1,
+            f"count={block.count(anchor)}",
+        )
+        # The clause must not ask the model to expose/reveal its hidden reasoning.
+        lowered = block.lower()
+        for forbidden in ("reveal your reasoning", "show your reasoning", "explain your thinking"):
+            check(f"{depth}: discourse clause never exposes reasoning ({forbidden})", forbidden not in lowered)
+        # The Slice 151 internal-reasoning hygiene anchor must still be present.
+        check(
+            f"{depth}: Slice 151 hygiene clause still present",
+            "Output only the finished study guide" in block,
+        )
+
+
 def test_comprehensive_structure_for_exhaustive() -> None:
     ctx = build_guide_quality_prompt_contract(output_depth="exhaustive")
     check("exhaustive → comprehensive", ctx["summary"]["comprehensive"] is True)
@@ -276,6 +319,7 @@ def test_no_leak_over_all_paths() -> None:
 def main() -> None:
     test_core_rules_always_present()
     test_final_output_hygiene_clause()
+    test_line_initial_discourse_marker_clause()
     test_comprehensive_structure_for_exhaustive()
     test_preset_and_style_infer_comprehensive()
     test_explicit_comprehensive_overrides_inference()

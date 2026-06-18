@@ -5,7 +5,74 @@
 
 ---
 
-## Slice 153 — **App-Pipeline Baseline Provenance Gate**, on `slice153-app-pipeline-baseline-provenance-gate`. **NOT COMMITTED.**
+## Slice 154 — **Reasoning Leak Fix Iteration 2 (prompt-contract line-initial discourse-marker hardening)**, on `slice154-reasoning-leak-fix-iteration-2`. **NOT COMMITTED.**
+
+- **Part 0 completed:** Slice 153 was committed as `af606d4` ("Slice 153: Verify app-pipeline baseline provenance"),
+  fast-forward merged to trunk `chrome-renderer-v1` (`a1dfdd4..af606d4`), and pushed with a normal `git push` (no force-push).
+  Final trunk status before branching Slice 154 was clean; **no docker compose config was run**; the Slice 60 trace stash remains
+  parked and untouched; `local_operator_baselines/` stayed ignored/uncommitted.
+- **What this slice is:** the narrowest second prompt/output-contract fix for the single residual leak category that
+  `app_run_5_app_pipeline_verified` surfaced (`reasoning_leak_status=fail`, `baseline_status=failed`). The remaining hit is a
+  **line-initial discourse/intensifier marker** (`target_category=line_initial_discourse_intensifier`) — a sentence/paragraph
+  opening with `Actually,` / `Presumably,` that the Slice 152 hardened detector intentionally counts as a true positive. The
+  detector is behaving as designed, so the fix is at the prompt-contract layer, not the detector.
+- **Fix type:** `prompt_contract_line_initial_discourse_marker_hardening`. Added one concise core rule to the shared
+  `_CORE_RULES` chokepoint in `pipeline/guide_quality_prompt_contract.py` (the same always-applied contract Slice 151 hardened,
+  appended once as the `## Guide Quality Contract` block in `pipeline/run_llm_job.py`). The new rule requires **direct
+  instructional prose** and forbids beginning a sentence or paragraph with a conversational correction / reasoning discourse
+  marker such as `Actually,` / `Presumably,`, instructing the model to state the corrected fact plainly instead. It does not ask
+  the model to reveal hidden reasoning and does not reduce comprehensiveness.
+- **Closed flags:**
+  - `target_category=line_initial_discourse_intensifier`
+  - `detector_changed=false`
+  - `baseline_mapping_changed=false`
+  - `generation_prompt_changed=true`
+  - `provider_calls=false` (no operator regeneration during this slice)
+  - `judge_calls=false`
+  - `repair_calls=false`
+- **Measured verification gate — RUN (Case A / PASS):** the app runtime was rebuilt + restarted onto this Slice 154 working tree
+  (the prompt contract is COPY'd into the image, so a rebuild was required for the running app to serve the new contract), confirmed
+  live (`/api/health` ok), and one fresh NN/Iris app guide was generated through the normal app pipeline with settings matching
+  `app_run_5` (DeepSeek `deepseek-v4-pro`, generator preset `claude_review`, the same custom style, same section toggles,
+  `strict_math` + `dual_explanation_mode` on, the same source as `app_run_5` (`source_match_verified=true`)).
+  No special one-off anti-leak user prompt was added; the fix was exercised only through the app's shared Guide Quality Contract.
+  The 6 exact-name artifacts were copied into `local_operator_baselines/nn_iris/app_job_artifacts/app_run_6_reasoning_fix_iteration_2/`
+  (ignored/uncommitted) and the baseline harness was run on that run label.
+  - `reasoning_leak_fix_iteration_2_local_regeneration_run=closed_summary_only`
+  - `app_run_6_reasoning_fix_iteration_2`:
+    - `reasoning_leak_status: pass`
+    - `numeric_math_status: not_available`
+    - `guide_quality_qa_gate_status: warning`
+    - `source_coverage_status: not_observed`
+    - `structure_contract_status: pass`
+    - `reference_relative_completeness_status: needs_future_metric`
+    - `figure_handling_status: needs_future_metric`
+    - `artifact_existence_status: pass`
+    - `baseline_status: warning`
+  - **Provenance of the pass (genuine, not a harness quirk):** the app's stored contract-lint artifact reports
+    `reasoning_leak_count=0` for `app_run_6` vs `reasoning_leak_count=1` for `app_run_5` — the single residual line-initial
+    discourse/intensifier marker that failed `app_run_5` is gone, and `structure_contract_status` improved `warning`→`pass`. The
+    detector was unchanged between the two runs, so the drop to zero is attributable to the Slice 154 prompt-contract hardening.
+  - `fix_verification_status=pass`
+  - `next_step=source_coverage_gap_or_style_preset_audit_gate`
+- **Slice 154 is now commit-ready** (the measured gate passed). Remaining residual statuses (`qa_gate=warning`,
+  `source_coverage=not_observed`, numeric/figure/reference `needs_future_metric`) are pre-existing baseline limitations unrelated to
+  the reasoning-leak fix and are deferred to the next gate (`source_coverage_gap_or_style_preset_audit_gate`).
+- **Files changed:** `M docs/CURRENT_TASK.md`, `M docs/NEXT_CHAT_HANDOFF.md`, `M docs/DECISIONS.md`,
+  `M pipeline/guide_quality_prompt_contract.py`, `M test_scripts/test_guide_quality_prompt_contract.py`. Detector, baseline
+  aggregator, API, frontend, providers, renderer, exports, OCR, tables, visuals, Ask Guide, repair, and judge are unchanged.
+- **Validation (all green):** prompt contract (143, was 110), contract integration (24), contract lint (150), QA gate (177),
+  baseline tests (130), baseline harness synthetic self-test (`ok`), `compileall api pipeline
+  test_scripts` clean; `app_run_5_app_pipeline_verified` local harness rerun (record preserved: `reasoning_leak_status=fail`,
+  `baseline_status=failed`); `app_run_6_reasoning_fix_iteration_2` local harness run (`reasoning_leak_status=pass`,
+  `baseline_status=warning`); `git diff --check` clean; no-leak sweep clean. **Docker WAS used this gate** — the image was rebuilt
+  and the container restarted so the running app served the Slice 154 prompt contract; **no docker compose config was run.**
+- **Style/preset audit stays deferred** until the reasoning-leak baseline passes — it now has (`app_run_6` green on reasoning
+  leak), so the next gate is `source_coverage_gap_or_style_preset_audit_gate`. **Slice 154 remains UNCOMMITTED (per this gate).**
+
+---
+
+## Slice 153 — **App-Pipeline Baseline Provenance Gate**, on `slice153-app-pipeline-baseline-provenance-gate`. **Committed `af606d4`, merged + pushed to `chrome-renderer-v1`.**
 
 - **Part 0 completed:** Slice 152 was committed as `a1dfdd4` ("Slice 152: Harden reasoning leak detector boundaries"),
   fast-forward merged to trunk `chrome-renderer-v1` (`d5d528a..a1dfdd4`), and pushed with a normal `git push` (no force-push).
