@@ -316,3 +316,28 @@ repair_ready: false
 next_step: advisory_offline_judge_artifact_schema_adapter_or_stop_for_private_calibration
 docker_compose_config_run: false
 ```
+
+## Slice 147 — Advisory artifact schema adapter relationship
+
+Slice 147 adds a pure, unwired artifact schema adapter
+(`pipeline/quality_safety_offline_judge_artifact_adapter.py`) that verifies the
+write-ready *shape* of the future advisory artifact using synthetic cases only. It
+does not relax this protocol: calibration remains the precondition for any judge
+trust, no private/operator closed-record run was performed, and the deterministic
+floor stays the source of truth. Calibration stays `synthetic_only`,
+`operator_validated` is never produced, the artifact stays advisory and non-blocking,
+and `judge_ready` / `repair_ready` stay false.
+
+```
+advisory_judge_artifact_adapter_status: ok
+artifact_shape_ready: true
+artifact_write_ready: false
+ui_display_ready: false
+judge_calibration_gate_protocol_status: ready
+calibration_status: synthetic_only
+private_operator_judge_calibration_run: not_run
+judge_ready: false
+repair_ready: false
+next_step: advisory_offline_judge_artifact_writer_design_or_stop_for_private_calibration
+docker_compose_config_run: false
+```

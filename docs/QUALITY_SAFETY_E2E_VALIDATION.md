@@ -1013,3 +1013,26 @@ repair_ready: false
 next_step: advisory_offline_judge_artifact_schema_adapter_or_stop_for_private_calibration
 docker_compose_config_run: false
 ```
+
+## Slice 147 Advisory Offline Judge Artifact Schema Adapter (synthetic-only) status
+
+Slice 147 adds a pure, unwired artifact schema adapter and synthetic harnesses only:
+no production code path, no artifact writer, no judge execution, and no
+provider/model/cloud/local-LLM call. The synthetic E2E validation records above are
+unchanged and remain the deterministic source of truth; the future advisory artifact
+may never override these deterministic blockers, and remains hidden/internal until a
+later calibration policy allows display.
+
+```
+advisory_judge_artifact_adapter_status: ok
+artifact_shape_ready: true
+artifact_write_ready: false
+ui_display_ready: false
+this_doc_changed: false
+calibration_status: synthetic_only
+private_operator_judge_calibration_run: not_run
+judge_ready: false
+repair_ready: false
+next_step: advisory_offline_judge_artifact_writer_design_or_stop_for_private_calibration
+docker_compose_config_run: false
+```

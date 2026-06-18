@@ -196,3 +196,32 @@ Purpose:
 
 Recommended if continuing without private data: **Slice 147 — Advisory Offline
 Judge Artifact Schema Adapter, Synthetic Only.**
+
+## Slice 147 — Advisory Offline Judge Artifact Schema Adapter status (synthetic only)
+
+Slice 147 implements the **Option A** next step above: a pure, unwired adapter
+(`pipeline/quality_safety_offline_judge_artifact_adapter.py`) that accepts a
+normalized offline judge report (Slice 142 schema / Slice 143 core shape) and
+returns a write-ready *shape* for this artifact, verified with synthetic cases
+only. It does not write the artifact, does not wire judge reports into jobs, does
+not expose anything in the UI, does not run private calibration, does not execute
+a judge, and does not call providers/models/cloud/local LLMs. The artifact payload
+is rebuilt through the Slice 142 normalizer, so the forbidden-field families above
+cannot survive by construction; the deterministic floor relationship is preserved
+(floor red can never become ok / write-ready / display-ready).
+
+```
+advisory_judge_artifact_design_status: ready
+advisory_judge_artifact_adapter_status: ok
+artifact_name: quality_safety_offline_judge_report.json
+artifact_kind: quality_safety_offline_judge_report
+artifact_shape_ready: true
+artifact_write_ready: false
+ui_display_ready: false
+calibration_status: synthetic_only
+private_operator_judge_calibration_run: not_run
+judge_ready: false
+repair_ready: false
+next_step: advisory_offline_judge_artifact_writer_design_or_stop_for_private_calibration
+docker_compose_config_run: false
+```

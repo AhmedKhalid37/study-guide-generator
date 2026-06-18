@@ -5,7 +5,60 @@
 
 ---
 
-## Slice 146 — **Advisory Offline Judge Artifact Design**, on `slice146-quality-safety-advisory-offline-judge-artifact-design`. **NOT COMMITTED.**
+## Slice 147 — **Advisory Offline Judge Artifact Schema Adapter, Synthetic Only**, on `slice147-quality-safety-advisory-offline-judge-artifact-adapter`. **NOT COMMITTED.**
+
+- **Part 0 completed:** Slice 146 was committed as `1f01231`, fast-forward merged to trunk `chrome-renderer-v1`, and pushed with
+  a normal `git push` (no force-push; `8ad39c7..1f01231`). Final trunk status before branching Slice 147 was clean; no docker
+  compose config was run; the Slice 60 trace stash remains parked and untouched.
+- **Scope (pure/unwired adapter + synthetic tests):** add a pure, deterministic, **unwired** adapter that accepts a normalized
+  offline judge report (Slice 142 schema / Slice 143 core shape) and returns a **write-ready synthetic artifact payload shape**
+  for the proposed advisory artifact. This is **not** production artifact writing and **not** judge execution: **no** artifact
+  file written, **no** wiring of judge reports into job artifacts, **no** UI display, **no** judge execution, **no** LLM judge,
+  **no** provider/model/cloud/local-LLM call, **no** filesystem/`clean.md`/source/guide/reference read, **no** private
+  calibration, **no** repair, **no** prompt tuning, **no** blocking gate, **no** numeric infrastructure unfreeze, **no**
+  route/frontend/request-schema/render/export/OCR/table/visual/Ask Guide change. No `api/server.py`,
+  `quality_safety_job_artifact.py`, or `run_markdown_job.py` change; no `quality_judge.py`, `nn3.json`,
+  `judge_response_nn3.json`, or `quality.jsonl` added.
+- **New module (`pipeline/quality_safety_offline_judge_artifact_adapter.py`):** pure adapter over the Slice 142 normalizer.
+  Public surface: `build_empty_offline_judge_artifact_adapter_result`,
+  `adapt_offline_judge_report_to_artifact_payload`, `validate_offline_judge_artifact_payload`,
+  `build_synthetic_offline_judge_artifact_case`, `run_synthetic_offline_judge_artifact_case`,
+  `serialize_offline_judge_artifact_payload`. The result carries `kind=quality_safety_offline_judge_artifact_adapter_result`,
+  `artifact_name=quality_safety_offline_judge_report.json`, `artifact_kind=quality_safety_offline_judge_report`, the sanitized
+  normalized report under `artifact_payload`, a count-only `summary`
+  (`axis_count`/`blocker_count`/`warning_count`/`forbidden_field_count`), closed `blockers`/`warnings`, and closed readiness
+  flags. The payload is rebuilt strictly through the Slice 142 normalizer, so forbidden content cannot survive by construction;
+  imports are restricted to the schema + core + stdlib `json`/`typing`.
+- **Readiness (closed vocabulary):** `advisory_judge_artifact_adapter_status=ok`; `artifact_shape_ready=true` (for valid,
+  genuine normalized reports); `artifact_write_ready=false`; `ui_display_ready=false`; `judge_ready=false`; `repair_ready=false`;
+  `calibration_status=synthetic_only`; `private_operator_judge_calibration_run=not_run`.
+- **Synthetic cases covered:** `clean_synthetic_judge_case` (shape_ready, status ok), `weak_synthetic_judge_case` (shape_ready,
+  warning), `failed_synthetic_judge_case` (shape_ready, status not ok, `axis_failed` blocker), `leak_canary_synthetic_judge_case`
+  (forbidden canaries stripped, `forbidden_field_count>0`, `forbidden_field_stripped` warning, status not ok),
+  `deterministic_floor_red_synthetic_judge_case` (`deterministic_floor_red` blocker, status not ok, never write/display-ready),
+  `malformed_report_case` (wrong kind → shape_ready false, status failed). Calibration interactions: `synthetic_only` does not
+  enable write/display; `operator_validated` (in report or record) is never honored and is warned; private-shaped/non-closed
+  calibration records are stripped + warned. Deterministic floor red can never become ok/write-ready/display-ready.
+- **Validation (all green):** adapter test (582 passed / 0 failed), adapter synthetic harness (ok, exit 0), calibration gate
+  harness (synthetic ok, exit 0), core test (769), core synthetic harness (ok), schema test (667), Slice 142 harness (ok), floor
+  final gate (34), operator export harness (35), operator export validator (422), candidate adapter (177), safe extractor (207),
+  job artifact (753), recompute verifier (99), real-disaster e2e (100), unified QA (73); `compileall api pipeline test_scripts`
+  clean; `git diff --check` clean. Docker not run (pure synthetic/test-only); no docker compose config run.
+- **Files changed:** `M docs/CURRENT_TASK.md`, `M docs/DECISIONS.md`, `M docs/NEXT_CHAT_HANDOFF.md`,
+  `M docs/QUALITY_SAFETY_ADVISORY_OFFLINE_JUDGE_ARTIFACT_DESIGN.md`, `M docs/QUALITY_SAFETY_OFFLINE_JUDGE_CONTRACT.md`,
+  `M docs/QUALITY_SAFETY_JUDGE_CALIBRATION_GATE_PROTOCOL.md`, `M docs/QUALITY_SAFETY_OPERATOR_VALIDATION.md`,
+  `M docs/QUALITY_SAFETY_E2E_VALIDATION.md`, `M docs/QUALITY_SAFETY_SURFACE_FREEZE.md`,
+  `?? pipeline/quality_safety_offline_judge_artifact_adapter.py`,
+  `?? test_scripts/test_quality_safety_offline_judge_artifact_adapter.py`,
+  `?? test_scripts/validate_quality_safety_offline_judge_artifact_adapter_synthetic.py`. **Slice 147 remains NOT committed.**
+- **Next recommended slice:** **advisory offline judge artifact writer design** (a separately-designed slice that decides where a
+  job-local artifact may be written, still advisory/non-blocking and still gated on calibration before any UI display), *or*
+  **stop for a private operator calibration pass** before any artifact wiring. Judge baseline stays blocked (`judge_ready=false`;
+  `repair_ready=false`); the deterministic floor stays the source of truth.
+
+---
+
+## Slice 146 — **Advisory Offline Judge Artifact Design**, on `slice146-quality-safety-advisory-offline-judge-artifact-design`. **Committed `1f01231`, merged + pushed to `chrome-renderer-v1`.**
 
 - **Part 0 completed:** Slice 145 was committed as `8ad39c7`, fast-forward merged to trunk `chrome-renderer-v1`, and pushed with
   a normal `git push` (no force-push; `91e6c7d..8ad39c7`). Final trunk status before branching Slice 146 was clean; no docker

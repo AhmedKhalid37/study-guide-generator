@@ -1359,3 +1359,26 @@ judge_ready: false
 repair_ready: false
 next_step: advisory_offline_judge_artifact_schema_adapter_or_stop_for_private_calibration
 ```
+
+## Slice 147 Advisory Offline Judge Artifact Schema Adapter (closed status)
+
+Slice 147 adds a pure, unwired artifact schema adapter and synthetic tests only. It
+runs **no** operator calibration: no private/operator closed-record run was performed
+(`private_operator_judge_calibration_run=not_run`), no real private material, file
+paths, filenames, or sidecar JSON are recorded, and nothing is written, wired, or
+displayed. Future UI display of the artifact remains gated on a later slice deciding
+`calibration_status` is sufficient, `privacy_status` is ok, the deterministic floor
+relationship is enforced, and no raw/private rationale fields exist.
+
+```
+private_operator_judge_calibration_run: not_run
+advisory_judge_artifact_adapter_status: ok
+artifact_shape_ready: true
+artifact_write_ready: false
+ui_display_ready: false
+calibration_status: synthetic_only
+judge_contract_ready: true
+judge_ready: false
+repair_ready: false
+next_step: advisory_offline_judge_artifact_writer_design_or_stop_for_private_calibration
+```

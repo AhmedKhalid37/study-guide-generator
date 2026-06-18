@@ -5983,3 +5983,57 @@ was wired, written, displayed, or calibrated in this slice.
 `quality_safety_surface_frozen=true`; `quality_safety_blocking=false`;
 `judge_ready=false`; `repair_ready=false`;
 `next_step=advisory_offline_judge_artifact_schema_adapter_or_stop_for_private_calibration`.
+
+---
+
+## Advisory offline judge artifact adapter is pure/unwired; writes nothing in Slice 147
+Slice 147 adds `pipeline/quality_safety_offline_judge_artifact_adapter.py` plus two
+synthetic test harnesses. It implements a pure, deterministic adapter that accepts a
+normalized offline judge report (Slice 142 schema / Slice 143 core shape) and returns
+a write-ready synthetic artifact payload shape for the proposed advisory artifact
+`quality_safety_offline_judge_report.json` (kind `quality_safety_offline_judge_report`).
+It implements nothing else: no artifact file is written, no judge runs, no
+provider/model/cloud/local-LLM is called, no filesystem/`clean.md`/source/guide/
+reference text is read, no UI is touched, and no private calibration is run.
+
+**Decisions:**
+- **The adapter is pure and unwired.** It only adapts/normalizes shape. It does not
+  write artifacts, does not know job paths, does not inspect the filesystem, and is
+  not imported by any route or production wiring. Its imports are restricted to the
+  Slice 142 schema, the Slice 143 core, and stdlib `json`/`typing`.
+- **The adapter does not write artifacts.** `artifact_write_ready` is always `false`
+  in Slice 147. The result is a shape verifier only; a separate writer-design slice
+  must decide where/whether a job-local artifact is ever written.
+- **The adapter does not enable UI display.** `ui_display_ready` is always `false`.
+  Display remains gated on a later calibration/display-policy decision.
+- **The adapter does not make the judge ready.** `judge_ready` and `repair_ready`
+  are always `false`; the payload is rebuilt through the Slice 142 normalizer which
+  forces both false and strips all forbidden content by construction.
+- **The deterministic floor stays the source of truth.** A floor-red
+  `deterministic_floor_payload` (or floor-red report) yields a `deterministic_floor_red`
+  blocker and a non-`ok` status the adapter can never override; it can never mark a
+  payload shippable, write-ready, or display-ready.
+- **Calibration stays synthetic-only.** `calibration_status=synthetic_only` is
+  acceptable for `artifact_shape_ready=true` but never for write/display readiness;
+  `operator_validated` is never produced (downgraded + warned), and
+  `private_operator_judge_calibration_run` is always `not_run`. Non-closed/private
+  calibration records are stripped and warned.
+- **No production integration yet.** No `api/server.py`, `quality_safety_job_artifact.py`,
+  or `run_markdown_job.py` change; no route, no frontend, no `overall_10`, no repair,
+  no blocking gate, no numeric infrastructure unfreeze, no `quality_judge.py` /
+  `nn3.json` / `judge_response_nn3.json` / `quality.jsonl`.
+
+**Why:** building the adapter as a pure shape verifier first proves the designed
+artifact payload can be produced from a normalized report deterministically and
+leak-safely, without committing to any writer, wiring, UI, or trust. Keeping every
+readiness flag false is faithful: nothing was written, displayed, calibrated, or made
+shippable. The next step is a separately-designed artifact writer (still advisory and
+gated on calibration) or a private operator calibration pass.
+
+`advisory_judge_artifact_adapter_status=ok`; `artifact_shape_ready=true`;
+`artifact_write_ready=false`; `ui_display_ready=false`;
+`advisory_judge_artifact_design_status=ready`; `calibration_status=synthetic_only`;
+`private_operator_judge_calibration_run=not_run`; `judge_contract_ready=true`;
+`numeric_infrastructure_frozen=true`; `quality_safety_surface_frozen=true`;
+`quality_safety_blocking=false`; `judge_ready=false`; `repair_ready=false`;
+`next_step=advisory_offline_judge_artifact_writer_design_or_stop_for_private_calibration`.

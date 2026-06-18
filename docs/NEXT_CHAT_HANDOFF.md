@@ -6,58 +6,63 @@
 > stable overview see `PROJECT_CONTEXT.md`; canonical brief is `../CLAUDE.md`.
 
 ## Current position
-- **Working tree:** **Slice 146 (Advisory Offline Judge Artifact Design) — UNCOMMITTED (per instruction)** on branch
-  `slice146-quality-safety-advisory-offline-judge-artifact-design`, branched from updated `chrome-renderer-v1` after Slice 145
-  was committed, fast-forward merged, and pushed. **Slice 145 is trunk commit `8ad39c7`**.
-  - **Part 0 completed:** Slice 145 was committed as `8ad39c7`, fast-forward merged to `chrome-renderer-v1`, and pushed with a
-    normal `git push` (no force-push; `91e6c7d..8ad39c7`). Final trunk status before branching was clean; no docker compose config
+- **Working tree:** **Slice 147 (Advisory Offline Judge Artifact Schema Adapter, Synthetic Only) — UNCOMMITTED (per
+  instruction)** on branch `slice147-quality-safety-advisory-offline-judge-artifact-adapter`, branched from updated
+  `chrome-renderer-v1` after Slice 146 was committed, fast-forward merged, and pushed. **Slice 146 is trunk commit `1f01231`**.
+  - **Part 0 completed:** Slice 146 was committed as `1f01231`, fast-forward merged to `chrome-renderer-v1`, and pushed with a
+    normal `git push` (no force-push; `8ad39c7..1f01231`). Final trunk status before branching was clean; no docker compose config
     was run; the Slice 60 trace stash remains parked and untouched.
-  - **Slice 146 scope (docs/design-only):** design how a *future* advisory offline judge report artifact may be stored and
-    surfaced after calibration, without making it blocking or trusted prematurely. **No** production artifact writing, **no**
-    wiring of judge reports into job artifacts, **no** UI display, **no** judge execution, **no** LLM judge, **no**
-    provider/model/cloud/local-LLM calls, **no** `quality_judge.py`, **no** `nn3.json`, **no** `judge_response_nn3.json`, **no**
-    `quality.jsonl`, **no** runtime judge outputs, **no** repair, **no** prompt tuning, **no** blocking gate, **no** numeric
-    infrastructure unfreeze, **no** route/frontend/request-schema/render/export/OCR/table/visual/Ask Guide change. No production
-    code changed.
-  - **New doc (`docs/QUALITY_SAFETY_ADVISORY_OFFLINE_JUDGE_ARTIFACT_DESIGN.md`):** purpose, closed-vocabulary preconditions,
-    proposed artifact, artifact boundary, integration boundary (allowed/forbidden), storage rules (allowed/forbidden fields),
-    display policy, conservative readiness, and the proposed next slice.
-  - **Proposed artifact name:** `quality_safety_offline_judge_report.json` (kind `quality_safety_offline_judge_report`; matches
-    the Slice 142 schema — no new artifact name, no new schema kind, no new field, no field relaxed).
-  - **Artifact boundary:** `advisory=true`, `non_blocking`, `not_user_score`, `not_repair_input`, `not_shippability_source`,
-    `not_deterministic_floor_override`, `hidden_or_internal_until_calibrated`.
-  - **Integration boundary:** *allowed (future)* optional job-local artifact after the offline judge core/report is produced;
-    read-only UI display only after calibration policy allows; docs/operator validation may record closed outcomes only.
-    *Forbidden:* no blocking gate, no shippable override, no recompute override, no leak override, no repair trigger, no prompt
-    tuning trigger, no raw rationale display from private jobs, no raw model prompt/response storage, no provider payload storage,
-    no generic artifact export of private judge raw outputs.
-  - **Storage rules:** *allowed* Slice 142 schema fields only, closed axis statuses, confidence/score_band tokens, count-only
-    summaries, closed blockers/warnings, `calibration_status`, `privacy_status`, `deterministic_floor_status`. *Forbidden* source/
-    guide/OCR/page/table/caption text, `formulas_as_text`, evidence quotes, filenames, basenames, paths, URLs, screenshots, raw
-    runtime artifacts, raw artifact JSON from private jobs, provider payloads, model prompts/responses, private/free-text
-    rationales, `chain_of_thought`, `quality_judge.py` dumps, `nn3.json`, `judge_response_nn3.json`, `quality.jsonl`.
-  - **Display policy:** future UI display allowed only after a later slice decides `calibration_status` is sufficient,
-    `privacy_status` is ok, the deterministic floor relationship is enforced, and no raw/private rationale fields exist. Until
-    then: no UI display, no user-facing score, no grade-like overall score, no repair suggestions.
-  - **Readiness (closed vocabulary):** `advisory_judge_artifact_design_status=ready`; `artifact_write_ready=false`;
-    `ui_display_ready=false`; `judge_ready=false`; `repair_ready=false`;
-    `next_step=advisory_offline_judge_artifact_schema_adapter_or_stop_for_private_calibration`.
-  - **Validation (all green):** calibration gate harness (synthetic ok exit 0), core test (769), core synthetic harness (ok),
-    schema test (667), Slice 142 harness (ok), floor final gate (34), operator export harness (35), operator export validator
-    (422), candidate adapter (177), safe extractor (207), job artifact (753), recompute verifier (99), real-disaster e2e (100),
-    unified QA (73); `compileall` clean; `git diff --check` clean. Docker not run (docs/design-only); no docker compose config run.
+  - **Slice 147 scope (pure/unwired adapter + synthetic tests):** add a pure, deterministic, **unwired** adapter that accepts a
+    normalized offline judge report (Slice 142 schema / Slice 143 core shape) and returns a **write-ready synthetic artifact
+    payload shape** for the proposed advisory artifact. **No** artifact file written, **no** wiring into job artifacts, **no** UI
+    display, **no** judge execution, **no** LLM judge, **no** provider/model/cloud/local-LLM call, **no**
+    filesystem/`clean.md`/source/guide/reference read, **no** private calibration, **no** repair, **no** prompt tuning, **no**
+    blocking gate, **no** numeric infrastructure unfreeze, **no** route/frontend/request-schema/render/export/OCR/table/visual/Ask
+    Guide change, **no** `api/server.py` / `quality_safety_job_artifact.py` / `run_markdown_job.py` change, **no**
+    `quality_judge.py`, `nn3.json`, `judge_response_nn3.json`, or `quality.jsonl`.
+  - **New module (`pipeline/quality_safety_offline_judge_artifact_adapter.py`):** public surface
+    `build_empty_offline_judge_artifact_adapter_result`, `adapt_offline_judge_report_to_artifact_payload`,
+    `validate_offline_judge_artifact_payload`, `build_synthetic_offline_judge_artifact_case`,
+    `run_synthetic_offline_judge_artifact_case`, `serialize_offline_judge_artifact_payload`. Adapter result carries
+    `kind=quality_safety_offline_judge_artifact_adapter_result`, `artifact_name=quality_safety_offline_judge_report.json`,
+    `artifact_kind=quality_safety_offline_judge_report`, the sanitized normalized report under `artifact_payload`, a count-only
+    `summary` (`axis_count`/`blocker_count`/`warning_count`/`forbidden_field_count`), closed `blockers`/`warnings`, and closed
+    readiness flags. Payload rebuilt strictly through the Slice 142 normalizer (forbidden content cannot survive); imports limited
+    to the schema + core + stdlib `json`/`typing`.
+  - **Readiness (closed vocabulary):** `advisory_judge_artifact_adapter_status=ok`; `artifact_shape_ready=true` (for valid,
+    genuine normalized reports); `artifact_write_ready=false`; `ui_display_ready=false`; `judge_ready=false`; `repair_ready=false`;
+    `calibration_status=synthetic_only`; `private_operator_judge_calibration_run=not_run`.
+  - **Synthetic cases:** clean (shape_ready, ok), weak (shape_ready, warning), failed (shape_ready, status not ok, `axis_failed`),
+    leak canary (forbidden canaries stripped, `forbidden_field_count>0`, `forbidden_field_stripped` warning, status not ok),
+    deterministic floor red (`deterministic_floor_red` blocker, status not ok, never write/display-ready), malformed (wrong kind →
+    shape_ready false, status failed). `operator_validated` (report or record) never honored, always warned; non-closed
+    calibration records stripped + warned. Floor red can never become ok/write/display-ready.
+  - **Validation (all green):** adapter test (582 passed / 0 failed), adapter synthetic harness (ok, exit 0), calibration gate
+    harness (ok), core test (769), core synthetic harness (ok), schema test (667), Slice 142 harness (ok), floor final gate (34),
+    operator export harness (35), operator export validator (422), candidate adapter (177), safe extractor (207), job artifact
+    (753), recompute verifier (99), real-disaster e2e (100), unified QA (73); `compileall` clean; `git diff --check` clean. Docker
+    not run (pure synthetic/test-only); no docker compose config run.
   - **Files changed:** `M docs/CURRENT_TASK.md`, `M docs/DECISIONS.md`, `M docs/NEXT_CHAT_HANDOFF.md`,
-    `M docs/QUALITY_SAFETY_JUDGE_CALIBRATION_GATE_PROTOCOL.md`, `M docs/QUALITY_SAFETY_OFFLINE_JUDGE_CONTRACT.md`,
-    `M docs/QUALITY_SAFETY_OPERATOR_VALIDATION.md`, `M docs/QUALITY_SAFETY_E2E_VALIDATION.md`,
-    `M docs/QUALITY_SAFETY_SURFACE_FREEZE.md`, `?? docs/QUALITY_SAFETY_ADVISORY_OFFLINE_JUDGE_ARTIFACT_DESIGN.md`.
-  - **Next expected slice:** **Slice 147 — Advisory Offline Judge Artifact Schema Adapter, Synthetic Only** (pure/unwired adapter
-    verifying write-ready shape synthetically; no production writing, no UI, no private input, no `judge_ready=true`), or stop for
-    a separately-arranged private operator calibration pass. Judge baseline stays blocked (`judge_ready=false`;
-    `repair_ready=false`).
+    `M docs/QUALITY_SAFETY_ADVISORY_OFFLINE_JUDGE_ARTIFACT_DESIGN.md`, `M docs/QUALITY_SAFETY_OFFLINE_JUDGE_CONTRACT.md`,
+    `M docs/QUALITY_SAFETY_JUDGE_CALIBRATION_GATE_PROTOCOL.md`, `M docs/QUALITY_SAFETY_OPERATOR_VALIDATION.md`,
+    `M docs/QUALITY_SAFETY_E2E_VALIDATION.md`, `M docs/QUALITY_SAFETY_SURFACE_FREEZE.md`,
+    `?? pipeline/quality_safety_offline_judge_artifact_adapter.py`,
+    `?? test_scripts/test_quality_safety_offline_judge_artifact_adapter.py`,
+    `?? test_scripts/validate_quality_safety_offline_judge_artifact_adapter_synthetic.py`.
+  - **Next expected slice:** **advisory offline judge artifact writer design** (separately-designed slice deciding where a
+    job-local artifact may be written, still advisory/non-blocking and gated on calibration before any UI display), or stop for a
+    separately-arranged private operator calibration pass. Judge baseline stays blocked (`judge_ready=false`; `repair_ready=false`).
   - **Out of scope/unchanged:** no `api/server.py` change, no routes, no frontend change, no production artifact writer/wiring, no
     generation/prompt/provider/request-schema/render/export/OCR/table/visual/Ask Guide change, no judge/`overall_10`/repair/
-    blocking gate, no `quality_judge.py`, `nn3.json`, `judge_response_nn3.json`, or `quality.jsonl`. **Slice 146 remains NOT
+    blocking gate, no `quality_judge.py`, `nn3.json`, `judge_response_nn3.json`, or `quality.jsonl`. **Slice 147 remains NOT
     committed.**
+
+### Previously (Slice 146, now trunk `1f01231`)
+- **Slice 146 (Advisory Offline Judge Artifact Design)** added the design doc
+  (`docs/QUALITY_SAFETY_ADVISORY_OFFLINE_JUDGE_ARTIFACT_DESIGN.md`) for the future advisory artifact
+  (`quality_safety_offline_judge_report.json`, kind `quality_safety_offline_judge_report`): artifact boundary, integration
+  boundary, storage rules, and display policy, all closed-vocabulary and docs-only. `advisory_judge_artifact_design_status=ready`;
+  `artifact_write_ready=false`; `ui_display_ready=false`; `judge_ready=false`; `repair_ready=false`.
 
 ### Previously (Slice 145, now trunk `8ad39c7`)
 - **Slice 145 (Private Operator Judge Calibration Pass)** added the closed-record calibration gate harness

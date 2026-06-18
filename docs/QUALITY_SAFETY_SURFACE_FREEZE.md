@@ -316,3 +316,32 @@ judge_ready: false
 repair_ready: false
 next_step: advisory_offline_judge_artifact_schema_adapter_or_stop_for_private_calibration
 ```
+
+---
+
+## Slice 147 — Advisory artifact schema adapter does not unfreeze any surface
+
+Slice 147 adds a pure, unwired artifact schema adapter
+(`pipeline/quality_safety_offline_judge_artifact_adapter.py`) plus synthetic tests.
+The adapter reuses the Slice 142 normalizer verbatim and does **not** unfreeze the
+deterministic surface or the numeric infrastructure, adds **no** numeric schema/bridge
+layer, adds **no** new artifact name, schema kind, or field, and relaxes **no**
+forbidden-field family. It writes no artifact, wires nothing into production, and
+calls no provider/model/cloud/local LLM. The frozen artifact names, field families,
+and validation harnesses remain unchanged, and the deterministic safety floor stays
+the source of truth. The future judge stays advisory and non-blocking.
+
+```
+quality_safety_surface_frozen: true
+numeric_infrastructure_frozen: true
+advisory_judge_artifact_adapter_status: ok
+artifact_shape_ready: true
+artifact_write_ready: false
+ui_display_ready: false
+calibration_status: synthetic_only
+private_operator_judge_calibration_run: not_run
+judge_contract_ready: true
+judge_ready: false
+repair_ready: false
+next_step: advisory_offline_judge_artifact_writer_design_or_stop_for_private_calibration
+```

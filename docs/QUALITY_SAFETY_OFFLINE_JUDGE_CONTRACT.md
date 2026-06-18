@@ -447,3 +447,31 @@ repair_ready: false
 next_step: advisory_offline_judge_artifact_schema_adapter_or_stop_for_private_calibration
 docker_compose_config_run: false
 ```
+
+---
+
+## Slice 147 — Advisory artifact schema adapter status (pure/unwired)
+
+Slice 147 adds `pipeline/quality_safety_offline_judge_artifact_adapter.py`, a pure
+adapter that turns a normalized offline judge report (this contract's shape) into a
+write-ready synthetic artifact payload for `quality_safety_offline_judge_report.json`
+(kind `quality_safety_offline_judge_report`). The adapter reuses this contract's
+closed-vocabulary surface and the Slice 142 normalizer verbatim — it adds no new
+artifact name, no new schema kind, no new field, and relaxes no forbidden-field
+family. It writes no artifact, wires nothing into jobs, exposes nothing in the UI,
+runs no judge, and calls no provider/model/cloud/local LLM. The judge stays advisory
+and non-blocking; the deterministic floor remains the source of truth.
+
+```
+advisory_judge_artifact_adapter_status: ok
+artifact_shape_ready: true
+artifact_write_ready: false
+ui_display_ready: false
+calibration_status: synthetic_only
+private_operator_judge_calibration_run: not_run
+judge_contract_ready: true
+judge_ready: false
+repair_ready: false
+next_step: advisory_offline_judge_artifact_writer_design_or_stop_for_private_calibration
+docker_compose_config_run: false
+```
