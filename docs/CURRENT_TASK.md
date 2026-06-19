@@ -5,7 +5,63 @@
 
 ---
 
-## Slice 165 — **Phase 0 eval runner + exit-check skeleton**, on `slice165-phase0-eval-runner-exit-check`. **NOT COMMITTED.**
+## Slice 166 — **Phase 0 local-operator run packet + closed result ingest**, on `slice166-phase0-operator-run-packet`. **NOT COMMITTED.**
+
+- **Part 0 completed:** Slice 165 was committed as `caf8171` ("Slice 165: Add Phase 0 eval runner exit check"),
+  fast-forward merged to trunk `chrome-renderer-v1` (`bce7e33..caf8171`), and pushed with a normal `git push` (no
+  force-push). Final trunk status was clean before branching Slice 166; **no docker compose config was run**; **Docker
+  was not run**; the Slice 60 trace stash remains parked and untouched; `local_operator_baselines/` stayed
+  ignored/uncommitted; no private material was committed. The runner + exit-check are committed; the exit-check closed
+  vocabularies are clean and `phase0_exit_status` stays `not_ready`/`blocked` (never falsely `ready`); the production
+  offline judge remains frozen (`judge_ready=false`, `repair_ready=false`).
+- **phase=Phase 0 — Eval harness + fact-sheet skeleton** (active; phase order unchanged).
+- **slice=166**
+- **phase0_operator_run_packet_present=true** — `build_phase0_operator_run_packet()` (alias
+  `get_phase0_operator_run_packet()`) in `pipeline/quality_safety_eval_harness.py` returns a closed, safe instruction
+  contract: `kind=phase0_operator_run_packet`, `phase=phase0_eval_harness_fact_sheet_skeleton`,
+  `golden_pair_ids=["nn3","ensemble"]`, `required_local_runs` (nn3 current, ensemble current, ensemble old-failure,
+  reference-judge calibration), `required_closed_outputs` (the four ingest kinds), `forbidden_outputs` (source/guide/
+  reference/ocr/table text, captions, raw prompt/response, provider payload, filepath, filename, hash, byte count,
+  screenshot), `layer2_execution_mode=operator_local_only_not_in_production`, `persistence_policy=closed_summary_only`,
+  `numeric_strategy=recompute_first_not_manual_known_numbers`, and frozen judge booleans. It names no private path,
+  filename, source/reference document, or shell command.
+- **phase0_operator_closed_result_ingest_present=true** — `ingest_phase0_operator_closed_result(result)` accepts only
+  closed summaries of a recognized kind (`phase0_eval_harness_run`, `phase0_exit_check`, `phase0_reference_judge_summary`,
+  `phase0_eval_regression_record`) and returns `ingest_status=ok|invalid|blocked` with closed `blockers`/`warnings`,
+  `accepted_kind`, `golden_pair_ids`, and a closed `sanitized_result` (ok only). It marks `invalid` for bad shape/unknown
+  kind and `blocked` for any forbidden key (anywhere in the tree), private-path-like / data-URI-or-encoded / secret-like /
+  other private-material-like / long-evidence-quote string value, or an attempt to set `judge_ready`/`repair_ready` true.
+  The sanitizer keeps only bounded numerics, booleans, and short closed snake/dotted tokens, and always forces
+  `judge_ready=false`, `repair_ready=false`, `production_offline_judge_frozen=true`.
+- **phase0_exit_check_from_operator_results_present=true** — `build_phase0_exit_check_from_operator_results(results)`
+  ingests each result, uses only the `ok` ones, and reports honestly. It can never fake `ready`: the structural
+  `fact_sheet_production_wiring_not_present` blocker cannot be cleared by a closed summary, so even a full, valid synthetic
+  result set returns `not_ready`. Missing summaries surface `real_old_ensemble_run_not_recorded`,
+  `reference_judge_execution_not_run`, `reference_judge_calibration_not_recorded`, and `regression_history_not_established`;
+  a genuinely non-shippable **current** candidate adds `phase0_run_not_all_shippable` and flips to `blocked` (the
+  old-failure run is *expected* non-shippable and does not). Blockers reuse the shared closed exit-check vocabulary;
+  `satisfied` uses a pinned operator-specific closed vocabulary.
+- **phase0_real_operator_run_executed=false** — no real private run was executed; tests use synthetic closed summaries
+  only. No provider/model/cloud/local-LLM/judge call, no file discovery/reader, no reading of `jobs/`,
+  `local_operator_baselines/`, PDFs, guides, `clean.md`, OCR/table/caption text, screenshots, or raw artifacts.
+- **production_job_api_frontend_wiring_changed=false** — pure schema/contract + ingest functions and tests only; no API
+  route, no SPA-mount ordering change, no production job behavior change; no CLI validation script added.
+- **overall_score_kind=layer1_deterministic_only**, **layer2_judge_included=false** by default.
+- **golden_pair_ids=nn3,ensemble**
+- **production_offline_judge_frozen=true**, **judge_ready=false**, **repair_ready=false**. The dev-time reference-anchored
+  eval judge remains separate (in `pipeline/quality_safety_reference_judge.py`) and is not executed by this layer.
+- **numeric_strategy=recompute_first_not_manual_known_numbers** — the ingest carries no per-numeric "known" answer field;
+  numeric truth stays recompute-first via the golden specs.
+- **Changed files (5):** `pipeline/quality_safety_eval_harness.py`, `test_scripts/test_quality_safety_eval_harness.py`,
+  `docs/CURRENT_TASK.md`, `docs/NEXT_CHAT_HANDOFF.md`, `docs/DECISIONS.md`.
+- **Validation (host):** `compileall api pipeline test_scripts` OK; `test_quality_safety_eval_harness.py` **405/0** (was
+  315/0); `test_quality_safety_recompute_verifier.py` **99/0**; `test_quality_safety_unified_qa.py` **73/0**;
+  `test_guide_quality_baseline.py` **207/0**; `validate_guide_quality_baseline_harness.py` `failure_count=0`;
+  `git diff --check` clean; no-leak grep over the diff returned no private hits.
+- **next_step=phase0_real_operator_run_execution_local_only_or_phase0_exit_gap_closure.** **Slice 166 is NOT committed.**
+
+
+## Slice 165 — **Phase 0 eval runner + exit-check skeleton**, on `slice165-phase0-eval-runner-exit-check`. **COMMITTED as `caf8171`; merged to trunk (`bce7e33..caf8171`) and pushed.**
 
 - **Part 0 completed:** Slice 164 was committed as `bce7e33` ("Slice 164: Integrate Phase 0 factsheet recompute path"),
   fast-forward merged to trunk `chrome-renderer-v1`, and pushed with a normal `git push` (no force-push). `origin/chrome-renderer-v1`,
@@ -51,7 +107,7 @@
   254/0); `test_quality_safety_recompute_verifier.py` **99/0**; `test_quality_safety_unified_qa.py` **73/0**;
   `test_guide_quality_baseline.py` **207/0**; `validate_guide_quality_baseline_harness.py` `failure_count=0`;
   `git diff --check` clean; no-leak grep over the diff returned no private hits.
-- **next_step=phase0_real_operator_run_plan_or_phase0_exit_gap_closure.** **Slice 165 is NOT committed.**
+- **next_step=phase0_real_operator_run_plan_or_phase0_exit_gap_closure.** **Slice 165 committed as `caf8171`; merged and pushed.**
 
 
 ## Slice 164 — **Phase 0 fact-sheet schema + recompute verifier integration**, on `slice164-phase0-factsheet-recompute-integration`. **COMMITTED as `bce7e33`; merged to trunk and pushed.**

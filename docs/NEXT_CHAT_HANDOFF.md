@@ -6,17 +6,37 @@
 > stable overview see `PROJECT_CONTEXT.md`; canonical brief is `../CLAUDE.md`.
 
 ## Current position
-- **Working tree:** **Slice 165 (Phase 0 eval runner + exit-check skeleton) — UNCOMMITTED**
-  on branch `slice165-phase0-eval-runner-exit-check`, branched from updated `chrome-renderer-v1` after Slice 164
-  was committed, fast-forward merged, and pushed. **Slice 164 is trunk commit `bce7e33`**; Slice 163 is `c4d9607`;
-  Slice 162 is `06496d0`; Slice 161 is `e76173f`.
-  - **Part 0 completed:** Slice 164 ("Integrate Phase 0 factsheet recompute path") was committed as `bce7e33`,
-    fast-forward merged to `chrome-renderer-v1`, and pushed with a normal `git push` (no force-push); `origin/chrome-renderer-v1`,
-    local trunk, and the Slice 165 branch all sit at `bce7e33`. Final trunk status was clean before the Slice 165 branch;
-    **no docker compose config was run**; **Docker was not run**; the Slice 60 trace stash remains parked and untouched;
-    `local_operator_baselines/` stayed ignored/uncommitted; no private material was committed. (The starting working tree
-    for this chat was already on the Slice 165 branch, clean, with Slice 164 on trunk — Part 0 had been completed in the
-    prior session; it was re-verified, not re-done.)
+- **Working tree:** **Slice 166 (Phase 0 local-operator run packet + closed result ingest) — UNCOMMITTED**
+  on branch `slice166-phase0-operator-run-packet`, branched from updated `chrome-renderer-v1` after Slice 165
+  was committed, fast-forward merged, and pushed. **Slice 165 is trunk commit `caf8171`**; Slice 164 is `bce7e33`;
+  Slice 163 is `c4d9607`; Slice 162 is `06496d0`.
+  - **Part 0 completed:** Slice 165 ("Add Phase 0 eval runner exit check") was committed as `caf8171`,
+    fast-forward merged to `chrome-renderer-v1` (`bce7e33..caf8171`), and pushed with a normal `git push` (no force-push);
+    `origin/chrome-renderer-v1`, local trunk, and the Slice 166 branch all sit at `caf8171`. Final trunk status was clean
+    before the Slice 166 branch; **no docker compose config was run**; **Docker was not run**; the Slice 60 trace stash
+    remains parked and untouched; `local_operator_baselines/` stayed ignored/uncommitted; no private material was
+    committed.
+  - **Slice 166 (code) adds a pure Phase 0 local-operator run packet + closed result ingest layer** in
+    `pipeline/quality_safety_eval_harness.py` — the bridge from the synthetic-only harness to real, local-only operator
+    validation against private materials **without touching that material**. `build_phase0_operator_run_packet()` (alias
+    `get_phase0_operator_run_packet()`) returns a closed instruction contract (`kind=phase0_operator_run_packet`, golden
+    pair `{nn3, ensemble}`, four `required_local_runs`, four `required_closed_outputs`, a `forbidden_outputs` list,
+    `layer2_execution_mode=operator_local_only_not_in_production`, `persistence_policy=closed_summary_only`,
+    `numeric_strategy=recompute_first_not_manual_known_numbers`, frozen judge) naming no private path/filename/document/
+    command. `ingest_phase0_operator_closed_result(result)` accepts only closed summaries of a recognized kind
+    (`phase0_eval_harness_run`, `phase0_exit_check`, `phase0_reference_judge_summary`, `phase0_eval_regression_record`),
+    returns `ingest_status=ok|invalid|blocked`, and rejects any forbidden key (anywhere in the tree), private-path /
+    data-URI-or-encoded / secret / private-material / long-evidence-quote string, or `judge_ready`/`repair_ready`=true; the
+    `ok` sanitizer keeps only bounded numerics/booleans/short closed tokens and forces the frozen booleans false.
+    `build_phase0_exit_check_from_operator_results(results)` uses only `ok` results and **can never fake `ready`** — the
+    structural `fact_sheet_production_wiring_not_present` blocker cannot be cleared by a closed summary, so a full valid
+    synthetic set still returns `not_ready`; missing summaries surface honest closed blockers; a non-shippable **current**
+    candidate flips to `blocked` (the old-failure run is expected non-shippable and does not). No real operator run was
+    executed, no production job/API/frontend wiring changed, no provider/model/cloud/local-LLM/judge call, no file
+    discovery/reader, no repair, no manual operator `known_numbers` infrastructure, no CLI script. Production offline judge
+    stays frozen (`judge_ready=false`, `repair_ready=false`); the dev-time reference-anchored judge stays separate and is
+    not executed. Tests `test_quality_safety_eval_harness.py` **405/0**; full validation green.
+    **next_step=phase0_real_operator_run_execution_local_only_or_phase0_exit_gap_closure**. **Slice 166 is NOT committed.**
   - **Slice 165 (code) adds a pure, in-memory Phase 0 eval runner + exit-check skeleton** in
     `pipeline/quality_safety_eval_harness.py`. `run_phase0_eval_harness(candidate_text_by_lecture_id, golden_pair_specs, *,
     fact_sheet_by_lecture_id=None, reference_judge_summary_by_lecture_id=None, run_id="synthetic", model_tier="premium")`
@@ -36,8 +56,8 @@
     already-sanitized, fully-calibrated reference-judge summary is supplied. No producer/discovery/file reader, no
     provider/model/cloud/local-LLM/judge call, no production job/API/frontend wiring, no repair, no manual operator
     `known_numbers` infrastructure, no CLI script. The frozen production offline judge stays frozen
-    (`judge_ready=false`, `repair_ready=false`). Tests `test_quality_safety_eval_harness.py` **305/0**; full validation
-    green. **next_step=phase0_real_operator_run_plan_or_phase0_exit_gap_closure**. **Slice 165 is NOT committed.**
+    (`judge_ready=false`, `repair_ready=false`). Tests `test_quality_safety_eval_harness.py` **315/0**; full validation
+    green. **next_step=phase0_real_operator_run_plan_or_phase0_exit_gap_closure**. **Slice 165 committed as `caf8171`; merged and pushed.**
   - **Slice 164 (code) integrates the existing fact-sheet schema + recompute verifier into the Phase 0 eval path** in
     `pipeline/quality_safety_eval_harness.py` — committed as trunk `bce7e33`. New public helper:
     `build_phase0_fact_sheet_summary(fact_sheet, golden_spec)`, pure/caller-supplied in-memory only, returns closed

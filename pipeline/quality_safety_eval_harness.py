@@ -311,6 +311,118 @@ PHASE0_EXIT_NEXT_STEPS = frozenset(
     }
 )
 
+# --- Phase 0 local-operator run packet + closed result ingest (Slice 166) ---
+# These pure functions are the *bridge* from the synthetic-only harness to real,
+# local-only operator validation against private materials -- WITHOUT ever
+# touching that material. The run packet is a closed instruction/contract object
+# (no private paths, filenames, source/reference names, or shell commands). The
+# ingest layer accepts only closed operator summaries (counts/statuses/booleans/
+# bounded numerics) and rejects anything carrying raw candidate/source/reference/
+# guide/OCR/table/caption text, prompts/responses, provider payloads, paths,
+# filenames, hashes, byte counts, screenshots, base64/data URIs, secrets, or long
+# evidence quotes. Nothing here reads a file, discovers anything, or calls a
+# provider/model/judge, and the frozen production offline judge stays frozen by
+# construction (judge_ready/repair_ready are always False and cannot be flipped
+# true through this layer). This is NOT manual operator ``known_numbers``
+# infrastructure: numeric correctness stays recompute-first via the golden specs.
+PHASE0_OPERATOR_RUN_PACKET_KIND = "phase0_operator_run_packet"
+PHASE0_OPERATOR_INGEST_KIND = "phase0_operator_closed_result_ingest"
+PHASE0_OPERATOR_EXIT_CHECK_KIND = "phase0_operator_exit_check"
+PHASE0_OPERATOR_LAYER2_EXECUTION_MODE = "operator_local_only_not_in_production"
+PHASE0_OPERATOR_PERSISTENCE_POLICY = "closed_summary_only"
+# The four local runs the operator must perform by hand against private material.
+# Labels only -- no paths, no filenames, no commands.
+PHASE0_OPERATOR_REQUIRED_LOCAL_RUNS = (
+    "nn3_current_candidate",
+    "ensemble_current_candidate",
+    "ensemble_old_failure_candidate",
+    "reference_judge_calibration_run",
+)
+# The closed summary kinds the operator must record (and that the ingest accepts).
+# These reuse the real harness kinds (PHASE0_RUN_KIND / PHASE0_EXIT_CHECK_KIND /
+# PHASE0_REGRESSION_RECORD_KIND) plus an operator-facing reference-judge summary
+# token, so the packet and the ingest contract agree by construction.
+PHASE0_OPERATOR_REFERENCE_JUDGE_SUMMARY_KIND = "phase0_reference_judge_summary"
+PHASE0_OPERATOR_REQUIRED_CLOSED_OUTPUTS = (
+    PHASE0_RUN_KIND,
+    PHASE0_EXIT_CHECK_KIND,
+    PHASE0_OPERATOR_REFERENCE_JUDGE_SUMMARY_KIND,
+    PHASE0_REGRESSION_RECORD_KIND,
+)
+PHASE0_OPERATOR_RESULT_KINDS = frozenset(PHASE0_OPERATOR_REQUIRED_CLOSED_OUTPUTS)
+# Output *types* the operator must never record into a closed summary. Advisory,
+# human-facing list carried in the packet; the ingest enforces a superset of this
+# via PHASE0_OPERATOR_FORBIDDEN_KEYS and the string scanner below.
+PHASE0_OPERATOR_FORBIDDEN_OUTPUTS = (
+    "source_text",
+    "guide_text",
+    "reference_text",
+    "ocr_text",
+    "table_text",
+    "captions",
+    "raw_prompt",
+    "raw_response",
+    "provider_payload",
+    "filepath",
+    "filename",
+    "hash",
+    "byte_count",
+    "screenshot",
+)
+# Keys an ingested closed result may never carry (anywhere in the tree). This is
+# the regression-record forbidden set plus the operator-specific raw/private keys.
+PHASE0_OPERATOR_FORBIDDEN_KEYS = PHASE0_FORBIDDEN_RECORD_KEYS | frozenset(
+    {
+        "reference_text",
+        "raw_prompt",
+        "raw_response",
+        "provider_payload",
+        "filepath",
+        "screenshot",
+    }
+)
+PHASE0_OPERATOR_INGEST_STATUSES = frozenset({"ok", "invalid", "blocked"})
+# Closed blocker tokens the ingest may emit. ``invalid`` blockers are structural
+# (bad shape / unknown kind); ``blocked`` blockers name the kind of forbidden
+# material detected (never the material itself).
+PHASE0_OPERATOR_INGEST_BLOCKER_ORDER = (
+    "result_not_mapping",
+    "unknown_result_kind",
+    "forbidden_key_present",
+    "private_path_like_value",
+    "data_uri_or_encoded_value",
+    "secret_like_value",
+    "private_material_like_value",
+    "long_evidence_quote_value",
+    "judge_ready_must_stay_false",
+    "repair_ready_must_stay_false",
+)
+PHASE0_OPERATOR_INGEST_WARNING_ORDER = (
+    "non_closed_value_dropped",
+)
+# Satisfied tokens the operator-results exit-check may emit (closed vocabulary).
+PHASE0_OPERATOR_EXIT_SATISFIED_ORDER = (
+    "operator_results_validated_closed",
+    "operator_nn3_current_run_recorded",
+    "operator_ensemble_current_run_recorded",
+    "operator_ensemble_old_failure_run_recorded",
+    "operator_reference_judge_execution_recorded",
+    "operator_reference_judge_calibration_recorded",
+    "operator_regression_history_recorded",
+    "production_offline_judge_frozen",
+)
+# Bound for a "closed" numeric/string in an ingested summary. Strings longer than
+# this (or carrying more words than the evidence-quote bound) are treated as
+# possible evidence quotes and rejected.
+PHASE0_OPERATOR_CLOSED_TOKEN_MAX_CHARS = 64
+PHASE0_OPERATOR_EVIDENCE_QUOTE_MAX_WORDS = 12
+_PHASE0_OPERATOR_PATH_RE = re.compile(r"(/home/|/mnt/|/tmp/|[A-Za-z]:\\|\\\\|https?://)")
+_PHASE0_OPERATOR_SECRET_RE = re.compile(
+    r"(authorization|bearer|api[_-]?key|secret|access[_-]?token)", re.IGNORECASE
+)
+_PHASE0_OPERATOR_DATA_URI_RE = re.compile(r"(data:|base64)", re.IGNORECASE)
+_PHASE0_OPERATOR_CLOSED_TOKEN_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9 ._-]*$")
+
 
 class GoldenPairSpecError(ValueError):
     """Raised when a Phase 0 golden-pair spec is malformed or out of contract."""
@@ -1582,6 +1694,310 @@ def build_phase0_exit_check(run_record: Any) -> dict[str, Any]:
         "repair_ready": False,
         "next_step": next_step,
     }
+
+
+def build_phase0_operator_run_packet() -> dict[str, Any]:
+    """Return the closed Phase 0 local-operator run packet (pure, no I/O).
+
+    The packet tells a human operator *what* local runs to perform against their
+    own private materials, and *what* closed summaries to record back -- without
+    ever naming a private path, filename, source/reference document, or shell
+    command. It is a contract object only: it executes nothing, reads nothing, and
+    discovers nothing. The frozen production offline judge stays frozen
+    (``judge_ready``/``repair_ready`` always ``False``), Layer-2 stays an
+    operator-local dev-time activity (never production), and persistence is
+    closed-summary-only. Numeric correctness remains recompute-first via the
+    golden specs -- this is NOT a manual ``known_numbers`` packet.
+    """
+    return {
+        "version": VERSION,
+        "kind": PHASE0_OPERATOR_RUN_PACKET_KIND,
+        "phase": PHASE0_EXIT_PHASE,
+        "golden_pair_ids": list(REQUIRED_GOLDEN_PAIR_IDS),
+        "required_local_runs": list(PHASE0_OPERATOR_REQUIRED_LOCAL_RUNS),
+        "required_closed_outputs": list(PHASE0_OPERATOR_REQUIRED_CLOSED_OUTPUTS),
+        "forbidden_outputs": list(PHASE0_OPERATOR_FORBIDDEN_OUTPUTS),
+        "layer2_execution_mode": PHASE0_OPERATOR_LAYER2_EXECUTION_MODE,
+        "persistence_policy": PHASE0_OPERATOR_PERSISTENCE_POLICY,
+        "numeric_strategy": "recompute_first_not_manual_known_numbers",
+        "production_offline_judge_frozen": True,
+        "judge_ready": False,
+        "repair_ready": False,
+    }
+
+
+# Backwards/forwards-friendly alias for callers preferring a ``get_`` accessor.
+def get_phase0_operator_run_packet() -> dict[str, Any]:
+    """Alias of :func:`build_phase0_operator_run_packet` (returns a fresh dict)."""
+    return build_phase0_operator_run_packet()
+
+
+def ingest_phase0_operator_closed_result(result: Any) -> dict[str, Any]:
+    """Validate and sanitize one closed operator result summary (pure, no I/O).
+
+    Accepts only closed summaries of a recognized kind
+    (:data:`PHASE0_OPERATOR_RESULT_KINDS`). Returns a closed ingest record with
+    ``ingest_status`` in ``{ok, invalid, blocked}``:
+
+    * ``invalid`` -- structurally wrong (not a mapping, or unknown/missing kind).
+    * ``blocked`` -- recognized kind but carrying forbidden material: a forbidden
+      key anywhere in the tree, a value that looks like a private path, a
+      base64/data URI, a secret, other private material, a long evidence quote, or
+      an attempt to set ``judge_ready``/``repair_ready`` true.
+    * ``ok`` -- clean; a sanitized closed projection is returned.
+
+    The function never reads a file, never calls a provider/model/judge, never
+    echoes the offending material (only closed tokens naming *what kind* of
+    violation occurred), and never sets ``judge_ready``/``repair_ready`` true.
+    """
+    blockers: set[str] = set()
+    warnings: set[str] = set()
+
+    if not isinstance(result, dict):
+        return _operator_ingest_record("invalid", None, {"result_not_mapping"}, set())
+
+    kind = result.get("kind")
+    if not isinstance(kind, str) or kind not in PHASE0_OPERATOR_RESULT_KINDS:
+        return _operator_ingest_record("invalid", None, {"unknown_result_kind"}, set())
+
+    if _collect_operator_forbidden_keys(result):
+        blockers.add("forbidden_key_present")
+    _operator_scan_value(result, blockers)
+    if result.get("judge_ready") is True:
+        blockers.add("judge_ready_must_stay_false")
+    if result.get("repair_ready") is True:
+        blockers.add("repair_ready_must_stay_false")
+
+    if blockers:
+        return _operator_ingest_record("blocked", None, blockers, set())
+
+    sanitized = _operator_sanitize_closed_result(result, kind, warnings)
+    return _operator_ingest_record("ok", sanitized, set(), warnings)
+
+
+def build_phase0_exit_check_from_operator_results(results: Any) -> dict[str, Any]:
+    """Honest Phase 0 exit-check derived from validated closed operator results.
+
+    Ingests each supplied result with :func:`ingest_phase0_operator_closed_result`
+    and uses only the ones that validate ``ok``. It can never invent readiness:
+    the fact-sheet production-wiring blocker is structural and cannot be cleared by
+    a closed summary, so ``phase0_exit_status`` is never ``ready`` here. Missing
+    required closed summaries surface honest closed blockers (no real old Ensemble
+    run, no reference-judge execution/calibration, no regression history). The
+    frozen production offline judge stays frozen. Reads no file; echoes no private
+    material.
+    """
+    items = results if isinstance(results, list) else []
+
+    run_labels: set[str] = set()
+    have_reference_summary = False
+    reference_calibrated = False
+    have_regression = False
+    any_run_not_all_shippable = False
+    validated_count = 0
+
+    for raw in items:
+        ingest = ingest_phase0_operator_closed_result(raw)
+        if ingest.get("ingest_status") != "ok":
+            continue
+        validated_count += 1
+        kind = ingest.get("accepted_kind")
+        summary = ingest.get("sanitized_result") or {}
+        if kind == PHASE0_RUN_KIND:
+            label = summary.get("run_label")
+            if isinstance(label, str) and label in PHASE0_OPERATOR_REQUIRED_LOCAL_RUNS:
+                run_labels.add(label)
+            # The old-Ensemble-failure run is *expected* to be non-shippable (that
+            # is what makes it a useful recorded failure), so only a current
+            # candidate run reporting non-shippable is a genuine block.
+            if (
+                label in ("nn3_current_candidate", "ensemble_current_candidate")
+                and summary.get("all_shippable") is False
+            ):
+                any_run_not_all_shippable = True
+        elif kind == PHASE0_OPERATOR_REFERENCE_JUDGE_SUMMARY_KIND:
+            have_reference_summary = True
+            if summary.get("calibrated") is True or summary.get("reference_judge_status") == "ok":
+                reference_calibrated = True
+        elif kind == PHASE0_REGRESSION_RECORD_KIND:
+            have_regression = True
+
+    blockers: set[str] = set()
+    satisfied: set[str] = {"production_offline_judge_frozen"}
+    if validated_count:
+        satisfied.add("operator_results_validated_closed")
+
+    if "nn3_current_candidate" in run_labels:
+        satisfied.add("operator_nn3_current_run_recorded")
+    if "ensemble_current_candidate" in run_labels:
+        satisfied.add("operator_ensemble_current_run_recorded")
+    if "ensemble_old_failure_candidate" in run_labels:
+        satisfied.add("operator_ensemble_old_failure_run_recorded")
+    else:
+        blockers.add("real_old_ensemble_run_not_recorded")
+
+    if have_reference_summary:
+        satisfied.add("operator_reference_judge_execution_recorded")
+    else:
+        blockers.add("reference_judge_execution_not_run")
+
+    if reference_calibrated and "reference_judge_calibration_run" in run_labels:
+        satisfied.add("operator_reference_judge_calibration_recorded")
+    else:
+        blockers.add("reference_judge_calibration_not_recorded")
+
+    if have_regression:
+        satisfied.add("operator_regression_history_recorded")
+    else:
+        blockers.add("regression_history_not_established")
+
+    # The fact-sheet production-wiring blocker is structural: no closed operator
+    # summary can establish production wiring, so it always holds in Phase 0 and
+    # readiness can never be faked from operator results alone.
+    blockers.add("fact_sheet_production_wiring_not_present")
+
+    if any_run_not_all_shippable:
+        blockers.add("phase0_run_not_all_shippable")
+        status = "blocked"
+        next_step = "phase0_address_non_shippable_run"
+    elif blockers:
+        status = "not_ready"
+        next_step = "phase0_record_real_runs_and_judge_calibration"
+    else:  # pragma: no cover - unreachable while the structural blocker holds
+        status = "ready"
+        next_step = "phase0_record_real_runs_and_judge_calibration"
+
+    return {
+        "version": VERSION,
+        "kind": PHASE0_OPERATOR_EXIT_CHECK_KIND,
+        "phase": PHASE0_EXIT_PHASE,
+        "phase0_exit_status": status,
+        "golden_pair_ids": list(REQUIRED_GOLDEN_PAIR_IDS),
+        "validated_result_count": validated_count,
+        "blockers": _ordered(blockers, PHASE0_EXIT_BLOCKER_ORDER),
+        "satisfied": _ordered(satisfied, PHASE0_OPERATOR_EXIT_SATISFIED_ORDER),
+        "production_offline_judge_frozen": True,
+        "judge_ready": False,
+        "repair_ready": False,
+        "next_step": next_step,
+    }
+
+
+def _operator_ingest_record(
+    status: str,
+    sanitized: dict[str, Any] | None,
+    blockers: set[str],
+    warnings: set[str],
+) -> dict[str, Any]:
+    return {
+        "version": VERSION,
+        "kind": PHASE0_OPERATOR_INGEST_KIND,
+        "ingest_status": status,
+        "accepted_kind": (sanitized.get("kind") if isinstance(sanitized, dict) else None),
+        "golden_pair_ids": list(REQUIRED_GOLDEN_PAIR_IDS),
+        "blockers": _ordered(blockers, PHASE0_OPERATOR_INGEST_BLOCKER_ORDER),
+        "warnings": _ordered(warnings, PHASE0_OPERATOR_INGEST_WARNING_ORDER),
+        "sanitized_result": sanitized,
+        "production_offline_judge_frozen": True,
+        "judge_ready": False,
+        "repair_ready": False,
+    }
+
+
+def _collect_operator_forbidden_keys(node: Any) -> set[str]:
+    found: set[str] = set()
+    if isinstance(node, dict):
+        for key, value in node.items():
+            if isinstance(key, str) and key.lower() in PHASE0_OPERATOR_FORBIDDEN_KEYS:
+                found.add(key.lower())
+            found |= _collect_operator_forbidden_keys(value)
+    elif isinstance(node, (list, tuple)):
+        for item in node:
+            found |= _collect_operator_forbidden_keys(item)
+    return found
+
+
+def _operator_scan_value(node: Any, blockers: set[str]) -> None:
+    if isinstance(node, str):
+        if _PHASE0_OPERATOR_PATH_RE.search(node):
+            blockers.add("private_path_like_value")
+        if _PHASE0_OPERATOR_DATA_URI_RE.search(node):
+            blockers.add("data_uri_or_encoded_value")
+        if _PHASE0_OPERATOR_SECRET_RE.search(node):
+            blockers.add("secret_like_value")
+        if _SECRETISH_RE.search(node):
+            blockers.add("private_material_like_value")
+        if _operator_looks_like_evidence_quote(node):
+            blockers.add("long_evidence_quote_value")
+    elif isinstance(node, dict):
+        for value in node.values():
+            _operator_scan_value(value, blockers)
+    elif isinstance(node, (list, tuple)):
+        for item in node:
+            _operator_scan_value(item, blockers)
+
+
+def _operator_looks_like_evidence_quote(value: str) -> bool:
+    if len(value) > PHASE0_OPERATOR_CLOSED_TOKEN_MAX_CHARS:
+        return True
+    return len(value.split()) > PHASE0_OPERATOR_EVIDENCE_QUOTE_MAX_WORDS
+
+
+def _operator_is_closed_token(value: str) -> bool:
+    if not value or len(value) > PHASE0_OPERATOR_CLOSED_TOKEN_MAX_CHARS:
+        return False
+    if not _PHASE0_OPERATOR_CLOSED_TOKEN_RE.match(value):
+        return False
+    if _SECRETISH_RE.search(value) or _PHASE0_OPERATOR_PATH_RE.search(value):
+        return False
+    return not _operator_looks_like_evidence_quote(value)
+
+
+def _operator_sanitize_node(node: Any, warnings: set[str]) -> Any:
+    if isinstance(node, bool):
+        return node
+    if isinstance(node, int):
+        if abs(node) <= 1_000_000_000:
+            return node
+        warnings.add("non_closed_value_dropped")
+        return None
+    if isinstance(node, float):
+        if math.isfinite(node) and abs(node) <= 1_000_000_000.0:
+            return round(node, 6)
+        warnings.add("non_closed_value_dropped")
+        return None
+    if node is None:
+        return None
+    if isinstance(node, str):
+        if _operator_is_closed_token(node):
+            return node
+        warnings.add("non_closed_value_dropped")
+        return None
+    if isinstance(node, dict):
+        out: dict[str, Any] = {}
+        for key, value in node.items():
+            if not isinstance(key, str) or key.lower() in PHASE0_OPERATOR_FORBIDDEN_KEYS:
+                warnings.add("non_closed_value_dropped")
+                continue
+            out[key] = _operator_sanitize_node(value, warnings)
+        return out
+    if isinstance(node, (list, tuple)):
+        return [_operator_sanitize_node(item, warnings) for item in node]
+    warnings.add("non_closed_value_dropped")
+    return None
+
+
+def _operator_sanitize_closed_result(
+    result: dict[str, Any], kind: str, warnings: set[str]
+) -> dict[str, Any]:
+    sanitized = _operator_sanitize_node(result, warnings)
+    if not isinstance(sanitized, dict):
+        sanitized = {}
+    sanitized["kind"] = kind
+    sanitized["judge_ready"] = False
+    sanitized["repair_ready"] = False
+    sanitized["production_offline_judge_frozen"] = True
+    return sanitized
 
 
 def _phase0_checks_by_id(layer1_record: Any) -> dict[str, dict[str, Any]]:

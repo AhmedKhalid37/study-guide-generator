@@ -6833,3 +6833,28 @@ non-shippable run is surfaced as `blocked`, a missing run as `phase0_required_ru
 runs alone. The frozen production offline judge stays frozen by construction (`judge_ready`/`repair_ready`
 always `false` with no override), this is not manual operator `known_numbers` infrastructure, and no
 repair/production/judge-execution wiring is added.
+
+## Phase 0 operator validation is recorded as closed summaries only (Slice 166)
+Phase 0 operator validation may only be recorded as closed summaries. Raw
+source/reference/candidate guide text, prompts/responses, paths, filenames,
+hashes, byte counts, screenshots, artifacts, and provider payloads are explicitly
+rejected by `ingest_phase0_operator_closed_result` (forbidden keys anywhere in the
+tree, private-path/data-URI-or-encoded/secret/private-material/long-evidence-quote
+string values, and any attempt to set `judge_ready`/`repair_ready` true). The local
+run packet (`build_phase0_operator_run_packet`) is a closed instruction contract
+only — it names no private path, filename, source/reference document, or shell
+command, executes nothing, reads nothing, and discovers nothing.
+
+**Why:** this slice is the bridge from the synthetic-only harness to real,
+local-only operator validation against private materials **without ever leaking
+that material**. It remains local/dev-time validation and does **not** unfreeze
+production judge readiness: `build_phase0_exit_check_from_operator_results` can
+never fake `ready` because the structural `fact_sheet_production_wiring_not_present`
+blocker cannot be cleared by a closed summary, so a full, valid synthetic result
+set still returns `not_ready`. The frozen production offline judge stays frozen by
+construction (`judge_ready`/`repair_ready` always `false`), the dev-time
+reference-anchored eval judge stays separate and is not executed by this layer,
+`overall_10` stays Layer-1 deterministic-only, and numeric truth stays
+recompute-first via the golden specs — this is **not** manual operator
+`known_numbers` infrastructure. No production job/API/frontend wiring, no repair,
+and no real operator run were added.

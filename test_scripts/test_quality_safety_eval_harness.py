@@ -22,15 +22,30 @@ sys.path.insert(0, str(REPO))
 from pipeline.quality_safety_eval_harness import (  # noqa: E402
     PHASE0_EXIT_BLOCKER_ORDER,
     PHASE0_EXIT_SATISFIED_ORDER,
+    PHASE0_EXIT_CHECK_KIND,
+    PHASE0_OPERATOR_EXIT_SATISFIED_ORDER,
+    PHASE0_OPERATOR_FORBIDDEN_OUTPUTS,
+    PHASE0_OPERATOR_INGEST_BLOCKER_ORDER,
+    PHASE0_OPERATOR_REFERENCE_JUDGE_SUMMARY_KIND,
+    PHASE0_OPERATOR_REQUIRED_CLOSED_OUTPUTS,
+    PHASE0_OPERATOR_REQUIRED_LOCAL_RUNS,
+    PHASE0_OPERATOR_RESULT_KINDS,
+    PHASE0_OPERATOR_RUN_PACKET_KIND,
+    PHASE0_REGRESSION_RECORD_KIND,
+    PHASE0_RUN_KIND,
     GoldenPairSpecError,
     append_phase0_regression_record_jsonl,
     build_phase0_exit_check,
+    build_phase0_exit_check_from_operator_results,
     build_phase0_fact_sheet_summary,
+    build_phase0_operator_run_packet,
     build_phase0_regression_record,
     build_phase0_report_skeleton,
     build_quality_safety_regression_record,
     compare_phase0_regression,
     compute_phase0_overall_10,
+    get_phase0_operator_run_packet,
+    ingest_phase0_operator_closed_result,
     load_golden_pair_spec,
     load_golden_pair_specs,
     load_quality_safety_fixture_spec,
@@ -2514,6 +2529,435 @@ def test_phase0_runner_and_exit_check_no_leak_sweep() -> None:
     no_canary("phase0 exit-check sweep", exit_check)
 
 
+# --- Slice 166: local-operator run packet + closed result ingest ------------
+
+
+def synthetic_operator_run_summary(
+    *,
+    run_label: str,
+    all_shippable: bool = True,
+    extra: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    """A tiny synthetic closed operator run summary (no real material)."""
+    summary: dict[str, Any] = {
+        "kind": PHASE0_RUN_KIND,
+        "run_label": run_label,
+        "all_shippable": all_shippable,
+        "shippable_count": 2 if all_shippable else 1,
+        "non_shippable_count": 0 if all_shippable else 1,
+        "overall_score_kind": "layer1_deterministic_only",
+    }
+    if extra:
+        summary.update(extra)
+    return summary
+
+
+def synthetic_operator_reference_summary() -> dict[str, Any]:
+    return {
+        "kind": PHASE0_OPERATOR_REFERENCE_JUDGE_SUMMARY_KIND,
+        "reference_judge_status": "ok",
+        "calibrated": True,
+        "calibration_status": "ok",
+    }
+
+
+def synthetic_operator_full_results() -> list[dict[str, Any]]:
+    return [
+        synthetic_operator_run_summary(run_label="nn3_current_candidate"),
+        synthetic_operator_run_summary(run_label="ensemble_current_candidate"),
+        synthetic_operator_run_summary(
+            run_label="ensemble_old_failure_candidate", all_shippable=False
+        ),
+        synthetic_operator_run_summary(run_label="reference_judge_calibration_run"),
+        synthetic_operator_reference_summary(),
+        {"kind": PHASE0_REGRESSION_RECORD_KIND, "lecture_id": "nn3"},
+    ]
+
+
+def test_phase0_operator_run_packet_is_closed_and_exact() -> None:
+    packet = build_phase0_operator_run_packet()
+    check(
+        "operator run packet kind",
+        packet["kind"] == "phase0_operator_run_packet"
+        and packet["kind"] == PHASE0_OPERATOR_RUN_PACKET_KIND,
+        str(packet["kind"]),
+    )
+    check(
+        "operator run packet golden pair is exactly nn3 and ensemble",
+        packet["golden_pair_ids"] == ["nn3", "ensemble"],
+        str(packet["golden_pair_ids"]),
+    )
+    check(
+        "operator run packet required local runs",
+        packet["required_local_runs"] == list(PHASE0_OPERATOR_REQUIRED_LOCAL_RUNS)
+        and "ensemble_old_failure_candidate" in packet["required_local_runs"]
+        and "reference_judge_calibration_run" in packet["required_local_runs"],
+        str(packet["required_local_runs"]),
+    )
+    check(
+        "operator run packet required closed outputs",
+        packet["required_closed_outputs"] == list(PHASE0_OPERATOR_REQUIRED_CLOSED_OUTPUTS),
+        str(packet["required_closed_outputs"]),
+    )
+    check(
+        "operator run packet forbidden outputs listed",
+        set(("source_text", "guide_text", "reference_text", "raw_prompt", "raw_response",
+             "provider_payload", "filepath", "filename", "hash", "byte_count", "screenshot"))
+        .issubset(set(packet["forbidden_outputs"]))
+        and set(packet["forbidden_outputs"]) == set(PHASE0_OPERATOR_FORBIDDEN_OUTPUTS),
+        str(packet["forbidden_outputs"]),
+    )
+    check(
+        "operator run packet judge frozen + closed-summary only",
+        packet["production_offline_judge_frozen"] is True
+        and packet["judge_ready"] is False
+        and packet["repair_ready"] is False
+        and packet["layer2_execution_mode"] == "operator_local_only_not_in_production"
+        and packet["persistence_policy"] == "closed_summary_only",
+        str(packet),
+    )
+    check(
+        "operator run packet numeric strategy is recompute-first not known_numbers",
+        packet["numeric_strategy"] == "recompute_first_not_manual_known_numbers",
+        str(packet["numeric_strategy"]),
+    )
+    # The packet alias returns an equal, fresh object.
+    alias = get_phase0_operator_run_packet()
+    check("operator run packet alias equal and fresh", alias == packet and alias is not packet)
+
+
+def test_phase0_operator_run_packet_has_no_private_material() -> None:
+    packet = build_phase0_operator_run_packet()
+    no_canary("operator run packet", packet)
+    blob = json.dumps(packet, sort_keys=True)
+    # No private paths, file extensions, shell-ish path templates, hashes, byte
+    # counts, or source/reference document names.
+    for pattern in (
+        re.compile(r"/home/|/mnt/|/tmp/"),
+        re.compile(r"\.pdf|\.docx|\.zip|\.png|\.jpg", re.IGNORECASE),
+        re.compile(r"[a-f0-9]{32,}"),
+        re.compile(r"[0-9]{7,}\s*bytes"),
+        re.compile(r"https?://"),
+    ):
+        check(
+            f"operator run packet has no private material ({pattern.pattern})",
+            not pattern.search(blob),
+            pattern.pattern,
+        )
+
+
+def test_phase0_operator_ingest_accepts_valid_closed_summaries() -> None:
+    run_ingest = ingest_phase0_operator_closed_result(
+        synthetic_operator_run_summary(run_label="nn3_current_candidate")
+    )
+    check(
+        "ingest accepts valid run summary",
+        run_ingest["ingest_status"] == "ok"
+        and run_ingest["accepted_kind"] == PHASE0_RUN_KIND,
+        str(run_ingest),
+    )
+    exit_ingest = ingest_phase0_operator_closed_result(
+        {"kind": PHASE0_EXIT_CHECK_KIND, "phase0_exit_status": "not_ready", "blocker_count": 5}
+    )
+    check(
+        "ingest accepts valid exit-check summary",
+        exit_ingest["ingest_status"] == "ok"
+        and exit_ingest["accepted_kind"] == PHASE0_EXIT_CHECK_KIND,
+        str(exit_ingest),
+    )
+    ref_ingest = ingest_phase0_operator_closed_result(synthetic_operator_reference_summary())
+    check(
+        "ingest accepts valid reference judge summary",
+        ref_ingest["ingest_status"] == "ok"
+        and ref_ingest["accepted_kind"] == PHASE0_OPERATOR_REFERENCE_JUDGE_SUMMARY_KIND,
+        str(ref_ingest),
+    )
+    reg_ingest = ingest_phase0_operator_closed_result(
+        {"kind": PHASE0_REGRESSION_RECORD_KIND, "lecture_id": "ensemble", "overall_10": 9.7}
+    )
+    check(
+        "ingest accepts valid regression record summary",
+        reg_ingest["ingest_status"] == "ok"
+        and reg_ingest["accepted_kind"] == PHASE0_REGRESSION_RECORD_KIND,
+        str(reg_ingest),
+    )
+    # Sanitized result is closed and always carries frozen booleans.
+    for ingest in (run_ingest, exit_ingest, ref_ingest, reg_ingest):
+        sanitized = ingest["sanitized_result"]
+        check(
+            "ingest sanitized result keeps judge frozen",
+            sanitized["judge_ready"] is False
+            and sanitized["repair_ready"] is False
+            and sanitized["production_offline_judge_frozen"] is True,
+            str(sanitized),
+        )
+        check(
+            "ingest record keeps judge frozen",
+            ingest["judge_ready"] is False and ingest["repair_ready"] is False,
+        )
+
+
+def test_phase0_operator_ingest_rejects_forbidden_keys() -> None:
+    forbidden_payloads = {
+        "source_text": {"kind": PHASE0_RUN_KIND, "source_text": "x"},
+        "guide_text": {"kind": PHASE0_RUN_KIND, "guide_text": "x"},
+        "reference_text": {"kind": PHASE0_RUN_KIND, "reference_text": "x"},
+        "raw_prompt": {"kind": PHASE0_RUN_KIND, "raw_prompt": "x"},
+        "raw_response": {"kind": PHASE0_RUN_KIND, "raw_response": "x"},
+        "provider_payload": {"kind": PHASE0_RUN_KIND, "provider_payload": "x"},
+        "path": {"kind": PHASE0_RUN_KIND, "path": "x"},
+        "filename": {"kind": PHASE0_RUN_KIND, "filename": "x"},
+        "hash": {"kind": PHASE0_RUN_KIND, "hash": "x"},
+        "byte_count": {"kind": PHASE0_RUN_KIND, "byte_count": 5},
+        "screenshot": {"kind": PHASE0_RUN_KIND, "screenshot": "x"},
+        # Nested forbidden key must also be caught.
+        "nested_guide_text": {"kind": PHASE0_RUN_KIND, "inner": {"guide_text": "x"}},
+    }
+    for name, payload in forbidden_payloads.items():
+        ingest = ingest_phase0_operator_closed_result(payload)
+        check(
+            f"ingest rejects forbidden key ({name})",
+            ingest["ingest_status"] == "blocked"
+            and "forbidden_key_present" in ingest["blockers"]
+            and ingest["sanitized_result"] is None,
+            str(ingest),
+        )
+        no_canary(f"ingest forbidden {name}", ingest)
+
+
+def test_phase0_operator_ingest_rejects_private_strings() -> None:
+    cases = {
+        "/home/private/source.txt": "private_path_like_value",
+        "/mnt/data/reference": "private_path_like_value",
+        "data:image/png;base64,AAAA": "data_uri_or_encoded_value",
+        "this is base64 encoded": "data_uri_or_encoded_value",
+        "Authorization: Bearer xyz": "secret_like_value",
+        "api_key=zzz": "secret_like_value",
+        "the secret value here": "secret_like_value",
+    }
+    for value, expected_token in cases.items():
+        ingest = ingest_phase0_operator_closed_result(
+            {"kind": PHASE0_EXIT_CHECK_KIND, "note": value}
+        )
+        check(
+            f"ingest rejects private-looking string ({expected_token})",
+            ingest["ingest_status"] == "blocked"
+            and expected_token in ingest["blockers"]
+            and ingest["sanitized_result"] is None,
+            str(ingest),
+        )
+        no_canary(f"ingest private string {expected_token}", ingest)
+    # A long evidence quote is rejected even without paths/secrets.
+    long_quote = "the model explained the gradient step in great careful pedagogical detail here"
+    quote_ingest = ingest_phase0_operator_closed_result(
+        {"kind": PHASE0_REGRESSION_RECORD_KIND, "note": long_quote}
+    )
+    check(
+        "ingest rejects long evidence quote",
+        quote_ingest["ingest_status"] == "blocked"
+        and "long_evidence_quote_value" in quote_ingest["blockers"],
+        str(quote_ingest),
+    )
+
+
+def test_phase0_operator_ingest_never_allows_judge_or_repair_ready() -> None:
+    for flag in ("judge_ready", "repair_ready"):
+        ingest = ingest_phase0_operator_closed_result(
+            {"kind": PHASE0_RUN_KIND, flag: True}
+        )
+        check(
+            f"ingest blocks {flag}=true",
+            ingest["ingest_status"] == "blocked"
+            and f"{flag}_must_stay_false" in ingest["blockers"]
+            and ingest["judge_ready"] is False
+            and ingest["repair_ready"] is False,
+            str(ingest),
+        )
+    # Even on an otherwise-clean ok result, the sanitized projection forces both
+    # frozen booleans to False (they can never be carried through as True).
+    ok = ingest_phase0_operator_closed_result(
+        synthetic_operator_run_summary(run_label="nn3_current_candidate")
+    )
+    check(
+        "ingest sanitized never carries judge/repair ready true",
+        ok["sanitized_result"]["judge_ready"] is False
+        and ok["sanitized_result"]["repair_ready"] is False,
+        str(ok["sanitized_result"]),
+    )
+
+
+def test_phase0_operator_ingest_invalid_shapes() -> None:
+    not_mapping = ingest_phase0_operator_closed_result(["not", "a", "mapping"])
+    check(
+        "ingest marks non-mapping invalid",
+        not_mapping["ingest_status"] == "invalid"
+        and "result_not_mapping" in not_mapping["blockers"],
+        str(not_mapping),
+    )
+    unknown = ingest_phase0_operator_closed_result({"kind": "phase0_unknown_kind"})
+    check(
+        "ingest marks unknown kind invalid",
+        unknown["ingest_status"] == "invalid"
+        and "unknown_result_kind" in unknown["blockers"]
+        and unknown["accepted_kind"] is None,
+        str(unknown),
+    )
+    check(
+        "ingest result kinds are exactly the four operator closed outputs",
+        PHASE0_OPERATOR_RESULT_KINDS == set(PHASE0_OPERATOR_REQUIRED_CLOSED_OUTPUTS),
+        str(PHASE0_OPERATOR_RESULT_KINDS),
+    )
+    check(
+        "ingest blocker tokens are closed snake_case",
+        all(re.match(r"^[a-z0-9_]+$", t) for t in PHASE0_OPERATOR_INGEST_BLOCKER_ORDER),
+        str(PHASE0_OPERATOR_INGEST_BLOCKER_ORDER),
+    )
+
+
+def test_phase0_operator_exit_check_not_ready_when_summaries_missing() -> None:
+    empty = build_phase0_exit_check_from_operator_results([])
+    check(
+        "operator exit-check empty is not_ready",
+        empty["phase0_exit_status"] == "not_ready",
+        str(empty["phase0_exit_status"]),
+    )
+    check(
+        "operator exit-check empty lists missing-summary blockers",
+        {
+            "real_old_ensemble_run_not_recorded",
+            "reference_judge_execution_not_run",
+            "reference_judge_calibration_not_recorded",
+            "fact_sheet_production_wiring_not_present",
+            "regression_history_not_established",
+        }.issubset(set(empty["blockers"])),
+        str(empty["blockers"]),
+    )
+    # Blockers are a closed subset of the shared exit-check blocker vocabulary.
+    check(
+        "operator exit-check blockers closed tokens only",
+        set(empty["blockers"]).issubset(set(PHASE0_EXIT_BLOCKER_ORDER)),
+        str(empty["blockers"]),
+    )
+    check(
+        "operator exit-check judge frozen",
+        empty["production_offline_judge_frozen"] is True
+        and empty["judge_ready"] is False
+        and empty["repair_ready"] is False,
+    )
+
+
+def test_phase0_operator_exit_check_never_ready_even_when_full() -> None:
+    # Even with all required closed summaries present and valid, readiness can
+    # never be faked: the fact-sheet production-wiring blocker is structural.
+    exit_check = build_phase0_exit_check_from_operator_results(synthetic_operator_full_results())
+    check(
+        "operator exit-check full set is not ready",
+        exit_check["phase0_exit_status"] != "ready",
+        str(exit_check["phase0_exit_status"]),
+    )
+    check(
+        "operator exit-check full set still blocks on fact-sheet wiring",
+        exit_check["blockers"] == ["fact_sheet_production_wiring_not_present"],
+        str(exit_check["blockers"]),
+    )
+    check(
+        "operator exit-check satisfied lists recorded runs",
+        {
+            "operator_results_validated_closed",
+            "operator_nn3_current_run_recorded",
+            "operator_ensemble_current_run_recorded",
+            "operator_ensemble_old_failure_run_recorded",
+            "operator_reference_judge_execution_recorded",
+            "operator_reference_judge_calibration_recorded",
+            "operator_regression_history_recorded",
+            "production_offline_judge_frozen",
+        }.issubset(set(exit_check["satisfied"])),
+        str(exit_check["satisfied"]),
+    )
+    check(
+        "operator exit-check satisfied closed vocab only",
+        set(exit_check["satisfied"]).issubset(set(PHASE0_OPERATOR_EXIT_SATISFIED_ORDER)),
+        str(exit_check["satisfied"]),
+    )
+    check("operator exit-check validated count", exit_check["validated_result_count"] == 6)
+
+
+def test_phase0_operator_exit_check_blocks_on_failing_current_candidate() -> None:
+    results = [
+        synthetic_operator_run_summary(run_label="nn3_current_candidate"),
+        synthetic_operator_run_summary(
+            run_label="ensemble_current_candidate", all_shippable=False
+        ),
+    ]
+    exit_check = build_phase0_exit_check_from_operator_results(results)
+    check(
+        "operator exit-check blocked on failing current candidate",
+        exit_check["phase0_exit_status"] == "blocked"
+        and "phase0_run_not_all_shippable" in exit_check["blockers"],
+        str(exit_check),
+    )
+
+
+def test_phase0_operator_exit_check_drops_invalid_results() -> None:
+    # Invalid/blocked results never count toward readiness.
+    mixed = [
+        {"kind": "phase0_unknown_kind"},
+        {"kind": PHASE0_RUN_KIND, "guide_text": "leak"},
+        synthetic_operator_run_summary(run_label="nn3_current_candidate"),
+    ]
+    exit_check = build_phase0_exit_check_from_operator_results(mixed)
+    check(
+        "operator exit-check counts only validated ok results",
+        exit_check["validated_result_count"] == 1,
+        str(exit_check["validated_result_count"]),
+    )
+    check(
+        "operator exit-check still not_ready with one valid result",
+        exit_check["phase0_exit_status"] == "not_ready",
+        str(exit_check["phase0_exit_status"]),
+    )
+
+
+def test_phase0_operator_layer_no_leak_and_not_known_numbers() -> None:
+    # Reference-anchored dev-time judge stays separate from this ingest layer and
+    # is never executed here: feeding a reference summary only records a closed,
+    # frozen status; it computes no axis blend and flips no judge gate.
+    packet = build_phase0_operator_run_packet()
+    no_canary("operator packet sweep", packet)
+    hostile = {
+        "kind": PHASE0_RUN_KIND,
+        "run_label": "nn3_current_candidate",
+        "note": HOSTILE_PATH,
+        "guide_text": HOSTILE_OCR,
+        "payload": HOSTILE_PROVIDER,
+    }
+    ingest = ingest_phase0_operator_closed_result(hostile)
+    check(
+        "operator ingest blocks hostile candidate",
+        ingest["ingest_status"] == "blocked",
+        str(ingest["ingest_status"]),
+    )
+    no_canary("operator ingest hostile sweep", ingest)
+    exit_check = build_phase0_exit_check_from_operator_results([hostile])
+    no_canary("operator exit-check hostile sweep", exit_check)
+    # Recompute-first numeric strategy, not manual operator known_numbers: the
+    # packet declares the strategy and the ingest carries no per-numeric "known"
+    # answer fields (it accepts only closed counts/statuses).
+    check(
+        "operator layer keeps numeric strategy recompute-first",
+        packet["numeric_strategy"] == "recompute_first_not_manual_known_numbers",
+        str(packet["numeric_strategy"]),
+    )
+    ok = ingest_phase0_operator_closed_result(
+        synthetic_operator_run_summary(run_label="nn3_current_candidate")
+    )
+    check(
+        "operator ingest carries no manual known_numbers field",
+        "known_numbers" not in json.dumps(ok["sanitized_result"], sort_keys=True),
+        str(ok["sanitized_result"]),
+    )
+
+
 def test_import_hygiene() -> None:
     source_path = REPO / "pipeline" / "quality_safety_eval_harness.py"
     tree = ast.parse(source_path.read_text(encoding="utf-8"))
@@ -2632,6 +3076,18 @@ def run() -> int:
     test_phase0_exit_check_vocabularies_are_closed_and_well_formed()
     test_phase0_exit_check_flags_non_shippable_run()
     test_phase0_runner_and_exit_check_no_leak_sweep()
+    test_phase0_operator_run_packet_is_closed_and_exact()
+    test_phase0_operator_run_packet_has_no_private_material()
+    test_phase0_operator_ingest_accepts_valid_closed_summaries()
+    test_phase0_operator_ingest_rejects_forbidden_keys()
+    test_phase0_operator_ingest_rejects_private_strings()
+    test_phase0_operator_ingest_never_allows_judge_or_repair_ready()
+    test_phase0_operator_ingest_invalid_shapes()
+    test_phase0_operator_exit_check_not_ready_when_summaries_missing()
+    test_phase0_operator_exit_check_never_ready_even_when_full()
+    test_phase0_operator_exit_check_blocks_on_failing_current_candidate()
+    test_phase0_operator_exit_check_drops_invalid_results()
+    test_phase0_operator_layer_no_leak_and_not_known_numbers()
     test_import_hygiene()
     print(f"\nquality_safety_eval_harness: {PASS} passed, {FAIL} failed")
     return 1 if FAIL else 0
