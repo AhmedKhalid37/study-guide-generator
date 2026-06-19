@@ -81,11 +81,20 @@ _KNOWN_DEPTHS = frozenset({"", "quick", "balanced", "exhaustive", "auto"})
 _CORE_RULES: tuple[str, ...] = (
     "Resolve all ambiguity silently. The guide must read as settled fact and show "
     "only conclusions, never the reasoning used to reach them.",
-    "Never leak reasoning or uncertainty. Do not write self-questions in "
-    "explanatory prose, hedges, or words like \"Actually\", \"it seems\", "
-    "\"I think\", \"let's infer\", \"confusing\", \"unclear\", \"I'm not sure\", "
-    "\"presumably\", or \"the slide is\". If a source is ambiguous, choose the most "
-    "defensible reading and state it plainly.",
+    "Never expose model deliberation. Resolve every question before writing, then "
+    "emit only the settled answer; the finished guide must not reveal first-person "
+    "reasoning, self-correction, unresolved source confusion, or numeric "
+    "uncertainty. Prohibited in the final guide: \"I think\", \"I'm not sure\", "
+    "\"Wait\", \"Actually\" used as a self-correction, \"unclear\", \"we'll "
+    "trust\", \"let's infer\", \"the slide is confusing\", \"the table is "
+    "confusing\", \"if this is wrong\", an unresolved numeric form such as "
+    "\"= ?\" or \"≈ ?\", and two or more competing candidate values for the same "
+    "labelled quantity left unresolved. Ordinary teaching language stays allowed: "
+    "\"You need to normalize the weights.\", \"This will likely appear on the "
+    "exam.\", and \"This probably matters because...\" set exam priority rather "
+    "than expose source uncertainty, and are fine. If a fact is genuinely missing "
+    "or unsupported, write the closed statement \"Not specified in the provided "
+    "material.\" — do not speculate and do not show the reasoning process.",
     "Output only the finished study guide. The guide must contain only "
     "student-facing study content — never internal reasoning, hidden analysis, "
     "analysis of the prompt or instructions, commentary on what the prompt or user "
@@ -109,6 +118,13 @@ _CORE_RULES: tuple[str, ...] = (
     "Reuse every value consistently. A weight, proximity, hyperparameter, or "
     "intermediate result must not appear with two different values anywhere in the "
     "guide.",
+    "Preserve every numeric example and target. Reproduce each numeric value, "
+    "dataset figure, and worked result the source provides; never omit a worked "
+    "numeric example or replace it with vague prose. When a result is derived, show "
+    "the calculation path and state the final committed value clearly, with no "
+    "unresolved placeholders and no speculative alternative values. If a number "
+    "cannot be verified from the provided material, mark it \"Not verified from "
+    "provided material.\" rather than inventing one.",
     "Define every term before it is used. Give the source wording where wording "
     "matters, plus a plain-English restatement.",
     "After every formula, add a one-line plain-English translation of what it says.",
@@ -147,7 +163,9 @@ _STRUCTURE_RULES: tuple[str, ...] = (
     "Common Mistakes That Lose Marks.",
     "Consolidation / pipeline section for process topics: an end-to-end flow plus a "
     "decision table.",
-    "Mock Exam: multiple questions, each with a full step-by-step worked solution.",
+    "Mock Exam: at least 8 meaningful practice questions, each with a full "
+    "step-by-step worked solution and a short answer key, together spanning numeric "
+    "examples, conceptual definitions, and comparison/application points.",
     "Last-Minute Cram Sheet: the densest high-yield recap.",
     "Self-Test Checklist using \"Can I...?\" items.",
 )

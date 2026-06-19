@@ -112,7 +112,7 @@ def _scan_for_leak(node: Any, path: str = "") -> str | None:
 # Distilled core directives that MUST be present (checked by stable phrases).
 CORE_MARKERS = [
     "Resolve all ambiguity silently",
-    "Never leak reasoning",
+    "Never expose model deliberation",
     "Output only the finished study guide",
     "Never fabricate math",
     "Finish every worked example",
@@ -231,6 +231,112 @@ def test_line_initial_discourse_marker_clause() -> None:
         )
 
 
+def test_phase0_blocker_directives() -> None:
+    # Slice 168 (narrowed after supervisor review): the first real Phase 0 Layer-1
+    # run was produced, but only one of its signals is TRUSTED as a product defect —
+    # visible deliberation / structural uncertainty in the final guide text. The
+    # numeric_correctness 0/n and the Ensemble mock_question_count=0 are NOT trusted
+    # as product absence (the generated Ensemble guide actually contains worked
+    # numeric examples and a full Mock Exam), so those zeros are scorer/matcher
+    # artifacts pending sanity work and must not drive a broad product change.
+    #
+    # The fix is therefore a narrow generation-side final-answer-discipline rule. The
+    # always-applied core contract must (1) tell the model to resolve every question
+    # before writing and emit only the settled answer, (2) prohibit the concrete
+    # self-correction / source-confusion / numeric-uncertainty leak forms, (3) offer
+    # the closed "missing fact" fallback instead of speculation, and crucially
+    # (4) NOT flat-ban ordinary instructional language. All synthetic/generic — no
+    # private NN3/Ensemble source content, numbers, or filenames appear here.
+    RESOLVE_TERMS = [
+        "Resolve every question before writing",
+        "emit only the settled answer",
+        "must not reveal first-person",
+    ]
+    # Concrete deliberation / source-confusion / numeric-uncertainty forms that the
+    # final-answer rule must prohibit (synthetic generic examples only).
+    PROHIBITED_EXAMPLES = [
+        '"Wait"',
+        '"Actually" used as a self-correction',
+        '"unclear"',
+        '"we\'ll trust"',
+        '"let\'s infer"',
+        '"the table is confusing"',
+        '"= ?"',
+        '"≈ ?"',
+    ]
+    FALLBACK = "Not specified in the provided material."
+    # Ordinary teaching language the rule must explicitly ALLOW (whitelisted, not
+    # banned) — these set exam priority, they are not source uncertainty.
+    ALLOWED_TEACHING = [
+        "You need to normalize the weights.",
+        "This will likely appear on the exam.",
+        "This probably matters because",
+    ]
+    # Broad bare-substring bans that the narrowed rule must NOT reintroduce: normal
+    # instructional words must never be banned as standalone quoted denylist forms.
+    NOT_FLAT_BANNED = [
+        '"maybe"', '"probably"', '"likely"', '"we need to"', '"this might be"',
+        '"the material doesn\'t say"', '"I will"', '"I should"',
+    ]
+    # Numeric preservation is RETAINED but reframed as general final-answer
+    # discipline (carry/commit a value, mark the unverifiable) — never as proof the
+    # current 0/n measurement shows the guide lacks all numerics, and never with a
+    # hardcoded private NN3/Ensemble value.
+    NUMERIC_TERMS = [
+        "Preserve every numeric example and target",
+        "never omit a worked numeric example",
+        "final committed value",
+        "Not verified from provided material.",
+    ]
+    # All of the above are CORE rules → present at every depth, including a minimal
+    # quick request, so no style/preset can silently drop them.
+    for depth in ("quick", "balanced", "exhaustive"):
+        block = build_guide_quality_prompt_contract(output_depth=depth)["prompt_block"]
+        for term in RESOLVE_TERMS:
+            check(f"{depth}: resolve-then-emit rule has {term!r}", term in block)
+        for term in PROHIBITED_EXAMPLES:
+            check(f"{depth}: prohibits deliberation form {term}", term in block)
+        check(f"{depth}: offers closed missing-fact fallback", FALLBACK in block)
+        for phrase in ALLOWED_TEACHING:
+            check(f"{depth}: allows normal teaching phrase {phrase!r}", phrase in block)
+        for term in NOT_FLAT_BANNED:
+            check(f"{depth}: does not flat-ban {term}", term not in block)
+        for term in NUMERIC_TERMS:
+            check(f"{depth}: numeric directive has {term!r}", term in block)
+        # The closed fallbacks must never instruct the model to expose reasoning.
+        lowered = block.lower()
+        for forbidden in ("reveal your reasoning", "explain your thinking", "show your working out loud"):
+            check(f"{depth}: blocker clauses never expose reasoning ({forbidden})", forbidden not in lowered)
+
+
+def test_mock_question_minimum_for_exam_guides() -> None:
+    # Comprehensive / exam guides carry a general high-detail product expectation: a
+    # Mock Exam of meaningful practice questions, each with a worked solution and an
+    # answer key. This is ordinary exam-guide behaviour — it is NOT framed as proof
+    # from the current Phase 0 measurement. (The generated Ensemble guide does
+    # contain a Mock Exam; the measured mock_question_count=0 is a counting/
+    # extraction artifact pending scorer sanity, so it is not treated here as proof
+    # of product absence.) The expectation lives in the structural contract, so it
+    # applies to exhaustive depth and to the exam/longform presets and styles.
+    MOCK_TERMS = [
+        "meaningful practice questions",
+        "step-by-step worked solution",
+        "answer key",
+    ]
+    comprehensive_cases = [
+        build_guide_quality_prompt_contract(output_depth="exhaustive"),
+        build_guide_quality_prompt_contract(preset_id="claude_exam"),
+        build_guide_quality_prompt_contract(preset_id="claude_cram"),
+        build_guide_quality_prompt_contract(style_id="master_longform"),
+        build_guide_quality_prompt_contract(style_id="exam_cram"),
+    ]
+    for index, ctx in enumerate(comprehensive_cases):
+        check(f"mock case{index} → comprehensive", ctx["summary"]["comprehensive"] is True)
+        block = ctx["prompt_block"]
+        for term in MOCK_TERMS:
+            check(f"mock case{index}: structure has {term!r}", term in block)
+
+
 def test_comprehensive_structure_for_exhaustive() -> None:
     ctx = build_guide_quality_prompt_contract(output_depth="exhaustive")
     check("exhaustive → comprehensive", ctx["summary"]["comprehensive"] is True)
@@ -320,6 +426,8 @@ def main() -> None:
     test_core_rules_always_present()
     test_final_output_hygiene_clause()
     test_line_initial_discourse_marker_clause()
+    test_phase0_blocker_directives()
+    test_mock_question_minimum_for_exam_guides()
     test_comprehensive_structure_for_exhaustive()
     test_preset_and_style_infer_comprehensive()
     test_explicit_comprehensive_overrides_inference()

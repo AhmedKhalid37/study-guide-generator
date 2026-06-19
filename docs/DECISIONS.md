@@ -6881,3 +6881,42 @@ production job/API/frontend wiring, executed no real operator run, and added no
 provider/model/judge/repair/`known_numbers` path. The frozen production offline
 judge stays frozen (`judge_ready`/`repair_ready` always `false`); the dev-time
 reference-anchored judge stays separate and is neither imported nor executed.
+
+## Real Phase 0 Layer-1 measured → narrow Slice 168 to the trusted blocker (visible deliberation)
+After the real Phase 0 Layer-1 measurement, supervisor review established that only
+one measured signal is **trusted** as a product defect: **visible deliberation /
+structural uncertainty (leaked reasoning) in the final guide text.** The other two
+signals are **not** trusted as product absence: `numeric_correctness=0/n` is at least
+partly a **matcher artifact** (the generated guides do contain numeric worked
+examples, so the zero is not proof all numerics are missing), and Ensemble
+`mock_question_count=0` is a **counting/extraction artifact** (the generated Ensemble
+guide actually contains a full Mock Exam with worked solutions). Both require
+scorer/matcher sanity work before they may drive any product change. Slice 168 is
+therefore narrowed to **resolve-then-emit final-answer discipline** in the
+always-applied guide-quality **prompt contract**
+(`pipeline/guide_quality_prompt_contract.py`): the broad bare-substring ban on normal
+instructional words (`maybe`, `probably`, `likely`, `we need to`, `this might be`,
+`the material doesn't say`, `I will`, `I should`) is replaced with a final-answer
+rule that bans only concrete visible-deliberation forms (first-person reasoning,
+self-correction such as `Wait`/`Actually`-as-correction, unresolved source confusion
+such as `the slide/table is confusing`/`we'll trust`/`let's infer`, and numeric
+uncertainty such as `= ?`/`≈ ?` or competing unresolved candidate values), explicitly
+**allows** ordinary teaching language (`You need to…`, `This will likely appear on the
+exam`, `This probably matters because…`), and offers the closed "Not specified in the
+provided material." fallback. Numeric preservation is **kept but reframed** as general
+final-answer discipline (carry worked examples to a committed value; mark
+unverifiable numbers "Not verified from provided material."; no manual `known_numbers`
+infrastructure and no hardcoded private NN3/Ensemble values); the earlier Slice-168
+coverage-checklist rule is **removed** (coverage trust is not established); and the
+comprehensive Mock-Exam structure rule is **kept only as a general exam/high-detail
+product expectation**, not as proof of a measured Ensemble absence. **Why:** broad
+substring bans would suppress normal exam-priority teaching language and over-correct
+on untrusted measurements; narrowing to the one trusted defect keeps the product fix
+honest and reversible while the numeric/mock matchers get sanity work. This is a
+prompt-contract change only — **not** a scorer/gate/validator/detector/matcher/
+counter/aggregator/CLI/packet/ingest/schema/bridge/repair change, no production judge
+execution, and no `known_numbers` runtime (numeric strategy stays recompute-first). No
+production job/API/frontend wiring changed; the offline judge stays frozen
+(`judge_ready`/`repair_ready` = `false`). No NN3/Ensemble private source content,
+numbers, or filenames were embedded in the prompt or tests.
+Next step: `measurement_sanity_numeric_and_mock_matcher_or_regenerate_then_rerun`.

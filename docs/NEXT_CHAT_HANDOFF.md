@@ -6,10 +6,32 @@
 > stable overview see `PROJECT_CONTEXT.md`; canonical brief is `../CLAUDE.md`.
 
 ## Current position
-- **Working tree:** **Slice 167 (Phase 0 closed-summary validator CLI) — UNCOMMITTED**
-  on branch `slice167-phase0-closed-summary-validator`, branched from updated `chrome-renderer-v1` after Slice 166
-  was committed, fast-forward merged, and pushed. **Slice 166 is trunk commit `e21e741`**; Slice 165 is `caf8171`;
-  Slice 164 is `bce7e33`; Slice 163 is `c4d9607`.
+- **Working tree:** **Slice 168 (Narrow product generation fix for the trusted Phase 0 blocker) — UNCOMMITTED**
+  on branch `slice168-product-generation-phase0-blocker-fix`, branched from clean trunk `chrome-renderer-v1`
+  (`8e2138d`, already up to date). **Slice 167 was already committed as `8e2138d`** ("Add Phase 0 closed summary
+  validator"); the real Phase 0 Layer-1 measurement has since superseded more validator work, so Slice 167 was not
+  revisited.
+- **Real Phase 0 Layer-1 run now exists** (produced locally on gitignored outputs). **Supervisor review then
+  narrowed this slice:** only the **leaked-reasoning / visible-deliberation** signal is TRUSTED as a product
+  defect. `numeric_correctness=0/n` is at least partly a **matcher artifact** (the guides do contain numeric
+  worked examples) and Ensemble `mock_question_count=0` is a **counting/extraction artifact** (the generated
+  Ensemble guide does contain a full Mock Exam) — both need **scorer/matcher sanity** before driving any product
+  change. **Eval scaffolding stays paused.**
+- **Slice 168 (this) is a narrow product output-quality fix for the trusted blocker only, not eval infra.** It
+  retunes the always-applied guide-quality prompt contract (`pipeline/guide_quality_prompt_contract.py`, appended
+  to every generation prompt): the broad bare-substring ban on normal words (`maybe`/`probably`/`likely`/`we need
+  to`/`this might be`/`the material doesn't say`/`I will`/`I should`) is **replaced** with a resolve-then-emit
+  final-answer rule that prohibits only concrete deliberation/self-correction/source-confusion/numeric-uncertainty
+  forms (and `= ?` / `≈ ?` / competing unresolved values), **explicitly allows** ordinary teaching language, and
+  offers the closed "Not specified in the provided material." fallback. Numeric preservation is **kept but
+  reframed** as general final-answer discipline (+ "Not verified from provided material." fallback, no
+  `known_numbers`); the Slice-168 **coverage rule was removed**; the Mock-Exam structure rule is **kept only as a
+  general exam/high-detail expectation**, not as measured Ensemble proof. Tests rewritten in
+  `test_scripts/test_guide_quality_prompt_contract.py`. No scorer/gate/validator/detector/matcher/counter/CLI/
+  packet/ingest/schema/bridge/repair change; production offline judge stays frozen (`judge_ready=false`,
+  `repair_ready=false`); no production job/API/frontend wiring changed.
+  **next_step: measurement_sanity_numeric_and_mock_matcher_or_regenerate_then_rerun.**
+- **Prior trunk lineage:** Slice 166 `e21e741`; Slice 165 `caf8171`; Slice 164 `bce7e33`; Slice 163 `c4d9607`.
   - **Part 0 completed:** Slice 166 ("Add Phase 0 operator closed result packet") was committed as `e21e741`,
     fast-forward merged to `chrome-renderer-v1` (`caf8171..e21e741`), and pushed with a normal `git push` (no force-push);
     `origin/chrome-renderer-v1`, local trunk, and the Slice 167 branch all sit at `e21e741`. Final trunk status was clean

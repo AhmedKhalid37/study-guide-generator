@@ -5,6 +5,62 @@
 
 ---
 
+## Slice 168 — **Narrow product generation fix for the trusted Phase 0 blocker (visible deliberation)**, on `slice168-product-generation-phase0-blocker-fix`. **NOT COMMITTED.**
+
+- **Produce-before-scaffold gate applied:** a real Phase 0 Layer-1 run was produced locally on real gitignored
+  GuideForge outputs, so the measured artifact exists. Eval-harness scaffolding stays **paused**; work shifted to
+  generation output quality directly.
+- **Supervisor review narrowed this slice.** The measurement revealed one **trusted** product defect — **visible
+  deliberation / structural uncertainty** (leaked reasoning) in the final guide text — but its other signals are
+  **not yet trusted as product absence**:
+  - `numeric_correctness=0/n` is at least partly a **matcher artifact** (the generated guides do contain numeric
+    worked examples); it is **not** proof all numerics are absent.
+  - Ensemble `mock_question_count=0` is a **counting/extraction artifact** — the generated Ensemble guide actually
+    contains a full Mock Exam with worked solutions; it is **not** proof mock questions are absent.
+  - These two require **scorer/matcher sanity work** before they can drive any product change.
+- **phase=Phase 1 narrow product-quality fix (trusted blocker only) after real Phase 0 Layer-1 baseline**
+- **real_phase0_layer1_baseline_exists=true** · **trusted_blocker=leaked_reasoning (visible deliberation)**
+- **eval_scaffolding_paused=true**
+- **product_fix_focus=prompt_contract_final_answer_discipline** — the fix lives in the always-applied guide-quality
+  **prompt contract** (`pipeline/guide_quality_prompt_contract.py`), whose `prompt_block` is appended to every
+  generation prompt. No scorer/gate/validator/detector/matcher/counter change.
+- **What changed (generation directives only):**
+  - **Anti-leak (narrowed):** replaced the broad bare-substring ban on normal instructional words/phrases
+    (`maybe`, `probably`, `likely`, `we need to`, `this might be`, `the material doesn't say`, `I will`,
+    `I should`) with a **resolve-then-emit final-answer rule**: the guide must not expose first-person reasoning,
+    self-correction, unresolved source confusion, or numeric uncertainty. It prohibits concrete deliberation forms
+    (`"I think"`, `"I'm not sure"`, `"Wait"`, `"Actually"`-as-self-correction, `"unclear"`, `"we'll trust"`,
+    `"let's infer"`, `"the slide/table is confusing"`, `"if this is wrong"`, an unresolved `= ?` / `≈ ?`, and
+    multiple unresolved competing candidate values), **explicitly allows** ordinary teaching language (`You need
+    to…`, `This will likely appear on the exam`, `This probably matters because…`), and offers the closed
+    fallback "Not specified in the provided material." instead of speculation.
+  - **Numeric (retained, reframed):** the numeric-preservation core rule is kept as **general final-answer
+    discipline** — carry worked numeric examples to a committed final value, do not print unresolved/competing
+    candidate values, and mark unverifiable numbers "Not verified from provided material." It does **not** claim
+    the 0/n measurement proves numerics are absent, and hardcodes no private NN3/Ensemble values. No
+    `known_numbers` infrastructure was added.
+  - **Coverage:** the Slice-168 coverage-checklist core rule was **removed** — coverage trust is not established
+    and it is outside the trusted blocker.
+  - **Mock questions (reframed):** the comprehensive Mock-Exam structure rule is kept only as a **general
+    high-detail/exam-guide expectation** (meaningful practice questions with worked solutions and answer keys); it
+    is **no longer documented as a measured Ensemble absence**.
+- **Tests:** `test_phase0_blocker_directives` rewritten to assert the resolve-then-emit / no-visible-deliberation
+  rule, the prohibited self-correction/source-confusion/numeric-uncertainty forms, the closed fallback, the
+  retained numeric discipline, and that normal teaching language is **not** flat-banned;
+  `test_mock_question_minimum_for_exam_guides` reframed as general exam-guide behaviour. All generic — no private
+  source/guide text.
+- **Not weakened:** no eval gate, scorer, aggregator, leak detector, numeric matcher, or mock-question counter was
+  changed or loosened; no warnings/failures hidden.
+- **Not added:** no validator, packet, CLI skeleton, exit-check, ingest, schema, bridge, repair, production judge
+  execution, or `known_numbers` runtime. Numeric strategy stays recompute-first.
+- **Frozen:** production offline judge stays frozen (`judge_ready=false`, `repair_ready=false`).
+- **No production job/API/frontend wiring changed.** **Docker not run; no `docker compose config` run.**
+  Slice 60 trace stash parked and untouched; `local_operator_baselines/` stayed ignored/uncommitted; no private
+  material/raw artifacts/snippets/hashes/byte counts committed.
+- **next_step=measurement_sanity_numeric_and_mock_matcher_or_regenerate_then_rerun**
+
+---
+
 ## Slice 167 — **Phase 0 closed-summary validator CLI**, on `slice167-phase0-closed-summary-validator`. **NOT COMMITTED.**
 
 - **Part 0 completed:** Slice 166 was committed as `e21e741` ("Slice 166: Add Phase 0 operator closed result packet"),
