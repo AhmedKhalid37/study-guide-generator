@@ -35,6 +35,8 @@ from pipeline.quality_safety_eval_harness import (  # noqa: E402
     PHASE0_REGRESSION_RECORD_KIND,
     PHASE0_RUN_KIND,
     GoldenPairSpecError,
+    LEAK_STRUCTURAL_CATEGORIES,
+    LEAK_BLOCKING_STRUCTURAL_CATEGORIES,
     NUMERIC_CLASS_FORMAT_MISSED,
     NUMERIC_CLASS_MATCHED,
     NUMERIC_CLASS_MISSING,
@@ -285,6 +287,151 @@ def test_leaked_reasoning() -> None:
     )
     leak2 = report_check(questions, "leaked_reasoning")
     check("mock question marks ignored", leak2["structural_uncertainty_count"] == 0, str(leak2))
+
+
+def test_leaked_reasoning_structural_classification() -> None:
+    """Slice 171: genuine leaks stay blocking; legit study questions don't.
+
+    Synthetic public-safe text only. The classifier must keep true leaked
+    reasoning / unresolved uncertainty blocking while separating solved-mock,
+    practice, self-test, worked-solution, source-reference, and rhetorical concept
+    questions into non-blocking closed categories.
+    """
+
+    def leak_of(text: str) -> dict[str, Any]:
+        report = run_quality_safety_layer1_checks(
+            text, base_fixture(expected_topics=[], ground_truth_numerics=[], min_mock_questions=0)
+        )
+        return report_check(report, "leaked_reasoning")
+
+    # --- True positives that MUST keep blocking -----------------------------
+    for phrase in [
+        "Wait, recheck the synthetic step.",
+        "Actually the synthetic result differs.",
+        "The synthetic source is unclear here.",
+        "We'll trust the synthetic figure for now.",
+        "Let's infer the synthetic value.",
+    ]:
+        leak = leak_of(phrase)
+        check(
+            f"signature self-correction blocks: {phrase!r}",
+            leak["status"] == "failed" and leak["signature_count"] >= 1,
+            str(leak),
+        )
+
+    # Unresolved numeric uncertainty blocks via the genuine structural category,
+    # with no signature words present at all.
+    numeric_leak = leak_of("The synthetic total = ?\nThe synthetic ratio ≈ ?")
+    cats = numeric_leak["structural_signal_categories"]
+    check(
+        "unresolved numeric blocks as genuine structural (no signature words)",
+        numeric_leak["status"] == "failed"
+        and numeric_leak["signature_count"] == 0
+        and numeric_leak["genuine_structural_uncertainty_count"] == 2
+        and cats["genuine_deliberation_or_uncertainty"] == 2,
+        str(numeric_leak),
+    )
+
+    # Competing / unresolved values left open (no signature words).
+    competing = leak_of("The synthetic output could be either 3 or 5, which value is right?")
+    check(
+        "competing unresolved values block as genuine",
+        competing["status"] == "failed"
+        and competing["signature_count"] == 0
+        and competing["genuine_structural_uncertainty_count"] >= 1,
+        str(competing),
+    )
+
+    # --- False positives that MUST NOT be genuine and MUST NOT block --------
+    scaffold_lines = [
+        ("Question 1: What is the synthetic activation flow?", "mock_or_practice_question"),
+        ("Q4. Compute the synthetic gradient descent value?", "mock_or_practice_question"),
+        ("Self-test: What is the synthetic threshold value?", "self_test_or_checklist_question"),
+        ("Checklist: Can you explain the synthetic update rule?", "self_test_or_checklist_question"),
+        ("Worked solution: how does the synthetic step finish?", "worked_solution_prompt_question"),
+        ("Exam alert: why does the synthetic gate matter?", "exam_alert_or_instructional_question"),
+        ("## Why does the synthetic gate help the model?", "rhetorical_or_concept_heading_question"),
+        ("See page 12 for the synthetic derivation, correct?", "source_citation_or_page_ref_pattern"),
+    ]
+    for line, expected_category in scaffold_lines:
+        leak = leak_of(line)
+        line_cats = leak["structural_signal_categories"]
+        check(
+            f"legit scaffold non-blocking -> {expected_category}",
+            leak["status"] == "passed"
+            and leak["signal_count"] == 0
+            and leak["genuine_structural_uncertainty_count"] == 0
+            and leak["non_leak_question_scaffold_count"] == 1
+            and line_cats[expected_category] == 1,
+            str(leak),
+        )
+
+    # --- Mixed case: one genuine leak among practice questions --------------
+    mixed = leak_of(
+        "\n".join(
+            [
+                "Question 1: What is the synthetic activation flow?",
+                "Q2. Compute the synthetic gradient value?",
+                "Practice Question 3: Which synthetic topic updates first?",
+                "The synthetic source is unclear, so which value is right?",
+            ]
+        )
+    )
+    mixed_cats = mixed["structural_signal_categories"]
+    check(
+        "mixed blocks because of the one genuine leak",
+        mixed["status"] == "failed" and mixed["genuine_structural_uncertainty_count"] == 1,
+        str(mixed),
+    )
+    check(
+        "mixed reports practice questions separately, not as genuine",
+        mixed_cats["mock_or_practice_question"] == 3
+        and mixed_cats["genuine_deliberation_or_uncertainty"] == 1
+        and mixed["non_leak_question_scaffold_count"] == 3,
+        str(mixed),
+    )
+
+    # --- Ambiguous soft hint routed to operator review (still blocking) -----
+    unknown = leak_of("Perhaps the synthetic value is around the midpoint?")
+    check(
+        "ambiguous soft hint -> operator review, still blocking",
+        unknown["status"] == "failed"
+        and unknown["structural_signal_categories"]["unknown_needs_operator_review"] == 1
+        and "leak_structural_unknown_present" in unknown["warnings"],
+        str(unknown),
+    )
+
+    # --- Plain study question: non-blocking false positive ------------------
+    plain = leak_of("What is the synthetic activation flow in this lecture?")
+    check(
+        "plain study question is a non-blocking false positive",
+        plain["status"] == "passed"
+        and plain["signal_count"] == 0
+        and plain["structural_signal_categories"]["other_false_positive"] == 1
+        and plain["non_leak_question_scaffold_count"] == 1,
+        str(plain),
+    )
+
+    # --- Closed shape + no raw line text ------------------------------------
+    check(
+        "structural categories are exactly the closed set",
+        set(mixed["structural_signal_categories"].keys()) == set(LEAK_STRUCTURAL_CATEGORIES),
+        str(list(mixed["structural_signal_categories"].keys())),
+    )
+    check(
+        "only genuine + unknown are blocking categories",
+        LEAK_BLOCKING_STRUCTURAL_CATEGORIES
+        == frozenset({"genuine_deliberation_or_uncertainty", "unknown_needs_operator_review"}),
+        str(sorted(LEAK_BLOCKING_STRUCTURAL_CATEGORIES)),
+    )
+    check(
+        "leak classification omits raw line text and matches",
+        "synthetic" not in json.dumps(mixed).lower()
+        and "matches" not in mixed
+        and "line" not in json.dumps(mixed).lower(),
+        json.dumps(mixed),
+    )
+    no_canary("leak structural classification", mixed)
 
 
 def test_numeric_correctness() -> None:
@@ -3790,6 +3937,7 @@ def run() -> int:
     test_fixture_loader()
     test_seed_fixture_file_consumption()
     test_leaked_reasoning()
+    test_leaked_reasoning_structural_classification()
     test_numeric_correctness()
     test_worked_answer_completeness()
     test_coverage()

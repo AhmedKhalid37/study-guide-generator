@@ -55,6 +55,7 @@ REPORT_WARNING_ORDER = (
     "mock_question_count_below_minimum",
     "worked_answer_incomplete_signal",
     "leaked_reasoning_signal",
+    "leak_structural_unknown_present",
     "numeric_contradiction_signal",
     "numeric_mismatch_signal",
     "fact_sheet_invalid",
@@ -471,11 +472,85 @@ _UNRESOLVED_RE = re.compile(
     r"(=\s*\?|≈\s*\?|≃\s*\?|answer\s+missing|solution\s+missing|unresolved|incomplete\s+answer)",
     re.IGNORECASE,
 )
-_MOCK_LINE_RE = re.compile(
-    r"^\s*(?:#{1,6}\s*)?(?:(?:mock|practice)\s+question\b|q\d+\b(?:[\s:.)-]|$))",
+_HEADING_RE = re.compile(r"^\s*#{1,6}\s+")
+
+# --- Slice 171: Phase 0 leak structural-signal classification ----------------
+# The Phase 0 leak check previously counted every line containing "?" (minus a
+# narrow set of mock headings) as "structural uncertainty". Solved-mock and
+# practice-heavy guides legitimately carry many study questions, so that rule
+# collapsed genuine leaked reasoning together with practice / self-test /
+# worked-solution / source-reference / rhetorical scaffolding (a closed audit of
+# the regenerated guides found only 1-2 of 32 structural hits were genuine). We
+# now classify each question-like line into one closed category and keep the
+# check blocking ONLY on genuine deliberation/uncertainty or an unclassifiable
+# ("unknown") line, while reporting the clearly-legitimate scaffolding categories
+# as non-blocking counts. The whole-text signature scan (``_LEAK_PATTERNS``) is
+# unchanged and still blocks on its own. No raw line text, snippet, or path ever
+# leaves this function -- only closed category names and counts.
+LEAK_STRUCTURAL_CATEGORIES = (
+    "genuine_deliberation_or_uncertainty",
+    "mock_or_practice_question",
+    "self_test_or_checklist_question",
+    "exam_alert_or_instructional_question",
+    "worked_solution_prompt_question",
+    "source_citation_or_page_ref_pattern",
+    "rhetorical_or_concept_heading_question",
+    "other_false_positive",
+    "unknown_needs_operator_review",
+)
+# Only these structural categories keep the leak check blocking. Everything else
+# is legitimate study-guide scaffolding and is reported as a non-blocking count.
+# ``unknown_needs_operator_review`` stays blocking on purpose: an ambiguous line
+# we cannot confidently call legitimate must not be silently dropped, so we keep
+# the safe (non-weakening) side and surface it for operator review.
+LEAK_BLOCKING_STRUCTURAL_CATEGORIES = frozenset(
+    {"genuine_deliberation_or_uncertainty", "unknown_needs_operator_review"}
+)
+LEAK_STRUCTURAL_WARNINGS = (
+    "genuine_leaked_reasoning_present",
+    "leak_structural_unknown_present",
+)
+# Strong, line-level deliberation/uncertainty phrasing beyond the whole-text
+# signature words. A line carrying any of these (or an unresolved ``= ?`` form,
+# or a signature word) is treated as a genuine leak and keeps blocking.
+_LEAK_GENUINE_LINE_RE = re.compile(
+    r"\b(?:not\s+sure|unsure|uncertain|ambiguous|unresolved|can(?:no|')t\s+tell|"
+    r"hard\s+to\s+tell|or\s+maybe|maybe\s+it'?s|could\s+be\s+either|"
+    r"which\s+(?:value|one|number)\s+is\s+(?:right|correct)|conflicting|"
+    r"competing\s+values?|doesn'?t\s+match|don'?t\s+match)\b",
     re.IGNORECASE,
 )
-_HEADING_RE = re.compile(r"^\s*#{1,6}\s+")
+# Weak, ambiguous hints that are common in legitimate prose but might mask a
+# leak. A question-like line carrying one of these, with no strong genuine
+# signal and no recognized scaffold shape, is routed to operator review
+# (blocking) rather than silently treated as a false positive.
+_LEAK_SOFT_LINE_RE = re.compile(
+    r"\b(?:maybe|perhaps|possibly|might\s+be|not\s+entirely|roughly|approximately)\b",
+    re.IGNORECASE,
+)
+_SELF_TEST_RE = re.compile(
+    r"\b(?:self[\s-]?test|self[\s-]?check|check\s+your\s+understanding|"
+    r"test\s+yourself|quiz\s+yourself|checklist|"
+    r"can\s+you\s+(?:explain|state|describe|derive|list|recall|name|identify))\b",
+    re.IGNORECASE,
+)
+_EXAM_ALERT_RE = re.compile(
+    r"(?:\bexam\s+(?:alert|tip|note|watch|hint)\b|\bkey\s+point\b|"
+    r"\bcommon\s+(?:mistake|pitfall)\b|\bremember\s*:|\bnote\s*:|\btip\s*:|"
+    r"\bimportant\s*:|\bwatch\s+out\b)",
+    re.IGNORECASE,
+)
+_WORKED_PROMPT_RE = re.compile(
+    r"(?:\bworked\s+(?:answer|solution|example)\b|\bstep\s+\d|\bsolution\s*:|"
+    r"\bhint\s*:|\bapproach\s*:|\bstrategy\s*:)",
+    re.IGNORECASE,
+)
+_SOURCE_REF_RE = re.compile(
+    r"(?:\bsee\s+(?:page|slide|section|figure|fig\.?|chapter|lecture)\b|"
+    r"\bpp?\.?\s*\d|\bpage\s+\d|\bslide\s+\d|\bsection\s+\d|\bfigure\s+\d|"
+    r"\bfig\.?\s*\d|\bchapter\s+\d|\bref(?:erence)?\s*:|\bcf\.|\[\d+\])",
+    re.IGNORECASE,
+)
 
 
 def load_quality_safety_fixture_spec(data: Any) -> dict[str, Any]:
@@ -2416,27 +2491,85 @@ def _load_tier_targets(value: Any, warnings: set[str]) -> dict[str, float]:
     return targets
 
 
+def _classify_leak_structural_line(line: str) -> str:
+    """Classify one question-like line into a closed leak structural category.
+
+    Priority order matters: genuine deliberation/uncertainty is detected first so
+    a study-question line that *also* carries a leak signature (e.g. "unclear")
+    still blocks. The remaining checks recognise legitimate study-guide
+    scaffolding shapes; anything with only a weak/ambiguous hint falls to operator
+    review, and a plain question with no uncertainty signal is a false positive.
+    """
+    if _STRUCTURAL_UNCERTAINTY_RE.search(line):
+        return "genuine_deliberation_or_uncertainty"
+    if _LEAK_GENUINE_LINE_RE.search(line) or any(p.search(line) for p in _LEAK_PATTERNS):
+        return "genuine_deliberation_or_uncertainty"
+    if _is_mock_question_count_line(line):
+        return "mock_or_practice_question"
+    if _SELF_TEST_RE.search(line):
+        return "self_test_or_checklist_question"
+    if _EXAM_ALERT_RE.search(line):
+        return "exam_alert_or_instructional_question"
+    if _WORKED_PROMPT_RE.search(line):
+        return "worked_solution_prompt_question"
+    if _SOURCE_REF_RE.search(line):
+        return "source_citation_or_page_ref_pattern"
+    if _HEADING_RE.match(line):
+        return "rhetorical_or_concept_heading_question"
+    if _LEAK_SOFT_LINE_RE.search(line):
+        return "unknown_needs_operator_review"
+    return "other_false_positive"
+
+
 def _check_leaked_reasoning(candidate: str, warnings: set[str]) -> dict[str, Any]:
     signature_count = 0
     for pattern in _LEAK_PATTERNS:
         signature_count += len(pattern.findall(candidate))
-    structural_count = 0
+
+    categories = {name: 0 for name in LEAK_STRUCTURAL_CATEGORIES}
+    question_like_count = 0
     for line in candidate.splitlines():
-        if _is_mock_question_line(line):
+        if not (_STRUCTURAL_UNCERTAINTY_RE.search(line) or "?" in line):
             continue
-        if _STRUCTURAL_UNCERTAINTY_RE.search(line) or "?" in line:
-            structural_count += 1
-    signal_count = signature_count + structural_count
+        question_like_count += 1
+        categories[_classify_leak_structural_line(line)] += 1
+
+    genuine_count = categories["genuine_deliberation_or_uncertainty"]
+    unknown_count = categories["unknown_needs_operator_review"]
+    # Only genuine deliberation/uncertainty and unclassifiable lines keep the
+    # check blocking; legitimate study scaffolding is reported but does not block.
+    blocking_structural = sum(
+        categories[name] for name in LEAK_BLOCKING_STRUCTURAL_CATEGORIES
+    )
+    non_leak_scaffold = question_like_count - blocking_structural
+    signal_count = signature_count + blocking_structural
     status = "failed" if signal_count else "passed"
+
+    check_warnings: list[str] = []
     if signal_count:
         warnings.add("leaked_reasoning_signal")
+    if genuine_count:
+        check_warnings.append("genuine_leaked_reasoning_present")
+    if unknown_count:
+        check_warnings.append("leak_structural_unknown_present")
+        warnings.add("leak_structural_unknown_present")
+
     return {
         "id": "leaked_reasoning",
         "status": status,
         "blocking": status == "failed",
         "signature_count": signature_count,
-        "structural_uncertainty_count": structural_count,
+        # Backward-compatible field: now the *blocking* structural count (genuine
+        # deliberation + unknown-needs-review). Legitimate study scaffolding no
+        # longer inflates it. Total question-like hits are exposed separately via
+        # ``structural_question_like_count`` and ``structural_signal_categories``.
+        "structural_uncertainty_count": blocking_structural,
+        "genuine_structural_uncertainty_count": genuine_count,
+        "non_leak_question_scaffold_count": non_leak_scaffold,
+        "structural_question_like_count": question_like_count,
+        "structural_signal_categories": categories,
         "signal_count": signal_count,
+        "warnings": check_warnings,
     }
 
 
@@ -3258,10 +3391,10 @@ def summarize_numeric_classification(records: list[dict[str, Any]]) -> dict[str,
     return summary
 
 
-# Count-only mock/practice/exam question detector (Slice 169). Kept SEPARATE from
-# ``_is_mock_question_line`` (which exempts genuine exam-question lines from the
-# reasoning-leak ``?`` heuristic): broadening the counter must not change what the
-# leak detector treats as a question, so the two matchers stay independent.
+# Count-only mock/practice/exam question detector (Slice 169). Also reused by the
+# Slice 171 leak structural classifier to attribute a question-like line to the
+# ``mock_or_practice_question`` category; it never decides leak blocking on its
+# own (genuine deliberation is detected first).
 _MOCK_COUNT_DECORATION_RE = re.compile(r"^[\s>#*_+\-]+")
 _MOCK_COUNT_BODY_RE = re.compile(
     r"(?:(?:mock|practice)\s+question\b"
@@ -3283,10 +3416,6 @@ def _is_mock_question_count_line(line: str) -> bool:
     """
     cleaned = _MOCK_COUNT_DECORATION_RE.sub("", line, count=1)
     return bool(_MOCK_COUNT_BODY_RE.match(cleaned))
-
-
-def _is_mock_question_line(line: str) -> bool:
-    return bool(_MOCK_LINE_RE.search(line))
 
 
 def _ordered(values: set[str], order: tuple[str, ...]) -> list[str]:

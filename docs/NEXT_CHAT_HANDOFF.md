@@ -6,13 +6,32 @@
 > stable overview see `PROJECT_CONTEXT.md`; canonical brief is `../CLAUDE.md`.
 
 ## Current position
-- **Working tree:** **Slice 170 (Phase 0 numeric label-attribution matcher) — UNCOMMITTED**
-  on branch `slice170-phase0-numeric-label-attribution`, branched from clean trunk `chrome-renderer-v1` (`bf90b47`).
-- **Slice 169 is committed and on trunk:** `bf90b47` ("Slice 169: Add Phase 0 matcher sanity diagnostics"),
-  fast-forward merged to `chrome-renderer-v1` and pushed with a normal `git push` (no force-push). Slice 168 is
-  trunk commit `1d66f07`.
-- **Slice 170 makes numeric attribution truthful (not green) before any regeneration.** After Slice 169 the mock
-  counter is trusted, but numeric correctness was not: all expected values are literally present while every target
+- **Working tree:** **Slice 171 (Phase 0 leak structural-signal classification) — UNCOMMITTED**
+  on branch `slice171-phase0-leak-structural-classification`, branched from clean trunk `chrome-renderer-v1` (`1dc247f`).
+- **Slices 168/169/170 are committed and on trunk:** `1d66f07` (168), `bf90b47` (169),
+  `1dc247f` (170 — "Add Phase 0 numeric label attribution"), all fast-forward merged and pushed (no force-push).
+- **Slice 171 fixes leak *measurement trust* (not prompts).** A closed audit of the solved-mock regenerated guides
+  showed the blocking structural `32` in **both** NN3 and Ensemble was mostly legitimate study-guide question
+  scaffolding, not genuine deliberation (genuine 1/32 and 2/32). The overbroad source was the eval-harness
+  `_check_leaked_reasoning` (`?`-line heuristic), **not** the wired `quality_safety_leak_scanner`. This slice (in
+  `pipeline/quality_safety_eval_harness.py`) classifies each question-like line into one **closed** category and
+  blocks **only** on `genuine_deliberation_or_uncertainty` + `unknown_needs_operator_review` (plus the unchanged
+  signature scan); mock/practice, self-test/checklist, worked-solution, exam-alert, rhetorical-heading, and
+  source/page-ref questions are reported as **non-blocking** counts. New fields:
+  `genuine_structural_uncertainty_count`, `non_leak_question_scaffold_count`, `structural_question_like_count`,
+  `structural_signal_categories` (closed counts), per-check `warnings`; `structural_uncertainty_count` is kept
+  backward-compatible as the blocking structural count. **No prompt/generation change, no numeric matcher change,
+  no tolerance change, no aggregator hiding/warning suppression, recompute-first authoritative, judge frozen
+  (`judge_ready=false`, `repair_ready=false`), no repair.** New synthetic test
+  `test_leaked_reasoning_structural_classification` (`test_scripts/test_quality_safety_eval_harness.py`, 577 pass).
+  **Real closed rerun (current solved-mock guides; recomputed OLD numbers match prior run):** NN3
+  `signal 33→2` (signature 1, genuine 1, non-leak scaffold 31); Ensemble `signal 36→6` (signature 4, genuine 2,
+  non-leak scaffold 30). **Both still blocking via genuine signals**; `detector_false_positive_reduced=true`; no
+  `unknown` hits. **Decision-rule outcome:** leak still blocks on genuine signals → next slice **may** be product-prompt
+  refinement against the now-trustworthy genuine signal; numeric stays the other open blocker, no longer masked by
+  leak false-positive inflation. **Slice 171 still NOT committed.**
+- **Slice 170 (now on trunk `1dc247f`) made numeric attribution truthful (not green) before any regeneration.** The
+  mock counter is trusted, but numeric correctness was not: all expected values are literally present while every target
   classified `label_not_found` — so the blocker was **attribution**, not absence. This slice (in
   `pipeline/quality_safety_eval_harness.py`) lets a target anchor on its authored label **OR** a safe alias /
   concept anchor (`aliases` fixture metadata, `_numeric_anchor_terms`, `_label_value_scan_multi`), adds a
@@ -32,7 +51,7 @@
   adjacent). Both gates `failed`/blocking. **Conclusion: numeric values are present and now demonstrably anchored;
   the remaining blocker is bounded attribution against co-located worked-step numbers on number-dense lines, not
   absence. `numeric_correctness` is now a truthful detector but NOT green → regeneration stays blocked.**
-  **next_step: rerun_current_guides_after_numeric_attribution_then_decide_regeneration. Slice 170 still NOT committed.**
+  **Slice 170 is now committed on trunk (`1dc247f`); leak measurement trust was tightened next in Slice 171 (above).**
 - **Superseded:** Slice 168 (committed) narrowed the always-applied guide-quality prompt contract
   (`pipeline/guide_quality_prompt_contract.py`) to a resolve-then-emit / no-visible-deliberation rule that
   explicitly allows ordinary teaching language and offers the closed "Not specified in the provided material."

@@ -6999,3 +6999,38 @@ regenerated, no repair added; offline judge stays frozen
 private guide/source content, numbers, paths, filenames, hashes, or byte counts were
 committed (tests use synthetic public text). Next step:
 `rerun_current_guides_after_numeric_attribution_then_decide_regeneration`.
+
+## Phase 0 leak check separates structural signal kinds (Slice 171)
+After solved-mock regeneration, Phase 0 reported identical `structural_uncertainty_count=32`
+for both NN3 and Ensemble. A closed audit showed the majority were legitimate study-guide
+question scaffolding rather than genuine leaked deliberation. Slice 171 therefore separates
+structural leak signal kinds in the Phase 0 eval harness so true leaked reasoning remains
+blocking while solved-mock, practice, self-test, worked-solution, source-ref, and rhetorical
+concept questions are reported separately instead of collapsed into structural uncertainty.
+This is a measurement-trust fix, not prompt tuning. **Mechanics:** `_check_leaked_reasoning`
+classifies each question-like line into one **closed** category
+(`genuine_deliberation_or_uncertainty`, `mock_or_practice_question`,
+`self_test_or_checklist_question`, `exam_alert_or_instructional_question`,
+`worked_solution_prompt_question`, `source_citation_or_page_ref_pattern`,
+`rhetorical_or_concept_heading_question`, `other_false_positive`,
+`unknown_needs_operator_review`) and keeps the check blocking **only** on
+`genuine_deliberation_or_uncertainty` and `unknown_needs_operator_review`, plus the unchanged
+whole-text `_LEAK_PATTERNS` signature scan. Genuine detection is priority-first (unresolved
+`= ?`/`≈ ?`/`≃ ?`, any signature word on the line, or a strong line-level uncertainty phrase),
+so a study question that *also* carries deliberation still blocks; an ambiguous soft hint with
+no strong signal routes to `unknown` (still blocking — the safe, non-weakening side). New
+closed output fields (`genuine_structural_uncertainty_count`,
+`non_leak_question_scaffold_count`, `structural_question_like_count`,
+`structural_signal_categories`, per-check `warnings`) report the separated counts honestly;
+`structural_uncertainty_count` is kept backward-compatible as the blocking structural count.
+**Real local closed rerun (current solved-mock guides; recomputed OLD numbers matched the prior
+run):** NN3 `signal 33→2` (signature 1, genuine 1, non-leak scaffold 31); Ensemble `signal 36→6`
+(signature 4, genuine 2, non-leak scaffold 30); both genuine counts match the prior audit, both
+still blocking via genuine signals, `detector_false_positive_reduced=true`, no `unknown` hits.
+**Decision rule:** leak remains blocking on genuine signals, so the next slice may be
+product-prompt refinement against the now-trustworthy genuine signal; numeric stays the other
+open blocker, no longer masked. No true-positive leak detection weakened, no generation/prompt
+change, no numeric matcher change, no tolerance change, no aggregator patched, no warning/failure
+hidden; offline judge stays frozen (`judge_ready`/`repair_ready` = `false`), no repair; tests use
+synthetic public text and no `local_operator_baselines/` or private content/paths/numbers were
+committed.

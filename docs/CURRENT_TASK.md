@@ -5,6 +5,60 @@
 
 ---
 
+## Slice 171 — **Phase 0 leak structural-signal classification**, on `slice171-phase0-leak-structural-classification`. **NOT COMMITTED.**
+
+- **Measurement-trust slice, not prompt tuning.** Slices 168–170 trusted the leak signal as blocking, but a closed
+  audit of the solved-mock regenerated guides showed the blocking structural `32` in **both** NN3 and Ensemble was
+  mostly legitimate study-guide question scaffolding, not genuine model deliberation (NN3 genuine 1/32, Ensemble
+  2/32). The overbroad source was the Phase 0 eval-harness `_check_leaked_reasoning` (every line containing `?`
+  minus narrow mock headings counted as structural uncertainty), **not** the wired `quality_safety_leak_scanner`.
+- **phase=Phase 0 measurement trust** · **slice171_focus=leak_structural_signal_classification**
+- **source_of_problem=phase0_eval_harness_question_line_heuristic** · **solved_mock_false_positive_risk=true** ·
+  **do_not_weaken_true_positive_leak_detection=true** · **generation_prompt_changes=false** · **numeric_changes=false** ·
+  **next_step=rerun_solved_mock_guides_after_leak_classification (done — see below)**
+- **Change (`pipeline/quality_safety_eval_harness.py`):** each question-like line is now classified into one **closed**
+  category — `genuine_deliberation_or_uncertainty`, `mock_or_practice_question`, `self_test_or_checklist_question`,
+  `exam_alert_or_instructional_question`, `worked_solution_prompt_question`, `source_citation_or_page_ref_pattern`,
+  `rhetorical_or_concept_heading_question`, `other_false_positive`, `unknown_needs_operator_review`. The check blocks
+  **only** on `genuine_deliberation_or_uncertainty` and `unknown_needs_operator_review` (plus the unchanged
+  whole-text `_LEAK_PATTERNS` signature scan); the other categories are reported as non-blocking counts.
+  - Genuine detection (priority-first) = unresolved numeric `= ?`/`≈ ?`/`≃ ?`, any signature word on the line, or a
+    strong line-level uncertainty phrase (`not sure`, `could be either`, `which value is right`, `conflicting`, …).
+    An ambiguous soft hint (`maybe`/`perhaps`/…) with no strong signal and no scaffold shape → `unknown` (still blocks).
+  - New output fields: `genuine_structural_uncertainty_count`, `non_leak_question_scaffold_count`,
+    `structural_question_like_count`, `structural_signal_categories` (closed counts), `warnings` (closed tokens).
+    Backward-compat: `structural_uncertainty_count` now = blocking structural count (genuine + unknown), so the
+    existing "mock questions ignored → 0" behavior holds; `signal_count`/`signature_count` semantics preserved.
+  - Removed the now-dead narrow `_MOCK_LINE_RE`/`_is_mock_question_line`; the classifier reuses the Slice 169
+    count-only mock matcher for the `mock_or_practice_question` category (never decides blocking on its own).
+  - **No prompt/generation change, no numeric matcher change, no tolerance change, no aggregator hiding/warning
+    suppression, recompute-first authoritative, judge frozen (`judge_ready=false`, `repair_ready=false`), no repair.**
+- **Tests:** `test_leaked_reasoning_structural_classification` (synthetic public-safe text only) — signature
+  self-correction blocks; unresolved numeric blocks as genuine with `signature_count=0`; competing values block;
+  mock/self-test/checklist/worked/exam-alert/rhetorical/source-ref scaffolding are non-blocking and separated;
+  mixed (one genuine + 3 practice) blocks on the genuine leak while reporting the 3 separately; soft hint →
+  `unknown` still blocks; plain study question → non-blocking `other_false_positive`; closed-shape + no-raw-text guards.
+- **Real local closed rerun (current solved-mock regenerated guides, recomputed OLD numbers match prior run exactly):**
+  - **NN3:** OLD `signal_count=33` / `structural_uncertainty_count=32` → NEW `signal_count=2`, `signature_count=1`,
+    `genuine_structural_uncertainty_count=1`, `non_leak_question_scaffold_count=31`
+    (categories: mock 6, source_ref 1, other_false_positive 24, all others 0). **Leak still blocking** (genuine + signature).
+    `detector_false_positive_reduced=true`.
+  - **Ensemble:** OLD `signal_count=36` / `structural_uncertainty_count=32` → NEW `signal_count=6`, `signature_count=4`,
+    `genuine_structural_uncertainty_count=2`, `non_leak_question_scaffold_count=30`
+    (categories: mock 8, other_false_positive 22, all others 0). **Leak still blocking** (genuine + signature).
+    `detector_false_positive_reduced=true`.
+  - Both guides' genuine counts (1, 2) match the prior closed audit exactly; no `unknown_needs_operator_review` hits.
+- **Decision rule outcome:** leak remains blocking due to **genuine** signals in both guides → per the slice rule the
+  next slice **can** be product-prompt refinement against the (now trustworthy) genuine leak signal. Numeric remains the
+  other open blocker; leak false-positive inflation is no longer masking it.
+- **Validation (no Docker):** `python -m compileall api pipeline test_scripts`; `test_quality_safety_eval_harness`
+  (577 pass), `test_quality_safety_recompute_verifier` (99), `test_quality_safety_unified_qa` (73),
+  `test_guide_quality_prompt_contract` (253), `test_guide_quality_contract_lint` (150); `git diff --check` clean.
+- **Changed files:** `pipeline/quality_safety_eval_harness.py`, `test_scripts/test_quality_safety_eval_harness.py`,
+  `docs/CURRENT_TASK.md`, `docs/NEXT_CHAT_HANDOFF.md`, `docs/DECISIONS.md`. **NOT COMMITTED.**
+
+---
+
 ## Slice 170 — **Phase 0 numeric label-attribution matcher**, on `slice170-phase0-numeric-label-attribution`. **NOT COMMITTED.**
 
 - **Produce-before-scaffold gate:** real Layer-1 measurement already exists; this slice does **not** regenerate any
