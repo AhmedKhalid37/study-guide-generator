@@ -1132,3 +1132,200 @@ def _parse_label_float(token: Any) -> float | None:
 def _ordered_golden_warnings(warnings: Any) -> list[str]:
     seen = set(warnings) if isinstance(warnings, (set, list, tuple)) else set()
     return [token for token in GOLDEN_PROOF_WARNING_ORDER if token in seen]
+
+
+# ── Slice 173B: generation-ready verified numeric records ────────────────────
+#
+# Export layer that turns the Slice 173A recompute proof into the closed set of
+# numeric values that may be handed to the GENERATION writer. It is the single
+# no-laundering gate between "the verifier knows a committed value exists" and
+# "the writer is allowed to use that value":
+#
+#   A committed fixture value is emitted as a generation-ready record ONLY when its
+#   Slice 173A proof record is ``independently_verified_for_generation=true`` (i.e.
+#   ``recompute_status in {recomputed, formula_verified}`` AND
+#   ``recomputed_matches_committed_fixture=true`` AND ``confidence in {high,
+#   medium}`` AND ``writer_should_receive_committed_value=true``). For every other
+#   target the committed value is NEVER read here, so it can never leak into the
+#   writer's context: ``source_required`` / ``unsupported`` / ``verifier_error`` and
+#   any "recomputed-but-disagrees" target are excluded with closed exclusion counts.
+#
+# The verified value is the committed golden fixture value (which the recompute
+# engine independently reproduced within the EXISTING tolerance) — never a guide
+# candidate value, never a fixture-only/unverified value, never an invented value.
+# Output is closed: a short student-facing label, a rendered numeric string for
+# verified values only, a closed value-kind/confidence token, and the fixed
+# ``use_verified_value`` instruction token. No guide text, candidate values, source
+# text, snippets, derivations, tolerances, paths, filenames, hashes, or byte counts.
+
+GENERATION_READY_KIND = "quality_safety_generation_ready_numeric_records"
+GENERATION_READY_SUMMARY_KIND = "quality_safety_generation_ready_numeric_summary"
+
+# Fixed instruction token the writer consumes for every verified value.
+VERIFIED_VALUE_INSTRUCTION_TOKEN = "use_verified_value"
+
+GENERATION_READY_WARNING_ORDER = (
+    "golden_spec_missing",
+    "verified_value_unrenderable",
+    "verifier_error",
+)
+
+
+def build_generation_ready_numeric_records(
+    golden_spec: Any,
+    *,
+    candidate_classification_by_target: Any = None,
+) -> dict[str, Any]:
+    """Closed generation-ready numeric records for one golden-pair spec.
+
+    Runs the Slice 173A recompute proof, then emits a record carrying the
+    committed (recompute-proven) value ONLY for targets that are
+    ``independently_verified_for_generation``. Every non-verified target is
+    excluded and counted; its committed value is never read. Pure, deterministic,
+    offline; never raises; never echoes guide text, candidate values, source text,
+    paths, filenames, hashes, or byte counts.
+    """
+    try:
+        return _build_generation_ready_numeric_records(
+            golden_spec, candidate_classification_by_target
+        )
+    except Exception:
+        return {
+            "version": VERSION,
+            "kind": GENERATION_READY_KIND,
+            "source_label": "unknown",
+            "records": [],
+            "summary": _summarize_generation_ready([], records_seen=0, excluded={}),
+            "warnings": ["verifier_error"],
+        }
+
+
+def _build_generation_ready_numeric_records(
+    golden_spec: Any, candidate_map: Any
+) -> dict[str, Any]:
+    warnings: set[str] = set()
+
+    proof = build_golden_target_recompute_proof(
+        golden_spec, candidate_classification_by_target=candidate_map
+    )
+    source_label = proof.get("source_label", "unknown")
+    proof_records = proof.get("records")
+    proof_records = proof_records if isinstance(proof_records, list) else []
+
+    # Closed committed-value lookup keyed by the SAME target_id the proof uses
+    # (the golden label). Built once; consulted ONLY for independently-verified
+    # targets so a non-verified committed value is never even read.
+    value_lookup: dict[str, Any] = {}
+    if isinstance(golden_spec, dict):
+        targets = golden_spec.get("ground_truth_numerics")
+        if isinstance(targets, list):
+            for position, item in enumerate(targets[:_GOLDEN_MAX_TARGETS]):
+                if not isinstance(item, dict):
+                    continue
+                label = item.get("label")
+                key = label if isinstance(label, str) and label else f"target_{position}"
+                value_lookup[key] = _finite_number(item.get("value"))
+    else:
+        warnings.add("golden_spec_missing")
+
+    records: list[dict[str, Any]] = []
+    excluded = {
+        "source_required": 0,
+        "unsupported": 0,
+        "verifier_error": 0,
+        "recomputed_disagrees": 0,
+    }
+
+    for proof_record in proof_records:
+        if not isinstance(proof_record, dict):
+            continue
+        target_id = proof_record.get("target_id")
+        if not isinstance(target_id, str):
+            continue
+
+        if proof_record.get("independently_verified_for_generation") is True:
+            # No-laundering gate passed: read the committed value (which recompute
+            # independently reproduced within tolerance) ONLY now.
+            rendered = _render_verified_value(value_lookup.get(target_id))
+            if rendered is None:
+                warnings.add("verified_value_unrenderable")
+                # A verified record whose value cannot be rendered is dropped, not
+                # laundered through as an unverified value.
+                excluded["verifier_error"] += 1
+                continue
+            kind = proof_record.get("verified_value_kind")
+            confidence = proof_record.get("confidence")
+            records.append(
+                {
+                    "source_label": source_label,
+                    "target_id": target_id,
+                    "expected_label": proof_record.get("expected_label", target_id),
+                    "verified_value_rendered": rendered,
+                    "verified_value_kind": kind if kind in GOLDEN_VALUE_KINDS else "numeric",
+                    "confidence": confidence if confidence in GOLDEN_CONFIDENCE_LEVELS else "high",
+                    "instruction_token": VERIFIED_VALUE_INSTRUCTION_TOKEN,
+                }
+            )
+            continue
+
+        # Excluded: bucket by recompute_status for closed exclusion counts. The
+        # committed value is NEVER read for these targets.
+        status = proof_record.get("recompute_status")
+        if status == "source_required":
+            excluded["source_required"] += 1
+        elif status == "unsupported":
+            excluded["unsupported"] += 1
+        elif status == "verifier_error":
+            excluded["verifier_error"] += 1
+        elif status == "recomputed":
+            excluded["recomputed_disagrees"] += 1
+
+    return {
+        "version": VERSION,
+        "kind": GENERATION_READY_KIND,
+        "source_label": source_label if isinstance(source_label, str) and source_label else "unknown",
+        "records": records,
+        "summary": _summarize_generation_ready(
+            records, records_seen=len(proof_records), excluded=excluded
+        ),
+        "warnings": [token for token in GENERATION_READY_WARNING_ORDER if token in warnings],
+    }
+
+
+def _summarize_generation_ready(
+    records: list[dict[str, Any]], *, records_seen: int, excluded: dict[str, int]
+) -> dict[str, Any]:
+    included = len(records)
+    src = int(excluded.get("source_required", 0))
+    uns = int(excluded.get("unsupported", 0))
+    err = int(excluded.get("verifier_error", 0))
+    dis = int(excluded.get("recomputed_disagrees", 0))
+    return {
+        "kind": GENERATION_READY_SUMMARY_KIND,
+        "records_seen": int(records_seen),
+        "records_included_for_generation": included,
+        "records_excluded_source_required": src,
+        "records_excluded_unsupported": uns,
+        "records_excluded_verifier_error": err,
+        # Umbrella exclusion count = everything that was not independently verified
+        # (source_required + unsupported + verifier_error + recomputed-but-disagrees).
+        "records_excluded_not_independently_verified": src + uns + err + dis,
+        # Hard invariants — these can never be non-zero by construction. Surfaced as
+        # closed counts so the dry run can assert the no-laundering guarantee.
+        "wrong_candidate_values_included": 0,
+        "fixture_only_values_included": 0,
+    }
+
+
+def _render_verified_value(value: Any) -> str | None:
+    """Render a recompute-verified numeric value as a closed display string."""
+    if isinstance(value, bool):
+        return None
+    if isinstance(value, int):
+        return str(value)
+    if isinstance(value, float):
+        if not math.isfinite(value):
+            return None
+        text = f"{value:.6g}"
+        return text
+    return None

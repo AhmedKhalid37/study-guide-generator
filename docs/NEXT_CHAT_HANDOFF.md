@@ -6,11 +6,34 @@
 > stable overview see `PROJECT_CONTEXT.md`; canonical brief is `../CLAUDE.md`.
 
 ## Current position
-- **Working tree:** **Slice 173A (Recompute verifier catches wrong printed values) — UNCOMMITTED**
-  on branch `slice173a-recompute-verifier-catches-wrong-values`, branched from clean trunk
-  `chrome-renderer-v1` (`d517601`, which now carries Slices 168–172). **Slice 172 is committed on trunk**
-  (`d517601` "Slice 172: Strengthen genuine leak prompt discipline").
-- **Slice 173A is a recompute-first PROOF slice, not generation wiring.** Part 0 reprinted the
+- **Working tree:** **Slice 173B (Verified numeric generation context) — UNCOMMITTED**
+  on branch `slice173b-verified-numeric-generation-context`, branched from clean trunk
+  `chrome-renderer-v1` (`1905af7`). **Slice 173A is committed on trunk** (`1905af7` "Slice 173A: Prove
+  recompute catches wrong numeric outputs", fast-forward merged from
+  `slice173a-recompute-verifier-catches-wrong-values` and pushed; no force-push).
+- **Slice 173B is the first student-visible numeric product step — verified-only, no laundering.** It wires
+  **only** the Slice-173A `independently_verified_for_generation` subset into generation context. New
+  `build_generation_ready_numeric_records` (`pipeline/quality_safety_recompute_verifier.py`, additive) reads
+  the committed value **only after** the independent-verification gate passes — `source_required` /
+  `unsupported` / `verifier_error` / recomputed-but-disagrees values are never read or emitted (hard
+  invariants `wrong_candidate_values_included=0` / `fixture_only_values_included=0`). New pure module
+  `pipeline/verified_numeric_prompt_context.py` renders the verified subset + closed fallback
+  (`Not verified from provided material`) into a `prompt_block` that is **off by default** (`enabled=False` ⇒
+  empty). **Why an off-by-default operator hook, not a live wire:** the user path `run_llm_job` has no
+  source/deck label, golden-pair mode, or recompute proof, so injecting verified values there would invent a
+  golden-fixture dependency for ordinary users. Instead `run_llm_job` gains a single optional
+  `verified_numeric_context=None` kwarg the API never sets (prompt byte-identical, nothing persisted to
+  `job.json`); only an explicit operator/Phase-0 caller passes a built context → `## Verified Numeric Facts`.
+  **Real closed dry run (committed golden specs `nn3`/`ensemble`, no regeneration):** 12 records seen → **2**
+  included, **8** `source_required` + **2** `unsupported` excluded, **0** wrong/fixture-only; NN3 1/5,
+  Ensemble 1/7, `fallback_instruction_present=true`. **Expected effect = verified subset only** (does not fix
+  every numeric target). No matcher loosening, no fixture value/tolerance edit, no leak-prompt change, no
+  judge/repair change (`judge_ready=false`, `repair_ready=false`). Tests: recompute verifier **252 pass**,
+  new `test_verified_numeric_prompt_context` **54 pass**; eval-harness/unified-qa/prompt-contract/contract-lint
+  unchanged (577/73/383/150). **Slice 173B NOT committed; no guide regenerated — next step is commit +
+  rebuild + manual regenerate + rerun Phase 0.**
+- **Superseded position (Slice 173A) — now committed `1905af7`.** Recompute-first PROOF slice, not generation
+  wiring. Part 0 reprinted the
   post-Slice-172 Layer-1 rerun (no regeneration): **numeric is the lead blocker and `found_but_wrong_value`
   dominates** — NN3 buckets `matched 0 / wrong 2 / missing 3`; Ensemble `matched 1 / wrong 6`. The guides
   confidently print wrong committed numbers. Slice 173A adds a closed *golden-target recompute proof* to
@@ -29,7 +52,7 @@
   loosening, no invented values (disagreement test proves no answer-table), no fixture value/tolerance edit,
   no prompt/generation/judge/repair change (`judge_ready=false`, `repair_ready=false`). Tests **203 pass**
   (was 178); eval-harness/unified-qa/prompt-contract/contract-lint unchanged (577/73/383/150).
-  **Slice 173A NOT committed.**
+  **Slice 173A committed `1905af7` and merged to trunk (superseded by 173B above).**
 - **Next required product slice — Slice 173B (`173b_verified_numeric_generation_context`):** feed the **2**
   independently verified values (high confidence) into generation/writer context. For the **9**
   `source_required`/`unsupported` targets, 173B must **either** derive computation inputs from

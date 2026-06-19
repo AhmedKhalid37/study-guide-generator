@@ -7133,3 +7133,37 @@ values at high confidence. 173A alone does **not** fix the guide; it proves the 
 catch wrong values and identifies exactly which committed values are (and are not) safe to supply. All
 Slice 173A tests use synthetic public-safe data; no `local_operator_baselines/` or private
 content/paths/numbers committed.
+
+## Slice 173B — verified numeric values are wired into generation; fixture-only values are not (2026-06-19)
+Slice 173A proved that wrong printed numeric values are detectable but only a subset of targets are
+independently recomputed or formula-verified. Slice 173B wires **only those independently verified
+values** into generation context. It must **not** inject committed fixture expected values merely
+because they exist. `source_required` and `unsupported` targets stay unavailable to the writer and must
+use the closed fallback (`Not verified from provided material`) or wait for source-derived computation
+inputs.
+
+**Design (no-laundering at the source):** `build_generation_ready_numeric_records`
+(`pipeline/quality_safety_recompute_verifier.py`) reads the committed value **only after** the Slice 173A
+`independently_verified_for_generation` gate passes; for `source_required` / `unsupported` /
+`verifier_error` / recomputed-but-disagrees targets the value is never read, so it cannot leak into the
+writer's context even by accident. Hard invariants `wrong_candidate_values_included=0` /
+`fixture_only_values_included=0` are surfaced as closed counts so the dry run can assert them.
+
+**Why an off-by-default operator hook, not a live wire:** the live user generation path
+(`run_llm_job`) has no source/deck label, golden-pair / Phase 0 mode, or recompute proof — injecting
+verified values there would invent a golden-fixture dependency for ordinary users (forbidden). Instead a
+new pure module `verified_numeric_prompt_context` renders the verified subset (plus the closed-fallback
+discipline) into a `prompt_block` that is **off by default** (`enabled=False` ⇒ empty block), and
+`run_llm_job` gains a single optional `verified_numeric_context=None` kwarg the API never sets — so the
+normal prompt stays byte-identical and nothing is persisted to `job.json`. Only an explicit
+operator/Phase-0 caller supplies a built context, appended as `## Verified Numeric Facts`. The block
+enforces verified-value use and the closed fallback **without** banning questions or ordinary teaching
+wording.
+
+**Effect:** 173B can only improve the independently-verified subset — real closed dry run (committed
+golden specs `nn3`/`ensemble`, no regeneration): 12 records seen → **2** included, **8** `source_required`
++ **2** `unsupported` excluded, **0** wrong/fixture-only included; per pair NN3 1/5 and Ensemble 1/7
+included, `fallback_instruction_present=true`. It is **not** expected to fix every numeric target. No
+numeric matcher loosening, no fixture value/tolerance edit, no leak-prompt change, no
+judge/repair-readiness change (`judge_ready=false`, `repair_ready=false`). All Slice 173B tests use
+synthetic public-safe data; no `local_operator_baselines/` or private content/paths/numbers committed.

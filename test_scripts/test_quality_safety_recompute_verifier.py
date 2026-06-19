@@ -33,6 +33,9 @@ from pipeline.quality_safety_recompute_verifier import (  # noqa: E402
     GOLDEN_CONFIDENCE_LEVELS,
     GOLDEN_CANDIDATE_STATUSES,
     GOLDEN_PROOF_WARNING_ORDER,
+    build_generation_ready_numeric_records,
+    VERIFIED_VALUE_INSTRUCTION_TOKEN,
+    GENERATION_READY_KIND,
 )
 
 PASS = 0
@@ -905,6 +908,87 @@ def test_golden_recompute_proof_closed_schema() -> None:
     assert_no_canary("golden closed schema", proof)
 
 
+# ── 13c. Slice 173B generation-ready numeric records ────────────────────────
+
+
+def test_generation_ready_includes_only_verified() -> None:
+    # Two correct formula-encoding targets -> both independently verified -> both
+    # emitted as generation-ready records carrying their (proven) committed value.
+    spec = _golden_spec(
+        "nn_synth",
+        [
+            {"label": "cross_entropy_neg_ln_0.5", "value": 0.69, "tol": 0.01},
+            {"label": "amount_of_say_half_ln_3", "value": 0.55, "tol": 0.01},
+        ],
+    )
+    out = build_generation_ready_numeric_records(spec)
+    check("gen-ready kind", out.get("kind") == GENERATION_READY_KIND, str(out.get("kind")))
+    recs = out.get("records")
+    check("gen-ready 2 records", isinstance(recs, list) and len(recs) == 2, str(recs))
+    for rec in recs:
+        check("gen-ready instruction token", rec.get("instruction_token") == VERIFIED_VALUE_INSTRUCTION_TOKEN, str(rec))
+        check("gen-ready has rendered value", isinstance(rec.get("verified_value_rendered"), str) and rec["verified_value_rendered"], str(rec))
+        check("gen-ready confidence ok", rec.get("confidence") in ("high", "medium"), str(rec))
+    s = out["summary"]
+    check("gen-ready seen 2", s["records_seen"] == 2, str(s))
+    check("gen-ready included 2", s["records_included_for_generation"] == 2, str(s))
+    check("gen-ready no wrong included", s["wrong_candidate_values_included"] == 0, str(s))
+    check("gen-ready no fixture-only included", s["fixture_only_values_included"] == 0, str(s))
+    assert_no_canary("gen-ready verified", out)
+
+
+def test_generation_ready_excludes_source_required_and_unsupported() -> None:
+    # A non-formula concept label with a supported family -> source_required;
+    # a label with no supported method -> unsupported. Neither is emitted, and the
+    # committed value is never read into the output.
+    spec = _golden_spec(
+        "mix_synth",
+        [
+            {"label": "cross_entropy_neg_ln_0.5", "value": 0.69, "tol": 0.01},
+            {"label": "gini_node_synth", "value": 0.42, "tol": 0.01},
+            {"label": "totally_unrelated_synth", "value": 0.99, "tol": 0.01},
+        ],
+    )
+    out = build_generation_ready_numeric_records(spec)
+    recs = out.get("records")
+    check("excl: only 1 verified emitted", isinstance(recs, list) and len(recs) == 1, str(recs))
+    check("excl: emitted is the verified one", recs and recs[0]["target_id"] == "cross_entropy_neg_ln_0.5", str(recs))
+    s = out["summary"]
+    check("excl: source_required counted", s["records_excluded_source_required"] == 1, str(s))
+    check("excl: unsupported counted", s["records_excluded_unsupported"] == 1, str(s))
+    check("excl: umbrella excludes 2", s["records_excluded_not_independently_verified"] == 2, str(s))
+    # No excluded committed value (0.42 / 0.99) may appear anywhere in the output.
+    blob = serialized(out)
+    check("excl: source_required value absent", "0.42" not in blob, blob)
+    check("excl: unsupported value absent", "0.99" not in blob, blob)
+
+
+def test_generation_ready_excludes_wrong_committed_disagreement() -> None:
+    # A deliberately WRONG committed value -> recompute disagrees -> NOT verified ->
+    # excluded, and the wrong value never enters generation context.
+    spec = _golden_spec(
+        "wrong_synth",
+        [{"label": "cross_entropy_neg_ln_0.5", "value": 0.10, "tol": 0.01}],
+    )
+    out = build_generation_ready_numeric_records(spec)
+    check("wrong: no records emitted", out.get("records") == [], str(out.get("records")))
+    s = out["summary"]
+    check("wrong: included 0", s["records_included_for_generation"] == 0, str(s))
+    check("wrong: umbrella excludes 1", s["records_excluded_not_independently_verified"] == 1, str(s))
+    check("wrong: invariant wrong=0", s["wrong_candidate_values_included"] == 0, str(s))
+    blob = serialized(out)
+    check("wrong: wrong value absent", "0.1" not in blob, blob)
+
+
+def test_generation_ready_degrades_safely() -> None:
+    for bad in (None, 123, "x", [], {}, {"ground_truth_numerics": "nope"}):
+        out = build_generation_ready_numeric_records(bad)
+        check(f"degrade kind {type(bad).__name__}", out.get("kind") == GENERATION_READY_KIND, str(out))
+        check(f"degrade empty records {type(bad).__name__}", out.get("records") == [], str(out))
+        check(f"degrade invariant wrong=0 {type(bad).__name__}", out["summary"]["wrong_candidate_values_included"] == 0, str(out))
+        assert_no_canary(f"degrade {type(bad).__name__}", out)
+
+
 # ── 13. Import hygiene ──────────────────────────────────────────────────────
 
 
@@ -942,6 +1026,10 @@ def run() -> int:
     test_golden_recompute_no_laundering_gate()
     test_golden_recompute_proof_degrades_and_no_mutation()
     test_golden_recompute_proof_closed_schema()
+    test_generation_ready_includes_only_verified()
+    test_generation_ready_excludes_source_required_and_unsupported()
+    test_generation_ready_excludes_wrong_committed_disagreement()
+    test_generation_ready_degrades_safely()
     test_no_leak_sweep()
     test_import_hygiene()
     print(f"\nquality_safety_recompute_verifier: {PASS} passed, {FAIL} failed")

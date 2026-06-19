@@ -91,6 +91,7 @@ def run_llm_job(
     material_page_selections: dict[str, Any] | None = None,
     enable_visual_references: bool = False,
     dual_explanation_mode: bool = False,
+    verified_numeric_context: Any = None,
 ) -> Job:
     resolved_config = config or LLMConfig.from_env()
     job = Job.create(
@@ -204,6 +205,21 @@ def run_llm_job(
             augmented_source = (
                 augmented_source.rstrip()
                 + f"\n\n## Guide Quality Contract\n\n{guide_quality_block}"
+            )
+
+        # Slice 173B: append the optional Phase 0 verified-numeric facts block.
+        # Off by default — only an explicit internal/operator (golden-pair) caller
+        # passes a built ``verified_numeric_context``; the normal user path leaves it
+        # None ⇒ empty block ⇒ prompt byte-identical. Every value in the block was
+        # gated upstream behind independent recompute verification (no laundering of
+        # fixture-only / source_required / unsupported values).
+        verified_numeric_block = _build_verified_numeric_prompt_block_safely(
+            verified_numeric_context
+        )
+        if verified_numeric_block:
+            augmented_source = (
+                augmented_source.rstrip()
+                + f"\n\n## Verified Numeric Facts\n\n{verified_numeric_block}"
             )
 
         source_path = job.input_dir / "source.txt"
@@ -956,6 +972,35 @@ def _build_dual_explanation_prompt_block_safely(enabled: Any = False) -> str:
     except Exception as exc:
         print(
             f"Dual explanation prompt context skipped ({type(exc).__name__}); job continues.",
+            file=sys.stderr,
+        )
+        return ""
+
+
+def _build_verified_numeric_prompt_block_safely(
+    verified_numeric_context: Any = None,
+) -> str:
+    """Best-effort safe verified-numeric facts block; never gates generation.
+
+    Slice 173B off-by-default hook. ``verified_numeric_context`` is the closed
+    context dict produced by ``verified_numeric_prompt_context`` — supplied ONLY by
+    an explicit internal/operator (Phase 0 golden-pair) caller. The normal user
+    generation path never passes it, so this returns ``""`` and the prompt stays
+    byte-identical. Returns the sanitized ``prompt_block`` only when the context is
+    a ``completed`` dict with a non-empty block whose verified values were already
+    gated behind independent recompute verification upstream. Never raises, inspects
+    no PDF/image, OCRs nothing, reconstructs no table, and calls no provider.
+    """
+    try:
+        if not isinstance(verified_numeric_context, dict):
+            return ""
+        if verified_numeric_context.get("status") != "completed":
+            return ""
+        block = verified_numeric_context.get("prompt_block")
+        return block if isinstance(block, str) else ""
+    except Exception as exc:
+        print(
+            f"Verified numeric prompt context skipped ({type(exc).__name__}); job continues.",
             file=sys.stderr,
         )
         return ""

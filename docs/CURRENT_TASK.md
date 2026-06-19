@@ -5,7 +5,66 @@
 
 ---
 
-## Slice 173A — **Recompute verifier catches wrong printed values**, on `slice173a-recompute-verifier-catches-wrong-values`. **NOT COMMITTED.**
+## Slice 173B — **Verified numeric generation context**, on `slice173b-verified-numeric-generation-context`. **NOT COMMITTED.**
+
+- **First student-visible numeric product step, no laundering.** Slice 173A proved which committed
+  numeric values are *independently* recompute/formula-verified. Slice 173B wires **only that verified
+  subset** into the generation prompt context so the writer can use recompute-proven committed values,
+  and tells the writer to use a **closed fallback** (`Not verified from provided material`) for anything
+  not verified. It does **not** regenerate guides and does **not** inject fixture-only / `source_required`
+  / `unsupported` / `verifier_error` values.
+- **phase=Phase 0 numeric product quality** · **slice173b_focus=verified_numeric_generation_context** ·
+  **input_basis=slice173a_independently_verified_values** · **fixture_only_values_injected=false** ·
+  **source_required_injected=false** · **unsupported_injected=false** · **generation_wiring=true** ·
+  **expected_effect=only_verified_subset** ·
+  **next_step=commit_rebuild_manual_regenerate_rerun_phase0** ·
+  **numeric_matcher_changes=false** · **fixture_expected_value_changes=false** · **leak_prompt_changes=false** ·
+  **repair_changes=false** · **judge_ready=false** · **repair_ready=false**.
+- **Prompt-assembly path inspected:** `pipeline/run_llm_job.py` assembles the generation prompt by
+  appending closed guidance blocks to `augmented_source` (dual-explanation → guide-quality contract),
+  each gated by a `_build_*_prompt_block_safely` helper that returns `""` by default so the prompt stays
+  byte-identical. The live user path has **no** access to a source/deck label, a golden-pair / Phase 0
+  mode, or the recompute proof — so wiring verified values straight into it would invent a golden-fixture
+  dependency. Conclusion: keep the wiring **off by default** behind an explicit operator hook.
+- **Change 1 (`pipeline/quality_safety_recompute_verifier.py`, additive):**
+  `build_generation_ready_numeric_records(golden_spec, *, candidate_classification_by_target=None)` runs the
+  Slice 173A proof and emits a generation-ready record **only** for targets that are
+  `independently_verified_for_generation` — the committed value is read **only** after that gate passes, so
+  `source_required` / `unsupported` / `verifier_error` / recomputed-but-disagrees values are never read and
+  never emitted. Closed record fields: `source_label`, `target_id`, `expected_label`,
+  `verified_value_rendered`, `verified_value_kind`, `confidence`, `instruction_token=use_verified_value`.
+  Closed summary carries `records_seen`, `records_included_for_generation`, the per-status exclusion counts,
+  and hard invariants `wrong_candidate_values_included=0` / `fixture_only_values_included=0`.
+- **Change 2 (`pipeline/verified_numeric_prompt_context.py`, new pure module):**
+  `build_verified_numeric_prompt_context(records, *, enabled=False)` turns the generation-ready records into a
+  closed `prompt_block`. **Off by default** (`enabled` defaults `False` → skipped → empty block). When enabled
+  it renders one bullet per verified value plus the fixed discipline ("use these exactly; do not re-estimate"),
+  the closed fallback rule, and "never present competing unresolved numeric values" — without banning questions
+  or ordinary teaching wording. stdlib-only, leak-free, never raises.
+- **Change 3 (`pipeline/run_llm_job.py`, smallest off-by-default hook):** new optional kwarg
+  `verified_numeric_context=None` and `_build_verified_numeric_prompt_block_safely(...)`. Normal callers (the
+  API) never pass it → block `""` → prompt byte-identical and **not** persisted to `job.json`. Only an explicit
+  operator/Phase-0 caller passes a built context; then the block is appended as `## Verified Numeric Facts`.
+- **Real closed dry run (Slice 173A proof basis; committed golden specs `nn3`/`ensemble`; no regeneration):**
+  - **Pair-level:** `verified_context_enabled=true` · `records_seen=12` · `records_included_for_generation=2`
+    · `records_excluded_source_required=8` · `records_excluded_unsupported=2` · `records_excluded_verifier_error=0`
+    · `records_excluded_not_independently_verified=10` · `wrong_candidate_values_included=0` · `fixture_only_values_included=0`.
+  - **NN3:** `records_seen=5` · `records_included_for_generation=1` · `records_excluded_not_independently_verified=4`
+    · `fallback_instruction_present=true` · warnings: none.
+  - **Ensemble:** `records_seen=7` · `records_included_for_generation=1` · `records_excluded_not_independently_verified=6`
+    · `fallback_instruction_present=true` · warnings: none.
+- **Tests:** `test_quality_safety_recompute_verifier.py` +4 (generation-ready verified-only / source_required+unsupported
+  excluded / wrong-committed-disagreement excluded / safe degrade) → 252 passed; new
+  `test_verified_numeric_prompt_context.py` 54 passed (off-by-default, verified+fallback rendering, no global
+  question/teaching ban, malformed exclusion, envelope shape, safe degrade, no-leak sweep, run_llm_job hook +
+  kwarg-default-None signature check, import hygiene). Full required suite green (eval harness 577, unified QA 73,
+  prompt contract 383, contract lint 150). `judge_ready`/`repair_ready` unchanged.
+- **Not done here:** no guide regeneration, no UI feature, no live-user enablement, no matcher/fixture/judge/repair
+  change. **Slice 173B is NOT committed.**
+
+---
+
+## Slice 173A — **Recompute verifier catches wrong printed values**, on `slice173a-recompute-verifier-catches-wrong-values`. **COMMITTED `1905af7`; merged to `chrome-renderer-v1`.**
 
 - **Recompute-first proof slice, not generation wiring and not score-laundering.** After Slice 172
   reduced trusted leak signals, the dominant measured blocker is **numeric correctness — specifically
