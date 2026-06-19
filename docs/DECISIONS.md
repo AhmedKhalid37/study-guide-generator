@@ -6809,3 +6809,27 @@ low-confidence numeric facts are counted and warned but never used to pass numer
 **Why:** this connects the existing factsheet/recompute foundation to the Phase 0 eval path without
 changing production behavior or weakening the factsheet-spec invariant: unverified numeric facts never
 become confident values, and no repair/production wiring is added.
+
+## Phase 0 runner/exit-check is pure/in-memory and closed-summary-only (Slice 165)
+The Phase 0 eval runner (`run_phase0_eval_harness`) and exit-check (`build_phase0_exit_check`) are pure,
+in-memory, and closed-summary-only. They tie together the Phase 0 harness pieces built in Slices 160–164
+(real golden pair `{nn3, ensemble}`, the Layer-1 deterministic scorer, the deterministic-only `overall_10`
+kept separate from `shippable`, closed regression records, the optional caller-supplied fact-sheet summary,
+and the reference-anchored judge contract status) without reading any private file or executing any judge.
+The runner scores caller-supplied synthetic candidate text only and returns a closed aggregate; it never
+discovers/reads `jobs/`, `local_operator_baselines/`, source/reference PDFs, generated guides, `clean.md`,
+OCR/table/caption text, screenshots, or raw artifacts, and it makes no provider/model/cloud/local-LLM/judge
+call. `overall_10` stays Layer-1 deterministic-only; `layer2_judge_included` is `true` only when an explicit,
+already-sanitized, fully-calibrated reference-judge summary is supplied, and even then it never changes
+`overall_10`.
+
+The exit-check must remain **blocked/not_ready** until the real required local runs and the reference-judge
+calibration are recorded through safe closed summaries: the structural blockers (no real old Ensemble run
+recorded, reference-judge execution/calibration not run, fact-sheet path not production-wired, regression
+history not established) always hold in this slice, so `phase0_exit_status` is never `ready` here; a
+non-shippable run is surfaced as `blocked`, a missing run as `phase0_required_run_missing`.
+
+**Why:** the exit-check must report honestly and must not invent readiness — Phase 0 cannot end on synthetic
+runs alone. The frozen production offline judge stays frozen by construction (`judge_ready`/`repair_ready`
+always `false` with no override), this is not manual operator `known_numbers` infrastructure, and no
+repair/production/judge-execution wiring is added.

@@ -249,6 +249,68 @@ PHASE0_FACT_SHEET_WARNING_ORDER = (
     "committed_numeric_mismatch",
 )
 
+# --- Phase 0 eval runner + exit-check skeleton (Slice 165) -------------------
+# A pure, in-memory runner that ties together the Phase 0 pieces built in Slices
+# 160-164 (real golden-pair specs nn3+ensemble, the Layer-1 deterministic scorer,
+# the deterministic-only overall_10 envelope kept separate from shippable, closed
+# regression records, the optional caller-supplied fact-sheet summary, and the
+# reference-anchored judge contract status). The runner scores caller-supplied
+# synthetic candidate text only and returns a closed aggregate summary; it never
+# discovers/reads files, jobs/, local_operator_baselines/, source/reference PDFs,
+# generated guides, clean.md, OCR/table/caption text, screenshots, or raw
+# artifacts, and it executes no provider/model/judge. The exit-check reports
+# honestly whether Phase 0 can end; it cannot invent readiness, and the frozen
+# production offline judge stays frozen by construction (judge_ready/repair_ready
+# are always False with no override).
+PHASE0_RUN_KIND = "phase0_eval_harness_run"
+PHASE0_EXIT_CHECK_KIND = "phase0_exit_check"
+PHASE0_EXIT_PHASE = "phase0_eval_harness_fact_sheet_skeleton"
+PHASE0_EXIT_STATUSES = frozenset({"ready", "blocked", "not_ready"})
+PHASE0_RUN_WARNING_ORDER = (
+    "candidate_missing",
+    "candidate_invalid",
+    "fact_sheet_input_ignored",
+    "reference_summary_input_ignored",
+    "unexpected_candidate_lecture_ignored",
+)
+# Closed exit-check vocabularies. Blockers are honest reasons Phase 0 cannot end
+# yet; satisfied tokens name Phase 0 components that verifiably exist in this
+# module. Both are emitted as closed tokens only.
+PHASE0_EXIT_BLOCKER_ORDER = (
+    "phase0_required_run_missing",
+    "phase0_run_not_all_shippable",
+    "real_old_ensemble_run_not_recorded",
+    "reference_judge_execution_not_run",
+    "reference_judge_calibration_not_recorded",
+    "fact_sheet_production_wiring_not_present",
+    "regression_history_not_established",
+)
+PHASE0_EXIT_SATISFIED_ORDER = (
+    "golden_pair_specs_present",
+    "layer1_deterministic_scorer_present",
+    "overall_10_separate_from_shippable",
+    "regression_record_shape_present",
+    "reference_judge_contract_present",
+    "factsheet_recompute_integration_present",
+    "production_offline_judge_frozen",
+)
+# Structural blockers that always hold in this slice: the real required local
+# runs and the reference-judge calibration have not been recorded through safe
+# closed summaries yet, and the fact-sheet path is not production-wired.
+PHASE0_EXIT_STRUCTURAL_BLOCKERS = (
+    "real_old_ensemble_run_not_recorded",
+    "reference_judge_execution_not_run",
+    "reference_judge_calibration_not_recorded",
+    "fact_sheet_production_wiring_not_present",
+    "regression_history_not_established",
+)
+PHASE0_EXIT_NEXT_STEPS = frozenset(
+    {
+        "phase0_address_non_shippable_run",
+        "phase0_record_real_runs_and_judge_calibration",
+    }
+)
+
 
 class GoldenPairSpecError(ValueError):
     """Raised when a Phase 0 golden-pair spec is malformed or out of contract."""
@@ -1342,6 +1404,184 @@ def _phase0_blocking_regression_count(
         ):
             count += 1
     return count
+
+
+def run_phase0_eval_harness(
+    candidate_text_by_lecture_id: Any,
+    golden_pair_specs: Any,
+    *,
+    fact_sheet_by_lecture_id: dict[str, Any] | None = None,
+    reference_judge_summary_by_lecture_id: dict[str, Any] | None = None,
+    run_id: Any = "synthetic",
+    model_tier: Any = "premium",
+) -> dict[str, Any]:
+    """Run the Phase 0 eval harness over caller-supplied synthetic candidate text.
+
+    Pure, deterministic, in-memory. ``golden_pair_specs`` must be exactly the two
+    real golden-pair specs ``{nn3, ensemble}`` (validated by
+    :func:`load_golden_pair_specs`, which raises ``GoldenPairSpecError`` on any
+    other set, since the golden pair is authored and must be correct).
+    ``candidate_text_by_lecture_id`` supplies the candidate guide text per lecture;
+    a missing/non-string candidate degrades to an empty candidate (which fails the
+    deterministic Layer-1 gates and is therefore non-shippable) and records a
+    closed ``candidate_missing``/``candidate_invalid`` warning rather than crashing.
+
+    Each lecture is scored with :func:`score_phase0_layer1` (optionally folding a
+    caller-supplied in-memory fact sheet) and summarized into a closed
+    :func:`build_phase0_regression_record`. ``overall_10`` is the Layer-1
+    deterministic-only envelope and stays separate from ``shippable``. Layer-2 is
+    not executed: ``layer2_judge_included`` is ``True`` only when an explicit,
+    already-sanitized, fully-calibrated reference-judge summary is supplied for a
+    lecture. The frozen production offline judge stays frozen by construction
+    (``judge_ready``/``repair_ready`` always ``False``).
+
+    Returns a closed aggregate summary holding counts, bounded numerics, closed
+    statuses/warnings, and the per-lecture closed regression records only. It never
+    reads any file, job artifact, source/reference document, ``clean.md``,
+    OCR/table/caption text, screenshot, or provider payload, and it never echoes
+    raw candidate text, snippets, paths, filenames, hashes, or byte counts. It is
+    not a manual operator ``known_numbers`` runtime; the closed golden expectations
+    drive it.
+    """
+    specs = load_golden_pair_specs(golden_pair_specs)
+
+    candidates = candidate_text_by_lecture_id if isinstance(candidate_text_by_lecture_id, dict) else {}
+    fact_sheets = fact_sheet_by_lecture_id if isinstance(fact_sheet_by_lecture_id, dict) else {}
+    reference_summaries = (
+        reference_judge_summary_by_lecture_id
+        if isinstance(reference_judge_summary_by_lecture_id, dict)
+        else {}
+    )
+
+    warnings: set[str] = set()
+    if set(candidates) - set(REQUIRED_GOLDEN_PAIR_IDS):
+        warnings.add("unexpected_candidate_lecture_ignored")
+
+    records: list[dict[str, Any]] = []
+    scores: list[float] = []
+    shippable_count = 0
+    layer2_included = False
+
+    for lecture_id in REQUIRED_GOLDEN_PAIR_IDS:
+        spec = specs[lecture_id]
+        candidate = candidates.get(lecture_id)
+        if candidate is None:
+            warnings.add("candidate_missing")
+            candidate = ""
+        elif not isinstance(candidate, str):
+            warnings.add("candidate_invalid")
+            candidate = ""
+
+        fact_sheet = fact_sheets.get(lecture_id)
+        reference_summary = reference_summaries.get(lecture_id)
+        if reference_summary is not None and not isinstance(reference_summary, dict):
+            warnings.add("reference_summary_input_ignored")
+            reference_summary = None
+
+        layer1 = score_phase0_layer1(candidate, spec, fact_sheet=fact_sheet)
+        record = build_phase0_regression_record(
+            layer1,
+            run_id=run_id,
+            model_tier=model_tier,
+            candidate_id=lecture_id,
+            reference_judge_summary=reference_summary,
+        )
+        records.append(record)
+
+        score = _safe_score(record.get("overall_10"))
+        if score is not None:
+            scores.append(score)
+        if record.get("shippable"):
+            shippable_count += 1
+        if record.get("layer2_judge_included"):
+            layer2_included = True
+
+    lecture_count = len(records)
+    non_shippable_count = lecture_count - shippable_count
+    min_overall_10 = round(min(scores), 4) if scores else None
+    average_overall_10 = round(sum(scores) / len(scores), 4) if scores else None
+
+    return {
+        "version": VERSION,
+        "kind": PHASE0_RUN_KIND,
+        "run_id": _safe_meta(run_id, "synthetic"),
+        "model_tier": _safe_model_tier(model_tier),
+        "golden_pair_ids": list(REQUIRED_GOLDEN_PAIR_IDS),
+        "lecture_count": lecture_count,
+        "shippable_count": shippable_count,
+        "non_shippable_count": non_shippable_count,
+        "min_overall_10": min_overall_10,
+        "average_overall_10": average_overall_10,
+        "all_shippable": lecture_count > 0 and shippable_count == lecture_count,
+        "overall_score_kind": PHASE0_OVERALL_SCORE_KIND,
+        "layer2_judge_included": layer2_included,
+        "production_offline_judge_frozen": True,
+        "judge_ready": False,
+        "repair_ready": False,
+        "records": records,
+        "warnings": _ordered(warnings, PHASE0_RUN_WARNING_ORDER),
+    }
+
+
+def build_phase0_exit_check(run_record: Any) -> dict[str, Any]:
+    """Evaluate whether Phase 0 can end, honestly, from a closed run record.
+
+    Takes a record produced by :func:`run_phase0_eval_harness` and returns a
+    closed exit-check record holding closed blocker/satisfied tokens only. It must
+    not invent readiness: the structural blockers (no real old Ensemble run
+    recorded, reference-judge execution/calibration not run, fact-sheet path not
+    production-wired, regression history not established) always hold in this
+    slice, so ``phase0_exit_status`` is never ``ready`` here. A non-shippable run,
+    or a missing/invalid run record, is surfaced as an additional blocker. The
+    frozen production offline judge stays frozen (``judge_ready``/``repair_ready``
+    always ``False``). Reads no file and echoes no private material.
+    """
+    run = (
+        run_record
+        if isinstance(run_record, dict) and run_record.get("kind") == PHASE0_RUN_KIND
+        else None
+    )
+
+    blockers: set[str] = set(PHASE0_EXIT_STRUCTURAL_BLOCKERS)
+    satisfied: set[str] = {
+        "layer1_deterministic_scorer_present",
+        "overall_10_separate_from_shippable",
+        "reference_judge_contract_present",
+        "factsheet_recompute_integration_present",
+        "production_offline_judge_frozen",
+    }
+
+    if run is None:
+        blockers.add("phase0_required_run_missing")
+    else:
+        satisfied.add("golden_pair_specs_present")
+        satisfied.add("regression_record_shape_present")
+        if not run.get("all_shippable"):
+            blockers.add("phase0_run_not_all_shippable")
+
+    if "phase0_run_not_all_shippable" in blockers:
+        status = "blocked"
+        next_step = "phase0_address_non_shippable_run"
+    elif blockers:
+        status = "not_ready"
+        next_step = "phase0_record_real_runs_and_judge_calibration"
+    else:  # pragma: no cover - unreachable while structural blockers hold
+        status = "ready"
+        next_step = "phase0_record_real_runs_and_judge_calibration"
+
+    return {
+        "version": VERSION,
+        "kind": PHASE0_EXIT_CHECK_KIND,
+        "phase": PHASE0_EXIT_PHASE,
+        "phase0_exit_status": status,
+        "golden_pair_ids": list(REQUIRED_GOLDEN_PAIR_IDS),
+        "blockers": _ordered(blockers, PHASE0_EXIT_BLOCKER_ORDER),
+        "satisfied": _ordered(satisfied, PHASE0_EXIT_SATISFIED_ORDER),
+        "production_offline_judge_frozen": True,
+        "judge_ready": False,
+        "repair_ready": False,
+        "next_step": next_step,
+    }
 
 
 def _phase0_checks_by_id(layer1_record: Any) -> dict[str, dict[str, Any]]:

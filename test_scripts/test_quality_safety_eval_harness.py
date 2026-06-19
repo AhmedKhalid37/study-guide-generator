@@ -20,8 +20,11 @@ REPO = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO))
 
 from pipeline.quality_safety_eval_harness import (  # noqa: E402
+    PHASE0_EXIT_BLOCKER_ORDER,
+    PHASE0_EXIT_SATISFIED_ORDER,
     GoldenPairSpecError,
     append_phase0_regression_record_jsonl,
+    build_phase0_exit_check,
     build_phase0_fact_sheet_summary,
     build_phase0_regression_record,
     build_phase0_report_skeleton,
@@ -31,6 +34,7 @@ from pipeline.quality_safety_eval_harness import (  # noqa: E402
     load_golden_pair_spec,
     load_golden_pair_specs,
     load_quality_safety_fixture_spec,
+    run_phase0_eval_harness,
     run_quality_safety_eval,
     run_quality_safety_layer1_checks,
     score_phase0_layer1,
@@ -2138,6 +2142,378 @@ def test_reference_judge_prompt_stays_within_nn3_ensemble() -> None:
     check("reference judge prompt rejects non-golden lecture id", rejected)
 
 
+def phase0_golden_specs() -> list[dict[str, Any]]:
+    return [read_golden_pair("nn3"), read_golden_pair("ensemble")]
+
+
+def phase0_clean_candidates() -> dict[str, str]:
+    return {
+        lecture_id: golden_candidate(load_golden_pair_spec(read_golden_pair(lecture_id)))
+        for lecture_id in ("nn3", "ensemble")
+    }
+
+
+def test_phase0_runner_requires_exactly_nn3_and_ensemble() -> None:
+    candidates = phase0_clean_candidates()
+    rejected_short = False
+    try:
+        run_phase0_eval_harness(candidates, [read_golden_pair("nn3")])
+    except GoldenPairSpecError:
+        rejected_short = True
+    check("phase0 runner rejects golden set missing ensemble", rejected_short)
+
+    rejected_extra = False
+    try:
+        run_phase0_eval_harness(
+            candidates,
+            [read_golden_pair("nn3"), read_golden_pair("ensemble"), read_golden_pair("nn3")],
+        )
+    except GoldenPairSpecError:
+        rejected_extra = True
+    check("phase0 runner rejects duplicate golden spec", rejected_extra)
+
+    run = run_phase0_eval_harness(candidates, phase0_golden_specs())
+    check("phase0 runner kind", run["kind"] == "phase0_eval_harness_run")
+    check(
+        "phase0 runner golden pair ids exactly nn3 and ensemble",
+        run["golden_pair_ids"] == ["nn3", "ensemble"],
+    )
+    check("phase0 runner lecture count is two", run["lecture_count"] == 2)
+
+
+def test_phase0_runner_clean_candidates_all_shippable() -> None:
+    run = run_phase0_eval_harness(phase0_clean_candidates(), phase0_golden_specs())
+    check("phase0 runner clean all_shippable", run["all_shippable"] is True)
+    check("phase0 runner clean shippable_count", run["shippable_count"] == 2)
+    check("phase0 runner clean non_shippable_count", run["non_shippable_count"] == 0)
+    check("phase0 runner clean min_overall_10", run["min_overall_10"] == 10.0)
+    check("phase0 runner clean average_overall_10", run["average_overall_10"] == 10.0)
+    check("phase0 runner clean no warnings", run["warnings"] == [], str(run["warnings"]))
+    check(
+        "phase0 runner overall_score_kind layer1 deterministic only",
+        run["overall_score_kind"] == "layer1_deterministic_only",
+    )
+    check(
+        "phase0 runner record count matches lectures",
+        len(run["records"]) == 2
+        and all(r["kind"] == "phase0_eval_regression_record" for r in run["records"]),
+    )
+
+
+def test_phase0_runner_bad_ensemble_candidate_not_all_shippable() -> None:
+    spec = load_golden_pair_spec(read_golden_pair("ensemble"))
+    wrong = [{**item, "value": item["value"] + 5.0} for item in spec["ground_truth_numerics"]]
+    candidates = {
+        "nn3": golden_candidate(load_golden_pair_spec(read_golden_pair("nn3"))),
+        "ensemble": golden_candidate(spec, numerics=wrong),
+    }
+    run = run_phase0_eval_harness(candidates, phase0_golden_specs())
+    check("phase0 runner bad ensemble not all_shippable", run["all_shippable"] is False)
+    check("phase0 runner bad ensemble non_shippable_count", run["non_shippable_count"] == 1)
+    check("phase0 runner bad ensemble shippable_count", run["shippable_count"] == 1)
+    check(
+        "phase0 runner bad ensemble min below average",
+        run["min_overall_10"] is not None
+        and run["average_overall_10"] is not None
+        and run["min_overall_10"] <= run["average_overall_10"],
+    )
+
+
+def test_phase0_runner_deterministic_aggregate() -> None:
+    candidates = phase0_clean_candidates()
+    specs = phase0_golden_specs()
+    first = json.dumps(run_phase0_eval_harness(candidates, specs), sort_keys=True)
+    second = json.dumps(run_phase0_eval_harness(candidates, specs), sort_keys=True)
+    check("phase0 runner aggregate deterministic", first == second)
+
+
+def test_phase0_runner_missing_candidate_is_closed_failure() -> None:
+    run = run_phase0_eval_harness(
+        {"nn3": golden_candidate(load_golden_pair_spec(read_golden_pair("nn3")))},
+        phase0_golden_specs(),
+    )
+    check("phase0 runner missing candidate warns", "candidate_missing" in run["warnings"])
+    check("phase0 runner missing candidate not all_shippable", run["all_shippable"] is False)
+    check("phase0 runner missing candidate still two records", len(run["records"]) == 2)
+    no_canary("phase0 runner missing candidate", run)
+
+
+def test_phase0_runner_judge_frozen_and_layer2_excluded_by_default() -> None:
+    run = run_phase0_eval_harness(phase0_clean_candidates(), phase0_golden_specs())
+    check("phase0 runner production offline judge frozen", run["production_offline_judge_frozen"] is True)
+    check("phase0 runner judge_ready false", run["judge_ready"] is False)
+    check("phase0 runner repair_ready false", run["repair_ready"] is False)
+    check("phase0 runner layer2 excluded by default", run["layer2_judge_included"] is False)
+    for record in run["records"]:
+        check(
+            "phase0 runner record judge frozen",
+            record["judge_ready"] is False and record["repair_ready"] is False,
+        )
+
+
+def test_phase0_runner_accepts_caller_supplied_fact_sheet() -> None:
+    sheet = synthetic_fact_sheet(total_error_fact())
+    run = run_phase0_eval_harness(
+        phase0_clean_candidates(),
+        phase0_golden_specs(),
+        fact_sheet_by_lecture_id={"nn3": sheet},
+    )
+    nn3_record = next(r for r in run["records"] if r["lecture_id"] == "nn3")
+    summary = nn3_record["fact_sheet_summary"]
+    check(
+        "phase0 runner fact sheet summary kind",
+        summary["kind"] == "quality_safety_phase0_fact_sheet_summary",
+    )
+    check(
+        "phase0 runner fact sheet summary counts only",
+        set(summary).issubset(
+            {
+                "kind",
+                "fact_sheet_status",
+                "recompute_verifier_status",
+                "fact_sheet_numeric_count",
+                "verified_numeric_count",
+                "failed_numeric_count",
+                "unverified_numeric_count",
+                "canonical_numeric_count",
+                "committed_numeric_count",
+                "warnings",
+            }
+        ),
+    )
+    ensemble_record = next(r for r in run["records"] if r["lecture_id"] == "ensemble")
+    check(
+        "phase0 runner unsupplied lecture reports not_supplied",
+        ensemble_record["fact_sheet_summary"]["fact_sheet_status"] == "not_supplied",
+    )
+
+
+def test_phase0_runner_layer2_only_with_explicit_ok_summary() -> None:
+    ok_summary = {
+        "status": "ok",
+        "calibration_status": "ok",
+        "candidate_axis_scores": {axis: 5 for axis in REFERENCE_JUDGE_AXES},
+        "reference_axis_scores": {axis: 5 for axis in REFERENCE_JUDGE_AXES},
+    }
+    run = run_phase0_eval_harness(
+        phase0_clean_candidates(),
+        phase0_golden_specs(),
+        reference_judge_summary_by_lecture_id={"nn3": ok_summary},
+    )
+    check("phase0 runner layer2 included with ok summary", run["layer2_judge_included"] is True)
+    check(
+        "phase0 runner overall stays layer1 deterministic with layer2 summary",
+        run["overall_score_kind"] == "layer1_deterministic_only"
+        and run["min_overall_10"] == 10.0,
+    )
+    bad = run_phase0_eval_harness(
+        phase0_clean_candidates(),
+        phase0_golden_specs(),
+        reference_judge_summary_by_lecture_id={"nn3": "not-a-dict"},
+    )
+    check(
+        "phase0 runner ignores non-dict reference summary",
+        bad["layer2_judge_included"] is False
+        and "reference_summary_input_ignored" in bad["warnings"],
+    )
+
+
+def test_phase0_runner_record_has_no_raw_material() -> None:
+    spec = load_golden_pair_spec(read_golden_pair("nn3"))
+    hostile_topics = spec["expected_topics"] + HOSTILE_CANARIES
+    candidates = {
+        "nn3": golden_candidate(spec, topics=hostile_topics, extra_lines=HOSTILE_CANARIES),
+        "ensemble": golden_candidate(load_golden_pair_spec(read_golden_pair("ensemble"))),
+    }
+    run = run_phase0_eval_harness(candidates, phase0_golden_specs())
+    no_canary("phase0 runner aggregate", run)
+    for record in run["records"]:
+        no_canary("phase0 runner record", record)
+
+
+def test_phase0_exit_check_blocked_before_real_runs() -> None:
+    run = run_phase0_eval_harness(phase0_clean_candidates(), phase0_golden_specs())
+    exit_check = build_phase0_exit_check(run)
+    check("phase0 exit-check kind", exit_check["kind"] == "phase0_exit_check")
+    check(
+        "phase0 exit-check phase token",
+        exit_check["phase"] == "phase0_eval_harness_fact_sheet_skeleton",
+    )
+    check(
+        "phase0 exit-check clean run is not_ready (structural blockers hold)",
+        exit_check["phase0_exit_status"] == "not_ready",
+        exit_check["phase0_exit_status"],
+    )
+    check(
+        "phase0 exit-check never ready in this slice",
+        exit_check["phase0_exit_status"] != "ready",
+    )
+    check(
+        "phase0 exit-check golden pair ids",
+        exit_check["golden_pair_ids"] == ["nn3", "ensemble"],
+    )
+    check(
+        "phase0 exit-check judge frozen",
+        exit_check["production_offline_judge_frozen"] is True
+        and exit_check["judge_ready"] is False
+        and exit_check["repair_ready"] is False,
+    )
+
+
+def test_phase0_exit_check_blockers_are_closed_tokens() -> None:
+    allowed_blockers = {
+        "phase0_required_run_missing",
+        "phase0_run_not_all_shippable",
+        "real_old_ensemble_run_not_recorded",
+        "reference_judge_execution_not_run",
+        "reference_judge_calibration_not_recorded",
+        "fact_sheet_production_wiring_not_present",
+        "regression_history_not_established",
+    }
+    run = run_phase0_eval_harness(phase0_clean_candidates(), phase0_golden_specs())
+    exit_check = build_phase0_exit_check(run)
+    check(
+        "phase0 exit-check blockers closed tokens only",
+        set(exit_check["blockers"]).issubset(allowed_blockers),
+        str(exit_check["blockers"]),
+    )
+    check(
+        "phase0 exit-check structural blockers present",
+        {
+            "real_old_ensemble_run_not_recorded",
+            "reference_judge_execution_not_run",
+            "reference_judge_calibration_not_recorded",
+            "fact_sheet_production_wiring_not_present",
+            "regression_history_not_established",
+        }.issubset(set(exit_check["blockers"])),
+    )
+    check(
+        "phase0 exit-check next_step closed token",
+        exit_check["next_step"]
+        in ("phase0_address_non_shippable_run", "phase0_record_real_runs_and_judge_calibration"),
+    )
+
+
+def test_phase0_exit_check_satisfied_includes_built_components() -> None:
+    run = run_phase0_eval_harness(phase0_clean_candidates(), phase0_golden_specs())
+    exit_check = build_phase0_exit_check(run)
+    expected_satisfied = {
+        "golden_pair_specs_present",
+        "layer1_deterministic_scorer_present",
+        "overall_10_separate_from_shippable",
+        "regression_record_shape_present",
+        "reference_judge_contract_present",
+        "factsheet_recompute_integration_present",
+        "production_offline_judge_frozen",
+    }
+    check(
+        "phase0 exit-check satisfied lists built components",
+        set(exit_check["satisfied"]) == expected_satisfied,
+        str(exit_check["satisfied"]),
+    )
+
+
+def test_phase0_exit_check_vocabularies_are_closed_and_well_formed() -> None:
+    # The module-level closed vocabularies must match the canonical spelling
+    # exactly so a garbled/pasted token (e.g. slit_recorded, referencded, rshed)
+    # can never become a live blocker/satisfied token.
+    canonical_blockers = (
+        "phase0_required_run_missing",
+        "phase0_run_not_all_shippable",
+        "real_old_ensemble_run_not_recorded",
+        "reference_judge_execution_not_run",
+        "reference_judge_calibration_not_recorded",
+        "fact_sheet_production_wiring_not_present",
+        "regression_history_not_established",
+    )
+    canonical_satisfied = (
+        "golden_pair_specs_present",
+        "layer1_deterministic_scorer_present",
+        "overall_10_separate_from_shippable",
+        "regression_record_shape_present",
+        "reference_judge_contract_present",
+        "factsheet_recompute_integration_present",
+        "production_offline_judge_frozen",
+    )
+    check(
+        "phase0 exit-check blocker vocabulary pinned",
+        PHASE0_EXIT_BLOCKER_ORDER == canonical_blockers,
+        str(PHASE0_EXIT_BLOCKER_ORDER),
+    )
+    check(
+        "phase0 exit-check satisfied vocabulary pinned",
+        PHASE0_EXIT_SATISFIED_ORDER == canonical_satisfied,
+        str(PHASE0_EXIT_SATISFIED_ORDER),
+    )
+    # No malformed/garbled tokens anywhere in the closed vocabularies.
+    malformed = {"slit_recorded", "referencded", "rshed", "slit"}
+    vocab = set(PHASE0_EXIT_BLOCKER_ORDER) | set(PHASE0_EXIT_SATISFIED_ORDER)
+    check(
+        "phase0 exit-check vocab has no malformed tokens",
+        not (vocab & malformed),
+        str(vocab & malformed),
+    )
+    token_re = re.compile(r"^[a-z0-9_]+$")
+    check(
+        "phase0 exit-check vocab tokens are clean snake_case",
+        all(token_re.match(token) for token in vocab),
+        str(sorted(t for t in vocab if not token_re.match(t))),
+    )
+    # Every token emitted by the runner+exit-check must be a member of the
+    # declared closed vocabulary -- no free-form or garbled tokens can appear.
+    for candidates in (phase0_clean_candidates(), None):
+        run = (
+            run_phase0_eval_harness(candidates, phase0_golden_specs())
+            if candidates is not None
+            else None
+        )
+        exit_check = build_phase0_exit_check(run)
+        check(
+            "phase0 exit-check emitted blockers are closed-vocab members",
+            set(exit_check["blockers"]).issubset(set(PHASE0_EXIT_BLOCKER_ORDER)),
+            str(exit_check["blockers"]),
+        )
+        check(
+            "phase0 exit-check emitted satisfied are closed-vocab members",
+            set(exit_check["satisfied"]).issubset(set(PHASE0_EXIT_SATISFIED_ORDER)),
+            str(exit_check["satisfied"]),
+        )
+        check(
+            "phase0 exit-check emitted tokens have no malformed members",
+            not ((set(exit_check["blockers"]) | set(exit_check["satisfied"])) & malformed),
+        )
+
+
+def test_phase0_exit_check_flags_non_shippable_run() -> None:
+    spec = load_golden_pair_spec(read_golden_pair("ensemble"))
+    wrong = [{**item, "value": item["value"] + 5.0} for item in spec["ground_truth_numerics"]]
+    candidates = {
+        "nn3": golden_candidate(load_golden_pair_spec(read_golden_pair("nn3"))),
+        "ensemble": golden_candidate(spec, numerics=wrong),
+    }
+    run = run_phase0_eval_harness(candidates, phase0_golden_specs())
+    exit_check = build_phase0_exit_check(run)
+    check(
+        "phase0 exit-check blocked on non-shippable run",
+        exit_check["phase0_exit_status"] == "blocked"
+        and "phase0_run_not_all_shippable" in exit_check["blockers"],
+    )
+
+    missing = build_phase0_exit_check(None)
+    check(
+        "phase0 exit-check flags missing run",
+        "phase0_required_run_missing" in missing["blockers"]
+        and missing["phase0_exit_status"] != "ready",
+    )
+
+
+def test_phase0_runner_and_exit_check_no_leak_sweep() -> None:
+    run = run_phase0_eval_harness(phase0_clean_candidates(), phase0_golden_specs())
+    exit_check = build_phase0_exit_check(run)
+    no_canary("phase0 runner sweep", run)
+    no_canary("phase0 exit-check sweep", exit_check)
+
+
 def test_import_hygiene() -> None:
     source_path = REPO / "pipeline" / "quality_safety_eval_harness.py"
     tree = ast.parse(source_path.read_text(encoding="utf-8"))
@@ -2241,6 +2617,21 @@ def run() -> int:
     test_reference_judge_layer2_integration_into_regression_record()
     test_reference_judge_default_record_is_not_run()
     test_reference_judge_prompt_stays_within_nn3_ensemble()
+    test_phase0_runner_requires_exactly_nn3_and_ensemble()
+    test_phase0_runner_clean_candidates_all_shippable()
+    test_phase0_runner_bad_ensemble_candidate_not_all_shippable()
+    test_phase0_runner_deterministic_aggregate()
+    test_phase0_runner_missing_candidate_is_closed_failure()
+    test_phase0_runner_judge_frozen_and_layer2_excluded_by_default()
+    test_phase0_runner_accepts_caller_supplied_fact_sheet()
+    test_phase0_runner_layer2_only_with_explicit_ok_summary()
+    test_phase0_runner_record_has_no_raw_material()
+    test_phase0_exit_check_blocked_before_real_runs()
+    test_phase0_exit_check_blockers_are_closed_tokens()
+    test_phase0_exit_check_satisfied_includes_built_components()
+    test_phase0_exit_check_vocabularies_are_closed_and_well_formed()
+    test_phase0_exit_check_flags_non_shippable_run()
+    test_phase0_runner_and_exit_check_no_leak_sweep()
     test_import_hygiene()
     print(f"\nquality_safety_eval_harness: {PASS} passed, {FAIL} failed")
     return 1 if FAIL else 0

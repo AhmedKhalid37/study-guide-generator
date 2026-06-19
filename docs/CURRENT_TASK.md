@@ -5,7 +5,56 @@
 
 ---
 
-## Slice 164 — **Phase 0 fact-sheet schema + recompute verifier integration**, on `slice164-phase0-factsheet-recompute-integration`. **NOT COMMITTED.**
+## Slice 165 — **Phase 0 eval runner + exit-check skeleton**, on `slice165-phase0-eval-runner-exit-check`. **NOT COMMITTED.**
+
+- **Part 0 completed:** Slice 164 was committed as `bce7e33` ("Slice 164: Integrate Phase 0 factsheet recompute path"),
+  fast-forward merged to trunk `chrome-renderer-v1`, and pushed with a normal `git push` (no force-push). `origin/chrome-renderer-v1`,
+  local trunk, and the Slice 165 branch all sit at `bce7e33`. Final trunk status was clean before branching Slice 165;
+  **no docker compose config was run**; **Docker was not run**; the Slice 60 trace stash remains parked and untouched;
+  `local_operator_baselines/` stayed ignored/uncommitted; no private material was committed. (The starting working tree
+  for this chat was already on `slice165-phase0-eval-runner-exit-check`, clean, with Slice 164 on trunk — Part 0 had been
+  completed in the prior session; this was re-verified, not re-done.)
+- **phase=Phase 0 — Eval harness + fact-sheet skeleton** (active; phase order unchanged).
+- **slice=165**
+- **phase0_eval_runner_present=true** — `run_phase0_eval_harness(candidate_text_by_lecture_id, golden_pair_specs, *, fact_sheet_by_lecture_id=None, reference_judge_summary_by_lecture_id=None, run_id="synthetic", model_tier="premium")`
+  in `pipeline/quality_safety_eval_harness.py`. Pure, deterministic, in-memory. It validates the golden pair set as exactly
+  `{nn3, ensemble}` via `load_golden_pair_specs` (raises `GoldenPairSpecError` otherwise), scores each lecture with
+  `score_phase0_layer1` (optionally folding a caller-supplied in-memory fact sheet), and builds a closed
+  `build_phase0_regression_record` per lecture. A missing/non-string candidate degrades to an empty candidate (which fails
+  the deterministic Layer-1 gates and is non-shippable) and records a closed `candidate_missing`/`candidate_invalid`
+  warning instead of crashing. Returns a closed aggregate: `kind=phase0_eval_harness_run`, `run_id`, `model_tier`,
+  `golden_pair_ids=["nn3","ensemble"]`, `lecture_count`, `shippable_count`, `non_shippable_count`, `min_overall_10`,
+  `average_overall_10`, `all_shippable`, `overall_score_kind=layer1_deterministic_only`, `layer2_judge_included`,
+  `production_offline_judge_frozen=true`, `judge_ready=false`, `repair_ready=false`, `records=[...]`, closed `warnings`.
+- **phase0_exit_check_present=true** — `build_phase0_exit_check(run_record)` returns a closed exit-check record
+  (`kind=phase0_exit_check`, `phase=phase0_eval_harness_fact_sheet_skeleton`) with closed `blockers`/`satisfied` tokens
+  only. It cannot invent readiness: structural blockers (`real_old_ensemble_run_not_recorded`,
+  `reference_judge_execution_not_run`, `reference_judge_calibration_not_recorded`, `fact_sheet_production_wiring_not_present`,
+  `regression_history_not_established`) always hold this slice, so the status is never `ready`. A missing run record adds
+  `phase0_required_run_missing`; a non-shippable run adds `phase0_run_not_all_shippable` and flips the status to `blocked`.
+  `satisfied` lists the built components (golden-pair specs, Layer-1 scorer, overall_10-separate-from-shippable, regression
+  record shape, reference-judge contract, factsheet recompute integration, frozen judge).
+- **phase0_exit_status=not_ready** (clean synthetic run; `blocked` when a run is non-shippable).
+- **layer2_judge_included=false** by default; `true` only when an explicit, already-sanitized, fully-calibrated
+  reference-judge summary is supplied per lecture, and even then `overall_10` stays Layer-1 deterministic-only.
+- **golden_pair_ids=nn3,ensemble**
+- **overall_score_kind=layer1_deterministic_only**
+- **production_offline_judge_frozen=true**, **judge_ready=false**, **repair_ready=false**
+- **numeric_strategy=recompute_first_not_manual_known_numbers** — not manual operator `known_numbers` infrastructure; the
+  closed golden expectations + optional caller-supplied recompute summary drive numeric truth. No repair, no judge
+  execution, no producer/discovery/file reader, no provider/model/cloud/local-LLM call, no production job/API/frontend
+  wiring, and no reading of `jobs/`, `local_operator_baselines/`, PDFs, guides, `clean.md`, OCR/table/caption text,
+  screenshots, or raw artifacts was added. No CLI validation script was added (pure functions + tests only).
+- **Changed files (5):** `pipeline/quality_safety_eval_harness.py`, `test_scripts/test_quality_safety_eval_harness.py`,
+  `docs/CURRENT_TASK.md`, `docs/NEXT_CHAT_HANDOFF.md`, `docs/DECISIONS.md`.
+- **Validation (host):** `compileall api pipeline test_scripts` OK; `test_quality_safety_eval_harness.py` **305/0** (was
+  254/0); `test_quality_safety_recompute_verifier.py` **99/0**; `test_quality_safety_unified_qa.py` **73/0**;
+  `test_guide_quality_baseline.py` **207/0**; `validate_guide_quality_baseline_harness.py` `failure_count=0`;
+  `git diff --check` clean; no-leak grep over the diff returned no private hits.
+- **next_step=phase0_real_operator_run_plan_or_phase0_exit_gap_closure.** **Slice 165 is NOT committed.**
+
+
+## Slice 164 — **Phase 0 fact-sheet schema + recompute verifier integration**, on `slice164-phase0-factsheet-recompute-integration`. **COMMITTED as `bce7e33`; merged to trunk and pushed.**
 
 - **Part 0 completed:** Slice 163 was committed as `c4d9607` ("Slice 163: Add Phase 0 reference judge contract"),
   fast-forward merged to trunk `chrome-renderer-v1` (`06496d0..c4d9607`), and pushed with a normal `git push` (no
