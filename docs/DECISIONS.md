@@ -6858,3 +6858,26 @@ reference-anchored eval judge stays separate and is not executed by this layer,
 recompute-first via the golden specs — this is **not** manual operator
 `known_numbers` infrastructure. No production job/API/frontend wiring, no repair,
 and no real operator run were added.
+
+## Phase 0 closed-summary validator accepts only explicit JSON files (Slice 167)
+The Phase 0 closed-summary validator (`test_scripts/validate_phase0_closed_summary.py`)
+accepts only explicit JSON files supplied by the operator, validates them through
+the closed-result ingest layer (`ingest_phase0_operator_closed_result`), and prints
+closed summaries only. It does not scan private directories, does not read raw
+materials, and does not execute judges or production jobs. **Why:** Phase 0's real
+operator validation must run against private source/reference materials locally
+*without* those materials ever entering the repo, logs, or tool output; the safe
+bridge is a tooling step that consumes only already-sanitized closed summary JSON
+and re-validates it. It therefore takes no default input path, performs no
+recursive/directory scan, rejects directories and non-JSON/unparseable files,
+rejects any explicitly-passed file carrying forbidden raw/private material (echoing
+only a closed `input_rejected_forbidden_material` token, never the offending
+content), and surfaces its own closed validator-level vocabulary rather than
+re-emitting the ingest layer's internal blocker tokens (defense in depth). Output
+is closed-summary-only (counts + closed tokens + frozen judge booleans + the exact
+`nn3`/`ensemble` golden pair) and exits nonzero on any invalid input. It changed no
+`pipeline/` code (the existing ingest/exit-check helpers sufficed), changed no
+production job/API/frontend wiring, executed no real operator run, and added no
+provider/model/judge/repair/`known_numbers` path. The frozen production offline
+judge stays frozen (`judge_ready`/`repair_ready` always `false`); the dev-time
+reference-anchored judge stays separate and is neither imported nor executed.

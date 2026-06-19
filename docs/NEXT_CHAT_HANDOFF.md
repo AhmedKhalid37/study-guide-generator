@@ -6,16 +6,35 @@
 > stable overview see `PROJECT_CONTEXT.md`; canonical brief is `../CLAUDE.md`.
 
 ## Current position
-- **Working tree:** **Slice 166 (Phase 0 local-operator run packet + closed result ingest) — UNCOMMITTED**
-  on branch `slice166-phase0-operator-run-packet`, branched from updated `chrome-renderer-v1` after Slice 165
-  was committed, fast-forward merged, and pushed. **Slice 165 is trunk commit `caf8171`**; Slice 164 is `bce7e33`;
-  Slice 163 is `c4d9607`; Slice 162 is `06496d0`.
-  - **Part 0 completed:** Slice 165 ("Add Phase 0 eval runner exit check") was committed as `caf8171`,
-    fast-forward merged to `chrome-renderer-v1` (`bce7e33..caf8171`), and pushed with a normal `git push` (no force-push);
-    `origin/chrome-renderer-v1`, local trunk, and the Slice 166 branch all sit at `caf8171`. Final trunk status was clean
-    before the Slice 166 branch; **no docker compose config was run**; **Docker was not run**; the Slice 60 trace stash
+- **Working tree:** **Slice 167 (Phase 0 closed-summary validator CLI) — UNCOMMITTED**
+  on branch `slice167-phase0-closed-summary-validator`, branched from updated `chrome-renderer-v1` after Slice 166
+  was committed, fast-forward merged, and pushed. **Slice 166 is trunk commit `e21e741`**; Slice 165 is `caf8171`;
+  Slice 164 is `bce7e33`; Slice 163 is `c4d9607`.
+  - **Part 0 completed:** Slice 166 ("Add Phase 0 operator closed result packet") was committed as `e21e741`,
+    fast-forward merged to `chrome-renderer-v1` (`caf8171..e21e741`), and pushed with a normal `git push` (no force-push);
+    `origin/chrome-renderer-v1`, local trunk, and the Slice 167 branch all sit at `e21e741`. Final trunk status was clean
+    before the Slice 167 branch; **no docker compose config was run**; **Docker was not run**; the Slice 60 trace stash
     remains parked and untouched; `local_operator_baselines/` stayed ignored/uncommitted; no private material was
     committed.
+  - **Slice 167 (code) adds a safe, offline Phase 0 closed-summary validator CLI** in
+    `test_scripts/validate_phase0_closed_summary.py` — a tooling bridge that lets an operator validate already-sanitized
+    Phase 0 *closed summary* JSON files later, without reading raw/private source materials. It exposes
+    `validate_closed_summaries(paths)` + `main(argv)`, accepts only JSON files passed explicitly on the command line
+    (`nargs="+"`, no default path, no recursive scan, no directory walk), rejects directories and non-JSON/unparseable
+    files, parses JSON, runs each parsed object through `ingest_phase0_operator_closed_result(...)`, combines the accepted
+    (`ok`) results with `build_phase0_exit_check_from_operator_results(...)`, and prints **only** a closed validation
+    summary (`kind=phase0_closed_summary_validation`, `ok`, `input_count`, `accepted_count`, `invalid_count`,
+    `accepted_kinds`, closed `blockers`, closed `warnings`, `phase0_exit_status`, `golden_pair_ids=["nn3","ensemble"]`,
+    frozen judge booleans). Forbidden raw/private material in an explicit file is rejected closed
+    (`input_rejected_forbidden_material`) and never echoed; the validator surfaces its own closed vocabulary and never
+    re-emits the ingest layer's internal tokens or any input content. It exits nonzero if any input is invalid. **No
+    `pipeline/` code changed** — the existing ingest/exit-check helpers were sufficient. No real operator run executed; no
+    production job/API/frontend wiring changed; no provider/model/cloud/local-LLM/judge call; no file discovery of private
+    materials; no repair; no manual operator `known_numbers` infrastructure. Production offline judge stays frozen
+    (`judge_ready=false`, `repair_ready=false`); the dev-time reference-anchored judge stays separate and is neither
+    imported nor executed. Tests `test_quality_safety_eval_harness.py` **498/0**; full validation green; synthetic
+    validator tests keep `phase0_exit_status=not_ready`.
+    **next_step=phase0_real_operator_run_local_only_or_phase0_exit_gap_closure**. **Slice 167 is NOT committed.**
   - **Slice 166 (code) adds a pure Phase 0 local-operator run packet + closed result ingest layer** in
     `pipeline/quality_safety_eval_harness.py` — the bridge from the synthetic-only harness to real, local-only operator
     validation against private materials **without touching that material**. `build_phase0_operator_run_packet()` (alias
@@ -36,7 +55,7 @@
     discovery/reader, no repair, no manual operator `known_numbers` infrastructure, no CLI script. Production offline judge
     stays frozen (`judge_ready=false`, `repair_ready=false`); the dev-time reference-anchored judge stays separate and is
     not executed. Tests `test_quality_safety_eval_harness.py` **405/0**; full validation green.
-    **next_step=phase0_real_operator_run_execution_local_only_or_phase0_exit_gap_closure**. **Slice 166 is NOT committed.**
+    **next_step=phase0_real_operator_run_execution_local_only_or_phase0_exit_gap_closure**. **Slice 166 is trunk commit `e21e741`.**
   - **Slice 165 (code) adds a pure, in-memory Phase 0 eval runner + exit-check skeleton** in
     `pipeline/quality_safety_eval_harness.py`. `run_phase0_eval_harness(candidate_text_by_lecture_id, golden_pair_specs, *,
     fact_sheet_by_lecture_id=None, reference_judge_summary_by_lecture_id=None, run_id="synthetic", model_tier="premium")`

@@ -11,6 +11,7 @@ from __future__ import annotations
 import ast
 import json
 import re
+import subprocess
 import sys
 import tempfile
 from pathlib import Path
@@ -2958,6 +2959,295 @@ def test_phase0_operator_layer_no_leak_and_not_known_numbers() -> None:
     )
 
 
+# --- Slice 167: Phase 0 closed-summary validator CLI -------------------------
+
+VALIDATOR_SCRIPT = REPO / "test_scripts" / "validate_phase0_closed_summary.py"
+
+# Substrings that must never appear in the validator's printed output. Mirrors
+# the closed-output contract: no raw input, paths, filenames, hashes, byte
+# counts, screenshots, secrets, provider payloads, or evidence text.
+VALIDATOR_FORBIDDEN_OUTPUT = (
+    "source_text",
+    "guide_text",
+    "reference_text",
+    "raw_prompt",
+    "raw_response",
+    "provider_payload",
+    "filepath",
+    "filename",
+    "path",
+    "hash",
+    "sha256",
+    "bytes",
+    "byte_count",
+    "screenshot",
+    "Authorization",
+    "Bearer",
+    "api_key",
+    "secret",
+    "data:",
+    "base64",
+)
+
+
+def run_validator(args: list[str]) -> "subprocess.CompletedProcess[str]":
+    return subprocess.run(
+        [sys.executable, str(VALIDATOR_SCRIPT), *args],
+        capture_output=True,
+        text=True,
+    )
+
+
+def write_summary(directory: Path, name: str, obj: Any) -> Path:
+    target = directory / name
+    target.write_text(json.dumps(obj), encoding="utf-8")
+    return target
+
+
+def test_phase0_validator_accepts_single_valid_summary() -> None:
+    with tempfile.TemporaryDirectory() as tmp:
+        path = write_summary(
+            Path(tmp),
+            "run.json",
+            synthetic_operator_run_summary(run_label="nn3_current_candidate"),
+        )
+        result = run_validator([str(path)])
+    check("validator single valid exits 0", result.returncode == 0, result.stderr)
+    summary = json.loads(result.stdout)
+    check("validator single valid ok", summary["ok"] is True, str(summary))
+    check("validator single input_count", summary["input_count"] == 1, str(summary))
+    check("validator single accepted_count", summary["accepted_count"] == 1, str(summary))
+    check("validator single invalid_count", summary["invalid_count"] == 0, str(summary))
+    check(
+        "validator single accepted_kind",
+        summary["accepted_kinds"] == [PHASE0_RUN_KIND],
+        str(summary),
+    )
+    check(
+        "validator single judge frozen",
+        summary["judge_ready"] is False
+        and summary["repair_ready"] is False
+        and summary["production_offline_judge_frozen"] is True,
+        str(summary),
+    )
+    check(
+        "validator single golden pair exact",
+        summary["golden_pair_ids"] == ["nn3", "ensemble"],
+        str(summary),
+    )
+    no_canary("validator single output", summary)
+
+
+def test_phase0_validator_accepts_two_valid_summaries() -> None:
+    with tempfile.TemporaryDirectory() as tmp:
+        first = write_summary(
+            Path(tmp),
+            "run.json",
+            synthetic_operator_run_summary(run_label="nn3_current_candidate"),
+        )
+        second = write_summary(
+            Path(tmp),
+            "ref.json",
+            synthetic_operator_reference_summary(),
+        )
+        result = run_validator([str(first), str(second)])
+    check("validator two valid exits 0", result.returncode == 0, result.stderr)
+    summary = json.loads(result.stdout)
+    check("validator two accepted_count", summary["accepted_count"] == 2, str(summary))
+    check("validator two input_count", summary["input_count"] == 2, str(summary))
+    check("validator two invalid_count", summary["invalid_count"] == 0, str(summary))
+    check(
+        "validator two exit-status closed",
+        summary["phase0_exit_status"] in ("not_ready", "blocked"),
+        str(summary),
+    )
+    no_canary("validator two output", summary)
+
+
+def test_phase0_validator_rejects_forbidden_key() -> None:
+    with tempfile.TemporaryDirectory() as tmp:
+        path = write_summary(
+            Path(tmp),
+            "bad.json",
+            {"kind": PHASE0_RUN_KIND, "source_text": "synthetic forbidden field"},
+        )
+        result = run_validator([str(path)])
+    check("validator forbidden key exits nonzero", result.returncode != 0, result.stderr)
+    summary = json.loads(result.stdout)
+    check("validator forbidden key not ok", summary["ok"] is False, str(summary))
+    check("validator forbidden key invalid_count", summary["invalid_count"] == 1, str(summary))
+    check("validator forbidden key accepted_count", summary["accepted_count"] == 0, str(summary))
+    no_canary("validator forbidden key output", summary)
+
+
+def test_phase0_validator_rejects_private_path_string() -> None:
+    for hostile in ("/home/private/source-note", "/mnt/data/reference-note"):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = write_summary(
+                Path(tmp),
+                "bad.json",
+                {
+                    "kind": PHASE0_RUN_KIND,
+                    "run_label": "nn3_current_candidate",
+                    "note": hostile,
+                },
+            )
+            result = run_validator([str(path)])
+        check(
+            "validator private path exits nonzero",
+            result.returncode != 0,
+            result.stderr,
+        )
+        summary = json.loads(result.stdout)
+        check("validator private path not ok", summary["ok"] is False, str(summary))
+        # The offending path string must never be echoed back.
+        check(
+            "validator private path not echoed",
+            hostile not in result.stdout,
+            result.stdout,
+        )
+
+
+def test_phase0_validator_rejects_non_json_input() -> None:
+    with tempfile.TemporaryDirectory() as tmp:
+        bad_ext = Path(tmp) / "note.txt"
+        bad_ext.write_text("not json", encoding="utf-8")
+        result_ext = run_validator([str(bad_ext)])
+        bad_json = Path(tmp) / "broken.json"
+        bad_json.write_text("{not valid json", encoding="utf-8")
+        result_json = run_validator([str(bad_json)])
+    check("validator non-json ext exits nonzero", result_ext.returncode != 0, result_ext.stderr)
+    check("validator broken json exits nonzero", result_json.returncode != 0, result_json.stderr)
+    check(
+        "validator non-json ext not ok",
+        json.loads(result_ext.stdout)["ok"] is False,
+        result_ext.stdout,
+    )
+    check(
+        "validator broken json not ok",
+        json.loads(result_json.stdout)["ok"] is False,
+        result_json.stdout,
+    )
+
+
+def test_phase0_validator_rejects_directory_input() -> None:
+    with tempfile.TemporaryDirectory() as tmp:
+        result = run_validator([tmp])
+    check("validator directory exits nonzero", result.returncode != 0, result.stderr)
+    summary = json.loads(result.stdout)
+    check("validator directory not ok", summary["ok"] is False, str(summary))
+    check(
+        "validator directory invalid_count",
+        summary["invalid_count"] == 1,
+        str(summary),
+    )
+
+
+def test_phase0_validator_output_has_no_private_fields() -> None:
+    with tempfile.TemporaryDirectory() as tmp:
+        good = write_summary(
+            Path(tmp),
+            "run.json",
+            synthetic_operator_run_summary(run_label="nn3_current_candidate"),
+        )
+        hostile = write_summary(
+            Path(tmp),
+            "hostile.json",
+            {
+                "kind": PHASE0_RUN_KIND,
+                "run_label": "nn3_current_candidate",
+                "note": HOSTILE_PATH,
+                "url": HOSTILE_URL,
+                "auth": HOSTILE_AUTH,
+                "blob": HOSTILE_DATA,
+                "guide_text": HOSTILE_OCR,
+                "payload": HOSTILE_PROVIDER,
+                "source_text": "synthetic private body",
+            },
+        )
+        result = run_validator([str(good), str(hostile)])
+    out = result.stdout
+    check("validator hostile mix exits nonzero", result.returncode != 0, result.stderr)
+    # No raw input / private values echoed.
+    for canary in HOSTILE_CANARIES:
+        check(f"validator output drops canary {canary[:8]}", canary not in out, out)
+    for pattern in LEAK_PATTERNS:
+        check(
+            f"validator output drops pattern {pattern.pattern[:12]}",
+            not pattern.search(out),
+            out,
+        )
+    # No forbidden closed-output substrings.
+    for needle in VALIDATOR_FORBIDDEN_OUTPUT:
+        check(f"validator output omits '{needle}'", needle not in out, out)
+    no_canary("validator hostile mix output", json.loads(out))
+
+
+def test_phase0_validator_requires_explicit_args_no_default_scan() -> None:
+    # No positional args -> argparse error, nonzero exit, no scanning.
+    result = run_validator([])
+    check("validator no-args exits nonzero", result.returncode != 0, result.stdout)
+    # The source must not default to any directory or scan recursively.
+    source = VALIDATOR_SCRIPT.read_text(encoding="utf-8")
+    tree = ast.parse(source)
+    called: list[str] = []
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Call):
+            func = node.func
+            if isinstance(func, ast.Attribute):
+                called.append(func.attr)
+            elif isinstance(func, ast.Name):
+                called.append(func.id)
+    for scanner in ("glob", "rglob", "walk", "iterdir", "listdir", "scandir"):
+        check(
+            f"validator never calls {scanner}",
+            scanner not in called,
+            scanner,
+        )
+    for default_path in ("jobs/", "local_operator_baselines", "clean.md", ".pdf", ".docx"):
+        check(
+            f"validator source has no default path {default_path}",
+            default_path not in source,
+            default_path,
+        )
+
+
+def test_phase0_validator_is_offline_and_judge_separate() -> None:
+    source = VALIDATOR_SCRIPT.read_text(encoding="utf-8")
+    tree = ast.parse(source)
+    imported: list[str] = []
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Import):
+            imported.extend(alias.name.split(".")[0] for alias in node.names)
+        elif isinstance(node, ast.ImportFrom) and node.module:
+            imported.append(node.module.split(".")[0])
+    for forbidden in ("requests", "socket", "urllib", "http", "openai", "httpx"):
+        check(
+            f"validator imports no network module {forbidden}",
+            forbidden not in imported,
+            str(imported),
+        )
+    # The dev-time reference-anchored judge stays separate: it is neither imported
+    # nor executed by the validator (no prompt build, no axis blend, no subprocess
+    # spawning a model).
+    for marker in (
+        "quality_safety_reference_judge",
+        "build_phase0_reference_judge_prompt",
+        "subprocess",
+        "add repair",
+    ):
+        check(
+            f"validator does not reference {marker}",
+            marker not in source,
+            marker,
+        )
+    check(
+        "validator keeps judge frozen in source",
+        '"judge_ready": False' in source and '"repair_ready": False' in source,
+        "frozen booleans present",
+    )
+
+
 def test_import_hygiene() -> None:
     source_path = REPO / "pipeline" / "quality_safety_eval_harness.py"
     tree = ast.parse(source_path.read_text(encoding="utf-8"))
@@ -3088,6 +3378,15 @@ def run() -> int:
     test_phase0_operator_exit_check_blocks_on_failing_current_candidate()
     test_phase0_operator_exit_check_drops_invalid_results()
     test_phase0_operator_layer_no_leak_and_not_known_numbers()
+    test_phase0_validator_accepts_single_valid_summary()
+    test_phase0_validator_accepts_two_valid_summaries()
+    test_phase0_validator_rejects_forbidden_key()
+    test_phase0_validator_rejects_private_path_string()
+    test_phase0_validator_rejects_non_json_input()
+    test_phase0_validator_rejects_directory_input()
+    test_phase0_validator_output_has_no_private_fields()
+    test_phase0_validator_requires_explicit_args_no_default_scan()
+    test_phase0_validator_is_offline_and_judge_separate()
     test_import_hygiene()
     print(f"\nquality_safety_eval_harness: {PASS} passed, {FAIL} failed")
     return 1 if FAIL else 0

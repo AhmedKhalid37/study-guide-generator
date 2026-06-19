@@ -5,7 +5,60 @@
 
 ---
 
-## Slice 166 — **Phase 0 local-operator run packet + closed result ingest**, on `slice166-phase0-operator-run-packet`. **NOT COMMITTED.**
+## Slice 167 — **Phase 0 closed-summary validator CLI**, on `slice167-phase0-closed-summary-validator`. **NOT COMMITTED.**
+
+- **Part 0 completed:** Slice 166 was committed as `e21e741` ("Slice 166: Add Phase 0 operator closed result packet"),
+  fast-forward merged to trunk `chrome-renderer-v1` (`caf8171..e21e741`), and pushed with a normal `git push` (no
+  force-push). Final trunk status was clean before branching Slice 167; **no docker compose config was run**; **Docker
+  was not run**; the Slice 60 trace stash remains parked and untouched; `local_operator_baselines/` stayed
+  ignored/uncommitted; no private material was committed. The operator run packet + closed-result ingest are committed;
+  the closed-result ingest rejects raw/private material; no real operator run was executed; no production job/API/frontend
+  wiring changed; the production offline judge remains frozen (`judge_ready=false`, `repair_ready=false`).
+- **phase=Phase 0 — Eval harness + fact-sheet skeleton** (active; phase order unchanged).
+- **slice=167**
+- **phase0_closed_summary_validator_present=true** — new `test_scripts/validate_phase0_closed_summary.py` is a safe,
+  offline, local tooling bridge that lets an operator validate already-sanitized Phase 0 *closed summary* JSON files
+  later, without reading raw/private source materials. It exposes `validate_closed_summaries(paths)` and a `main(argv)`
+  CLI. It accepts only JSON files explicitly passed on the command line, parses JSON, runs each parsed object through
+  `ingest_phase0_operator_closed_result(...)`, and combines the accepted (`ok`) results with
+  `build_phase0_exit_check_from_operator_results(...)`. It prints **only** a closed validation summary
+  (`kind=phase0_closed_summary_validation`, `ok`, `input_count`, `accepted_count`, `invalid_count`, `accepted_kinds`,
+  closed `blockers`, closed `warnings`, `phase0_exit_status`, `golden_pair_ids=["nn3","ensemble"]`, frozen judge
+  booleans). It exits nonzero if any input is invalid.
+- **validator_input_mode=explicit_json_files_only** — positional `nargs="+"` JSON paths; no default input path.
+- **validator_default_scan=false** — no recursive search, no directory scanning, no `glob`/`rglob`/`walk`/`iterdir`/
+  `listdir`/`scandir`; rejects directories (`input_is_a_directory`) and non-JSON / unparseable files
+  (`input_not_a_json_file`, `input_not_valid_json`, `input_not_a_readable_file`). It never reads `jobs/`,
+  operator baseline directories, source/reference PDFs, generated guides, generated guide markdown, OCR/table/caption
+  text, screenshots, or raw artifacts by default. Forbidden raw/private material in an explicitly-passed file is
+  rejected closed (`input_rejected_forbidden_material`) and never echoed; structurally wrong input is rejected closed
+  (`input_rejected_invalid_shape`). The validator surfaces its own closed validator-level vocabulary and never re-emits
+  the ingest layer's internal blocker tokens or any input content (defense in depth).
+- **phase0_real_operator_run_executed=false** — no real private run was executed; tests use synthetic closed summary
+  JSON in `tmp_path` only. No provider/model/cloud/local-LLM/judge call; no file discovery/reader of private materials.
+- **production_job_api_frontend_wiring_changed=false** — a `test_scripts/` CLI + tests + docs only; no API route, no
+  SPA-mount ordering change, no production job behavior change. **No `pipeline/` code changed** (the existing
+  `ingest_phase0_operator_closed_result` / `build_phase0_exit_check_from_operator_results` helpers were sufficient).
+- **overall_score_kind=layer1_deterministic_only**, **layer2_judge_included=false** by default.
+- **golden_pair_ids=nn3,ensemble**
+- **production_offline_judge_frozen=true**, **judge_ready=false**, **repair_ready=false**. The dev-time reference-anchored
+  eval judge remains separate (in `pipeline/quality_safety_reference_judge.py`) and is neither imported nor executed by
+  the validator.
+- **numeric_strategy=recompute_first_not_manual_known_numbers** — the validator carries no per-numeric "known" answer
+  infrastructure; numeric truth stays recompute-first via the golden specs.
+- **Changed files (5):** `test_scripts/validate_phase0_closed_summary.py` (new),
+  `test_scripts/test_quality_safety_eval_harness.py`, `docs/CURRENT_TASK.md`, `docs/NEXT_CHAT_HANDOFF.md`,
+  `docs/DECISIONS.md`.
+- **Validation (host):** `compileall api pipeline test_scripts` OK; `test_quality_safety_eval_harness.py` **498/0** (was
+  405/0); `test_quality_safety_recompute_verifier.py` **99/0**; `test_quality_safety_unified_qa.py` **73/0**;
+  `test_guide_quality_baseline.py` **207/0**; `validate_guide_quality_baseline_harness.py` `failure_count=0`;
+  `validate_phase0_closed_summary.py --help` rc=0; `git diff --check` clean; no-leak grep over the diff returned no
+  private hits. Phase 0 exit-check status from synthetic validator tests stays `not_ready` (structural blocker holds).
+- **next_step=phase0_real_operator_run_local_only_or_phase0_exit_gap_closure**. **Slice 167 is NOT committed.**
+
+---
+
+## Slice 166 — **Phase 0 local-operator run packet + closed result ingest**, on `slice166-phase0-operator-run-packet`. **COMMITTED as `e21e741`; merged/pushed to trunk.**
 
 - **Part 0 completed:** Slice 165 was committed as `caf8171` ("Slice 165: Add Phase 0 eval runner exit check"),
   fast-forward merged to trunk `chrome-renderer-v1` (`bce7e33..caf8171`), and pushed with a normal `git push` (no
