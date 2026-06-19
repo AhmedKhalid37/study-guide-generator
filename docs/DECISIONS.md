@@ -7202,3 +7202,32 @@ surprisingly clean 12/12, Gate 2 must fire again before banking it. The reproduc
 generation_settings_persisted_to_job_artifact=false, reproducible_builder_profile_available=false,
 impact=manual_regeneration_not_reproducible,provenance_fragile,operator_equivalence_blocked; a future
 possible slice remains `persist_generation_settings_to_job_artifact`.
+
+## Slice 174A missing recompute methods and source-input bridge proof (2026-06-19)
+Slice 174A first added the missing proximity and weighted-average recompute methods, but the initial proof still
+had newly_independently_verified_count=0 and method_gated_after=2. The branch was not committed at that point.
+The slice then continued under the produce-before-scaffold gate: either add only the minimal source-input bridge
+needed for those two targets and rerun the proof in the same slice, or stop if the bridge becomes framework-like.
+Fixture expected values, extracted answer text, and guide candidate values remain forbidden as truth.
+
+Implementation: add `proximity` and `weighted_average` recompute methods plus a minimal exact Ensemble bridge
+from already-structured source fact-sheet inputs to the existing `source_inputs_by_target` proof input. The bridge
+maps only `proximity_4_3` and `weighted_weight_impute`; it creates no framework/registry and does not read raw
+source text, OCR text, guide text, candidate values, or fixture expected values. Corrected proof result:
+phase=Phase 2 source-derived numeric verification, input_basis=masked_gini_recompute_passed_and_2_method_gated_targets_remaining,
+recompute_methods_added_count=2, source_input_bridge_added=true, bridge_scope=minimal, targets_considered=12,
+previous_independently_verified_count=2, newly_independently_verified_count=0,
+total_independently_verified_count=2, remaining_method_gated_count=0, extraction_gated_count=0,
+unresolved_for_generation_count=10, writer_ready_count=2, fixture_only_values_used_as_truth=false,
+extracted_answer_text_used_as_truth=false, guide_candidate_values_used_as_truth=false. The real local artifacts
+project source_input_projection_count=0 for the two targets, so both remain honestly blocked as
+source_input_missing and not writer-ready.
+
+Corrected conclusion: Slice 174A is a negative proof, not verification progress. The two targets moved from
+method-gated to source_input_missing; for both `proximity_4_3` and `weighted_weight_impute`,
+source_input_record_exists=false and source_input_record_shape_valid=false. No fixture expected values, extracted
+answer text, or guide candidate values were used as truth. Do not claim 10/12 recompute-ready. Decision-rule next
+step: `source_input_provenance_recovery`, not another bridge attempt. The next artifact must determine whether
+inputs are `parsed_from_extraction_output`, `hand_authored_target_map`, or `not_machine_consumable`; if inputs are
+not machine-consumable from existing extraction, route to `OCR_table_structure_extraction`.
+next_step=closed_decision_from_real_recompute_proof: `source_input_provenance_recovery`.

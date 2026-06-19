@@ -32,7 +32,16 @@ VERSION = 1
 KIND = "quality_safety_recompute_report"
 
 SUPPORTED_METHODS = frozenset(
-    {"weighted_gini", "total_error", "amount_of_say", "softmax", "cross_entropy", "forward_pass"}
+    {
+        "weighted_gini",
+        "total_error",
+        "amount_of_say",
+        "softmax",
+        "cross_entropy",
+        "forward_pass",
+        "proximity",
+        "weighted_average",
+    }
 )
 
 # Method-specific absolute tolerances (documented + tested).
@@ -43,6 +52,8 @@ METHOD_TOLERANCES: dict[str, float] = {
     "softmax": 0.01,
     "cross_entropy": 0.01,
     "forward_pass": 0.01,
+    "proximity": 0.01,
+    "weighted_average": 0.5,
 }
 DEFAULT_TOLERANCE = 1e-6
 MAX_TOLERANCE = 1.0
@@ -55,6 +66,8 @@ CHECK_IDS = frozenset(
         "softmax",
         "cross_entropy",
         "forward_pass",
+        "proximity",
+        "weighted_average",
         "numeric_fact_not_recomputable",
         "non_numeric_fact_not_applicable",
     }
@@ -480,6 +493,63 @@ def _recompute_forward_pass(inputs: Any) -> float | None:
     return None
 
 
+def _recompute_proximity(inputs: Any) -> float | None:
+    if not isinstance(inputs, dict):
+        return None
+    if "shared_terminal_count" in inputs and "tree_count" in inputs:
+        shared = _finite_number(inputs.get("shared_terminal_count"))
+        total = _finite_number(inputs.get("tree_count"))
+        if shared is None or total is None or shared < 0 or total <= 0 or shared > total:
+            return None
+        return float(shared) / float(total)
+
+    raw_matches = inputs.get("same_terminal_node")
+    if isinstance(raw_matches, list) and raw_matches:
+        seen = 0
+        shared = 0
+        for value in raw_matches:
+            if isinstance(value, bool):
+                shared += 1 if value else 0
+                seen += 1
+            elif value in (0, 1):
+                shared += int(value)
+                seen += 1
+            else:
+                return None
+        return float(shared) / float(seen) if seen else None
+    return None
+
+
+def _recompute_weighted_average(inputs: Any) -> float | None:
+    if not isinstance(inputs, dict):
+        return None
+    if "weighted_sum" in inputs and "weight_sum" in inputs:
+        weighted_sum = _finite_number(inputs.get("weighted_sum"))
+        weight_sum = _finite_number(inputs.get("weight_sum"))
+        if weighted_sum is None or weight_sum is None or weight_sum <= 0:
+            return None
+        return float(weighted_sum) / float(weight_sum)
+
+    raw_values = inputs.get("values")
+    raw_weights = inputs.get("weights")
+    if not isinstance(raw_values, list) or not isinstance(raw_weights, list):
+        return None
+    if not raw_values or len(raw_values) != len(raw_weights):
+        return None
+    numerator = 0.0
+    denominator = 0.0
+    for index in range(len(raw_values)):
+        value = _finite_number(raw_values[index])
+        weight = _finite_number(raw_weights[index])
+        if value is None or weight is None or weight < 0:
+            return None
+        numerator += float(value) * float(weight)
+        denominator += float(weight)
+    if denominator <= 0:
+        return None
+    return numerator / denominator
+
+
 _RECOMPUTE_METHODS = {
     "weighted_gini": _recompute_weighted_gini,
     "total_error": _recompute_total_error,
@@ -487,6 +557,8 @@ _RECOMPUTE_METHODS = {
     "softmax": _recompute_softmax,
     "cross_entropy": _recompute_cross_entropy,
     "forward_pass": _recompute_forward_pass,
+    "proximity": _recompute_proximity,
+    "weighted_average": _recompute_weighted_average,
 }
 
 
@@ -767,6 +839,7 @@ GOLDEN_PROOF_WARNING_ORDER = (
     "unexpected_source_label",
     "recompute_plan_unavailable",
     "unsupported_method",
+    "source_recompute_input_ignored",
     "recompute_disagrees_with_committed_fixture",
     "candidate_classification_ignored",
     "verifier_error",
@@ -791,7 +864,15 @@ _GOLDEN_METHOD_FAMILIES: tuple[tuple[str, str], ...] = (
     ("rset", "forward_pass"),
     ("rver", "forward_pass"),
     ("rsetosa", "forward_pass"),
+    ("proximity", "proximity"),
+    ("weighted", "weighted_average"),
 )
+
+_ENSEMBLE_METHOD_GATED_SOURCE_TARGETS: dict[str, str] = {
+    "proximity_4_3": "proximity",
+    "weighted_weight_impute": "weighted_average",
+}
+_SOURCE_INPUT_PROVENANCES = frozenset({"computed", "extracted_high"})
 
 _GOLDEN_MAX_TARGETS = 64
 
@@ -864,6 +945,7 @@ def build_golden_target_recompute_proof(
     golden_spec: Any,
     *,
     candidate_classification_by_target: Any = None,
+    source_inputs_by_target: Any = None,
 ) -> dict[str, Any]:
     """Build the closed recompute-proof record set for one golden-pair spec.
 
@@ -871,14 +953,15 @@ def build_golden_target_recompute_proof(
     (``lecture_id`` + ``ground_truth_numerics`` label/value/tolerance) and an
     OPTIONAL closed ``{target_id: matcher_classification}`` map (consumed read-only
     from the eval-harness numeric matcher; never a raw candidate value). For each
-    target it derives a closed recompute plan from the committed label, recomputes
+    target it derives a closed recompute plan from the committed label or consumes
+    an OPTIONAL closed structured source-input plan keyed by target id, recomputes
     via the existing engine, and verifies the recompute matches the committed
     fixture value within the EXISTING tolerance. Never raises; never echoes guide
     text, candidate values, source text, paths, filenames, hashes, or byte counts.
     """
     try:
         return _build_golden_target_recompute_proof(
-            golden_spec, candidate_classification_by_target
+            golden_spec, candidate_classification_by_target, source_inputs_by_target
         )
     except Exception:
         return {
@@ -892,7 +975,7 @@ def build_golden_target_recompute_proof(
 
 
 def _build_golden_target_recompute_proof(
-    golden_spec: Any, candidate_map: Any
+    golden_spec: Any, candidate_map: Any, source_inputs_by_target: Any
 ) -> dict[str, Any]:
     warnings: set[str] = set()
 
@@ -919,12 +1002,18 @@ def _build_golden_target_recompute_proof(
         else:
             warnings.add("candidate_classification_ignored")
 
+    source_plan_lookup, source_plan_warning = _source_recompute_plan_lookup(source_inputs_by_target)
+    if source_plan_warning:
+        warnings.add(source_plan_warning)
+
     records: list[dict[str, Any]] = []
     for position, item in enumerate(targets[:_GOLDEN_MAX_TARGETS]):
         if not isinstance(item, dict):
             continue
         records.append(
-            _golden_target_record(item, position, source_label, classification_lookup, warnings)
+            _golden_target_record(
+                item, position, source_label, classification_lookup, source_plan_lookup, warnings
+            )
         )
 
     return _golden_proof_envelope(source_label, records, warnings)
@@ -935,6 +1024,7 @@ def _golden_target_record(
     position: int,
     source_label: str,
     classification_lookup: dict[str, str],
+    source_plan_lookup: dict[str, dict[str, Any]],
     warnings: set[str],
 ) -> dict[str, Any]:
     label = item.get("label")
@@ -952,6 +1042,17 @@ def _golden_target_record(
 
     record_warnings: set[str] = set()
     plan = golden_label_recompute_plan(label)
+    plan_is_source_input = False
+    if plan is None:
+        source_plan = source_plan_lookup.get(target_id)
+        if source_plan is not None:
+            family = _golden_method_family(label)
+            source_method = source_plan.get("method")
+            if family is not None and source_method == family:
+                plan = source_plan
+                plan_is_source_input = True
+            else:
+                record_warnings.add("source_recompute_input_ignored")
 
     recompute_status = "source_required"
     matches_committed: bool | None = None
@@ -979,10 +1080,10 @@ def _golden_target_record(
             blocking_issue = "verifier_error"
             record_warnings.add("verifier_error")
         elif status == "passed":
-            recompute_status = "formula_verified"
+            recompute_status = "recomputed" if plan_is_source_input else "formula_verified"
             matches_committed = True
             value_kind = plan.get("value_kind", "numeric")
-            confidence = "high"
+            confidence = plan.get("confidence", "high") if plan_is_source_input else "high"
         else:
             # Recompute ran but disagrees with the committed fixture value.
             recompute_status = "recomputed"
@@ -1045,6 +1146,91 @@ def _golden_target_record(
         "guide_candidate_status": candidate_status if candidate_status in GOLDEN_CANDIDATE_STATUSES else "unknown",
         "writer_should_receive_committed_value": writer_should_receive,
         "warnings": _ordered_golden_warnings(record_warnings),
+    }
+
+
+def _source_recompute_plan_lookup(source_inputs_by_target: Any) -> tuple[dict[str, dict[str, Any]], str | None]:
+    if source_inputs_by_target is None:
+        return {}, None
+    if not isinstance(source_inputs_by_target, dict):
+        return {}, "source_recompute_input_ignored"
+    out: dict[str, dict[str, Any]] = {}
+    warning: str | None = None
+    for target_id, raw_plan in source_inputs_by_target.items():
+        if not isinstance(target_id, str) or not target_id or not isinstance(raw_plan, dict):
+            warning = "source_recompute_input_ignored"
+            continue
+        method = raw_plan.get("method")
+        inputs = raw_plan.get("inputs")
+        if method not in SUPPORTED_METHODS or not isinstance(inputs, dict):
+            warning = "source_recompute_input_ignored"
+            continue
+        value_kind = raw_plan.get("value_kind", "numeric")
+        confidence = raw_plan.get("confidence", "high")
+        out[target_id] = {
+            "method": method,
+            "inputs": inputs,
+            "value_kind": value_kind if value_kind in GOLDEN_VALUE_KINDS else "numeric",
+            "confidence": confidence if confidence in {"high", "medium"} else "high",
+        }
+    return out, warning
+
+
+def build_ensemble_method_gated_source_inputs_from_fact_sheet(fact_sheet: Any) -> dict[str, dict[str, Any]]:
+    """Project source-derived structured fact inputs for exactly two Ensemble targets.
+
+    This is intentionally not a registry or broad mapper. It only bridges the two
+    Slice 174A method-gated Ensemble target ids into the existing
+    ``source_inputs_by_target`` proof input. It never reads committed fixture
+    values, extracted answer strings, guide candidate values, paths, or raw text.
+    """
+    if not isinstance(fact_sheet, dict) or fact_sheet.get("lecture_id") != "ensemble":
+        return {}
+    out: dict[str, dict[str, Any]] = {}
+    concepts = fact_sheet.get("concepts")
+    if not isinstance(concepts, list):
+        return out
+    for concept in concepts:
+        if not isinstance(concept, dict):
+            continue
+        facts = concept.get("facts")
+        if not isinstance(facts, list):
+            continue
+        for fact in facts:
+            plan = _ensemble_method_gated_source_plan(fact)
+            if plan is None:
+                continue
+            target_id = plan.pop("target_id")
+            out[target_id] = plan
+    return out
+
+
+def _ensemble_method_gated_source_plan(fact: Any) -> dict[str, Any] | None:
+    if not isinstance(fact, dict):
+        return None
+    target_id = fact.get("id") if isinstance(fact.get("id"), str) else fact.get("label")
+    if target_id not in _ENSEMBLE_METHOD_GATED_SOURCE_TARGETS:
+        return None
+    if fact.get("type") != "numeric":
+        return None
+    if fact.get("provenance") not in _SOURCE_INPUT_PROVENANCES:
+        return None
+    computation = fact.get("computation")
+    if not isinstance(computation, dict):
+        return None
+    method = computation.get("method")
+    if method != _ENSEMBLE_METHOD_GATED_SOURCE_TARGETS[target_id]:
+        return None
+    inputs = computation.get("inputs")
+    if not isinstance(inputs, dict):
+        return None
+    confidence = fact.get("confidence")
+    return {
+        "target_id": target_id,
+        "method": method,
+        "inputs": inputs,
+        "value_kind": "probability" if target_id == "proximity_4_3" else "numeric",
+        "confidence": confidence if confidence in {"high", "medium"} else "medium",
     }
 
 
@@ -1175,6 +1361,7 @@ def build_generation_ready_numeric_records(
     golden_spec: Any,
     *,
     candidate_classification_by_target: Any = None,
+    source_inputs_by_target: Any = None,
 ) -> dict[str, Any]:
     """Closed generation-ready numeric records for one golden-pair spec.
 
@@ -1187,7 +1374,7 @@ def build_generation_ready_numeric_records(
     """
     try:
         return _build_generation_ready_numeric_records(
-            golden_spec, candidate_classification_by_target
+            golden_spec, candidate_classification_by_target, source_inputs_by_target
         )
     except Exception:
         return {
@@ -1201,12 +1388,14 @@ def build_generation_ready_numeric_records(
 
 
 def _build_generation_ready_numeric_records(
-    golden_spec: Any, candidate_map: Any
+    golden_spec: Any, candidate_map: Any, source_inputs_by_target: Any
 ) -> dict[str, Any]:
     warnings: set[str] = set()
 
     proof = build_golden_target_recompute_proof(
-        golden_spec, candidate_classification_by_target=candidate_map
+        golden_spec,
+        candidate_classification_by_target=candidate_map,
+        source_inputs_by_target=source_inputs_by_target,
     )
     source_label = proof.get("source_label", "unknown")
     proof_records = proof.get("records")

@@ -5,7 +5,51 @@
 
 ---
 
-## Phase 2 source extraction / reproducible measurement — **Slice 173C audit committed; ready for Slice 174A.**
+## Phase 2 source-derived numeric verification — **Slice 174A source-input bridge proof run; NOT committed.**
+
+- **phase=Phase 2 source-derived numeric verification** ·
+  **input_basis=masked_gini_recompute_passed_and_2_method_gated_targets_remaining** ·
+  **numeric_context_plumbing_stopped=true** · **student_visible_output_invariant=true** ·
+  **real_artifact=closed_recompute_proof_for_method_gated_ensemble_targets** ·
+  **generation_reproducibility_gap=true** ·
+  **next_step=source_input_provenance_recovery** · **judge_ready=false** ·
+  **repair_ready=false**.
+- **Slice 174A closed recompute proof:** recompute_methods_added_count=2 ·
+  source_input_bridge_added=true · bridge_scope=minimal ·
+  method_gated_target_ids=`proximity_4_3`,`weighted_weight_impute` · targets_considered=12 ·
+  previous_independently_verified_count=2 · newly_independently_verified_count=0 ·
+  total_independently_verified_count=2 · remaining_method_gated_count=0 · extraction_gated_count=0 ·
+  unresolved_for_generation_count=10 · writer_ready_count=2 ·
+  fixture_only_values_used_as_truth=false · extracted_answer_text_used_as_truth=false ·
+  guide_candidate_values_used_as_truth=false · next_step=source_input_provenance_recovery.
+- **Pair proof detail:** NN3 targets_considered=5 · total_independently_verified_count=1 ·
+  remaining_blockers `source_required=4`. Ensemble targets_considered=7 · method_gated_before=2 ·
+  method_gated_after=0 · newly_independently_verified_count=0 · total_independently_verified_count=1 ·
+  remaining_blockers `source_required=4`,`source_input_missing=2`.
+- **Negative-proof conclusion:** Slice 174A is a negative proof, not verification progress:
+  newly_independently_verified_count=0 and total_independently_verified_count=2. The two targets moved from
+  method-gated to source_input_missing; for both `proximity_4_3` and `weighted_weight_impute`,
+  source_input_record_exists=false and source_input_record_shape_valid=false. Do not claim 10/12
+  recompute-ready.
+- **Slice 174A implementation result:** first added exactly the missing method computations (`proximity`,
+  `weighted_average`) and an initial closed `source_inputs_by_target` proof input path, but the first proof stayed
+  blocked with newly_independently_verified_count=0 and method_gated_after=2. The branch was not committed. The
+  slice then continued under the produce-before-scaffold gate and added only a minimal exact Ensemble bridge from
+  already-structured source fact-sheet inputs to the existing `source_inputs_by_target` proof input. The real local
+  artifacts still provide no source-derived structured records for `proximity_4_3` or `weighted_weight_impute`
+  (`source_input_projection_count=0`), so both targets remain honestly blocked as `source_input_missing` and not
+  writer-ready. The proof did not use fixture expected values, extracted answer text, or guide candidate values as
+  truth.
+- **Decision-rule next_step:** `source_input_provenance_recovery`. This is not another bridge attempt. The next
+  artifact must classify target inputs as `parsed_from_extraction_output`, `hand_authored_target_map`, or
+  `not_machine_consumable`. If inputs are not machine-consumable from existing extraction, route to
+  `OCR_table_structure_extraction`. Do not build a recompute-method registry; do not continue numeric-context
+  plumbing; do not regenerate guides; do not run Layer-2 judge.
+- **next_step=closed_decision_from_real_recompute_proof:** `source_input_provenance_recovery`.
+
+---
+
+## Phase 2 source extraction / reproducible measurement — **Slice 173C audit committed.**
 
 - **phase=Phase 2 source extraction / reproducible measurement** ·
   **numeric_context_plumbing_stopped=true** · **student_visible_output_invariant=true** ·

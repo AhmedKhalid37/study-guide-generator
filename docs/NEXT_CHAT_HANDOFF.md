@@ -6,15 +6,39 @@
 > stable overview see `PROJECT_CONTEXT.md`; canonical brief is `../CLAUDE.md`.
 
 ## Current position
-- **Working tree:** trunk `chrome-renderer-v1` after abandoning the uncommitted Slice 173C branch; no new
-  code slice started. Slice 173A is committed as `1905af7`; Slice 173B is committed as `1a38c12`. Slice 173C
-  was stopped and discarded without commit because it built numeric-context/operator scaffolding but produced
-  no student-visible guide artifact.
-- **Current phase:** `Phase 2 source extraction / reproducible measurement`.
+- **Working tree:** branch `slice174a-add-missing-recompute-methods`; Slice 174A source-input bridge proof-run,
+  **not committed**. Slice 173A is committed as `1905af7`; Slice 173B is committed as `1a38c12`; Slice 173C is
+  committed as `3aaea34`.
+- **Current phase:** `Phase 2 source-derived numeric verification`.
   `numeric_context_plumbing_stopped=true`; `student_visible_output_invariant=true`;
-  `real_artifact=corrected_extraction_provenance_audit_plus_masked_gini_recompute`;
+  `input_basis=masked_gini_recompute_passed_and_2_method_gated_targets_remaining`;
+  `real_artifact=closed_recompute_proof_for_method_gated_ensemble_targets`;
   `generation_reproducibility_gap=true`;
-  `next_step=add_missing_recompute_methods`; `judge_ready=false`; `repair_ready=false`.
+  `next_step=source_input_provenance_recovery`; `judge_ready=false`; `repair_ready=false`.
+- **Slice 174A proof result:** recompute_methods_added_count=2; method_gated_target_ids closed list
+  [`proximity_4_3`, `weighted_weight_impute`]; source_input_bridge_added=true; bridge_scope=minimal;
+  targets_considered=12;
+  previous_independently_verified_count=2; newly_independently_verified_count=0;
+  total_independently_verified_count=2; remaining_method_gated_count=0; extraction_gated_count=0;
+  unresolved_for_generation_count=10; writer_ready_count=2; fixture_only_values_used_as_truth=false;
+  extracted_answer_text_used_as_truth=false; guide_candidate_values_used_as_truth=false.
+- **Slice 174A implementation:** first added exactly the `proximity` and `weighted_average` recompute methods and
+  an initial closed `source_inputs_by_target` proof input path. The first proof still had
+  newly_independently_verified_count=0 and method_gated_after=2, so the branch was not committed. The slice then
+  continued under produce-before-scaffold and added only a minimal exact Ensemble bridge from already-structured
+  source fact-sheet inputs to the existing proof input. The real local artifacts still project
+  source_input_projection_count=0 for the two targets, so independent verification did not increase and both
+  targets remain honestly blocked/not writer-ready as `source_input_missing`.
+- **Negative-proof conclusion:** Slice 174A is a negative proof, not verification progress. The two formerly
+  method-gated targets now have methods and remaining_method_gated_count=0, but newly_independently_verified_count=0
+  and total_independently_verified_count=2. For both `proximity_4_3` and `weighted_weight_impute`,
+  source_input_record_exists=false and source_input_record_shape_valid=false. No fixture expected values, extracted
+  answer text, or guide candidate values were used as truth. Do not claim 10/12 recompute-ready.
+- **Next route:** `source_input_provenance_recovery`, not another bridge attempt, not numeric-context plumbing, and
+  not a prompt/generation slice. The next artifact must classify target inputs as
+  `parsed_from_extraction_output`, `hand_authored_target_map`, or `not_machine_consumable`. If inputs are not
+  machine-consumable from existing extraction, route to `OCR_table_structure_extraction`.
+- **next_step=closed_decision_from_real_recompute_proof:** `source_input_provenance_recovery`.
 - **Produce-before-scaffold gate:** the required artifact is a real closed extraction run on the NN3 and
   Ensemble source decks using existing extraction/OCR/table paths, followed by a closed report classifying
   the remaining numeric failures as extraction-gated, method-gated, absent, or already recoverable. The
@@ -51,11 +75,10 @@
   the same report. If a lead-blocker metric table is garbled, reprint it cleanly before deciding or committing.
   Gate 2.5: `question_2_5=is_the_artifact_measuring_what_we_think`; if an extraction or recompute result is
   surprisingly clean, verify artifact provenance and recoverability semantics before committing or routing.
-- **Next slice prepared, not started in this working tree:** `slice174a-add-missing-recompute-methods`. Goal:
-  add exactly the two missing recompute methods for the method-gated Ensemble targets and run the real recompute
-  proof in the same slice. Pass condition is honest movement, not forced 12/12 green. If 174A reports a
-  surprisingly clean all-green result, Gate 2 must fire again before banking it. Do not route to OCR from this
-  run, do not add more numeric-context plumbing, and do not build a recompute-method registry architecture slice.
+- **Current Slice 174A status:** source-input bridge proof-run, not committed. Pass condition was honest movement,
+  not forced 12/12 green. Result was not surprisingly clean, and newly_independently_verified_count stayed 0.
+  Do not add more numeric-context plumbing, do not build a recompute-method registry architecture slice, and do not
+  route to OCR unless source-input provenance recovery proves extraction is insufficient.
 - **Superseded position (Slice 173A) — now committed `1905af7`.** Recompute-first PROOF slice, not generation
   wiring. Part 0 reprinted the
   post-Slice-172 Layer-1 rerun (no regeneration): **numeric is the lead blocker and `found_but_wrong_value`

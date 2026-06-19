@@ -34,6 +34,7 @@ from pipeline.quality_safety_recompute_verifier import (  # noqa: E402
     GOLDEN_CANDIDATE_STATUSES,
     GOLDEN_PROOF_WARNING_ORDER,
     build_generation_ready_numeric_records,
+    build_ensemble_method_gated_source_inputs_from_fact_sheet,
     VERIFIED_VALUE_INSTRUCTION_TOKEN,
     GENERATION_READY_KIND,
 )
@@ -96,6 +97,8 @@ CHECK_IDS = {
     "softmax",
     "cross_entropy",
     "forward_pass",
+    "proximity",
+    "weighted_average",
     "numeric_fact_not_recomputable",
     "non_numeric_fact_not_applicable",
 }
@@ -385,7 +388,56 @@ def test_forward_pass() -> None:
     check("forward_pass mismatch fails blocking", mismatch["status"] == "failed" and mismatch["blocking"] is True)
 
 
-# ── 8. Fact provenance / status ─────────────────────────────────────────────
+# ── 8. proximity / weighted_average ─────────────────────────────────────────
+
+
+def test_proximity() -> None:
+    ratio = recompute_quality_safety_fact(
+        numeric_fact(value=0.8, method="proximity", inputs={"shared_terminal_count": 4, "tree_count": 5})
+    )
+    check("proximity ratio passes", ratio["status"] == "passed", str(ratio))
+    check("proximity ratio recomputes", abs((ratio["recomputed_value"] or 0) - 0.8) < 1e-12, str(ratio))
+
+    flags = recompute_quality_safety_fact(
+        numeric_fact(value=0.8, method="proximity", inputs={"same_terminal_node": [True, True, False, True, True]})
+    )
+    check("proximity flags pass", flags["status"] == "passed", str(flags))
+
+    malformed = recompute_quality_safety_fact(
+        numeric_fact(value=0.8, method="proximity", inputs={"shared_terminal_count": 6, "tree_count": 5})
+    )
+    check("proximity malformed degrades", malformed["status"] == "warning" and malformed["recomputed_value"] is None)
+
+    mismatch = recompute_quality_safety_fact(
+        numeric_fact(value=0.2, method="proximity", inputs={"shared_terminal_count": 4, "tree_count": 5})
+    )
+    check("proximity mismatch fails blocking", mismatch["status"] == "failed" and mismatch["blocking"] is True)
+
+
+def test_weighted_average() -> None:
+    weighted = recompute_quality_safety_fact(
+        numeric_fact(value=25.0, method="weighted_average", inputs={"values": [10, 30], "weights": [1, 3]})
+    )
+    check("weighted_average list passes", weighted["status"] == "passed", str(weighted))
+    check("weighted_average recomputes", abs((weighted["recomputed_value"] or 0) - 25.0) < 1e-12, str(weighted))
+
+    totals = recompute_quality_safety_fact(
+        numeric_fact(value=25.0, method="weighted_average", inputs={"weighted_sum": 100, "weight_sum": 4})
+    )
+    check("weighted_average totals pass", totals["status"] == "passed", str(totals))
+
+    malformed = recompute_quality_safety_fact(
+        numeric_fact(value=25.0, method="weighted_average", inputs={"values": [10, 30], "weights": [0, -1]})
+    )
+    check("weighted_average malformed degrades", malformed["status"] == "warning" and malformed["recomputed_value"] is None)
+
+    mismatch = recompute_quality_safety_fact(
+        numeric_fact(value=20.0, method="weighted_average", inputs={"values": [10, 30], "weights": [1, 3]})
+    )
+    check("weighted_average mismatch fails blocking", mismatch["status"] == "failed" and mismatch["blocking"] is True)
+
+
+# ── 9. Fact provenance / status ─────────────────────────────────────────────
 
 
 def test_provenance_status() -> None:
@@ -787,13 +839,13 @@ def test_golden_recompute_proof_source_required_and_unsupported() -> None:
         [
             {"label": "gini_synth_node", "value": 0.20, "tol": 0.01},  # supported family, no inputs
             {"label": "softmax_synth", "value": 0.69, "tol": 0.01},  # supported family, no inputs
-            {"label": "proximity_synth", "value": 0.80, "tol": 0.01},  # no supported method
+            {"label": "totally_unrelated_synth", "value": 0.80, "tol": 0.01},  # no supported method
         ],
     )
     proof = build_golden_target_recompute_proof(spec)
     gini = _record_by_id(proof, "gini_synth_node")
     softmax = _record_by_id(proof, "softmax_synth")
-    prox = _record_by_id(proof, "proximity_synth")
+    prox = _record_by_id(proof, "totally_unrelated_synth")
     check("gini source_required", gini.get("recompute_status") == "source_required", str(gini))
     check("softmax source_required", softmax.get("recompute_status") == "source_required", str(softmax))
     check("proximity unsupported", prox.get("recompute_status") == "unsupported", str(prox))
@@ -812,6 +864,260 @@ def test_golden_recompute_proof_source_required_and_unsupported() -> None:
     check("summary 0 formula_verified", summary["formula_verified_count"] == 0, str(summary))
     check("summary 0 independently verified", summary["independently_verified_for_generation_count"] == 0, str(summary))
     check("summary 0 writer should receive", summary["writer_should_receive_committed_value_count"] == 0, str(summary))
+
+
+def test_golden_recompute_source_inputs_for_new_methods() -> None:
+    # Source-input bridge is closed and structured: no fixture value, extracted
+    # answer text, guide candidate value, formula string, or raw snippet is used
+    # to compute these targets.
+    spec = _golden_spec(
+        "ens_synth",
+        [
+            {"label": "proximity_synth", "value": 0.80, "tol": 0.01},
+            {"label": "weighted_synth", "value": 25.0, "tol": 0.5},
+            {"label": "totally_unrelated_synth", "value": 0.99, "tol": 0.01},
+        ],
+    )
+    source_inputs = {
+        "proximity_synth": {
+            "method": "proximity",
+            "inputs": {"shared_terminal_count": 4, "tree_count": 5},
+            "value_kind": "probability",
+            "confidence": "high",
+        },
+        "weighted_synth": {
+            "method": "weighted_average",
+            "inputs": {"values": [10, 30], "weights": [1, 3]},
+            "value_kind": "numeric",
+            "confidence": "medium",
+        },
+    }
+    candidate = {
+        "proximity_synth": "found_but_wrong_value",
+        "weighted_synth": "found_but_wrong_value",
+        "totally_unrelated_synth": "genuinely_missing",
+    }
+    proof = build_golden_target_recompute_proof(
+        spec,
+        candidate_classification_by_target=candidate,
+        source_inputs_by_target=source_inputs,
+    )
+    prox = _record_by_id(proof, "proximity_synth")
+    weighted = _record_by_id(proof, "weighted_synth")
+    unsupported = _record_by_id(proof, "totally_unrelated_synth")
+
+    for rec in (prox, weighted):
+        check(f"{rec.get('target_id')} source recomputed", rec.get("recompute_status") == "recomputed", str(rec))
+        check(f"{rec.get('target_id')} source matched", rec.get("recomputed_matches_committed_fixture") is True, str(rec))
+        check(f"{rec.get('target_id')} independently verified", rec.get("independently_verified_for_generation") is True, str(rec))
+        check(f"{rec.get('target_id')} writer ready", rec.get("writer_should_receive_committed_value") is True, str(rec))
+        check(f"{rec.get('target_id')} wrong candidate only diagnostic", rec.get("wrong_printed_value_detected_when_candidate_supplied") is True, str(rec))
+    check("unsupported remains unsupported", unsupported.get("recompute_status") == "unsupported", str(unsupported))
+    check("unsupported not writer ready", unsupported.get("writer_should_receive_committed_value") is False, str(unsupported))
+
+    summary = proof["summary"]
+    check("source-input summary recomputed 2", summary["recomputed_count"] == 2, str(summary))
+    check("source-input summary independently verified 2", summary["independently_verified_for_generation_count"] == 2, str(summary))
+    check("source-input summary writer ready 2", summary["writer_should_receive_committed_value_count"] == 2, str(summary))
+    check("source-input summary unsupported 1", summary["unsupported_count"] == 1, str(summary))
+    assert_no_canary("golden source-input bridge", proof)
+
+
+def test_golden_recompute_source_inputs_do_not_launder_truth() -> None:
+    spec = _golden_spec(
+        "ens_synth",
+        [
+            {"label": "proximity_synth", "value": 0.70, "tol": 0.01},
+            {"label": "weighted_synth", "value": 25.0, "tol": 0.5},
+            {"label": "proximity_missing_inputs", "value": 0.80, "tol": 0.01},
+        ],
+    )
+    source_inputs = {
+        "proximity_synth": {
+            "method": "proximity",
+            "inputs": {"shared_terminal_count": 4, "tree_count": 5},
+        },
+        "weighted_synth": {
+            "method": "proximity",
+            "inputs": {"shared_terminal_count": 4, "tree_count": 5},
+        },
+    }
+    proof = build_golden_target_recompute_proof(
+        spec,
+        candidate_classification_by_target={
+            "proximity_synth": "found_and_matched",
+            "weighted_synth": "found_but_wrong_value",
+            "proximity_missing_inputs": "found_but_wrong_value",
+        },
+        source_inputs_by_target=source_inputs,
+    )
+    wrong_fixture = _record_by_id(proof, "proximity_synth")
+    method_mismatch = _record_by_id(proof, "weighted_synth")
+    missing_inputs = _record_by_id(proof, "proximity_missing_inputs")
+
+    check("wrong fixture recomputed", wrong_fixture.get("recompute_status") == "recomputed", str(wrong_fixture))
+    check("wrong fixture not matched", wrong_fixture.get("recomputed_matches_committed_fixture") is False, str(wrong_fixture))
+    check("wrong fixture not independently verified", wrong_fixture.get("independently_verified_for_generation") is False, str(wrong_fixture))
+    check("wrong fixture not writer ready", wrong_fixture.get("writer_should_receive_committed_value") is False, str(wrong_fixture))
+    check("matched candidate does not launder", wrong_fixture.get("guide_candidate_status") == "matched", str(wrong_fixture))
+
+    check("method mismatch remains source_required", method_mismatch.get("recompute_status") == "source_required", str(method_mismatch))
+    check("method mismatch warning closed", method_mismatch.get("warnings") == ["recompute_plan_unavailable", "source_recompute_input_ignored"], str(method_mismatch))
+    check("method mismatch not writer ready", method_mismatch.get("writer_should_receive_committed_value") is False, str(method_mismatch))
+
+    check("missing source inputs source_required", missing_inputs.get("recompute_status") == "source_required", str(missing_inputs))
+    check("missing source inputs not writer ready", missing_inputs.get("writer_should_receive_committed_value") is False, str(missing_inputs))
+
+
+def test_ensemble_source_input_bridge_maps_only_two_targets() -> None:
+    fact_sheet = {
+        "lecture_id": "ensemble",
+        "source_quality": "ambiguous_animation_frames",
+        "concepts": [
+            {
+                "concept": "Synthetic Concept",
+                "facts": [
+                    numeric_fact(
+                        fact_id="proximity_4_3",
+                        label="proximity_4_3",
+                        value=999,
+                        method="proximity",
+                        inputs={"shared_terminal_count": 4, "tree_count": 5},
+                        provenance="computed",
+                    ),
+                    numeric_fact(
+                        fact_id="weighted_weight_impute",
+                        label="weighted_weight_impute",
+                        value=999,
+                        method="weighted_average",
+                        inputs={"values": [190, 200], "weights": [3, 7]},
+                        provenance="extracted_high",
+                    ),
+                    numeric_fact(
+                        fact_id="gini_weight_gt_176",
+                        label="gini_weight_gt_176",
+                        value=0.20,
+                        method="weighted_gini",
+                        inputs={"groups": [{"yes": 1, "no": 1}]},
+                        provenance="computed",
+                    ),
+                ],
+            }
+        ],
+    }
+    bridge = build_ensemble_method_gated_source_inputs_from_fact_sheet(fact_sheet)
+    check("ensemble bridge exact targets", set(bridge) == {"proximity_4_3", "weighted_weight_impute"}, str(bridge))
+    check("ensemble bridge proximity method", bridge["proximity_4_3"]["method"] == "proximity", str(bridge))
+    check("ensemble bridge weighted method", bridge["weighted_weight_impute"]["method"] == "weighted_average", str(bridge))
+    check(
+        "ensemble bridge ignores non-ensemble sheet",
+        build_ensemble_method_gated_source_inputs_from_fact_sheet({**fact_sheet, "lecture_id": "nn3"}) == {},
+    )
+    assert_no_canary("ensemble source input bridge", bridge)
+
+
+def test_ensemble_source_input_bridge_proves_real_targets_without_laundering() -> None:
+    spec = _golden_spec(
+        "ensemble",
+        [
+            {"label": "proximity_4_3", "value": 0.80, "tol": 0.01},
+            {"label": "weighted_weight_impute", "value": 198.5, "tol": 0.5},
+        ],
+    )
+    fact_sheet = {
+        "lecture_id": "ensemble",
+        "source_quality": "ambiguous_animation_frames",
+        "concepts": [
+            {
+                "concept": "Synthetic Concept",
+                "facts": [
+                    numeric_fact(
+                        fact_id="proximity_4_3",
+                        label="proximity_4_3",
+                        value=999,
+                        method="proximity",
+                        inputs={"same_terminal_node": [1, 1, 0, 1, 1]},
+                        provenance="computed",
+                    ),
+                    numeric_fact(
+                        fact_id="weighted_weight_impute",
+                        label="weighted_weight_impute",
+                        value=999,
+                        method="weighted_average",
+                        inputs={"weighted_sum": 1985, "weight_sum": 10},
+                        provenance="computed",
+                    ),
+                ],
+            }
+        ],
+    }
+    proof = build_golden_target_recompute_proof(
+        spec,
+        candidate_classification_by_target={
+            "proximity_4_3": "found_but_wrong_value",
+            "weighted_weight_impute": "found_but_wrong_value",
+        },
+        source_inputs_by_target=build_ensemble_method_gated_source_inputs_from_fact_sheet(fact_sheet),
+    )
+    for target_id in ("proximity_4_3", "weighted_weight_impute"):
+        rec = _record_by_id(proof, target_id)
+        check(f"{target_id} bridge recomputed", rec.get("recompute_status") == "recomputed", str(rec))
+        check(f"{target_id} bridge matched fixture", rec.get("recomputed_matches_committed_fixture") is True, str(rec))
+        check(f"{target_id} wrong candidate remains diagnostic", rec.get("guide_candidate_status") == "wrong_value_detected", str(rec))
+        check(f"{target_id} independently verified", rec.get("independently_verified_for_generation") is True, str(rec))
+        check(f"{target_id} writer ready only after proof", rec.get("writer_should_receive_committed_value") is True, str(rec))
+
+
+def test_ensemble_source_input_bridge_missing_or_invalid_stays_blocked() -> None:
+    spec = _golden_spec(
+        "ensemble",
+        [
+            {"label": "proximity_4_3", "value": 0.80, "tol": 0.01},
+            {"label": "weighted_weight_impute", "value": 198.5, "tol": 0.5},
+        ],
+    )
+    invalid_fact_sheet = {
+        "lecture_id": "ensemble",
+        "source_quality": "ambiguous_animation_frames",
+        "concepts": [
+            {
+                "concept": "Synthetic Concept",
+                "facts": [
+                    numeric_fact(
+                        fact_id="proximity_4_3",
+                        label="proximity_4_3",
+                        value=0.8,
+                        method="proximity",
+                        inputs={"shared_terminal_count": 4, "tree_count": 5},
+                        provenance="canonical_fixture",
+                    ),
+                    numeric_fact(
+                        fact_id="weighted_weight_impute",
+                        label="weighted_weight_impute",
+                        value=198.5,
+                        method="proximity",
+                        inputs={"shared_terminal_count": 4, "tree_count": 5},
+                        provenance="computed",
+                    ),
+                ],
+            }
+        ],
+    }
+    bridge = build_ensemble_method_gated_source_inputs_from_fact_sheet(invalid_fact_sheet)
+    check("invalid source inputs excluded", bridge == {}, str(bridge))
+    proof = build_golden_target_recompute_proof(
+        spec,
+        candidate_classification_by_target={
+            "proximity_4_3": "found_but_wrong_value",
+            "weighted_weight_impute": "found_but_wrong_value",
+        },
+        source_inputs_by_target=bridge,
+    )
+    for target_id in ("proximity_4_3", "weighted_weight_impute"):
+        rec = _record_by_id(proof, target_id)
+        check(f"{target_id} invalid source input source_required", rec.get("recompute_status") == "source_required", str(rec))
+        check(f"{target_id} invalid source input not verified", rec.get("independently_verified_for_generation") is False, str(rec))
+        check(f"{target_id} invalid source input not writer ready", rec.get("writer_should_receive_committed_value") is False, str(rec))
 
 
 def test_golden_recompute_no_laundering_gate() -> None:
@@ -1014,6 +1320,8 @@ def run() -> int:
     test_softmax()
     test_cross_entropy()
     test_forward_pass()
+    test_proximity()
+    test_weighted_average()
     test_provenance_status()
     test_slice110_integration()
     test_seed_fixture_integration()
@@ -1023,6 +1331,11 @@ def run() -> int:
     test_golden_recompute_no_known_numbers_detects_disagreement()
     test_golden_recompute_proof_wrong_candidate_detected()
     test_golden_recompute_proof_source_required_and_unsupported()
+    test_golden_recompute_source_inputs_for_new_methods()
+    test_golden_recompute_source_inputs_do_not_launder_truth()
+    test_ensemble_source_input_bridge_maps_only_two_targets()
+    test_ensemble_source_input_bridge_proves_real_targets_without_laundering()
+    test_ensemble_source_input_bridge_missing_or_invalid_stays_blocked()
     test_golden_recompute_no_laundering_gate()
     test_golden_recompute_proof_degrades_and_no_mutation()
     test_golden_recompute_proof_closed_schema()
