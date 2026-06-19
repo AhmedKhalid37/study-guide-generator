@@ -6,34 +6,33 @@
 > stable overview see `PROJECT_CONTEXT.md`; canonical brief is `../CLAUDE.md`.
 
 ## Current position
-- **Working tree:** **Slice 169 (Phase 0 numeric-matcher + mock-counter measurement-trust sanity) — UNCOMMITTED**
-  on branch `slice169-phase0-matcher-mock-sanity`, branched from clean trunk `chrome-renderer-v1` (`1d66f07`).
-- **Slice 168 is committed and on trunk:** `1d66f07` ("Slice 168: Narrow prompt contract against visible
-  deliberation"), fast-forward merged to `chrome-renderer-v1` (`8e2138d..1d66f07`) and pushed with a normal
-  `git push` (no force-push). Slice 167 is trunk commit `8e2138d`.
-- **Slice 169 fixes measurement trust before any regeneration.** The real Phase 0 current-pair run reported
-  `numeric_correctness` 0/n and Ensemble `mock_question_count=0`, but the current generated guides contain worked
-  numeric examples and a full Mock Exam — so those zeros are **matcher/counter artifacts**, not proof of absence.
-  This slice (in `pipeline/quality_safety_eval_harness.py`) adds a **label-anchored value scan** giving the gate
-  same-line format-equivalence (`97%`↔`0.97`) and bounded **PDF line-break proximity** within the **existing**
-  tolerance, plus a **closed per-target classifier** (`classify_numeric_targets`) into `found_and_matched` /
-  `found_but_format_or_context_missed` / `found_but_wrong_value` / `genuinely_missing`, and a **count-only** mock
-  matcher (`_is_mock_question_count_line`) recognizing `Question N`/`Q4.` forms. **Expected values were not edited,
-  tolerances were not widened, `found_but_wrong_value` stays a real failure, leak detection is untouched, no guide
-  was regenerated, numeric strategy stays recompute-first.** New synthetic tests in
-  `test_scripts/test_quality_safety_eval_harness.py`. No scorer-gate loosening, no aggregator patch, no
-  API/frontend/job wiring; offline judge stays frozen (`judge_ready=false`, `repair_ready=false`).
+- **Working tree:** **Slice 170 (Phase 0 numeric label-attribution matcher) — UNCOMMITTED**
+  on branch `slice170-phase0-numeric-label-attribution`, branched from clean trunk `chrome-renderer-v1` (`bf90b47`).
+- **Slice 169 is committed and on trunk:** `bf90b47` ("Slice 169: Add Phase 0 matcher sanity diagnostics"),
+  fast-forward merged to `chrome-renderer-v1` and pushed with a normal `git push` (no force-push). Slice 168 is
+  trunk commit `1d66f07`.
+- **Slice 170 makes numeric attribution truthful (not green) before any regeneration.** After Slice 169 the mock
+  counter is trusted, but numeric correctness was not: all expected values are literally present while every target
+  classified `label_not_found` — so the blocker was **attribution**, not absence. This slice (in
+  `pipeline/quality_safety_eval_harness.py`) lets a target anchor on its authored label **OR** a safe alias /
+  concept anchor (`aliases` fixture metadata, `_numeric_anchor_terms`, `_label_value_scan_multi`), adds a
+  **committed worked-final-answer** reading (`_committed_answer_numbers`: the number after the last `= / ≈ / ≃ / →`,
+  credited only when internally consistent and within the **existing** tolerance), tightens proximity to standalone
+  header lines only, and extends the closed diagnostic with `alias_found` / `alias_matched` / `proximity_mode` /
+  `competing_value_count`. **No tolerance widened, no expected value edited, wrong/competing values still fail,
+  stray values still not credited, recompute-first stays authoritative, leak detection untouched, judge frozen
+  (`judge_ready=false`, `repair_ready=false`), no repair, no generation/prompt change, no regeneration.** Fixtures
+  gained alias metadata ONLY (values/tolerances guarded unchanged). New synthetic tests in
+  `test_scripts/test_quality_safety_eval_harness.py` (554 passed/0 failed).
   **Closed diagnostic done (rerun on current unchanged local guides; truthful/mixed, NOT a green pass):**
-  NN3 numerics 5/5 `genuinely_missing` (`label_not_found`) under both opaque and natural anchors — yet all 5 values
-  are literally present in the guide (LaTeX/prose anchoring miss), gate `unknown`/non-blocking; format+proximity did
-  **not** rescue NN3. Ensemble numerics natural anchors: 1 `found_and_matched` (`proximity_4_3`=0.80), 6
-  `found_but_wrong_value` (only `gini_weight_gt_176` a confirmed guide confusion 0.42↔0.19↔golden 0.20; the other 5
-  are generic-anchor + messy-PDF competing-value flags, never laundered into matches), gate `failed`/blocking. Mock
-  counter rescued cleanly: NN3=12, Ensemble=10 (both ≥8, passed), no bare-heading/stray-`?` credit. Expected values +
-  tolerances untouched, fixtures unchanged, no gate weakened, judge frozen, no regeneration, `local_operator_baselines/`
-  uncommitted. **Conclusion: mock-count zero was a real counter artifact (fixed); numeric trust is still NOT
-  established (matcher cannot anchor real LaTeX/PDF guide text).**
-  **next_step: numeric_label_anchoring_robustness_or_targeted_regeneration_then_rerun. Slice 169 still NOT committed.**
+  NN3 numerics now 5/5 `found_but_wrong_value` (`competing_unresolved_values`) with `alias_found=1`/`value_found=1`
+  on every target — i.e. the concept **and** the value are present; the old `label_not_found` was a matcher
+  artifact. Ensemble: 1 `found_and_matched` (`gini_chest_pain`=0.47 via `worked_final_answer`), 5
+  `found_but_wrong_value` (competing), 1 `genuinely_missing` (`gini_weight_gt_176`, anchor present/value not
+  adjacent). Both gates `failed`/blocking. **Conclusion: numeric values are present and now demonstrably anchored;
+  the remaining blocker is bounded attribution against co-located worked-step numbers on number-dense lines, not
+  absence. `numeric_correctness` is now a truthful detector but NOT green → regeneration stays blocked.**
+  **next_step: rerun_current_guides_after_numeric_attribution_then_decide_regeneration. Slice 170 still NOT committed.**
 - **Superseded:** Slice 168 (committed) narrowed the always-applied guide-quality prompt contract
   (`pipeline/guide_quality_prompt_contract.py`) to a resolve-then-emit / no-visible-deliberation rule that
   explicitly allows ordinary teaching language and offers the closed "Not specified in the provided material."

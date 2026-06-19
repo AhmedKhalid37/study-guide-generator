@@ -6960,3 +6960,42 @@ changed; the offline judge stays frozen (`judge_ready`/`repair_ready` = `false`)
 `local_operator_baselines/` and no private guide/source content, numbers, paths,
 filenames, hashes, or byte counts were committed (tests use synthetic public text).
 Next step: `rerun_current_guides_after_matcher_sanity`.
+
+## Slice 170 — numeric label attribution via safe aliases (truthful, not green)
+After Slice 169 the mock-question counter is trusted, but numeric correctness
+remained **untrusted**: every expected value was literally present in the local
+guides while all numeric targets still classified `label_not_found` — the fixtures'
+internal label codes (`softmax_1.43`, `gini_chest_pain`, `amount_of_say_half_ln_7`)
+never appear verbatim in a real guide. **Decision:** improve numeric label
+attribution with explicit safe aliases and bounded proximity, **without** editing
+expected values, widening tolerances, or crediting stray numbers. The goal is
+**truthful per-target classification, not a green score.** Each golden numeric target
+may now carry optional `aliases` (public-safe concept/symbol/formula/human-phrase
+anchors, capped, validated by `_safe_golden_label`); the matcher anchors on the label
+**or** any alias, reads a **committed worked-final-answer** (the number after the last
+`= / ≈ / ≃ / →`, credited only when internally consistent and within the existing
+tolerance, so working steps are not mistaken for competing values), and only fires
+next-line proximity when the anchor stands alone as a header. The closed diagnostic
+gained `alias_found`, `alias_matched` (enum/fixture-token only), `proximity_mode`,
+and `competing_value_count`. **No-laundering held:** a wrong committed answer still
+fails, two different committed answers still contradict, value-only and label-only
+presence are still not credited, and recompute-first stays authoritative for
+wrongness. **Why aliases are safe:** they are generic public ML terms already implied
+by the committed label codes (e.g. `chest pain`, `weight > 176`, `cross-entropy`),
+not private guide/source snippets, and live in the repo fixtures; a guard test
+(`test_golden_pair_alias_metadata_guard`) fails loudly if any expected value/tolerance
+is ever changed. Real local rerun (current unchanged guides, nothing regenerated):
+NN3 5/5 `found_but_wrong_value` (competing) but now `alias_found`+`value_found` on
+every target (concept and value present — the prior `label_not_found` was a matcher
+artifact); Ensemble 1 `found_and_matched` (`gini_chest_pain`), 5 competing, 1
+`genuinely_missing`. Both gates stay `failed`/blocking. **Conclusion:** numeric values
+are present and now demonstrably anchored; the residual blocker is bounded attribution
+against co-located worked-step numbers on number-dense lines, not numeric absence — so
+`numeric_correctness` is now a truthful detector but not green, and **regeneration
+stays blocked until numeric attribution is trusted.** No gate loosened, no
+warning/failure hidden, no aggregator patched, no generation prompt changed, no guide
+regenerated, no repair added; offline judge stays frozen
+(`judge_ready`/`repair_ready` = `false`); no `local_operator_baselines/` and no
+private guide/source content, numbers, paths, filenames, hashes, or byte counts were
+committed (tests use synthetic public text). Next step:
+`rerun_current_guides_after_numeric_attribution_then_decide_regeneration`.

@@ -5,6 +5,59 @@
 
 ---
 
+## Slice 170 — **Phase 0 numeric label-attribution matcher**, on `slice170-phase0-numeric-label-attribution`. **NOT COMMITTED.**
+
+- **Produce-before-scaffold gate:** real Layer-1 measurement already exists; this slice does **not** regenerate any
+  guide. After Slice 169 the mock counter is trusted, but numeric correctness was **not**: all expected values are
+  literally present while all targets classified `label_not_found` — the blocker was **attribution**, not absence.
+- **phase=Phase 0 measurement trust** · **slice170_focus=numeric_label_attribution**
+- **regeneration_blocked_until_numeric_attribution_trusted=true** · **numeric_values_present_but_unanchored=true** ·
+  **do_not_widen_tolerances=true** · **do_not_edit_expected_values=true** ·
+  **next_step=rerun_current_guides_after_numeric_attribution_then_decide_regeneration**
+- **Matcher (`pipeline/quality_safety_eval_harness.py`):**
+  - Numeric targets now carry optional **safe alias / concept-anchor metadata** (`aliases`, capped, validated by
+    `_safe_golden_label`, deduped). The matcher anchors on the authored label **OR** any approved alias
+    (`_numeric_anchor_terms`, `_label_value_scan_multi`), so a value is attributed via the phrasing the guide
+    actually prints — not only the fixture's internal label code.
+  - Added a **committed worked-final-answer** reading (`_committed_answer_numbers`): the number after the last
+    result separator (`= / ≈ / ≃ / →`) is credited when internally consistent and within the **existing** tolerance,
+    so a correct final answer is not failed as a contradiction by its own working steps. Two different committed
+    answers still contradict; a wrong committed answer is still wrong.
+  - **Proximity tightened:** value-on-next-line only fires when the anchor stands alone as a header (stripping it
+    leaves no other word tokens), so a mid-sentence "Covered topics:" mention never proximity-grabs an unrelated
+    next-line number.
+  - Closed per-target diagnostic extended (`classify_numeric_target`): adds `alias_found`, `alias_matched`
+    (enum/fixture-token only), `proximity_mode` (`same_line`/`next_line`/`none`), `competing_value_count`.
+  - **No tolerance widened, no expected value edited, wrong/competing values still fail, stray values still not
+    credited, recompute-first stays authoritative, leak detection untouched, judge frozen
+    (`judge_ready=false`, `repair_ready=false`), no repair, no generation/prompt change, no regeneration.**
+- **Fixtures (`golden_pairs/nn3.json`, `ensemble.json`): alias metadata ONLY** — every expected value and tolerance
+  is unchanged (guarded by `test_golden_pair_alias_metadata_guard`). Aliases are generic public ML terms already
+  implied by the existing label codes (e.g. `chest pain`, `amount of say`, `weight > 176`, `cross-entropy`,
+  `raw versicolor`); no private guide/source snippets.
+- **Real local closed diagnostic (rerun on current unchanged local guides; truthful/mixed, NOT a green pass):**
+  - **NN3 (5 targets):** `found_and_matched` 0 · `format/context_missed` 0 · `found_but_wrong_value` 5
+    (all `competing_unresolved_values`) · `genuinely_missing` 0. Every target now `alias_found=1`, `value_found=1`
+    (concept present + value present) — the previous `label_not_found` was a matcher artifact. Gate
+    pass=0/fail=5/missing=0, `failed`, blocking.
+  - **Ensemble (7 targets):** `found_and_matched` 1 (`gini_chest_pain`=0.47, `worked_final_answer`) ·
+    `format/context_missed` 0 · `found_but_wrong_value` 5 (competing) · `genuinely_missing` 1
+    (`gini_weight_gt_176`, `label_present_value_absent`). Gate pass=1/fail=5/missing=1, `failed`, blocking.
+  - **Interpretation:** trusted matches = 1 (ensemble chest-pain). No target is a **confirmed** wrong value — the
+    competing buckets hold the correct value co-located with worked-step numbers on number-dense lines, so the
+    bounded matcher safely refuses to credit them. The remaining blocker is **attribution against co-located worked
+    numbers**, not numeric absence. **`numeric_correctness` is now a truthful detector but not green → regeneration
+    stays blocked.**
+- **Tests:** added `test_numeric_label_attribution_aliases`, `test_numeric_alias_gate_credit_and_no_launder`,
+  `test_golden_pair_alias_metadata_guard` (synthetic public-safe text only). `test_quality_safety_eval_harness.py`
+  554 passed / 0 failed; recompute_verifier 99/0; unified_qa 73/0; prompt_contract 253/0; contract_lint 150/0;
+  `git diff --check` clean. **Docker not run; `docker compose config` not run.**
+- **Safety:** Slice 60 trace stash parked and untouched; `local_operator_baselines/` stayed ignored/uncommitted; no
+  private guide/source/OCR/table/caption text, paths, filenames, hashes, byte counts, screenshots, provider
+  payloads, prompts/responses, or secrets committed. **Slice 170 is NOT committed.**
+
+---
+
 ## Slice 169 — **Phase 0 numeric-matcher + mock-counter measurement-trust sanity**, on `slice169-phase0-matcher-mock-sanity`. **NOT COMMITTED.**
 
 - **Produce-before-scaffold gate:** the real Phase 0 current-pair run already exists; this slice does **not** regenerate

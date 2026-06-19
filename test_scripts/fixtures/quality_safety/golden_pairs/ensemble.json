@@ -20,13 +20,13 @@
     "boosting vs bagging"
   ],
   "ground_truth_numerics": [
-    {"label": "gini_chest_pain", "value": 0.47, "tol": 0.01},
-    {"label": "gini_blocked_arteries", "value": 0.50, "tol": 0.01},
-    {"label": "gini_weight_gt_176", "value": 0.20, "tol": 0.01},
-    {"label": "total_error_stump_1", "value": 0.125, "tol": 0.005},
-    {"label": "amount_of_say_half_ln_7", "value": 0.97, "tol": 0.02},
-    {"label": "proximity_4_3", "value": 0.80, "tol": 0.01},
-    {"label": "weighted_weight_impute", "value": 198.5, "tol": 0.5}
+    {"label": "gini_chest_pain", "value": 0.47, "tol": 0.01, "aliases": ["chest pain"]},
+    {"label": "gini_blocked_arteries", "value": 0.50, "tol": 0.01, "aliases": ["blocked arteries"]},
+    {"label": "gini_weight_gt_176", "value": 0.20, "tol": 0.01, "aliases": ["weight > 176"]},
+    {"label": "total_error_stump_1", "value": 0.125, "tol": 0.005, "aliases": ["total error"]},
+    {"label": "amount_of_say_half_ln_7", "value": 0.97, "tol": 0.02, "aliases": ["amount of say"]},
+    {"label": "proximity_4_3", "value": 0.80, "tol": 0.01, "aliases": ["proximity matrix"]},
+    {"label": "weighted_weight_impute", "value": 198.5, "tol": 0.5, "aliases": ["weighted average"]}
   ],
   "min_mock_questions": 8,
   "tier_targets": {"premium": 9.5, "local": 9.0}

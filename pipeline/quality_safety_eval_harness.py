@@ -100,7 +100,13 @@ ALLOWED_GOLDEN_PAIR_KEYS = frozenset(
         "fixture_ref",
     }
 )
-ALLOWED_NUMERIC_KEYS = frozenset({"label", "value", "tol"})
+ALLOWED_NUMERIC_KEYS = frozenset({"label", "value", "tol", "aliases"})
+# Bound on safe label aliases / concept anchors a single numeric target may carry
+# (Slice 170). Aliases are closed, public-safe anchor phrases authored in the
+# fixture -- never private guide/source snippets -- so the matcher can attribute a
+# value to its target via the concept the guide actually names, not only the
+# fixture's internal label code. The cap keeps a target from smuggling material.
+MAX_NUMERIC_ALIASES = 16
 REFERENCE_JUDGE_STATUSES = frozenset({"not_run", "missing", "miscalibrated", "ok"})
 REGRESSION_RECORD_STATUSES = frozenset({"shape_only", "not_persisted"})
 
@@ -2245,7 +2251,15 @@ def _require_numerics(value: Any) -> list[dict[str, float | str]]:
         if key in seen:
             raise GoldenPairSpecError(f"duplicate numeric label: {label}")
         seen.add(key)
-        numerics.append({"label": label, "value": float(expected), "tol": float(tol)})
+        target: dict[str, float | str | list[str]] = {
+            "label": label,
+            "value": float(expected),
+            "tol": float(tol),
+        }
+        aliases = _coerce_numeric_aliases(item.get("aliases"), strict=True)
+        if aliases:
+            target["aliases"] = aliases
+        numerics.append(target)
     return numerics
 
 
@@ -2281,6 +2295,41 @@ def _safe_golden_label(value: Any) -> str | None:
     if not re.search(r"[A-Za-z0-9]", cleaned):
         return None
     return cleaned
+
+
+def _coerce_numeric_aliases(value: Any, *, strict: bool) -> list[str]:
+    """Return the closed, public-safe label aliases / concept anchors for a target.
+
+    Aliases are optional. Each is validated exactly like an authored label
+    (``_safe_golden_label``): closed, <=100 chars, no secret/path/URL/raw-material
+    content, at least one alphanumeric. They are deduped by normalized form,
+    capped at ``MAX_NUMERIC_ALIASES``, and must never carry private guide/source
+    text -- only the generic concept/symbol/formula phrasing the guide names. The
+    strict loader raises on a malformed aliases container or entry; the lenient
+    loader silently drops bad entries so a hostile fixture cannot smuggle material.
+    """
+    if value is None:
+        return []
+    if not isinstance(value, list):
+        if strict:
+            raise GoldenPairSpecError(f"aliases must be a list: {value!r}")
+        return []
+    out: list[str] = []
+    seen: set[str] = set()
+    for item in value:
+        alias = _safe_golden_label(item)
+        if alias is None:
+            if strict:
+                raise GoldenPairSpecError(f"invalid numeric alias: {item!r}")
+            continue
+        key = _normalize(alias)
+        if not key or key in seen:
+            continue
+        seen.add(key)
+        out.append(alias)
+        if len(out) >= MAX_NUMERIC_ALIASES:
+            break
+    return out
 
 
 def _load_expected_topics(value: Any, warnings: set[str]) -> list[str]:
@@ -2326,7 +2375,15 @@ def _load_numeric_targets(value: Any, warnings: set[str]) -> list[dict[str, floa
         if key in seen:
             continue
         seen.add(key)
-        targets.append({"label": label, "value": float(expected), "tol": float(tol)})
+        target: dict[str, float | str | list[str]] = {
+            "label": label,
+            "value": float(expected),
+            "tol": float(tol),
+        }
+        aliases = _coerce_numeric_aliases(item.get("aliases"), strict=False)
+        if aliases:
+            target["aliases"] = aliases
+        targets.append(target)
     return targets
 
 
@@ -2406,8 +2463,8 @@ def _check_numeric_correctness(
         label = str(item.get("label", ""))
         expected = float(item.get("value", 0.0))
         tol = float(item.get("tol", 0.0))
-        label_norm = _normalize(label)
-        scan = _label_value_scan(normalized_lines, label_norm)
+        anchor_norms = [norm for _, norm, _ in _numeric_anchor_terms(item)]
+        scan = _label_value_scan_multi(normalized_lines, anchor_norms)
         # Same-line evidence wins. Only when the label's own line carries no number
         # at all do we accept a value recovered from the next non-empty line (a
         # common PDF-extraction line break). Contradiction is judged on the
@@ -2421,10 +2478,30 @@ def _check_numeric_correctness(
         else:
             literal_values = _dedupe_floats(scan["prox_literal"])
             match_values = _dedupe_floats(scan["prox_match"])
+        # A worked line states its working steps before the FINAL committed answer
+        # (e.g. ``= (1/2)ln(7) ≈ 0.97``). The committed answer after the last result
+        # separator is credited when it is internally consistent and within the
+        # EXISTING tolerance, so a correct final answer is not falsely failed as a
+        # contradiction by its own derivation. Two different committed answers still
+        # contradict, and a wrong committed answer is never credited. Same-line
+        # committed evidence wins over a proximity (next-line) committed value, so a
+        # weak cross-line guess never poisons a strong same-line answer.
+        if scan["same_committed"]:
+            committed = _dedupe_floats(scan["same_committed"])
+        else:
+            committed = _dedupe_floats(scan["prox_committed"])
+        committed_clean = (
+            bool(committed)
+            and not _has_numeric_contradiction(committed, tol)
+            and any(abs(value - expected) <= tol for value in committed)
+        )
         if not match_values:
             missing_count += 1
             status = "unknown"
             warnings.add("numeric_target_missing")
+        elif committed_clean:
+            pass_count += 1
+            status = "passed"
         elif _has_numeric_contradiction(literal_values, tol):
             fail_count += 1
             status = "failed"
@@ -2792,7 +2869,75 @@ NUMERIC_CLASS_FORMAT_MISSED = "found_but_format_or_context_missed"
 NUMERIC_CLASS_WRONG_VALUE = "found_but_wrong_value"
 NUMERIC_CLASS_MISSING = "genuinely_missing"
 
+# Slice 170: closed, enum-only attribution metadata. ``alias_matched`` carries the
+# fixture-authored anchor that produced the winning match (or the sentinels below);
+# ``proximity_mode`` records how close the value sat to that anchor. None of these
+# echo guide/source text -- the alias strings are public-safe fixture metadata.
+NUMERIC_ALIAS_PRIMARY = "primary_label"
+NUMERIC_ALIAS_NONE = "none"
+PROXIMITY_SAME_LINE = "same_line"
+PROXIMITY_NEXT_LINE = "next_line"
+PROXIMITY_NONE = "none"
+
 _PERCENT_RE = re.compile(r"(?<![A-Za-z0-9_])(-?(?:\d+(?:\.\d*)?|\.\d+))\s*%")
+
+
+def _numeric_anchor_terms(item: dict[str, Any]) -> list[tuple[str, str, str]]:
+    """Ordered anchor terms for a numeric target: the authored label first, then
+    each safe alias / concept anchor.
+
+    Returns ``(text, normalized, kind)`` triples where ``kind`` is ``"label"`` or
+    ``"alias"``, deduped by normalized form so the same phrase is never scanned
+    twice and so an alias that merely repeats the label adds no weight. The label
+    is yielded first so label-anchored evidence is preferred on ties when the
+    matcher picks a winner. The label may itself be empty/unusable, in which case
+    only aliases anchor -- a value is still never matched without *some* approved
+    anchor present on a line.
+    """
+    terms: list[tuple[str, str, str]] = []
+    seen: set[str] = set()
+    label_norm = _normalize(str(item.get("label", "")))
+    if label_norm:
+        terms.append((str(item.get("label", "")), label_norm, "label"))
+        seen.add(label_norm)
+    aliases = item.get("aliases")
+    if isinstance(aliases, list):
+        for alias in aliases:
+            if not isinstance(alias, str):
+                continue
+            alias_norm = _normalize(alias)
+            if not alias_norm or alias_norm in seen:
+                continue
+            seen.add(alias_norm)
+            terms.append((alias, alias_norm, "alias"))
+    return terms
+
+
+def _label_value_scan_multi(
+    normalized_lines: list[tuple[str, str]], anchor_norms: list[str]
+) -> dict[str, list[float]]:
+    """Merge per-anchor :func:`_label_value_scan` results across every anchor.
+
+    The four value lists are concatenated in anchor order (label first), so the
+    gate -- which keeps its Slice 169 same-line-wins / proximity-fallback /
+    contradiction logic unchanged -- now sees a value anchored to the authored
+    label OR any approved alias, never a stray number floating elsewhere in the
+    guide. With no aliases (the synthetic fixtures) this is identical to the
+    single-label scan, so existing gate behavior is preserved exactly.
+    """
+    merged: dict[str, list[float]] = {
+        "same_literal": [],
+        "same_match": [],
+        "prox_literal": [],
+        "prox_match": [],
+        "same_committed": [],
+        "prox_committed": [],
+    }
+    for norm in anchor_norms:
+        scan = _label_value_scan(normalized_lines, norm)
+        for key in merged:
+            merged[key].extend(scan.get(key, []))
+    return merged
 
 
 def _match_candidate_values(text: str) -> list[float]:
@@ -2817,6 +2962,32 @@ def _match_candidate_values(text: str) -> list[float]:
     return values
 
 
+# Result separators that mark a committed answer at the end of a worked line
+# (Slice 170). A line like ``= (1/2)ln(7) ≈ 0.97`` or ``Total Error = 1/8 = 0.125``
+# states intermediate working numbers before the FINAL committed answer. Reading
+# only the number(s) after the LAST separator lets the matcher credit the
+# committed answer the guide actually lands on, instead of treating the working
+# steps as competing values. This is strictly an attribution refinement: a wrong
+# committed answer is still wrong, and two different committed answers still
+# contradict, so nothing is laundered.
+_RESULT_SEP_RE = re.compile(r"[=≈≃→]")
+
+
+def _committed_answer_numbers(stripped: str) -> list[float]:
+    """Literal numbers after the LAST result separator on a worked line.
+
+    Returns ``[]`` when the line states no result separator, so the committed-answer
+    path only ever activates on an explicit ``= / ≈ / ≃ / →`` statement and never
+    invents a value. Numbers BEFORE the final separator (the working steps) are
+    intentionally excluded so a correct final answer is not buried by its own
+    derivation.
+    """
+    matches = list(_RESULT_SEP_RE.finditer(stripped))
+    if not matches:
+        return []
+    return _extract_numbers(stripped[matches[-1].end():])
+
+
 def _label_value_scan(
     normalized_lines: list[tuple[str, str]], label_norm: str
 ) -> dict[str, list[float]]:
@@ -2832,8 +3003,11 @@ def _label_value_scan(
                          that itself carries no number -- recovers a value split off
                          by a PDF-extraction line break
     - ``prox_match``   : that proximity line + format-equivalent readings
+    - ``same_committed`` : committed final-answer number(s) after the last result
+                           separator on the label's own line(s) (Slice 170)
+    - ``prox_committed`` : committed final-answer number(s) on the proximity line
 
-    All four are empty when the label appears on no line, so an unrelated value is
+    All lists are empty when the label appears on no line, so an unrelated value is
     never blindly matched. Proximity is bounded to the single next non-empty line.
     """
     result: dict[str, list[float]] = {
@@ -2841,6 +3015,8 @@ def _label_value_scan(
         "same_match": [],
         "prox_literal": [],
         "prox_match": [],
+        "same_committed": [],
+        "prox_committed": [],
     }
     if not label_norm:
         return result
@@ -2854,7 +3030,18 @@ def _label_value_scan(
         same_match = _match_candidate_values(stripped)
         result["same_literal"].extend(same_literal)
         result["same_match"].extend(same_match)
+        result["same_committed"].extend(_committed_answer_numbers(stripped))
         if same_match:
+            continue
+        # Proximity (value on the next line) is only defensible when the anchor
+        # stands alone as a header/label on its own line -- e.g. ``Cross-Entropy:``
+        # then ``0.56`` split off by a PDF line break. When the anchor is merely
+        # mentioned mid-sentence among other words (a "Covered topics:" list, a
+        # prose reference), stripping it leaves other word tokens behind; in that
+        # case the next line's number belongs to something else and must not be
+        # attributed here. So skip proximity unless the anchor is the line's only
+        # word content.
+        if _TOKEN_RE.search(stripped):
             continue
         # The label's own line carries no number: recover a value that spilled onto
         # the next non-empty line (a common PDF-extraction line break).
@@ -2864,6 +3051,7 @@ def _label_value_scan(
                 continue
             result["prox_literal"].extend(_extract_numbers(probe_raw))
             result["prox_match"].extend(_match_candidate_values(probe_raw))
+            result["prox_committed"].extend(_committed_answer_numbers(probe_raw))
             break
     return result
 
@@ -2876,28 +3064,26 @@ def classify_numeric_target(
     Returns a closed diagnostic record (no guide/source snippets) placing the
     target in exactly one of ``found_and_matched``,
     ``found_but_format_or_context_missed``, ``found_but_wrong_value``, or
-    ``genuinely_missing``. ``found_and_matched`` reflects the pre-Slice-169 strict
-    same-line matcher; ``found_but_format_or_context_missed`` marks a value present
-    and correct within the EXISTING tolerance but recovered only by Slice 169's
-    percent/line-break handling -- so a clean run can be audited for how many
-    matches were format-rescued. A number present near the label but outside
-    tolerance, or two competing unresolved values, stays ``found_but_wrong_value``:
-    a real product defect, never laundered into a match.
+    ``genuinely_missing``. The matcher anchors on the authored label OR any
+    approved safe alias / concept anchor (Slice 170), so a value is attributed to
+    its target through the phrasing the guide actually uses -- not only the
+    fixture's internal label code, which the guide never prints. Evidence is still
+    bounded to the anchor's own line (after stripping the anchor's tokens, so an
+    anchor-embedded input parameter is never read as the answer) or the single
+    next non-empty line. ``found_and_matched`` is a strict same-line value within
+    the EXISTING tolerance; ``found_but_format_or_context_missed`` is a value
+    correct within that same tolerance but recovered only via percent-format
+    equivalence or a PDF line break -- so a clean run can be audited for how many
+    matches were format/proximity-rescued. A value near an anchor but outside
+    tolerance, or competing unresolved values, stays ``found_but_wrong_value``: a
+    real defect, never laundered. A target with anchor evidence but no usable
+    value is ``genuinely_missing`` (label_present_value_absent); a target with no
+    anchor on any line at all is ``genuinely_missing`` (label_not_found) -- a stray
+    value elsewhere in the guide is never blindly credited.
     """
-    label = str(item.get("label", ""))
     expected = _finite_float(item.get("value"))
     tol = _finite_float(item.get("tol")) or 0.0
-    label_norm = _normalize(label)
-    label_found = bool(label_norm) and any(
-        label_norm in line_norm for line_norm, _ in normalized_lines
-    )
-    scan = _label_value_scan(normalized_lines, label_norm)
-
-    strict_literal = _dedupe_floats(scan["same_literal"])
-    same_match = _dedupe_floats(scan["same_match"])
-    prox_literal = _dedupe_floats(scan["prox_literal"])
-    prox_match = _dedupe_floats(scan["prox_match"])
-    value_found = bool(strict_literal or same_match or prox_literal or prox_match)
+    anchors = _numeric_anchor_terms(item)
 
     def _within(values: list[float]) -> float | None:
         if expected is None:
@@ -2907,35 +3093,111 @@ def classify_numeric_target(
                 return value
         return None
 
-    strict_clean = bool(strict_literal) and not _has_numeric_contradiction(strict_literal, tol)
-    same_clean = bool(same_match) and not _has_numeric_contradiction(strict_literal, tol)
-    prox_clean = bool(prox_match) and not _has_numeric_contradiction(prox_literal, tol)
+    label_found = False
+    alias_found = False
+    value_found = False
+    contradiction_seen = False
+    competing_pool: list[float] = []
+    # Best winning evidence across anchors, ranked by tier:
+    #   1 strict same-line literal match     -> found_and_matched
+    #   2 committed same-line final answer    -> found_and_matched (worked steps)
+    #   3 format-equivalent same-line          -> found_but_format_or_context_missed
+    #   4 committed proximity final answer     -> found_and_matched (worked, next line)
+    #   5 proximity next-line                  -> found_but_format_or_context_missed
+    # The label anchor is evaluated first and only a strictly lower tier replaces a
+    # candidate, so label-anchored evidence wins on ties. Each tuple carries its own
+    # closed classification/reason/proximity so nothing is inferred from the number.
+    best: tuple[int, float, str, str, str, str] | None = None
 
-    if strict_clean and _within(strict_literal) is not None:
-        classification = NUMERIC_CLASS_MATCHED
-        reason_code = "strict_same_line_match"
-        matched_value = _within(strict_literal)
-    elif same_clean and _within(same_match) is not None:
-        classification = NUMERIC_CLASS_FORMAT_MISSED
-        reason_code = "format_equivalent_same_line"
-        matched_value = _within(same_match)
-    elif prox_clean and _within(prox_match) is not None:
-        classification = NUMERIC_CLASS_FORMAT_MISSED
-        reason_code = "proximity_line_break"
-        matched_value = _within(prox_match)
+    for text, norm, kind in anchors:
+        present = any(norm in line_norm for line_norm, _ in normalized_lines)
+        if present:
+            if kind == "label":
+                label_found = True
+            else:
+                alias_found = True
+        scan = _label_value_scan(normalized_lines, norm)
+        strict_literal = _dedupe_floats(scan["same_literal"])
+        same_match = _dedupe_floats(scan["same_match"])
+        prox_literal = _dedupe_floats(scan["prox_literal"])
+        prox_match = _dedupe_floats(scan["prox_match"])
+        committed_same = _dedupe_floats(scan["same_committed"])
+        committed_prox = _dedupe_floats(scan["prox_committed"])
+        if strict_literal or same_match or prox_literal or prox_match:
+            value_found = True
+        # Contradiction is judged per anchor on the literally written numbers
+        # closest to that anchor (same-line if present, else the proximity line),
+        # exactly as the Slice 169 single-label matcher did.
+        if _has_numeric_contradiction(strict_literal or prox_literal, tol):
+            contradiction_seen = True
+        for value in strict_literal + prox_literal:
+            if expected is None or abs(value - expected) > tol:
+                competing_pool.append(value)
+        alias_label = NUMERIC_ALIAS_PRIMARY if kind == "label" else text
+        strict_clean = bool(strict_literal) and not _has_numeric_contradiction(strict_literal, tol)
+        same_clean = bool(same_match) and not _has_numeric_contradiction(strict_literal, tol)
+        prox_clean = bool(prox_match) and not _has_numeric_contradiction(prox_literal, tol)
+        committed_same_clean = (
+            bool(committed_same) and not _has_numeric_contradiction(committed_same, tol)
+        )
+        committed_prox_clean = (
+            bool(committed_prox) and not _has_numeric_contradiction(committed_prox, tol)
+        )
+        candidate: tuple[int, float, str, str, str, str] | None = None
+        if strict_clean and _within(strict_literal) is not None:
+            candidate = (
+                1, _within(strict_literal), alias_label, PROXIMITY_SAME_LINE,  # type: ignore[arg-type]
+                "strict_same_line_match", NUMERIC_CLASS_MATCHED,
+            )
+        elif committed_same_clean and _within(committed_same) is not None:
+            candidate = (
+                2, _within(committed_same), alias_label, PROXIMITY_SAME_LINE,  # type: ignore[arg-type]
+                "worked_final_answer", NUMERIC_CLASS_MATCHED,
+            )
+        elif same_clean and _within(same_match) is not None:
+            candidate = (
+                3, _within(same_match), alias_label, PROXIMITY_SAME_LINE,  # type: ignore[arg-type]
+                "format_equivalent_same_line", NUMERIC_CLASS_FORMAT_MISSED,
+            )
+        elif committed_prox_clean and _within(committed_prox) is not None:
+            candidate = (
+                4, _within(committed_prox), alias_label, PROXIMITY_NEXT_LINE,  # type: ignore[arg-type]
+                "worked_final_answer", NUMERIC_CLASS_MATCHED,
+            )
+        elif prox_clean and _within(prox_match) is not None:
+            candidate = (
+                5, _within(prox_match), alias_label, PROXIMITY_NEXT_LINE,  # type: ignore[arg-type]
+                "proximity_line_break", NUMERIC_CLASS_FORMAT_MISSED,
+            )
+        if candidate is not None and (best is None or candidate[0] < best[0]):
+            best = candidate
+
+    competing_value_count = len(_dedupe_floats(competing_pool))
+
+    if best is not None:
+        _tier, matched_value, alias_matched, proximity_mode, reason_code, classification = best
+        within_tolerance = True
     elif value_found:
-        contradiction = _has_numeric_contradiction(strict_literal or prox_literal, tol)
         classification = NUMERIC_CLASS_WRONG_VALUE
-        reason_code = "competing_unresolved_values" if contradiction else "value_out_of_tolerance"
+        reason_code = "competing_unresolved_values" if contradiction_seen else "value_out_of_tolerance"
         matched_value = None
-    elif label_found:
+        alias_matched = NUMERIC_ALIAS_NONE
+        proximity_mode = PROXIMITY_NONE
+        within_tolerance = False
+    elif label_found or alias_found:
         classification = NUMERIC_CLASS_MISSING
         reason_code = "label_present_value_absent"
         matched_value = None
+        alias_matched = NUMERIC_ALIAS_NONE
+        proximity_mode = PROXIMITY_NONE
+        within_tolerance = False
     else:
         classification = NUMERIC_CLASS_MISSING
         reason_code = "label_not_found"
         matched_value = None
+        alias_matched = NUMERIC_ALIAS_NONE
+        proximity_mode = PROXIMITY_NONE
+        within_tolerance = False
 
     recompute_status = item.get("recompute_status")
     if not isinstance(recompute_status, str) or not recompute_status:
@@ -2946,10 +3208,13 @@ def classify_numeric_target(
         "expected_value": expected,
         "tolerance": tol,
         "matched_value": matched_value,
-        "within_tolerance": classification
-        in (NUMERIC_CLASS_MATCHED, NUMERIC_CLASS_FORMAT_MISSED),
+        "within_tolerance": within_tolerance,
         "label_found": label_found,
+        "alias_found": alias_found,
+        "alias_matched": alias_matched,
         "value_found": value_found,
+        "proximity_mode": proximity_mode,
+        "competing_value_count": competing_value_count,
         "recompute_verifier_status": recompute_status,
     }
 

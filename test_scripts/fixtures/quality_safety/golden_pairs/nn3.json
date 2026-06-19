@@ -17,11 +17,11 @@
     "training/inference pipeline"
   ],
   "ground_truth_numerics": [
-    {"label": "htop_pw0.5_sw0.37", "value": 0.572, "tol": 0.01},
-    {"label": "rset_pw0.5_sw0.37", "value": 0.09, "tol": 0.01},
-    {"label": "rver_pw0.5_sw0.37", "value": 0.86, "tol": 0.01},
-    {"label": "softmax_1.43", "value": 0.69, "tol": 0.01},
-    {"label": "cross_entropy_neg_ln_0.57", "value": 0.56, "tol": 0.01}
+    {"label": "htop_pw0.5_sw0.37", "value": 0.572, "tol": 0.01, "aliases": ["top node"]},
+    {"label": "rset_pw0.5_sw0.37", "value": 0.09, "tol": 0.01, "aliases": ["raw setosa"]},
+    {"label": "rver_pw0.5_sw0.37", "value": 0.86, "tol": 0.01, "aliases": ["raw versicolor"]},
+    {"label": "softmax_1.43", "value": 0.69, "tol": 0.01, "aliases": ["softmax value"]},
+    {"label": "cross_entropy_neg_ln_0.57", "value": 0.56, "tol": 0.01, "aliases": ["cross-entropy"]}
   ],
   "min_mock_questions": 8,
   "tier_targets": {"premium": 9.5, "local": 9.0}

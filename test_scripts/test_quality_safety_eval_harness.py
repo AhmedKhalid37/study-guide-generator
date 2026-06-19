@@ -3495,6 +3495,297 @@ def test_mock_question_counter_sanity() -> None:
     )
 
 
+def test_numeric_label_attribution_aliases() -> None:
+    # Slice 170: anchor a numeric target on its authored label OR a safe alias /
+    # concept anchor, with bounded same-line / next-line proximity and a committed
+    # worked-final-answer reading. Synthetic public-safe text only -- no private
+    # guide/source content, paths, hashes, or byte counts. The matcher gets smarter
+    # (more anchors, worked-answer reading) but never looser: wrong values fail,
+    # stray values are not credited, and competing values are never matched.
+    def classify_one(text: str, item: dict[str, Any]) -> dict[str, Any]:
+        return classify_numeric_targets(
+            text, {"lecture_id": "synthetic", "ground_truth_numerics": [item]}
+        )[0]
+
+    ALIAS_MATCHED_CLOSED = {"primary_label", "none"}
+    PROX_CLOSED = {"same_line", "next_line", "none"}
+
+    # 1. stable label match (no alias) -> matched via the authored label
+    rec = classify_one(
+        "synthetic accuracy = 0.97", {"label": "synthetic accuracy", "value": 0.97, "tol": 0.01}
+    )
+    check(
+        "alias: stable label match",
+        rec["classification"] == NUMERIC_CLASS_MATCHED
+        and rec["alias_matched"] == "primary_label"
+        and rec["label_found"] is True
+        and rec["proximity_mode"] == "same_line",
+        str(rec),
+    )
+
+    # 2. alias match: the fixture label code is absent from the guide, but a safe
+    #    alias the guide DOES use resolves the value.
+    rec = classify_one(
+        "model accuracy = 0.97",
+        {"label": "acc_code_xyz", "value": 0.97, "tol": 0.01, "aliases": ["model accuracy"]},
+    )
+    check(
+        "alias: alias match when label code absent",
+        rec["classification"] == NUMERIC_CLASS_MATCHED
+        and rec["label_found"] is False
+        and rec["alias_found"] is True
+        and rec["alias_matched"] == "model accuracy",
+        str(rec),
+    )
+
+    # 3. symbol / formula-name anchor
+    rec = classify_one(
+        "softmax = 0.69",
+        {"label": "sm_input_1.43", "value": 0.69, "tol": 0.01, "aliases": ["softmax"]},
+    )
+    check(
+        "alias: symbol/formula-name anchor",
+        rec["classification"] == NUMERIC_CLASS_MATCHED and rec["alias_matched"] == "softmax",
+        str(rec),
+    )
+
+    # 4. human-readable phrase anchor (the anchor's own words are stripped, so the
+    #    answer after ``=`` is the only number read)
+    rec = classify_one(
+        "Gini impurity for chest pain = 0.47",
+        {
+            "label": "gini_chest_pain",
+            "value": 0.47,
+            "tol": 0.01,
+            "aliases": ["gini impurity for chest pain"],
+        },
+    )
+    check(
+        "alias: human phrase anchor",
+        rec["classification"] == NUMERIC_CLASS_MATCHED and rec["within_tolerance"],
+        str(rec),
+    )
+
+    # 5. LaTeX-ish label/value formatting
+    rec = classify_one(
+        "$\\sigma(z) = 0.73$",
+        {"label": "sigma_z", "value": 0.73, "tol": 0.01, "aliases": ["sigma"]},
+    )
+    check(
+        "alias: latex-ish formatting resolves committed answer",
+        rec["classification"] == NUMERIC_CLASS_MATCHED,
+        str(rec),
+    )
+
+    # 6. value on the SAME line as the alias
+    rec = classify_one(
+        "weighted recall 0.88 overall",
+        {"label": "wr_code", "value": 0.88, "tol": 0.01, "aliases": ["weighted recall"]},
+    )
+    check(
+        "alias: value same line as alias",
+        rec["classification"] == NUMERIC_CLASS_MATCHED and rec["proximity_mode"] == "same_line",
+        str(rec),
+    )
+
+    # 7. value on the next non-empty line after a standalone alias header
+    rec = classify_one(
+        "final loss:\n0.56",
+        {"label": "fl_code", "value": 0.56, "tol": 0.01, "aliases": ["final loss"]},
+    )
+    check(
+        "alias: value next line after standalone header",
+        rec["classification"] == NUMERIC_CLASS_FORMAT_MISSED
+        and rec["reason_code"] == "proximity_line_break"
+        and rec["proximity_mode"] == "next_line",
+        str(rec),
+    )
+
+    # 8. value present elsewhere but no anchor nearby -> not matched (no blind match)
+    rec = classify_one(
+        "an unrelated 0.97 floats here with no anchor",
+        {"label": "code_only", "value": 0.97, "tol": 0.01, "aliases": ["model accuracy"]},
+    )
+    check(
+        "alias: stray value with no anchor not matched",
+        rec["classification"] == NUMERIC_CLASS_MISSING
+        and rec["reason_code"] == "label_not_found"
+        and rec["value_found"] is False,
+        str(rec),
+    )
+
+    # 8b. anchor mentioned mid-sentence (not a header) must not proximity-grab the
+    #     next line's unrelated number.
+    rec = classify_one(
+        "topics: model accuracy and recall are discussed below\n0.50",
+        {"label": "code_only", "value": 0.97, "tol": 0.01, "aliases": ["model accuracy"]},
+    )
+    check(
+        "alias: mid-sentence anchor does not proximity-match next line",
+        rec["classification"] == NUMERIC_CLASS_MISSING
+        and rec["reason_code"] == "label_present_value_absent",
+        str(rec),
+    )
+
+    # 9. alias present with a WRONG nearby value -> found_but_wrong_value (sacred)
+    rec = classify_one(
+        "model accuracy = 0.50",
+        {"label": "code_only", "value": 0.97, "tol": 0.01, "aliases": ["model accuracy"]},
+    )
+    check(
+        "alias: wrong nearby value -> found_but_wrong_value",
+        rec["classification"] == NUMERIC_CLASS_WRONG_VALUE
+        and rec["reason_code"] == "value_out_of_tolerance"
+        and rec["within_tolerance"] is False,
+        str(rec),
+    )
+
+    # 10. competing unresolved values -> found_but_wrong_value, never matched
+    rec = classify_one(
+        "model accuracy = 0.97 then model accuracy = 0.50",
+        {"label": "code_only", "value": 0.97, "tol": 0.01, "aliases": ["model accuracy"]},
+    )
+    check(
+        "alias: competing unresolved values not matched",
+        rec["classification"] == NUMERIC_CLASS_WRONG_VALUE
+        and rec["reason_code"] == "competing_unresolved_values"
+        and rec["competing_value_count"] >= 1,
+        str(rec),
+    )
+
+    # 11. correct value clearly committed as the FINAL answer among worked steps
+    rec = classify_one(
+        "amount of say = 0.5 * ln(7) ≈ 0.97",
+        {"label": "aos_code", "value": 0.97, "tol": 0.02, "aliases": ["amount of say"]},
+    )
+    check(
+        "alias: worked final answer matched (steps not treated as competing)",
+        rec["classification"] == NUMERIC_CLASS_MATCHED
+        and rec["reason_code"] == "worked_final_answer"
+        and abs(rec["matched_value"] - 0.97) <= 0.02,
+        str(rec),
+    )
+
+    # 11b. a WRONG committed final answer among worked steps is still wrong
+    rec = classify_one(
+        "amount of say = 0.5 * ln(7) ≈ 0.40",
+        {"label": "aos_code", "value": 0.97, "tol": 0.02, "aliases": ["amount of say"]},
+    )
+    check(
+        "alias: wrong worked final answer still fails (not laundered)",
+        rec["classification"] == NUMERIC_CLASS_WRONG_VALUE,
+        str(rec),
+    )
+
+    # Closed-output guarantees: alias_matched / proximity_mode stay enum-only and the
+    # records never carry guide snippets.
+    records = classify_numeric_targets(
+        "model accuracy = 0.97\nweighted recall 0.88 overall",
+        {
+            "lecture_id": "synthetic",
+            "ground_truth_numerics": [
+                {"label": "a", "value": 0.97, "tol": 0.01, "aliases": ["model accuracy"]},
+                {"label": "b", "value": 0.88, "tol": 0.01, "aliases": ["weighted recall"]},
+            ],
+        },
+    )
+    for r in records:
+        check(
+            "alias: alias_matched is closed enum/fixture token",
+            r["alias_matched"] in ALIAS_MATCHED_CLOSED or isinstance(r["alias_matched"], str),
+            str(r),
+        )
+        check("alias: proximity_mode closed", r["proximity_mode"] in PROX_CLOSED, str(r))
+    no_canary("numeric label attribution diagnostic", records)
+
+
+def test_numeric_alias_gate_credit_and_no_launder() -> None:
+    # Slice 170 gate view: the numeric gate now resolves a value through a safe alias
+    # too, credits a worked committed final answer, and still fails wrong / competing
+    # values. The label/value/tolerance set is unchanged.
+    matched = base_fixture(
+        expected_topics=[],
+        min_mock_questions=0,
+        ground_truth_numerics=[
+            {"label": "code_xyz", "value": 0.97, "tol": 0.01, "aliases": ["model accuracy"]}
+        ],
+    )
+    good = report_check(
+        run_quality_safety_layer1_checks("model accuracy = 0.97", matched), "numeric_correctness"
+    )
+    check("alias gate: alias resolves value -> pass", good["status"] == "passed", str(good))
+
+    worked = report_check(
+        run_quality_safety_layer1_checks(
+            "amount of say = 0.5 * ln(7) ≈ 0.97",
+            base_fixture(
+                expected_topics=[],
+                min_mock_questions=0,
+                ground_truth_numerics=[
+                    {"label": "aos", "value": 0.97, "tol": 0.02, "aliases": ["amount of say"]}
+                ],
+            ),
+        ),
+        "numeric_correctness",
+    )
+    check("alias gate: worked final answer credited", worked["status"] == "passed", str(worked))
+
+    bad = run_quality_safety_layer1_checks("model accuracy = 0.50", matched)
+    bad_numeric = report_check(bad, "numeric_correctness")
+    check(
+        "alias gate: wrong value via alias still fails",
+        bad_numeric["status"] == "failed" and "numeric_correctness" in bad["blocking_failures"],
+        str(bad_numeric),
+    )
+
+
+def test_golden_pair_alias_metadata_guard() -> None:
+    # Slice 170: the golden fixtures gained alias/anchor metadata ONLY. This guard
+    # fails loudly if any expected numeric value or tolerance was changed, so a
+    # future edit cannot silently move a target while "just adding aliases".
+    expected = {
+        "nn3": {
+            "htop_pw0.5_sw0.37": (0.572, 0.01),
+            "rset_pw0.5_sw0.37": (0.09, 0.01),
+            "rver_pw0.5_sw0.37": (0.86, 0.01),
+            "softmax_1.43": (0.69, 0.01),
+            "cross_entropy_neg_ln_0.57": (0.56, 0.01),
+        },
+        "ensemble": {
+            "gini_chest_pain": (0.47, 0.01),
+            "gini_blocked_arteries": (0.50, 0.01),
+            "gini_weight_gt_176": (0.20, 0.01),
+            "total_error_stump_1": (0.125, 0.005),
+            "amount_of_say_half_ln_7": (0.97, 0.02),
+            "proximity_4_3": (0.80, 0.01),
+            "weighted_weight_impute": (198.5, 0.5),
+        },
+    }
+    for lecture_id, want in expected.items():
+        spec = load_golden_pair_spec(read_golden_pair(lecture_id))
+        got = {
+            item["label"]: (item["value"], item["tol"])
+            for item in spec["ground_truth_numerics"]
+        }
+        check(
+            f"{lecture_id} alias guard: values/tolerances unchanged",
+            got == want,
+            str(got),
+        )
+        # Every target carries at least one safe alias, and aliases are closed,
+        # short, public-safe tokens (no path/secret/raw-material content).
+        for item in spec["ground_truth_numerics"]:
+            aliases = item.get("aliases", [])
+            check(
+                f"{lecture_id}:{item['label']} has safe alias metadata",
+                isinstance(aliases, list)
+                and len(aliases) >= 1
+                and all(isinstance(a, str) and 0 < len(a) <= 100 for a in aliases),
+                str(aliases),
+            )
+        no_canary(f"{lecture_id} alias metadata", spec["ground_truth_numerics"])
+
+
 def run() -> int:
     test_fixture_loader()
     test_seed_fixture_file_consumption()
@@ -3504,6 +3795,9 @@ def run() -> int:
     test_coverage()
     test_mock_question_count()
     test_numeric_classification_diagnostic()
+    test_numeric_label_attribution_aliases()
+    test_numeric_alias_gate_credit_and_no_launder()
+    test_golden_pair_alias_metadata_guard()
     test_numeric_matcher_format_equivalence_gate()
     test_mock_question_counter_sanity()
     test_regression_record()
