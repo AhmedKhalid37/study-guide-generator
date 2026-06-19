@@ -25,6 +25,14 @@ from pipeline.quality_safety_recompute_verifier import (  # noqa: E402
     build_quality_safety_recompute_report,
     recompute_quality_safety_fact,
     verify_quality_safety_fact_sheet,
+    build_golden_target_recompute_proof,
+    summarize_golden_target_recompute_proof,
+    golden_label_recompute_plan,
+    GOLDEN_RECOMPUTE_STATUSES,
+    GOLDEN_VALUE_KINDS,
+    GOLDEN_CONFIDENCE_LEVELS,
+    GOLDEN_CANDIDATE_STATUSES,
+    GOLDEN_PROOF_WARNING_ORDER,
 )
 
 PASS = 0
@@ -616,6 +624,287 @@ def test_no_leak_sweep() -> None:
     assert_no_canary("no-leak direct", direct)
 
 
+# ── 13b. Slice 173A golden-target recompute proof ───────────────────────────
+
+_GOLDEN_RECORD_KEYS = {
+    "source_label",
+    "target_id",
+    "expected_label",
+    "recompute_status",
+    "committed_value_available",
+    "recomputed_matches_committed_fixture",
+    "wrong_printed_value_detected_when_candidate_supplied",
+    "independently_verified_for_generation",
+    "verified_value_kind",
+    "confidence",
+    "blocking_issue",
+    "guide_candidate_status",
+    "writer_should_receive_committed_value",
+    "warnings",
+}
+
+
+def _golden_spec(lecture_id: str, numerics: list[dict[str, Any]]) -> dict[str, Any]:
+    # Synthetic, public-safe golden-like spec (math-identity labels only).
+    return {
+        "kind": "quality_safety_golden_pair",
+        "lecture_id": lecture_id,
+        "ground_truth_numerics": numerics,
+    }
+
+
+def _record_by_id(proof: dict[str, Any], target_id: str) -> dict[str, Any]:
+    for record in proof.get("records", []):
+        if record.get("target_id") == target_id:
+            return record
+    return {}
+
+
+def test_golden_label_recompute_plan() -> None:
+    # Formula-encoding labels parse to a closed recompute plan (no answer table).
+    ce = golden_label_recompute_plan("cross_entropy_neg_ln_0.5")
+    check("ce plan method", ce and ce["method"] == "cross_entropy", str(ce))
+    check("ce plan input", ce and abs(ce["inputs"]["probability"] - 0.5) < 1e-12, str(ce))
+    aos = golden_label_recompute_plan("amount_of_say_half_ln_3")
+    # half_ln_3 -> (1-e)/e = 3 -> e = 0.25
+    check("aos plan method", aos and aos["method"] == "amount_of_say", str(aos))
+    check("aos plan input derived", aos and abs(aos["inputs"]["total_error"] - 0.25) < 1e-12, str(aos))
+    # No answer-table / known_numbers path: an ordinary concept label yields NO plan.
+    check("no plan for concept label", golden_label_recompute_plan("gini_chest_pain") is None)
+    check("no plan for arbitrary", golden_label_recompute_plan("totally_unrelated") is None)
+    check("no plan for non-string", golden_label_recompute_plan(123) is None)
+    check("no plan for malformed suffix", golden_label_recompute_plan("cross_entropy_neg_ln_abc") is None)
+
+
+def test_golden_recompute_proof_derives_committed() -> None:
+    # Committed expected values that are correct -> independently recomputed & matched.
+    spec = _golden_spec(
+        "nn_synth",
+        [
+            {"label": "cross_entropy_neg_ln_0.5", "value": 0.69, "tol": 0.01},
+            {"label": "amount_of_say_half_ln_3", "value": 0.55, "tol": 0.01},
+        ],
+    )
+    proof = build_golden_target_recompute_proof(spec)
+    ce = _record_by_id(proof, "cross_entropy_neg_ln_0.5")
+    aos = _record_by_id(proof, "amount_of_say_half_ln_3")
+    check("ce formula_verified", ce.get("recompute_status") == "formula_verified", str(ce))
+    check("ce matches committed", ce.get("recomputed_matches_committed_fixture") is True, str(ce))
+    check("ce high confidence", ce.get("confidence") == "high", str(ce))
+    check("ce committed available", ce.get("committed_value_available") is True)
+    # Independently verified -> generation-ready -> writer may receive it.
+    check("ce independently verified", ce.get("independently_verified_for_generation") is True, str(ce))
+    check("ce writer should receive", ce.get("writer_should_receive_committed_value") is True, str(ce))
+    check("aos formula_verified", aos.get("recompute_status") == "formula_verified", str(aos))
+    check("aos matches committed", aos.get("recomputed_matches_committed_fixture") is True, str(aos))
+    check("aos independently verified", aos.get("independently_verified_for_generation") is True, str(aos))
+    check("aos writer should receive", aos.get("writer_should_receive_committed_value") is True, str(aos))
+    summary = proof["summary"]
+    check("summary 2 formula_verified", summary["formula_verified_count"] == 2, str(summary))
+    check("summary 2 committed match", summary["committed_fixture_match_count"] == 2, str(summary))
+    check("summary 2 recomputed", summary["recomputed_count"] == 2, str(summary))
+    check("summary 2 independently verified", summary["independently_verified_for_generation_count"] == 2, str(summary))
+    check("summary 2 writer should receive", summary["writer_should_receive_committed_value_count"] == 2, str(summary))
+    assert_no_canary("golden derive proof", proof)
+
+
+def test_golden_recompute_no_known_numbers_detects_disagreement() -> None:
+    # The committed value is deliberately WRONG. A recompute-first engine derives
+    # the value from the label's formula and DISAGREES -- proving there is no
+    # answer-table that would trivially "match" whatever value is supplied.
+    spec = _golden_spec(
+        "nn_synth",
+        [{"label": "cross_entropy_neg_ln_0.5", "value": 0.10, "tol": 0.01}],
+    )
+    proof = build_golden_target_recompute_proof(spec)
+    rec = _record_by_id(proof, "cross_entropy_neg_ln_0.5")
+    check("disagreement recomputed", rec.get("recompute_status") == "recomputed", str(rec))
+    check("disagreement not matched", rec.get("recomputed_matches_committed_fixture") is False, str(rec))
+    check("disagreement low confidence", rec.get("confidence") == "low", str(rec))
+    check(
+        "disagreement blocking_issue",
+        rec.get("blocking_issue") == "recompute_disagrees_with_committed_fixture",
+        str(rec),
+    )
+
+
+def test_golden_recompute_proof_wrong_candidate_detected() -> None:
+    # No-laundering: a wrong printed value is a DIAGNOSTIC. The writer may receive
+    # the committed value ONLY for the independently verified target -- never for a
+    # source_required / unsupported target that merely has a committed fixture value.
+    spec = _golden_spec(
+        "ens_synth",
+        [
+            {"label": "amount_of_say_half_ln_3", "value": 0.55, "tol": 0.01},  # formula_verified
+            {"label": "gini_synth_node", "value": 0.20, "tol": 0.01},  # source_required
+            {"label": "proximity_synth", "value": 0.80, "tol": 0.01},  # unsupported
+        ],
+    )
+    # Closed matcher classifications (read-only): wrong / wrong / missing.
+    candidate = {
+        "amount_of_say_half_ln_3": "found_but_wrong_value",
+        "gini_synth_node": "found_but_wrong_value",
+        "proximity_synth": "genuinely_missing",
+    }
+    proof = build_golden_target_recompute_proof(
+        spec, candidate_classification_by_target=candidate
+    )
+    verified_wrong = _record_by_id(proof, "amount_of_say_half_ln_3")
+    src_required_wrong = _record_by_id(proof, "gini_synth_node")
+    unsupported_missing = _record_by_id(proof, "proximity_synth")
+
+    # Independently verified target whose printed value is wrong -> writer-ready.
+    check("verified -> wrong detected", verified_wrong.get("wrong_printed_value_detected_when_candidate_supplied") is True, str(verified_wrong))
+    check("verified -> independently verified", verified_wrong.get("independently_verified_for_generation") is True, str(verified_wrong))
+    check("verified -> writer receives committed", verified_wrong.get("writer_should_receive_committed_value") is True, str(verified_wrong))
+
+    # source_required target with a wrong printed value: detected, but NOT writer-ready.
+    check("source_required -> wrong detected", src_required_wrong.get("wrong_printed_value_detected_when_candidate_supplied") is True, str(src_required_wrong))
+    check("source_required -> committed available", src_required_wrong.get("committed_value_available") is True, str(src_required_wrong))
+    check("source_required -> NOT independently verified", src_required_wrong.get("independently_verified_for_generation") is False, str(src_required_wrong))
+    check("source_required -> writer NOT ready (no laundering)", src_required_wrong.get("writer_should_receive_committed_value") is False, str(src_required_wrong))
+
+    # unsupported target, genuinely missing: not a wrong-value, not writer-ready.
+    check("unsupported -> missing status", unsupported_missing.get("guide_candidate_status") == "missing", str(unsupported_missing))
+    check("unsupported -> not a wrong printed value", unsupported_missing.get("wrong_printed_value_detected_when_candidate_supplied") is False, str(unsupported_missing))
+    check("unsupported -> writer NOT ready", unsupported_missing.get("writer_should_receive_committed_value") is False, str(unsupported_missing))
+
+    summary = proof["summary"]
+    check("summary 2 wrong printed", summary["wrong_printed_value_detected_count"] == 2, str(summary))
+    check("summary 1 independently verified", summary["independently_verified_for_generation_count"] == 1, str(summary))
+    check("summary 1 writer should receive", summary["writer_should_receive_committed_value_count"] == 1, str(summary))
+    # gini (wrong, not verified) + proximity (missing, not verified) are unresolved;
+    # the verified amount_of_say target is resolved despite the wrong printed value.
+    check("summary 2 unresolved for generation", summary["unresolved_for_generation_count"] == 2, str(summary))
+
+
+def test_golden_recompute_proof_source_required_and_unsupported() -> None:
+    spec = _golden_spec(
+        "ens_synth",
+        [
+            {"label": "gini_synth_node", "value": 0.20, "tol": 0.01},  # supported family, no inputs
+            {"label": "softmax_synth", "value": 0.69, "tol": 0.01},  # supported family, no inputs
+            {"label": "proximity_synth", "value": 0.80, "tol": 0.01},  # no supported method
+        ],
+    )
+    proof = build_golden_target_recompute_proof(spec)
+    gini = _record_by_id(proof, "gini_synth_node")
+    softmax = _record_by_id(proof, "softmax_synth")
+    prox = _record_by_id(proof, "proximity_synth")
+    check("gini source_required", gini.get("recompute_status") == "source_required", str(gini))
+    check("softmax source_required", softmax.get("recompute_status") == "source_required", str(softmax))
+    check("proximity unsupported", prox.get("recompute_status") == "unsupported", str(prox))
+    # Honest degradation: NO value invented, NO confidence promotion, and even
+    # though a committed fixture value exists, it is NEVER writer-ready here.
+    for rec in (gini, softmax, prox):
+        check(f"{rec.get('target_id')} no match", rec.get("recomputed_matches_committed_fixture") is None, str(rec))
+        check(f"{rec.get('target_id')} kind unavailable", rec.get("verified_value_kind") == "unavailable", str(rec))
+        check(f"{rec.get('target_id')} confidence none", rec.get("confidence") == "none", str(rec))
+        check(f"{rec.get('target_id')} committed available", rec.get("committed_value_available") is True, str(rec))
+        check(f"{rec.get('target_id')} NOT independently verified", rec.get("independently_verified_for_generation") is False, str(rec))
+        check(f"{rec.get('target_id')} writer NOT ready (no laundering)", rec.get("writer_should_receive_committed_value") is False, str(rec))
+    summary = proof["summary"]
+    check("summary source_required 2", summary["source_required_count"] == 2, str(summary))
+    check("summary unsupported 1", summary["unsupported_count"] == 1, str(summary))
+    check("summary 0 formula_verified", summary["formula_verified_count"] == 0, str(summary))
+    check("summary 0 independently verified", summary["independently_verified_for_generation_count"] == 0, str(summary))
+    check("summary 0 writer should receive", summary["writer_should_receive_committed_value_count"] == 0, str(summary))
+
+
+def test_golden_recompute_no_laundering_gate() -> None:
+    # The writer-readiness gate is satisfied ONLY by independent recompute/formula
+    # verification with high/medium confidence -- never by the mere presence of a
+    # committed expected fixture value. This is the no-laundering requirement.
+    spec = _golden_spec(
+        "nn_synth",
+        [
+            {"label": "cross_entropy_neg_ln_0.5", "value": 0.69, "tol": 0.01},  # formula_verified
+            {"label": "gini_synth_node", "value": 0.20, "tol": 0.01},  # source_required, fixture-only
+            {"label": "proximity_synth", "value": 0.80, "tol": 0.01},  # unsupported, fixture-only
+        ],
+    )
+    proof = build_golden_target_recompute_proof(spec)
+    for rec in proof["records"]:
+        verified = rec.get("recompute_status") in {"recomputed", "formula_verified"}
+        matched = rec.get("recomputed_matches_committed_fixture") is True
+        conf_ok = rec.get("confidence") in {"high", "medium"}
+        expected_ready = verified and matched and conf_ok
+        # writer-readiness exactly tracks independent verification.
+        check(
+            f"{rec.get('target_id')} writer gate == independent verification",
+            rec.get("writer_should_receive_committed_value") == expected_ready
+            and rec.get("independently_verified_for_generation") == expected_ready,
+            str(rec),
+        )
+        # A committed fixture value alone is never sufficient.
+        if not expected_ready:
+            check(
+                f"{rec.get('target_id')} fixture-only is NOT writer-ready",
+                rec.get("writer_should_receive_committed_value") is False
+                and rec.get("committed_value_available") is True,
+                str(rec),
+            )
+    verified_rec = _record_by_id(proof, "cross_entropy_neg_ln_0.5")
+    check("formula_verified is writer-ready", verified_rec.get("writer_should_receive_committed_value") is True, str(verified_rec))
+
+
+def test_golden_recompute_proof_degrades_and_no_mutation() -> None:
+    # Malformed inputs degrade to a closed envelope; never raise.
+    none_proof = build_golden_target_recompute_proof(None)
+    check("none -> closed kind", none_proof.get("kind") == "quality_safety_golden_recompute_proof")
+    check("none -> spec_missing warning", "golden_spec_missing" in none_proof.get("warnings", []), str(none_proof))
+    check("none -> empty records", none_proof.get("records") == [])
+    nonsense = build_golden_target_recompute_proof({"lecture_id": "x", "ground_truth_numerics": "nope"})
+    check("nonsense -> no_numeric_targets", "no_numeric_targets" in nonsense.get("warnings", []), str(nonsense))
+    bad_candidate = build_golden_target_recompute_proof(
+        _golden_spec("x", [{"label": "cross_entropy_neg_ln_0.5", "value": 0.69, "tol": 0.01}]),
+        candidate_classification_by_target=["not", "a", "dict"],
+    )
+    check("bad candidate ignored", "candidate_classification_ignored" in bad_candidate.get("warnings", []), str(bad_candidate))
+    # Input spec must never be mutated by the proof builder.
+    spec = _golden_spec("x", [{"label": "cross_entropy_neg_ln_0.5", "value": 0.69, "tol": 0.01}])
+    before = json.dumps(spec, sort_keys=True)
+    build_golden_target_recompute_proof(spec)
+    check("spec not mutated", json.dumps(spec, sort_keys=True) == before)
+
+
+def test_golden_recompute_proof_closed_schema() -> None:
+    spec = _golden_spec(
+        "ens_synth",
+        [
+            {"label": "cross_entropy_neg_ln_0.5", "value": 0.69, "tol": 0.01},
+            {"label": "gini_synth_node", "value": 0.20, "tol": 0.01},
+            {"label": "proximity_synth", "value": 0.80, "tol": 0.01},
+        ],
+    )
+    candidate = {"cross_entropy_neg_ln_0.5": "found_but_wrong_value"}
+    proof = build_golden_target_recompute_proof(spec, candidate_classification_by_target=candidate)
+    # JSON serializable.
+    json.dumps(proof)
+    for rec in proof["records"]:
+        check("record keys closed", set(rec.keys()) == _GOLDEN_RECORD_KEYS, str(set(rec.keys())))
+        check("status closed", rec["recompute_status"] in GOLDEN_RECOMPUTE_STATUSES, str(rec["recompute_status"]))
+        check("value_kind closed", rec["verified_value_kind"] in GOLDEN_VALUE_KINDS, str(rec["verified_value_kind"]))
+        check("confidence closed", rec["confidence"] in GOLDEN_CONFIDENCE_LEVELS, str(rec["confidence"]))
+        check("candidate status closed", rec["guide_candidate_status"] in GOLDEN_CANDIDATE_STATUSES, str(rec["guide_candidate_status"]))
+        check("record warnings closed", all(w in GOLDEN_PROOF_WARNING_ORDER for w in rec["warnings"]), str(rec["warnings"]))
+        check(
+            "tri-state fields",
+            rec["recomputed_matches_committed_fixture"] in (True, False, None)
+            and rec["wrong_printed_value_detected_when_candidate_supplied"] in (True, False, None)
+            and rec["writer_should_receive_committed_value"] in (True, False, None),
+            str(rec),
+        )
+    check("proof warnings closed", all(w in GOLDEN_PROOF_WARNING_ORDER for w in proof["warnings"]), str(proof["warnings"]))
+    summary = summarize_golden_target_recompute_proof(proof["records"])
+    check(
+        "summary non-negative ints",
+        all(isinstance(v, int) and not isinstance(v, bool) and v >= 0 for k, v in summary.items() if k != "kind"),
+        str(summary),
+    )
+    assert_no_canary("golden closed schema", proof)
+
+
 # ── 13. Import hygiene ──────────────────────────────────────────────────────
 
 
@@ -645,6 +934,14 @@ def run() -> int:
     test_slice110_integration()
     test_seed_fixture_integration()
     test_report_status_transitions()
+    test_golden_label_recompute_plan()
+    test_golden_recompute_proof_derives_committed()
+    test_golden_recompute_no_known_numbers_detects_disagreement()
+    test_golden_recompute_proof_wrong_candidate_detected()
+    test_golden_recompute_proof_source_required_and_unsupported()
+    test_golden_recompute_no_laundering_gate()
+    test_golden_recompute_proof_degrades_and_no_mutation()
+    test_golden_recompute_proof_closed_schema()
     test_no_leak_sweep()
     test_import_hygiene()
     print(f"\nquality_safety_recompute_verifier: {PASS} passed, {FAIL} failed")

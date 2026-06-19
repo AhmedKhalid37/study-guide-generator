@@ -5,6 +5,94 @@
 
 ---
 
+## Slice 173A — **Recompute verifier catches wrong printed values**, on `slice173a-recompute-verifier-catches-wrong-values`. **NOT COMMITTED.**
+
+- **Recompute-first proof slice, not generation wiring and not score-laundering.** After Slice 172
+  reduced trusted leak signals, the dominant measured blocker is **numeric correctness — specifically
+  `found_but_wrong_value`**: the guides confidently print wrong committed numbers. This slice proves
+  the recompute engine can **independently derive the committed fixture values** and **diagnose the
+  wrong printed values**, without loosening matchers, inventing values, or changing generation.
+- **phase=Phase 0 numeric product quality** · **slice173a_focus=recompute_verifier_catches_wrong_printed_values** ·
+  **input_basis=post_slice172_found_but_wrong_value_dominant** · **generation_wiring=false** ·
+  **next_required_product_slice=173b_verified_numeric_generation_context** · **leak_prompt_changes=false** ·
+  **numeric_matcher_changes=false** · **fixture_expected_value_changes=false** · **repair_changes=false** ·
+  **judge_ready=false** · **repair_ready=false**.
+- **Post-Slice-172 closed rerun (Part 0; scorer `d517601`, candidates `nn3_v6.md`/`ensemble_v6.md`,
+  no regeneration):** NN3 numeric buckets `found_and_matched=0` / `found_but_wrong_value=2` /
+  `genuinely_missing=3`; Ensemble `found_and_matched=1` / `found_but_wrong_value=6`. Numeric is the
+  lead blocker; mock shortfall is advisory (non-blocking); leak reduced to a small genuine+signature
+  residue; **coverage now blocking** (NN3 ratio 0.60, Ensemble 0.6154 < 0.90) — tracked as a side
+  effect, not the lead; Layer-2 judge deferred.
+- **Change (`pipeline/quality_safety_recompute_verifier.py`, additive only — existing v1 API untouched):**
+  new closed *golden-target recompute proof* layer: `golden_label_recompute_plan` (parses a closed
+  `{method, inputs}` plan **from the committed golden label only** — `cross_entropy_neg_ln_X` → `-ln(X)`;
+  `amount_of_say_half_ln_N` → `0.5·ln(N)` via `total_error = 1/(N+1)`), `build_golden_target_recompute_proof`
+  (recomputes via the existing production methods, verifies against the committed fixture value within
+  the **existing** tolerance, and — given a read-only closed numeric-matcher classification — reports a
+  `wrong_value_detected` **diagnostic**), and `summarize_golden_target_recompute_proof`. Closed enums only:
+  `recompute_status ∈ {recomputed, formula_verified, source_required, unsupported, verifier_error}`,
+  `verified_value_kind`, `confidence`, `guide_candidate_status`. Honest degradation: targets without
+  a label-derivable plan → `source_required` (supported family, no committed inputs) or `unsupported`
+  (no supported method); no value invented, no confidence promotion.
+- **No-laundering correction (the load-bearing fix this slice exists for):** wrong-value detection is
+  **proof that a printed value is wrong**, never proof that the writer should receive the committed value.
+  The record distinguishes **four** closed facts: `wrong_printed_value_detected_when_candidate_supplied`
+  (diagnostic), `committed_value_available` (the fixture has an expected value), `independently_verified_for_generation`
+  (recompute proof), and `writer_should_receive_committed_value` (policy). `writer_should_receive_committed_value`
+  is `true` **only** when `recompute_status ∈ {recomputed, formula_verified}` **and**
+  `recomputed_matches_committed_fixture=true` **and** `confidence ∈ {high, medium}`. For
+  `source_required` / `unsupported` / `verifier_error` — or any target whose only available value is the
+  committed expected fixture — it is `false`. A committed fixture value scores/validates recompute; it is
+  **never** treated as generation-ready numeric context unless independently recomputed/formula-verified.
+- **Recompute-first invariant proven (not known_numbers):** the disagreement test deliberately sets a
+  wrong committed value and the engine **disagrees** (`recompute_disagrees_with_committed_fixture`)
+  rather than trivially matching — there is no answer table. No fixture expected value/tolerance edited;
+  numeric matcher consumed read-only and not loosened; no prompt/generation/frontend/API change;
+  offline judge/repair stay frozen.
+- **Tests (`test_scripts/test_quality_safety_recompute_verifier.py`, synthetic public-safe only):**
+  plan parsing + no-answer-table; committed values independently derived, matched & writer-ready; disagreement
+  detection; **no-laundering gate** (`recomputed`/`formula_verified` + match + high/medium → writer-ready;
+  `source_required`/`unsupported` with a committed fixture value → **not** writer-ready even when the
+  printed value is wrong); wrong-value detected while writer stays not-ready; source_required vs unsupported
+  honest degradation with no invention; malformed-input closed degrade + input-spec non-mutation; closed
+  schema/enums + no-leak sweep. **Suite 203 pass (was 178).**
+- **Real closed local run (committed golden specs × post-Slice-172 candidates `nn3_v6.md`/`ensemble_v6.md`,
+  no regeneration):**
+  - **Pair:** recompute_proof_ran=true · total_targets=12 · recomputed=2 · formula_verified=2 ·
+    source_required=8 · unsupported=2 · verifier_error=0 · committed_fixture_match=2 ·
+    wrong_printed_value_detected=8 · independently_verified_for_generation=2 ·
+    writer_should_receive_committed_value=**2** · unresolved_for_generation=**9**.
+  - **NN3:** target_count=5 · recomputed=1 · formula_verified=1 · source_required=4 · unsupported=0 ·
+    verifier_error=0 · committed_fixture_match=1 (`cross_entropy_neg_ln_0.57`, matches committed) ·
+    wrong_printed_value_detected=2 · independently_verified_for_generation=1 ·
+    writer_should_receive_committed_value=1 · unresolved_for_generation=4 · warnings `recompute_plan_unavailable`.
+    The single recompute-verified target is currently printed **wrong** → it (and only it) is writer-ready.
+  - **Ensemble:** target_count=7 · recomputed=1 · formula_verified=1 · source_required=4 · unsupported=2 ·
+    verifier_error=0 · committed_fixture_match=1 (`amount_of_say_half_ln_7`, matches committed) ·
+    wrong_printed_value_detected=6 · independently_verified_for_generation=1 ·
+    writer_should_receive_committed_value=1 · unresolved_for_generation=5 · warnings
+    `recompute_plan_unavailable`,`unsupported_method`. The single recompute-verified target is printed
+    **wrong** → it (and only it) is writer-ready.
+  - `wrong_printed_value_detected` (NN3 2, Ensemble 6 = 8) equals the matcher's `found_but_wrong_value`,
+    cross-validating both engines. But only the **2** independently formula-verified values are writer-ready;
+    the other **9** wrong/missing targets stay `unresolved_for_generation` — no laundering.
+- **173B readiness:** Slice 173A proves wrong printed values are **detectable** and makes the **2**
+  independently formula-verified values generation-ready; it does **not** make all committed fixture
+  values writer-ready (`unresolved_for_generation_count=9`). For the `source_required`/`unsupported`
+  targets, **173B must either** derive computation inputs from source/fact-sheet extraction **or** leave
+  those values unavailable to generation and force the writer to a closed fallback. **173B must not inject
+  committed expected fixture values directly into generation.**
+- **Validation (no Docker):** `python -m compileall api pipeline test_scripts`;
+  `test_quality_safety_recompute_verifier` (203), `test_quality_safety_eval_harness` (577),
+  `test_quality_safety_unified_qa` (73), `test_guide_quality_prompt_contract` (383),
+  `test_guide_quality_contract_lint` (150); `git diff --check` clean.
+- **Changed files:** `pipeline/quality_safety_recompute_verifier.py`,
+  `test_scripts/test_quality_safety_recompute_verifier.py`, `docs/CURRENT_TASK.md`,
+  `docs/NEXT_CHAT_HANDOFF.md`, `docs/DECISIONS.md`. **NOT COMMITTED.** No guide regenerated; no
+  generation wiring touched.
+
+---
+
 ## Slice 172 — **Product genuine-leak prompt discipline**, on `slice172-product-genuine-leak-discipline`. **NOT COMMITTED.**
 
 - **Product prompt slice, not a detector slice.** Slice 171 made the Phase 0 leak count trustworthy by separating

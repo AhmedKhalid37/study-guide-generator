@@ -692,3 +692,443 @@ def _finite_number(value: Any) -> int | float | None:
 def _ordered_warnings(warnings: Any) -> list[str]:
     seen = set(warnings) if isinstance(warnings, (set, list, tuple)) else set()
     return [token for token in WARNING_ORDER if token in seen]
+
+
+# ── Slice 173A: golden-target recompute proof ────────────────────────────────
+#
+# Recompute-FIRST proof layer over the committed golden-pair numeric targets. Its
+# only job is to prove, with closed records, that:
+#   (a) the recompute engine can INDEPENDENTLY derive a committed golden fixture
+#       value from committed public-safe metadata (here: the parameters encoded in
+#       the committed golden *label* itself, e.g. ``cross_entropy_neg_ln_0.57`` →
+#       ``-ln(0.57)`` and ``amount_of_say_half_ln_7`` → ``0.5·ln(7)`` via the
+#       algebraic identity ``total_error = 1/(N+1)``), and verify it matches the
+#       committed expected value within the EXISTING fixture tolerance; and
+#   (b) when a (closed) guide-candidate classification is supplied, the verifier
+#       can diagnose a currently-printed WRONG value — a DIAGNOSTIC only.
+#
+# No-laundering rule (Slice 173A correction): a committed fixture value is
+# ``writer_should_receive_committed_value=true`` / generation-ready ONLY when it
+# was INDEPENDENTLY recomputed or formula-verified, matched the committed fixture
+# within the EXISTING tolerance, and confidence is high/medium. Detecting a wrong
+# printed value, or the mere existence of a committed expected value, NEVER makes a
+# target writer-ready. ``source_required`` / ``unsupported`` / ``verifier_error``
+# targets are never writer-ready here; making them generation-ready is Slice 173B's
+# job (source-derived computation inputs or a closed fallback), not fixture-value
+# injection. The record distinguishes the four facts explicitly:
+# ``wrong_printed_value_detected_when_candidate_supplied`` (diagnostic),
+# ``committed_value_available`` (fixture has a value),
+# ``independently_verified_for_generation`` (recompute proof), and
+# ``writer_should_receive_committed_value`` (policy, derived ONLY from the proof).
+#
+# It NEVER invents a value, never carries a manual answer/``known_numbers`` table
+# (every recomputed value is derived from a closed formula plan parsed only from
+# the already-committed label), never edits a fixture expected value/tolerance,
+# never loosens the numeric matcher, and never touches generation. Targets whose
+# committed metadata does not encode the inputs degrade honestly to
+# ``source_required`` (a supported method exists but inputs are not available from
+# committed metadata) or ``unsupported`` (no supported recompute method). Output is
+# closed tokens / counts only: no guide text, snippets, candidate values, source
+# text, paths, filenames, hashes, or byte counts.
+
+GOLDEN_PROOF_KIND = "quality_safety_golden_recompute_proof"
+GOLDEN_PROOF_SUMMARY_KIND = "quality_safety_golden_recompute_proof_summary"
+
+GOLDEN_RECOMPUTE_STATUSES = frozenset(
+    {"recomputed", "formula_verified", "source_required", "unsupported", "verifier_error"}
+)
+GOLDEN_VALUE_KINDS = frozenset(
+    {"numeric", "percentage", "probability", "expression", "unavailable"}
+)
+GOLDEN_CONFIDENCE_LEVELS = frozenset({"high", "medium", "low", "none"})
+
+# Closed guide-candidate statuses, derived read-only from the eval-harness numeric
+# matcher's closed per-target classification (never from a raw candidate value).
+GOLDEN_CANDIDATE_STATUSES = frozenset(
+    {
+        "wrong_value_detected",
+        "matched",
+        "format_or_context_missed",
+        "missing",
+        "not_supplied",
+        "unknown",
+    }
+)
+# Closed numeric-matcher classification tokens this layer consumes (read-only).
+_MATCHER_WRONG = "found_but_wrong_value"
+_MATCHER_MISSING = "genuinely_missing"
+_MATCHER_FORMAT = "found_but_format_or_context_missed"
+_MATCHER_MATCHED = "found_and_matched"
+
+GOLDEN_PROOF_WARNING_ORDER = (
+    "golden_spec_missing",
+    "golden_spec_invalid",
+    "no_numeric_targets",
+    "unexpected_source_label",
+    "recompute_plan_unavailable",
+    "unsupported_method",
+    "recompute_disagrees_with_committed_fixture",
+    "candidate_classification_ignored",
+    "verifier_error",
+)
+
+GOLDEN_PROOF_BLOCKING_ISSUES = frozenset(
+    {"recompute_disagrees_with_committed_fixture", "verifier_error"}
+)
+
+# Concept families mapped to a SUPPORTED recompute method, used ONLY to tell
+# ``source_required`` (a supported method exists but committed metadata lacks the
+# inputs) apart from ``unsupported`` (no supported method) when no closed formula
+# plan is derivable from the label. This is a closed prefix map over committed
+# golden labels; it carries no answer values.
+_GOLDEN_METHOD_FAMILIES: tuple[tuple[str, str], ...] = (
+    ("cross_entropy", "cross_entropy"),
+    ("softmax", "softmax"),
+    ("gini", "weighted_gini"),
+    ("total_error", "total_error"),
+    ("amount_of_say", "amount_of_say"),
+    ("htop", "forward_pass"),
+    ("rset", "forward_pass"),
+    ("rver", "forward_pass"),
+    ("rsetosa", "forward_pass"),
+)
+
+_GOLDEN_MAX_TARGETS = 64
+
+
+def golden_label_recompute_plan(label: Any) -> dict[str, Any] | None:
+    """Return a closed recompute plan derivable PURELY from the committed label.
+
+    Public-safe and recompute-first: parses only the already-committed golden
+    label string into a ``{method, inputs, value_kind}`` plan for the existing
+    recompute methods. Returns ``None`` when the label does not encode the inputs.
+    Never reads source material; never consults an answer table.
+    """
+    if not isinstance(label, str):
+        return None
+    text = label.strip()
+
+    prefix = "cross_entropy_neg_ln_"
+    if text.startswith(prefix):
+        probability = _parse_label_float(text[len(prefix):])
+        if probability is None or not (0.0 < probability <= 1.0):
+            return None
+        return {
+            "method": "cross_entropy",
+            "inputs": {"probability": probability},
+            "value_kind": "numeric",
+        }
+
+    prefix = "amount_of_say_half_ln_"
+    if text.startswith(prefix):
+        ratio = _parse_label_float(text[len(prefix):])
+        if ratio is None or ratio <= 0.0:
+            return None
+        # half_ln_N ≡ 0.5·ln(N) ≡ 0.5·ln((1-e)/e) with the algebraic identity
+        # (1-e)/e = N  ⇒  e = 1/(N+1). This derives the recompute INPUT from the
+        # label, then exercises the production amount_of_say method (no answer
+        # value is hardcoded).
+        total_error = 1.0 / (ratio + 1.0)
+        return {
+            "method": "amount_of_say",
+            "inputs": {"total_error": total_error},
+            "value_kind": "numeric",
+        }
+
+    return None
+
+
+def _golden_method_family(label: Any) -> str | None:
+    if not isinstance(label, str):
+        return None
+    text = label.strip().lower()
+    for prefix, method in _GOLDEN_METHOD_FAMILIES:
+        if text.startswith(prefix):
+            return method if method in SUPPORTED_METHODS else None
+    return None
+
+
+def _candidate_status_for(classification: Any) -> str:
+    if classification == _MATCHER_WRONG:
+        return "wrong_value_detected"
+    if classification == _MATCHER_MATCHED:
+        return "matched"
+    if classification == _MATCHER_FORMAT:
+        return "format_or_context_missed"
+    if classification == _MATCHER_MISSING:
+        return "missing"
+    return "unknown"
+
+
+def build_golden_target_recompute_proof(
+    golden_spec: Any,
+    *,
+    candidate_classification_by_target: Any = None,
+) -> dict[str, Any]:
+    """Build the closed recompute-proof record set for one golden-pair spec.
+
+    Pure, deterministic, offline. Reads only the committed golden spec
+    (``lecture_id`` + ``ground_truth_numerics`` label/value/tolerance) and an
+    OPTIONAL closed ``{target_id: matcher_classification}`` map (consumed read-only
+    from the eval-harness numeric matcher; never a raw candidate value). For each
+    target it derives a closed recompute plan from the committed label, recomputes
+    via the existing engine, and verifies the recompute matches the committed
+    fixture value within the EXISTING tolerance. Never raises; never echoes guide
+    text, candidate values, source text, paths, filenames, hashes, or byte counts.
+    """
+    try:
+        return _build_golden_target_recompute_proof(
+            golden_spec, candidate_classification_by_target
+        )
+    except Exception:
+        return {
+            "version": VERSION,
+            "kind": GOLDEN_PROOF_KIND,
+            "source_label": "unknown",
+            "records": [],
+            "summary": summarize_golden_target_recompute_proof([]),
+            "warnings": ["verifier_error"],
+        }
+
+
+def _build_golden_target_recompute_proof(
+    golden_spec: Any, candidate_map: Any
+) -> dict[str, Any]:
+    warnings: set[str] = set()
+
+    if not isinstance(golden_spec, dict):
+        warnings.add("golden_spec_missing")
+        return _golden_proof_envelope("unknown", [], warnings)
+
+    source_label = golden_spec.get("lecture_id")
+    if not isinstance(source_label, str) or not source_label:
+        warnings.add("golden_spec_invalid")
+        source_label = "unknown"
+
+    targets = golden_spec.get("ground_truth_numerics")
+    if not isinstance(targets, list) or not targets:
+        warnings.add("no_numeric_targets")
+        return _golden_proof_envelope(source_label, [], warnings)
+
+    classification_lookup: dict[str, str] = {}
+    if candidate_map is not None:
+        if isinstance(candidate_map, dict):
+            for key, value in candidate_map.items():
+                if isinstance(key, str) and isinstance(value, str):
+                    classification_lookup[key] = value
+        else:
+            warnings.add("candidate_classification_ignored")
+
+    records: list[dict[str, Any]] = []
+    for position, item in enumerate(targets[:_GOLDEN_MAX_TARGETS]):
+        if not isinstance(item, dict):
+            continue
+        records.append(
+            _golden_target_record(item, position, source_label, classification_lookup, warnings)
+        )
+
+    return _golden_proof_envelope(source_label, records, warnings)
+
+
+def _golden_target_record(
+    item: dict[str, Any],
+    position: int,
+    source_label: str,
+    classification_lookup: dict[str, str],
+    warnings: set[str],
+) -> dict[str, Any]:
+    label = item.get("label")
+    target_id = label if isinstance(label, str) and label else f"target_{position}"
+    expected = _finite_number(item.get("value"))
+    committed_available = expected is not None
+    tol = _finite_number(item.get("tol"))
+
+    candidate_supplied = target_id in classification_lookup
+    candidate_status = (
+        _candidate_status_for(classification_lookup.get(target_id))
+        if candidate_supplied
+        else "not_supplied"
+    )
+
+    record_warnings: set[str] = set()
+    plan = golden_label_recompute_plan(label)
+
+    recompute_status = "source_required"
+    matches_committed: bool | None = None
+    value_kind = "unavailable"
+    confidence = "none"
+    blocking_issue: str | None = None
+
+    if plan is not None and committed_available:
+        fact_record = {
+            "id": f"golden.{source_label}.{position:04d}",
+            "type": "numeric",
+            "value": expected,
+            "computation": {
+                "method": plan["method"],
+                "inputs": plan["inputs"],
+                **({"tolerance": tol} if tol is not None else {}),
+            },
+        }
+        result = recompute_quality_safety_fact(fact_record)
+        status = result.get("status")
+        recomputed_value = result.get("recomputed_value")
+        if recomputed_value is None:
+            # Plan existed but the engine could not derive a value: honest error.
+            recompute_status = "verifier_error"
+            blocking_issue = "verifier_error"
+            record_warnings.add("verifier_error")
+        elif status == "passed":
+            recompute_status = "formula_verified"
+            matches_committed = True
+            value_kind = plan.get("value_kind", "numeric")
+            confidence = "high"
+        else:
+            # Recompute ran but disagrees with the committed fixture value.
+            recompute_status = "recomputed"
+            matches_committed = False
+            value_kind = plan.get("value_kind", "numeric")
+            confidence = "low"
+            blocking_issue = "recompute_disagrees_with_committed_fixture"
+            record_warnings.add("recompute_disagrees_with_committed_fixture")
+    else:
+        family = _golden_method_family(label)
+        if family is not None:
+            recompute_status = "source_required"
+            record_warnings.add("recompute_plan_unavailable")
+        else:
+            recompute_status = "unsupported"
+            record_warnings.add("unsupported_method")
+
+    if not committed_available:
+        warnings.add("golden_spec_invalid")
+
+    # Independent-verification gate — the ONLY path to a generation-ready value.
+    # A committed fixture value is writer-ready ONLY when the recompute engine
+    # INDEPENDENTLY recomputed / formula-verified it, it matched the committed
+    # fixture within the EXISTING tolerance, and confidence is high/medium. A value
+    # that merely exists in the committed fixture (``source_required`` /
+    # ``unsupported`` / ``verifier_error``) is NOT generation-ready and must never
+    # be laundered into writer-ready context. No-laundering requirement.
+    independently_verified = (
+        recompute_status in {"recomputed", "formula_verified"}
+        and matches_committed is True
+        and confidence in {"high", "medium"}
+    )
+
+    # Wrong-printed-value detection is a DIAGNOSTIC only: it proves the currently
+    # printed value is wrong, never that the writer should receive the committed
+    # value. Null when no candidate classification was supplied.
+    if not candidate_supplied:
+        wrong_printed_detected: bool | None = None
+    else:
+        wrong_printed_detected = classification_lookup.get(target_id) == _MATCHER_WRONG
+
+    # Writer-readiness derives ONLY from independent verification — never from the
+    # mere existence of a committed fixture value or a detected wrong value.
+    writer_should_receive = independently_verified
+
+    warnings.update(record_warnings)
+
+    return {
+        "source_label": source_label,
+        "target_id": target_id,
+        "expected_label": target_id,
+        "recompute_status": recompute_status,
+        "committed_value_available": bool(committed_available),
+        "recomputed_matches_committed_fixture": matches_committed,
+        "wrong_printed_value_detected_when_candidate_supplied": wrong_printed_detected,
+        "independently_verified_for_generation": bool(independently_verified),
+        "verified_value_kind": value_kind if value_kind in GOLDEN_VALUE_KINDS else "unavailable",
+        "confidence": confidence if confidence in GOLDEN_CONFIDENCE_LEVELS else "none",
+        "blocking_issue": blocking_issue if blocking_issue in GOLDEN_PROOF_BLOCKING_ISSUES else None,
+        "guide_candidate_status": candidate_status if candidate_status in GOLDEN_CANDIDATE_STATUSES else "unknown",
+        "writer_should_receive_committed_value": writer_should_receive,
+        "warnings": _ordered_golden_warnings(record_warnings),
+    }
+
+
+def _golden_proof_envelope(
+    source_label: str, records: list[dict[str, Any]], warnings: set[str]
+) -> dict[str, Any]:
+    return {
+        "version": VERSION,
+        "kind": GOLDEN_PROOF_KIND,
+        "source_label": source_label if isinstance(source_label, str) and source_label else "unknown",
+        "records": records,
+        "summary": summarize_golden_target_recompute_proof(records),
+        "warnings": _ordered_golden_warnings(warnings),
+    }
+
+
+def summarize_golden_target_recompute_proof(records: Any) -> dict[str, Any]:
+    """Aggregate closed counts over golden recompute-proof records."""
+    rows = records if isinstance(records, list) else []
+    summary = {
+        "kind": GOLDEN_PROOF_SUMMARY_KIND,
+        "target_count": 0,
+        "recomputed_count": 0,
+        "formula_verified_count": 0,
+        "source_required_count": 0,
+        "unsupported_count": 0,
+        "verifier_error_count": 0,
+        "committed_fixture_match_count": 0,
+        "wrong_printed_value_detected_count": 0,
+        "independently_verified_for_generation_count": 0,
+        "writer_should_receive_committed_value_count": 0,
+        "unresolved_for_generation_count": 0,
+    }
+    for record in rows:
+        if not isinstance(record, dict):
+            continue
+        summary["target_count"] += 1
+        status = record.get("recompute_status")
+        if status == "formula_verified":
+            summary["formula_verified_count"] += 1
+            summary["recomputed_count"] += 1
+        elif status == "recomputed":
+            summary["recomputed_count"] += 1
+        elif status == "source_required":
+            summary["source_required_count"] += 1
+        elif status == "unsupported":
+            summary["unsupported_count"] += 1
+        elif status == "verifier_error":
+            summary["verifier_error_count"] += 1
+        if record.get("recomputed_matches_committed_fixture") is True:
+            summary["committed_fixture_match_count"] += 1
+        if record.get("wrong_printed_value_detected_when_candidate_supplied") is True:
+            summary["wrong_printed_value_detected_count"] += 1
+        independently_verified = record.get("independently_verified_for_generation") is True
+        if independently_verified:
+            summary["independently_verified_for_generation_count"] += 1
+        if record.get("writer_should_receive_committed_value") is True:
+            summary["writer_should_receive_committed_value_count"] += 1
+        # Unresolved for generation = the guide is not correct AND we have NO
+        # independently-verified value to give the writer. A committed fixture value
+        # alone does NOT resolve a target (no laundering): source_required /
+        # unsupported targets stay unresolved until 173B derives source inputs.
+        guide_not_correct = record.get("guide_candidate_status") in {
+            "wrong_value_detected",
+            "missing",
+            "format_or_context_missed",
+        }
+        if guide_not_correct and not independently_verified:
+            summary["unresolved_for_generation_count"] += 1
+    return summary
+
+
+def _parse_label_float(token: Any) -> float | None:
+    if not isinstance(token, str):
+        return None
+    try:
+        value = float(token.strip())
+    except (TypeError, ValueError):
+        return None
+    if not math.isfinite(value):
+        return None
+    return value
+
+
+def _ordered_golden_warnings(warnings: Any) -> list[str]:
+    seen = set(warnings) if isinstance(warnings, (set, list, tuple)) else set()
+    return [token for token in GOLDEN_PROOF_WARNING_ORDER if token in seen]

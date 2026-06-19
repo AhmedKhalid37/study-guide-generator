@@ -7069,3 +7069,67 @@ closed-unverifiable-fallback, no flat ordinary-word denylist, no global question
 hardcoded private numeric literal. Tests use synthetic public text; no `local_operator_baselines/`
 or private content/paths/numbers committed. No guide regenerated in this slice; next step is manual
 regenerate + rerun Phase 0 against the now-trustworthy genuine leak signal.
+
+## Slice 173A — Recompute-first verifier proves it catches wrong printed values (2026-06-19)
+After Slice 172 reduced trusted leak signals, the dominant *measured* blocker became numeric
+correctness, and specifically `found_but_wrong_value`. The post-Slice-172 closed rerun
+(scorer `d517601`, candidates `nn3_v6.md`/`ensemble_v6.md`) shows the guides are confidently
+printing **wrong** committed numbers — NN3 `found_but_wrong_value=2` / `genuinely_missing=3` /
+`found_and_matched=0`; Ensemble `found_but_wrong_value=6` / `found_and_matched=1` — not merely
+missing measurement infrastructure. The numeric matcher already catches these; the next proof is
+that **recompute can independently derive the committed fixture value** and diagnose the wrong
+outputs.
+
+**Decision:** Slice 173A adds a closed *golden-target recompute proof* layer to
+`pipeline/quality_safety_recompute_verifier.py` (additive; existing API untouched). It is
+**recompute-first**: for golden targets whose committed **label** encodes the computation in
+public-safe form (`cross_entropy_neg_ln_0.57` → `-ln(0.57)`; `amount_of_say_half_ln_7` →
+`0.5·ln(7)` via the algebraic identity `total_error = 1/(N+1)`), it parses a closed
+`{method, inputs}` plan **from the already-committed label only**, runs the existing production
+recompute method, and verifies the result matches the committed fixture value within the
+**existing** tolerance. Targets whose committed metadata does not encode the inputs degrade
+honestly to `source_required` (a supported method exists but inputs are unavailable) or
+`unsupported` (no supported method). When a closed numeric-matcher classification is supplied
+(read-only), the layer reports a `wrong_value_detected` **diagnostic** only.
+
+**No-laundering correction (this is the load-bearing distinction):** Slice 173A distinguishes
+*wrong-value detection* from *generation-ready numeric context*. A wrong printed value may be detected
+from the matcher/fixture comparison, but the writer may only receive a committed numeric value when the
+recompute verifier **independently recomputes or formula-verifies** it. Concretely,
+`writer_should_receive_committed_value=true` is allowed **only** when `recompute_status ∈
+{recomputed, formula_verified}` **and** `recomputed_matches_committed_fixture=true` **and** `confidence
+∈ {high, medium}`; it is `false` for `source_required` / `unsupported` / `verifier_error` and for any
+target whose only available value is the committed expected fixture. The record exposes four distinct
+closed facts so the proof cannot be laundered: `wrong_printed_value_detected_when_candidate_supplied`
+(diagnostic), `committed_value_available` (fixture has a value),
+`independently_verified_for_generation` (recompute proof), and `writer_should_receive_committed_value`
+(policy derived solely from the proof). Committed fixture values may **score and validate** recompute,
+but are never treated as generation-ready unless independently recomputed/formula-verified.
+Source-required and unsupported targets remain **not** generation-ready; fixing them requires
+source-derived computation inputs or fact-sheet extraction, **not** direct fixture-value injection.
+
+**Why this is not score-laundering / not known_numbers:** every recomputed value is *derived* from
+a formula parsed from the committed label — there is no answer table. The disagreement test proves
+it: when a committed value is deliberately wrong, the recompute **disagrees**
+(`recompute_disagrees_with_committed_fixture`) instead of trivially matching. No fixture expected
+value or tolerance is edited; the numeric matcher is consumed read-only and not loosened; no
+prompt/generation/judge/repair change; offline judge stays frozen
+(`judge_ready=false`, `repair_ready=false`).
+
+**Result (real closed local run, committed golden specs × post-Slice-172 candidates
+`nn3_v6.md`/`ensemble_v6.md`):** Slice 173A proves wrong printed values are **detectable** — 8 detected
+(NN3 2, Ensemble 6), equal to the matcher's `found_but_wrong_value`, cross-validating both engines. It
+makes **only** the **2** independently formula-verified values (one per pair, both currently printed
+wrong) generation-ready (`writer_should_receive_committed_value=2`,
+`independently_verified_for_generation=2`); it does **not** make all committed fixture values
+writer-ready. The remaining **9** wrong/missing `source_required`/`unsupported` targets stay
+`unresolved_for_generation=9` — a committed fixture value alone does not resolve them.
+
+**Next required product slice — 173B:** for the `source_required`/`unsupported` targets, 173B must
+**either** derive computation inputs from source/fact-sheet extraction **or** leave those values
+unavailable to generation and force the writer to use a closed fallback. **173B must not inject
+committed expected fixture values directly into generation.** It may feed the 2 independently verified
+values at high confidence. 173A alone does **not** fix the guide; it proves the numeric engine can
+catch wrong values and identifies exactly which committed values are (and are not) safe to supply. All
+Slice 173A tests use synthetic public-safe data; no `local_operator_baselines/` or private
+content/paths/numbers committed.

@@ -6,7 +6,40 @@
 > stable overview see `PROJECT_CONTEXT.md`; canonical brief is `../CLAUDE.md`.
 
 ## Current position
-- **Working tree:** **Slice 172 (Product genuine-leak prompt discipline) — UNCOMMITTED**
+- **Working tree:** **Slice 173A (Recompute verifier catches wrong printed values) — UNCOMMITTED**
+  on branch `slice173a-recompute-verifier-catches-wrong-values`, branched from clean trunk
+  `chrome-renderer-v1` (`d517601`, which now carries Slices 168–172). **Slice 172 is committed on trunk**
+  (`d517601` "Slice 172: Strengthen genuine leak prompt discipline").
+- **Slice 173A is a recompute-first PROOF slice, not generation wiring.** Part 0 reprinted the
+  post-Slice-172 Layer-1 rerun (no regeneration): **numeric is the lead blocker and `found_but_wrong_value`
+  dominates** — NN3 buckets `matched 0 / wrong 2 / missing 3`; Ensemble `matched 1 / wrong 6`. The guides
+  confidently print wrong committed numbers. Slice 173A adds a closed *golden-target recompute proof* to
+  `pipeline/quality_safety_recompute_verifier.py` (additive; existing v1 API untouched) that
+  **independently re-derives committed fixture values from the committed label's encoded formula**
+  (`cross_entropy_neg_ln_X` → `-ln(X)`; `amount_of_say_half_ln_N` → `0.5·ln(N)` via `total_error=1/(N+1)`),
+  verifies them within the existing tolerance, honestly degrades the rest (`source_required` / `unsupported`),
+  and — given the eval-harness numeric classification read-only — flags a `wrong_value_detected` **diagnostic**.
+  **No-laundering rule:** the writer may receive a committed value **only** when it was independently
+  recomputed/formula-verified, matched within the existing tolerance, at high/medium confidence — detecting a
+  wrong printed value (or the mere existence of a committed fixture value) never makes a target writer-ready.
+  **Real run:** 8 wrong printed values detected (NN3 2 / Ensemble 6, equal to the matcher's
+  `found_but_wrong_value`), but only **2** values independently formula-verified and writer-ready (one per
+  pair, both currently printed wrong); the other **9** wrong/missing targets stay `unresolved_for_generation`
+  (`source_required`/`unsupported` — committed fixture value alone is **not** generation-ready). No matcher
+  loosening, no invented values (disagreement test proves no answer-table), no fixture value/tolerance edit,
+  no prompt/generation/judge/repair change (`judge_ready=false`, `repair_ready=false`). Tests **203 pass**
+  (was 178); eval-harness/unified-qa/prompt-contract/contract-lint unchanged (577/73/383/150).
+  **Slice 173A NOT committed.**
+- **Next required product slice — Slice 173B (`173b_verified_numeric_generation_context`):** feed the **2**
+  independently verified values (high confidence) into generation/writer context. For the **9**
+  `source_required`/`unsupported` targets, 173B must **either** derive computation inputs from
+  source/fact-sheet extraction **or** leave those values unavailable and force the writer to a closed
+  fallback — **173B must not inject committed expected fixture values directly into generation.** 173A alone
+  does not fix the guide.
+- **Side effect to track:** coverage is now **blocking** in both pairs (NN3 ratio 0.60, Ensemble 0.6154 <
+  0.90 topic-string threshold) — track, do not lead.
+
+- **Superseded position (Slice 172):** **Slice 172 — committed on trunk (`d517601`).** Was UNCOMMITTED
   on branch `slice172-product-genuine-leak-discipline`, branched from clean trunk `chrome-renderer-v1` (`023b55d`).
 - **Slice 171 is committed and on trunk:** `023b55d` ("Slice 171: Classify Phase 0 leak structural signals"),
   fast-forward merged to `chrome-renderer-v1` and pushed normally (no force-push).
