@@ -7231,3 +7231,29 @@ step: `source_input_provenance_recovery`, not another bridge attempt. The next a
 inputs are `parsed_from_extraction_output`, `hand_authored_target_map`, or `not_machine_consumable`; if inputs are
 not machine-consumable from existing extraction, route to `OCR_table_structure_extraction`.
 next_step=closed_decision_from_real_recompute_proof: `source_input_provenance_recovery`.
+
+## Slice 176A: focused local table-structure recovery for two Ensemble targets (2026-06-19)
+Slice 175A closed the source-input provenance question without code changes: the existing
+sidecar/fact-sheet/recompute chain exists but produces no target records from extraction output
+(`producer_output_is_parsed_from_extraction=false`, `producer_output_has_target_records=false`). The
+Gini masked recompute remains a valid hand-located spot-check, but it is not a general structured
+producer. Slice 176A therefore attempts focused local table-structure recovery for the two
+source-input-missing Ensemble targets (`proximity_4_3`, `weighted_weight_impute`), first
+inspecting/reusing existing visual/table pilot stack work. **Reuse-before-rebuild finding:**
+`table_candidate_manifest.py` + `table_reconstruction_policy.py` detect table **regions** and emit
+counts/decision tokens, but reconstruct **no rows/cells** (the policy is decision-only; the visual
+asset extractor yields image crops, not numeric cells); the recompute `source_inputs_by_target` path
+needs structured `computation.inputs` that nothing parses from extraction for these targets. The
+slice adds a pure, two-target-only `quality_safety_focused_table_structure_attempt` harness that
+runs the attempt and, on the real current state, reports `status=blocked` /
+`blocked_by=table_structure_missing` for both targets — it rejects hand-authored target maps,
+fixture-derived values, and answer strings, and treats `ocr_prose_only` as never machine-consumable.
+**Why a harness and not just a note:** Part-2 of the supervisor protocol authorizes a focused
+producer whose deliverable is either a parsed source-input record or a *named blocker from actually
+trying*; this is the latter, not scaffolding around an unproduced result. **Decision-rule
+next_step=`OCR_table_structure_extractor`**: regions are detectable but no current code reconstructs
+numeric cell rows, so cell-value recovery needs a focused local OCR/table-structure extractor — not
+Chandra, not cloud OCR, not a generic table-reconstruction framework, not another source-input
+bridge. `chandra_used=false`; `cloud_ocr_used=false`; `hand_authored_target_inputs=false`;
+`fixture_values_used_as_source_inputs=false`; `guide_candidate_values_used_as_source_inputs=false`;
+`existing_table_stack_checked=true`; `reuse_path=existing_visual_manifest`.

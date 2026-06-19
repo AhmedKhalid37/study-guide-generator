@@ -6,10 +6,32 @@
 > stable overview see `PROJECT_CONTEXT.md`; canonical brief is `../CLAUDE.md`.
 
 ## Current position
-- **Working tree:** branch `slice174a-add-missing-recompute-methods`; Slice 174A source-input bridge proof-run,
-  **not committed**. Slice 173A is committed as `1905af7`; Slice 173B is committed as `1a38c12`; Slice 173C is
-  committed as `3aaea34`.
-- **Current phase:** `Phase 2 source-derived numeric verification`.
+- **Working tree:** branch `slice176a-focused-table-structure-extraction`; Slice 176A focused
+  table-structure attempt, **not committed**. Slice 174A is committed as `e8f8cac`; Slice 173C is
+  committed as `3aaea34`; Slice 173B is `1a38c12`; Slice 173A is `1905af7`. Slice 175A was a
+  no-change provenance gate (no files; not committed).
+- **Current phase:** `Phase 2 OCR/table-structure extraction`.
+  `reason=175A_proved_existing_outputs_not_machine_consumable`;
+  `previous_recompute_ready_count=2`; `source_input_missing_count=10`;
+  `focused_targets=[proximity_4_3, weighted_weight_impute]`;
+  `existing_table_stack_checked=true`; `reuse_path=existing_visual_manifest`;
+  `next_step=OCR_table_structure_extractor`; `chandra_used=false`; `cloud_ocr_used=false`;
+  `judge_ready=false`; `repair_ready=false`.
+- **Slice 176A result:** added pure `pipeline/quality_safety_focused_table_structure_attempt.py`
+  + focused tests. Existing visual/table stack detects table **regions** (table-candidate manifest +
+  visual manifest) but reconstructs **no rows/cells** (the reconstruction policy is decision-only;
+  `visual_asset_extractor` yields image crops). Focused attempt on the real current state →
+  status=`blocked`, both targets `not_found` / `not_created` / `table_structure_missing`,
+  machine_consumable_count=0. Optional recompute proof did NOT run (no parsed source-input record).
+  No hand-authored / fixture-derived / answer-string inputs used; no generated `.json` committed.
+- **Next route:** `OCR_table_structure_extractor` — a focused, local-only OCR/table-structure
+  extractor that reconstructs numeric cell rows for the two targets' detectable regions. Not Chandra,
+  not cloud OCR, not a generic table-reconstruction framework, not another source-input bridge.
+
+## Superseded Slice 174A position (kept for trace)
+- **Working tree (then):** branch `slice174a-add-missing-recompute-methods`; Slice 174A source-input
+  bridge proof-run, was not committed at the time (later committed as `e8f8cac`).
+- **Phase (then):** `Phase 2 source-derived numeric verification`.
   `numeric_context_plumbing_stopped=true`; `student_visible_output_invariant=true`;
   `input_basis=masked_gini_recompute_passed_and_2_method_gated_targets_remaining`;
   `real_artifact=closed_recompute_proof_for_method_gated_ensemble_targets`;

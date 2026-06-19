@@ -5,6 +5,45 @@
 
 ---
 
+## Phase 2 OCR/table-structure extraction — **Slice 176A focused table-structure attempt; NOT committed.**
+
+- **phase=Phase 2 OCR/table-structure extraction** ·
+  **reason=175A_proved_existing_outputs_not_machine_consumable** ·
+  **previous_recompute_ready_count=2** · **source_input_missing_count=10** ·
+  **focused_targets=`proximity_4_3`,`weighted_weight_impute`** ·
+  **next_artifact=quality_safety_focused_table_structure_attempt.json** ·
+  **local_private_only=true** · **chandra_used=false** · **cloud_ocr_used=false** ·
+  **hand_authored_target_inputs=false** · **fixture_values_used_as_source_inputs=false** ·
+  **guide_candidate_values_used_as_source_inputs=false** · **existing_table_stack_checked=true** ·
+  **judge_ready=false** · **repair_ready=false**.
+- **Existing-stack inspection (reuse-before-rebuild):** `table_candidate_manifest.py`
+  derives candidates from the sanitized `visual_assets_manifest` and emits **counts +
+  decision tokens only** (rows/columns/numeric_cell_count), never cell values;
+  `table_reconstruction_policy.py` is **decision-only** and explicitly does NOT reconstruct
+  rows/cells, OCR, or read values; `visual_asset_extractor.py` produces **image crops**, not
+  numeric cells; the recompute `source_inputs_by_target` path consumes a fact sheet's
+  structured `computation.inputs`, which nothing parses from extraction for these targets.
+  Conclusion: existing stack detects table **regions** but reconstructs **no rows/cells** →
+  `reuse_path=existing_visual_manifest` (regions reusable) · `blocker=table_structure_missing`.
+- **Focused attempt result (real current state, no synthetic inputs):**
+  status=`blocked` · targets_considered=2 · structured_rows_count=0 ·
+  source_input_records_created_count=0 · machine_consumable_count=0 ·
+  hand_authored_target_map_count=0 · fixture_derived_count=0 · answer_string_derived_count=0.
+  Both targets → table_structure_status=`not_found`, source_input_record_status=`not_created`,
+  source_input_origin=`none`, machine_consumable_for_recompute=false,
+  blocked_by=`table_structure_missing`.
+- **Optional recompute proof:** did NOT run (no source-input record was created with
+  `parsed_from_extraction_output`).
+- **Artifact / harness:** added pure `pipeline/quality_safety_focused_table_structure_attempt.py`
+  (closed-vocabulary, two-target only, reuses `SUPPORTED_METHODS`; rejects hand-authored /
+  fixture-derived / answer-string origins; `ocr_prose_only` never machine-consumable) + focused
+  tests. No generated `.json` artifact committed (runtime/private only).
+- **Decision-rule next_step=`OCR_table_structure_extractor`** — table regions are detectable but
+  no current code reconstructs numeric cell rows; cell-value recovery needs an OCR/table-structure
+  extractor targeting those regions. local-only, no Chandra, no cloud OCR. scope=minimal.
+
+---
+
 ## Phase 2 source-derived numeric verification — **Slice 174A source-input bridge proof run; NOT committed.**
 
 - **phase=Phase 2 source-derived numeric verification** ·
