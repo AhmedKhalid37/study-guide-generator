@@ -7167,3 +7167,38 @@ included, `fallback_instruction_present=true`. It is **not** expected to fix eve
 numeric matcher loosening, no fixture value/tolerance edit, no leak-prompt change, no
 judge/repair-readiness change (`judge_ready=false`, `repair_ready=false`). All Slice 173B tests use
 synthetic public-safe data; no `local_operator_baselines/` or private content/paths/numbers committed.
+
+## Produce-before-scaffold gate after Slice 173B (2026-06-19)
+After Slice 173A/173B, only 2 of 12 numeric targets were independently verified for generation.
+Further numeric-context plumbing cannot fix the remaining targets. The project returned to the
+produce-before-scaffold gate: run existing extraction on the source decks before building more
+scaffolding. The run must distinguish extraction-gated targets from method-gated and absent targets.
+A separate reproducibility gap was identified: Builder generation settings are not reliably persisted
+into job artifacts, making manual regenerations fragile.
+
+Decision: stop the uncommitted Slice 173C branch without committing it. The real artifact now required
+is a trusted corrected extraction/provenance record plus one load-bearing masked recompute spot-check,
+not another numeric-context or operator-scaffold slice. Gate 2.5 was added for surprising extraction
+results: `question_2_5=is_the_artifact_measuring_what_we_think`; verify artifact provenance and
+recoverability semantics before committing or routing. The verified run used the existing extraction
+producer against raw source PDFs for both decks, not generated guide text or already-processed text.
+The first framing was corrected: Ensemble is image-heavy, not clean text; OCR path is existing local
+Tesseract, not none; NN3 is partial text. Its recoverability classification is input-evidence-based,
+not answer-string-based or label-only. The corrected pair classification is
+already_recoverable_count=10, method_gated_count=2, extraction_gated_count=0,
+absent_or_not_found_count=0.
+
+The high-risk Ensemble target `gini_weight_gt_176` passed a masked recompute spot-check:
+raw_source_checked=true, extraction_input_kind=raw_source_pdf,
+OCR_method_used=existing_local_tesseract, computation_inputs_recovered_by_extraction=true,
+answer_value_string_present=true, answer_value_string_masked_before_recompute=true,
+gini_recomputed_from_recovered_inputs=true, recomputed_value_matches_fixture_within_tol=true,
+recompute_used_only_inputs_not_answer_string=true, recoverable_by_inputs_not_answer=true. The answer
+string was masked/excluded from the recompute input; the fixture expected value was withheld from the
+recompute call and used only for the final tolerance comparison. Therefore the next route is
+`add_missing_recompute_methods`, not OCR from this run and not more numeric-context plumbing. Slice
+174A's pass condition is honest movement, not a forced 12/12 green result; if it reports a
+surprisingly clean 12/12, Gate 2 must fire again before banking it. The reproducibility gap remains:
+generation_settings_persisted_to_job_artifact=false, reproducible_builder_profile_available=false,
+impact=manual_regeneration_not_reproducible,provenance_fragile,operator_equivalence_blocked; a future
+possible slice remains `persist_generation_settings_to_job_artifact`.

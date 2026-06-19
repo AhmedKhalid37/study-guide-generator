@@ -5,62 +5,69 @@
 
 ---
 
-## Slice 173B — **Verified numeric generation context**, on `slice173b-verified-numeric-generation-context`. **NOT COMMITTED.**
+## Phase 2 source extraction / reproducible measurement — **Slice 173C audit committed; ready for Slice 174A.**
 
-- **First student-visible numeric product step, no laundering.** Slice 173A proved which committed
-  numeric values are *independently* recompute/formula-verified. Slice 173B wires **only that verified
-  subset** into the generation prompt context so the writer can use recompute-proven committed values,
-  and tells the writer to use a **closed fallback** (`Not verified from provided material`) for anything
-  not verified. It does **not** regenerate guides and does **not** inject fixture-only / `source_required`
-  / `unsupported` / `verifier_error` values.
-- **phase=Phase 0 numeric product quality** · **slice173b_focus=verified_numeric_generation_context** ·
-  **input_basis=slice173a_independently_verified_values** · **fixture_only_values_injected=false** ·
-  **source_required_injected=false** · **unsupported_injected=false** · **generation_wiring=true** ·
-  **expected_effect=only_verified_subset** ·
-  **next_step=commit_rebuild_manual_regenerate_rerun_phase0** ·
-  **numeric_matcher_changes=false** · **fixture_expected_value_changes=false** · **leak_prompt_changes=false** ·
-  **repair_changes=false** · **judge_ready=false** · **repair_ready=false**.
-- **Prompt-assembly path inspected:** `pipeline/run_llm_job.py` assembles the generation prompt by
-  appending closed guidance blocks to `augmented_source` (dual-explanation → guide-quality contract),
-  each gated by a `_build_*_prompt_block_safely` helper that returns `""` by default so the prompt stays
-  byte-identical. The live user path has **no** access to a source/deck label, a golden-pair / Phase 0
-  mode, or the recompute proof — so wiring verified values straight into it would invent a golden-fixture
-  dependency. Conclusion: keep the wiring **off by default** behind an explicit operator hook.
-- **Change 1 (`pipeline/quality_safety_recompute_verifier.py`, additive):**
-  `build_generation_ready_numeric_records(golden_spec, *, candidate_classification_by_target=None)` runs the
-  Slice 173A proof and emits a generation-ready record **only** for targets that are
-  `independently_verified_for_generation` — the committed value is read **only** after that gate passes, so
-  `source_required` / `unsupported` / `verifier_error` / recomputed-but-disagrees values are never read and
-  never emitted. Closed record fields: `source_label`, `target_id`, `expected_label`,
-  `verified_value_rendered`, `verified_value_kind`, `confidence`, `instruction_token=use_verified_value`.
-  Closed summary carries `records_seen`, `records_included_for_generation`, the per-status exclusion counts,
-  and hard invariants `wrong_candidate_values_included=0` / `fixture_only_values_included=0`.
-- **Change 2 (`pipeline/verified_numeric_prompt_context.py`, new pure module):**
-  `build_verified_numeric_prompt_context(records, *, enabled=False)` turns the generation-ready records into a
-  closed `prompt_block`. **Off by default** (`enabled` defaults `False` → skipped → empty block). When enabled
-  it renders one bullet per verified value plus the fixed discipline ("use these exactly; do not re-estimate"),
-  the closed fallback rule, and "never present competing unresolved numeric values" — without banning questions
-  or ordinary teaching wording. stdlib-only, leak-free, never raises.
-- **Change 3 (`pipeline/run_llm_job.py`, smallest off-by-default hook):** new optional kwarg
-  `verified_numeric_context=None` and `_build_verified_numeric_prompt_block_safely(...)`. Normal callers (the
-  API) never pass it → block `""` → prompt byte-identical and **not** persisted to `job.json`. Only an explicit
-  operator/Phase-0 caller passes a built context; then the block is appended as `## Verified Numeric Facts`.
-- **Real closed dry run (Slice 173A proof basis; committed golden specs `nn3`/`ensemble`; no regeneration):**
-  - **Pair-level:** `verified_context_enabled=true` · `records_seen=12` · `records_included_for_generation=2`
-    · `records_excluded_source_required=8` · `records_excluded_unsupported=2` · `records_excluded_verifier_error=0`
-    · `records_excluded_not_independently_verified=10` · `wrong_candidate_values_included=0` · `fixture_only_values_included=0`.
-  - **NN3:** `records_seen=5` · `records_included_for_generation=1` · `records_excluded_not_independently_verified=4`
-    · `fallback_instruction_present=true` · warnings: none.
-  - **Ensemble:** `records_seen=7` · `records_included_for_generation=1` · `records_excluded_not_independently_verified=6`
-    · `fallback_instruction_present=true` · warnings: none.
-- **Tests:** `test_quality_safety_recompute_verifier.py` +4 (generation-ready verified-only / source_required+unsupported
-  excluded / wrong-committed-disagreement excluded / safe degrade) → 252 passed; new
-  `test_verified_numeric_prompt_context.py` 54 passed (off-by-default, verified+fallback rendering, no global
-  question/teaching ban, malformed exclusion, envelope shape, safe degrade, no-leak sweep, run_llm_job hook +
-  kwarg-default-None signature check, import hygiene). Full required suite green (eval harness 577, unified QA 73,
-  prompt contract 383, contract lint 150). `judge_ready`/`repair_ready` unchanged.
-- **Not done here:** no guide regeneration, no UI feature, no live-user enablement, no matcher/fixture/judge/repair
-  change. **Slice 173B is NOT committed.**
+- **phase=Phase 2 source extraction / reproducible measurement** ·
+  **numeric_context_plumbing_stopped=true** · **student_visible_output_invariant=true** ·
+  **real_artifact=corrected_extraction_provenance_audit_plus_masked_gini_recompute** ·
+  **generation_reproducibility_gap=true** ·
+  **next_step=add_missing_recompute_methods** · **judge_ready=false** ·
+  **repair_ready=false**.
+- **Produce-before-scaffold gate:** the required artifact is a real closed extraction run on the NN3 and
+  Ensemble source decks using existing extraction/OCR/table paths, followed by a closed classification of the
+  remaining numeric failures. The artifact did not exist before this run. Existing producer code does exist:
+  `pipeline.extract.extract_file`. Therefore the correct action was to run it, not build more numeric-context
+  plumbing or an audit scaffold.
+- **Slice 173C status:** abandoned without commit. It exposed two real findings: verified numeric context can
+  affect only 2 of 12 targets, and faithful Builder reruns need a complete persisted generation profile. No
+  dry-run/operator scaffold from 173C was kept. The old operator branch was abandoned and not committed.
+- **SUPERVISOR_PROTOCOL Gate 2 fired:** the first extraction framing was too clean for the prior evidence. The
+  corrected framing is `ensemble=image_heavy`, not `clean_text`; `OCR_path_used=existing_local_tesseract`, not
+  `none`; `nn3=partial_text`. The measurement rule is `question_2_5=is_the_artifact_measuring_what_we_think`:
+  surprisingly clean results require provenance and semantics verification before routing.
+- **Closed extraction provenance/semantics verification:** source_decks_available=true · extraction_ran=true ·
+  source_identity_matches_expected_deck=true · extraction_was_run_against_raw_source=true ·
+  raw_source_pdf_checked_for_both_decks=true ·
+  extraction_output_is_prior_processed_text=false · recoverability_semantics=inputs_not_answer_strings ·
+  existing_producer_used=`pipeline.extract.extract_file` · OCR_path_used=existing_local_tesseract ·
+  table_structure_path_used=none · targets_considered=12 · extraction_gated_count=0 ·
+  method_gated_count=2 · absent_or_not_found_count=0 · already_recoverable_count=10 ·
+  partial_recovery_count=2.
+- **High-risk Ensemble Gini masked recompute spot-check:** source_label=ensemble ·
+  target_id=`gini_weight_gt_176` · raw_source_checked=true · extraction_input_kind=raw_source_pdf ·
+  OCR_method_used=existing_local_tesseract · computation_inputs_visible_in_raw_source=true ·
+  computation_inputs_recovered_by_extraction=true · answer_value_string_present=true ·
+  answer_value_string_masked_before_recompute=true · gini_recomputed_from_recovered_inputs=true ·
+  recomputed_value_matches_fixture_within_tol=true · recompute_used_only_inputs_not_answer_string=true ·
+  recoverable_by_inputs_not_answer=true · spot_check_status=passed. Fixture expected value was withheld from
+  the recompute call and used only for the final tolerance comparison.
+- **NN3 closed extraction:** source_available=true · extraction_ran=true · extraction_quality=partial_text ·
+  targets_considered=5 · input_evidence_checked_count=5 · answer_value_only_match_count=0 ·
+  label_only_match_count=0 · computation_input_present_count=5 · computation_input_partial_count=0 ·
+  computation_input_absent_count=0 · already_recoverable_count=5 · extraction_gated_count=0 ·
+  method_gated_count=0 · absent_or_not_found_count=0 · recoverability_report_valid=true.
+- **Ensemble closed extraction:** source_available=true · extraction_ran=true · extraction_quality=image_heavy ·
+  targets_considered=7 · input_evidence_checked_count=7 · answer_value_only_match_count=0 ·
+  label_only_match_count=0 · computation_input_present_count=5 · computation_input_partial_count=2 ·
+  computation_input_absent_count=0 · already_recoverable_count=5 · extraction_gated_count=0 ·
+  method_gated_count=2 · absent_or_not_found_count=0 · recoverability_report_valid=true.
+- **Reproducibility gap:** generation_settings_persisted_to_job_artifact=false for the local closed artifact set;
+  reproducible_builder_profile_available=false; missing_generation_settings_count=3;
+  missing_generation_settings_categories=`length`, `source_labels_input_mode`, `exported_job_manifest`;
+  impact=`manual_regeneration_not_reproducible`,`provenance_fragile`,`operator_equivalence_blocked`;
+  recommended_next_slice_if_prioritized=`persist_generation_settings_to_job_artifact`.
+- **Decision:** existing extraction already recovers the needed supported-method input families, while the remaining
+  Ensemble targets are method-gated rather than extraction-gated. Per the masked recompute proof, route next to
+  `add_missing_recompute_methods`. Do not route to OCR from this run, do not create 173D, do not continue verified
+  numeric-context plumbing, do not regenerate guides, and do not run Layer-2 judge. Slice 174A pass condition is
+  honest movement, not a forced 12/12 green result; if 174A reports a surprisingly clean 12/12, Gate 2 must fire
+  again before banking it.
+- **Slice 174A prepared, not started here:** branch `slice174a-add-missing-recompute-methods`; real artifact is a
+  closed recompute proof run showing the two previously method-gated Ensemble targets are now recomputed or still
+  honestly blocked, and whether total independently verified targets increased. Implement exactly the missing
+  recompute methods and run the proof in the same slice; do not build a registry/framework/dry-run, do not touch
+  prompt-generation context, and do not use fixture expected values, extracted answer text, or guide candidate
+  values as truth.
 
 ---
 
