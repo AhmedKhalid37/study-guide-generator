@@ -6793,3 +6793,19 @@ judge as a pure, unwired **contract** first lets the prompt/score/calibration/pr
 reviewed and tested in isolation — with synthetic strings only — before any execution or runner exists,
 without weakening the deterministic blocking that actually gates shipping and without risking the frozen
 production judge.
+
+## Phase 0 fact-sheet integration is caller-supplied/in-memory only (Slice 164)
+Phase 0 fact-sheet integration is **caller-supplied in-memory only**. The eval harness now summarizes a
+supplied fact sheet through the existing fact-sheet schema and recompute verifier, returning only closed
+statuses/counts/warnings. It does **not** add a producer, file discovery, source/OCR/table/clean.md/raw
+artifact reader, production job wiring, API/frontend behavior, repair, judge execution, provider/model
+call, or manual operator `known_numbers` infrastructure.
+
+The recompute verifier remains the numeric truth path. A recompute-failed numeric fact makes Phase 0
+`numeric_correctness` fail/block even if the candidate prints the supplied value; verified/canonical
+numeric facts become additional committed targets that the candidate must still contain; unverified or
+low-confidence numeric facts are counted and warned but never used to pass numeric correctness.
+
+**Why:** this connects the existing factsheet/recompute foundation to the Phase 0 eval path without
+changing production behavior or weakening the factsheet-spec invariant: unverified numeric facts never
+become confident values, and no repair/production wiring is added.

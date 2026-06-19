@@ -17,6 +17,9 @@ import re
 from pathlib import Path
 from typing import Any
 
+from pipeline.quality_safety_fact_sheet import normalize_quality_safety_fact_sheet
+from pipeline.quality_safety_recompute_verifier import verify_quality_safety_fact_sheet
+
 VERSION = 1
 FIXTURE_KIND = "quality_safety_fixture"
 LAYER1_KIND = "quality_safety_eval_layer1"
@@ -54,6 +57,13 @@ REPORT_WARNING_ORDER = (
     "leaked_reasoning_signal",
     "numeric_contradiction_signal",
     "numeric_mismatch_signal",
+    "fact_sheet_invalid",
+    "fact_sheet_partial",
+    "fact_sheet_unverified_numeric",
+    "recompute_verifier_failed",
+    "recompute_verifier_partial",
+    "committed_numeric_missing",
+    "committed_numeric_mismatch",
     "coverage_below_target",
 )
 
@@ -214,6 +224,30 @@ PHASE0_REFERENCE_JUDGE_CALIBRATION_STATUSES = frozenset(
     {"not_run", "ok", "miscalibrated"}
 )
 PHASE0_REFERENCE_JUDGE_SUMMARY_KIND = "quality_safety_phase0_reference_judge_summary"
+
+# Phase 0 fact-sheet schema + recompute verifier integration (Slice 164).
+# This is a pure, caller-supplied in-memory integration boundary. It does not
+# produce, discover, read, or persist fact sheets, and it never reads jobs/,
+# local_operator_baselines/, source/reference PDFs, generated guides, clean.md,
+# OCR/table/caption text, screenshots, or raw artifacts. Recompute remains the
+# primary numeric truth path: verified/canonical numeric facts may add committed
+# numeric targets that the candidate must contain, failed recompute checks block
+# Layer-1 numeric correctness, and unverified/low-confidence numeric facts never
+# become confident values.
+PHASE0_FACT_SHEET_SUMMARY_KIND = "quality_safety_phase0_fact_sheet_summary"
+PHASE0_FACT_SHEET_STATUSES = frozenset({"not_supplied", "ok", "partial", "invalid"})
+PHASE0_RECOMPUTE_VERIFIER_STATUSES = frozenset(
+    {"not_run", "passed", "failed", "partial", "invalid"}
+)
+PHASE0_FACT_SHEET_WARNING_ORDER = (
+    "fact_sheet_invalid",
+    "fact_sheet_partial",
+    "fact_sheet_unverified_numeric",
+    "recompute_verifier_failed",
+    "recompute_verifier_partial",
+    "committed_numeric_missing",
+    "committed_numeric_mismatch",
+)
 
 
 class GoldenPairSpecError(ValueError):
@@ -579,10 +613,25 @@ def build_phase0_report_skeleton(
     }
 
 
+def build_phase0_fact_sheet_summary(fact_sheet: Any, golden_spec: Any) -> dict[str, Any]:
+    """Summarize a caller-supplied Phase 0 fact sheet safely.
+
+    Pure in-memory boundary: validates the golden-pair spec, normalizes the
+    caller-supplied fact sheet, runs the recompute verifier, and returns only
+    closed statuses/counts/warnings. It does not read files, discover artifacts,
+    call providers/models, or echo fact labels, source refs, raw text,
+    computation inputs, snippets, paths, filenames, hashes, byte counts, prompts,
+    responses, or provider payloads.
+    """
+    spec = load_golden_pair_spec(golden_spec)
+    return _phase0_fact_sheet_context(fact_sheet, spec)["summary"]
+
+
 def score_phase0_layer1(
     candidate_text: Any,
     golden_spec: Any,
     *,
+    fact_sheet: Any = None,
     reference_anchored_judge_status: str = "not_run",
     regression_record_status: str = "shape_only",
 ) -> dict[str, Any]:
@@ -599,8 +648,13 @@ def score_phase0_layer1(
     Phase 0 golden-pair gating tightens the synthetic Layer-1 contract: every
     authored numeric is required, so any missing or contradicted numeric is a
     blocking failure, and topic coverage below ``PHASE0_COVERAGE_THRESHOLD`` is
-    blocking. ``shippable`` reflects only the deterministic Layer-1 blocking
-    gates; advisory checks (mock-question count) never block on their own.
+    blocking. When a caller supplies an in-memory fact sheet, the recompute
+    verifier is used as an additional numeric truth signal: failed recomputes
+    block numeric correctness, verified/canonical numeric facts must appear in
+    the candidate text, and unverified numeric facts are counted/warned but never
+    treated as confident values. ``shippable`` reflects only the deterministic
+    Layer-1 blocking gates; advisory checks (mock-question count) never block on
+    their own.
 
     The returned record is closed and JSON-serializable and holds counts/closed
     statuses only -- no raw candidate text, snippets, matched values, topic
@@ -625,9 +679,19 @@ def score_phase0_layer1(
     if regression_record_status not in REGRESSION_RECORD_STATUSES:
         regression_record_status = "shape_only"
 
+    fact_context = _phase0_fact_sheet_context(fact_sheet, spec)
+    fact_summary = fact_context["summary"]
+    for token in fact_summary.get("warnings", []):
+        report_warnings.add(token)
+
     leaked = _check_leaked_reasoning(candidate_text, report_warnings)
-    numeric = _phase0_numeric_check(
-        _check_numeric_correctness(candidate_text, spec, report_warnings)
+    numeric = _phase0_apply_fact_sheet_numeric_context(
+        _phase0_numeric_check(
+            _check_numeric_correctness(candidate_text, spec, report_warnings)
+        ),
+        candidate_text=candidate_text,
+        fact_context=fact_context,
+        report_warnings=report_warnings,
     )
     worked = _check_worked_answer_completeness(candidate_text, report_warnings)
     coverage = _phase0_coverage_check(
@@ -667,8 +731,15 @@ def score_phase0_layer1(
             "numeric_matched_count": int(numeric.get("matched_count") or 0),
             "numeric_missing_count": int(numeric.get("missing_count") or 0),
             "numeric_mismatch_count": int(numeric.get("mismatch_count") or 0),
+            "fact_sheet_status": fact_summary["fact_sheet_status"],
+            "recompute_verifier_status": fact_summary["recompute_verifier_status"],
+            "verified_numeric_count": fact_summary["verified_numeric_count"],
+            "failed_numeric_count": fact_summary["failed_numeric_count"],
+            "unverified_numeric_count": fact_summary["unverified_numeric_count"],
+            "canonical_numeric_count": fact_summary["canonical_numeric_count"],
             "mock_question_count": int(mock.get("count") or 0),
         },
+        "fact_sheet_summary": fact_summary,
         "shippable": not blocking_checks,
         "overall_10": _safe_score(None),
         "overall_10_basis": "layer1_deterministic_not_scored",
@@ -713,6 +784,271 @@ def _phase0_numeric_check(numeric: dict[str, Any]) -> dict[str, Any]:
         "missing_count": missing,
         "mismatch_count": mismatch,
     }
+
+
+def _phase0_fact_sheet_context(fact_sheet: Any, spec: dict[str, Any]) -> dict[str, Any]:
+    if fact_sheet is None:
+        return {
+            "summary": _phase0_fact_sheet_summary(
+                fact_sheet_status="not_supplied",
+                recompute_verifier_status="not_run",
+                fact_sheet_numeric_count=0,
+                verified_numeric_count=0,
+                failed_numeric_count=0,
+                unverified_numeric_count=0,
+                canonical_numeric_count=0,
+                committed_numeric_count=0,
+                warnings=set(),
+            ),
+            "committed_numeric_targets": [],
+            "failed_numeric_count": 0,
+        }
+
+    warnings: set[str] = set()
+    try:
+        verification = verify_quality_safety_fact_sheet(fact_sheet)
+        verified_sheet = verification.get("fact_sheet") if isinstance(verification, dict) else None
+        recompute_report = verification.get("report") if isinstance(verification, dict) else None
+    except Exception:
+        verified_sheet = normalize_quality_safety_fact_sheet(None)
+        recompute_report = None
+        warnings.add("fact_sheet_invalid")
+
+    if not isinstance(verified_sheet, dict):
+        verified_sheet = normalize_quality_safety_fact_sheet(None)
+        warnings.add("fact_sheet_invalid")
+    if not isinstance(recompute_report, dict):
+        recompute_report = {}
+        warnings.add("recompute_verifier_partial")
+
+    fact_sheet_status = _phase0_fact_sheet_status(verified_sheet, warnings)
+    recompute_status = _phase0_recompute_status(recompute_report, fact_sheet_status)
+
+    facts = _phase0_numeric_facts(verified_sheet)
+    recompute_checks = _phase0_recompute_checks_by_fact_id(recompute_report)
+    committed_targets: list[dict[str, float | str]] = []
+    verified_count = failed_count = unverified_count = canonical_count = 0
+
+    for fact in facts:
+        value = _finite_float(fact.get("value"))
+        provenance = fact.get("provenance")
+        status = fact.get("verification_status")
+        if status == "failed":
+            failed_count += 1
+            continue
+        if provenance == "canonical_fixture" and value is not None:
+            canonical_count += 1
+            target = _phase0_fact_target(fact, recompute_checks)
+            if target is not None:
+                committed_targets.append(target)
+            continue
+        if status == "verified" and value is not None:
+            verified_count += 1
+            target = _phase0_fact_target(fact, recompute_checks)
+            if target is not None:
+                committed_targets.append(target)
+            continue
+        unverified_count += 1
+
+    report_summary = recompute_report.get("summary") if isinstance(recompute_report, dict) else {}
+    recompute_failed = _non_negative_int(report_summary.get("failed_fact_count") if isinstance(report_summary, dict) else None)
+    failed_count = max(failed_count, recompute_failed)
+    if unverified_count and fact_sheet_status == "ok":
+        fact_sheet_status = "partial"
+    if fact_sheet_status == "invalid":
+        warnings.add("fact_sheet_invalid")
+    elif fact_sheet_status == "partial":
+        warnings.add("fact_sheet_partial")
+    if recompute_status == "failed":
+        warnings.add("recompute_verifier_failed")
+    elif recompute_status == "partial":
+        warnings.add("recompute_verifier_partial")
+    if unverified_count:
+        warnings.add("fact_sheet_unverified_numeric")
+
+    return {
+        "summary": _phase0_fact_sheet_summary(
+            fact_sheet_status=fact_sheet_status,
+            recompute_verifier_status=recompute_status,
+            fact_sheet_numeric_count=len(facts),
+            verified_numeric_count=verified_count,
+            failed_numeric_count=failed_count,
+            unverified_numeric_count=unverified_count,
+            canonical_numeric_count=canonical_count,
+            committed_numeric_count=len(committed_targets),
+            warnings=warnings,
+        ),
+        "committed_numeric_targets": committed_targets,
+        "failed_numeric_count": failed_count,
+    }
+
+
+def _phase0_fact_sheet_summary(
+    *,
+    fact_sheet_status: str,
+    recompute_verifier_status: str,
+    fact_sheet_numeric_count: int,
+    verified_numeric_count: int,
+    failed_numeric_count: int,
+    unverified_numeric_count: int,
+    canonical_numeric_count: int,
+    committed_numeric_count: int,
+    warnings: set[str],
+) -> dict[str, Any]:
+    if fact_sheet_status not in PHASE0_FACT_SHEET_STATUSES:
+        fact_sheet_status = "invalid"
+    if recompute_verifier_status not in PHASE0_RECOMPUTE_VERIFIER_STATUSES:
+        recompute_verifier_status = "invalid"
+    return {
+        "kind": PHASE0_FACT_SHEET_SUMMARY_KIND,
+        "fact_sheet_status": fact_sheet_status,
+        "recompute_verifier_status": recompute_verifier_status,
+        "fact_sheet_numeric_count": max(0, int(fact_sheet_numeric_count)),
+        "verified_numeric_count": max(0, int(verified_numeric_count)),
+        "failed_numeric_count": max(0, int(failed_numeric_count)),
+        "unverified_numeric_count": max(0, int(unverified_numeric_count)),
+        "canonical_numeric_count": max(0, int(canonical_numeric_count)),
+        "committed_numeric_count": max(0, int(committed_numeric_count)),
+        "warnings": _ordered(warnings, PHASE0_FACT_SHEET_WARNING_ORDER),
+    }
+
+
+def _phase0_fact_sheet_status(verified_sheet: dict[str, Any], warnings: set[str]) -> str:
+    sheet_status = verified_sheet.get("status")
+    sheet_warnings = verified_sheet.get("warnings")
+    if not isinstance(sheet_warnings, list):
+        sheet_warnings = []
+    if sheet_status == "skipped" or "malformed_fact_sheet_degraded" in sheet_warnings:
+        return "invalid"
+    if sheet_status == "partial":
+        return "partial"
+    if sheet_status == "warning" or warnings:
+        return "partial"
+    if sheet_status == "completed":
+        return "ok"
+    return "invalid"
+
+
+def _phase0_recompute_status(recompute_report: dict[str, Any], fact_sheet_status: str) -> str:
+    if fact_sheet_status == "invalid":
+        return "invalid"
+    status = recompute_report.get("status")
+    warnings = recompute_report.get("warnings")
+    if not isinstance(warnings, list):
+        warnings = []
+    if "malformed_fact_sheet_degraded" in warnings:
+        return "invalid"
+    if status == "failed":
+        return "failed"
+    if status in {"partial", "warning"}:
+        return "partial"
+    if status in {"passed", "skipped"}:
+        return "passed"
+    return "invalid"
+
+
+def _phase0_numeric_facts(verified_sheet: dict[str, Any]) -> list[dict[str, Any]]:
+    concepts = verified_sheet.get("concepts")
+    if not isinstance(concepts, list):
+        return []
+    facts: list[dict[str, Any]] = []
+    for concept in concepts:
+        raw_facts = concept.get("facts") if isinstance(concept, dict) else None
+        if not isinstance(raw_facts, list):
+            continue
+        for fact in raw_facts:
+            if isinstance(fact, dict) and fact.get("type") == "numeric":
+                facts.append(fact)
+    return facts
+
+
+def _phase0_recompute_checks_by_fact_id(recompute_report: dict[str, Any]) -> dict[str, dict[str, Any]]:
+    checks = recompute_report.get("checks")
+    if not isinstance(checks, list):
+        return {}
+    out: dict[str, dict[str, Any]] = {}
+    for check in checks:
+        if isinstance(check, dict) and isinstance(check.get("fact_id"), str):
+            out[check["fact_id"]] = check
+    return out
+
+
+def _phase0_fact_target(
+    fact: dict[str, Any], recompute_checks: dict[str, dict[str, Any]]
+) -> dict[str, float | str] | None:
+    label = _safe_golden_label(fact.get("label"))
+    value = _finite_float(fact.get("value"))
+    if label is None or value is None:
+        return None
+    check = recompute_checks.get(str(fact.get("id")))
+    tolerance = _finite_float(check.get("tolerance")) if isinstance(check, dict) else None
+    if tolerance is None:
+        computation = fact.get("computation")
+        tolerance = _finite_float(computation.get("tolerance")) if isinstance(computation, dict) else None
+    if tolerance is None:
+        tolerance = 0.01
+    return {"label": label, "value": float(value), "tol": max(0.0, float(tolerance))}
+
+
+def _phase0_apply_fact_sheet_numeric_context(
+    numeric: dict[str, Any],
+    *,
+    candidate_text: str,
+    fact_context: dict[str, Any],
+    report_warnings: set[str],
+) -> dict[str, Any]:
+    out = dict(numeric)
+    summary = fact_context.get("summary") if isinstance(fact_context, dict) else {}
+    if not isinstance(summary, dict) or summary.get("fact_sheet_status") == "not_supplied":
+        return out
+
+    failed_numeric = _non_negative_int(summary.get("failed_numeric_count"))
+    committed_targets = fact_context.get("committed_numeric_targets")
+    if not isinstance(committed_targets, list):
+        committed_targets = []
+
+    committed = _phase0_numeric_check(
+        _check_numeric_correctness(
+            candidate_text,
+            {
+                "ground_truth_numerics": committed_targets,
+                "expected_topics": [],
+                "min_mock_questions": 0,
+            },
+            report_warnings,
+        )
+    )
+    committed_missing = _non_negative_int(committed.get("missing_count"))
+    committed_mismatch = _non_negative_int(committed.get("mismatch_count"))
+    if committed_missing:
+        report_warnings.add("committed_numeric_missing")
+    if committed_mismatch:
+        report_warnings.add("committed_numeric_mismatch")
+
+    out["expected_count"] = _non_negative_int(out.get("expected_count")) + _non_negative_int(
+        committed.get("expected_count")
+    )
+    out["matched_count"] = _non_negative_int(out.get("matched_count")) + _non_negative_int(
+        committed.get("matched_count")
+    )
+    out["missing_count"] = _non_negative_int(out.get("missing_count")) + committed_missing
+    out["mismatch_count"] = (
+        _non_negative_int(out.get("mismatch_count")) + committed_mismatch + failed_numeric
+    )
+    out["recompute_failed_count"] = failed_numeric
+    out["unverified_numeric_count"] = _non_negative_int(summary.get("unverified_numeric_count"))
+    out["verified_numeric_count"] = _non_negative_int(summary.get("verified_numeric_count"))
+    out["canonical_numeric_count"] = _non_negative_int(summary.get("canonical_numeric_count"))
+    failed = bool(out["missing_count"] or out["mismatch_count"])
+    out["status"] = "failed" if failed else "passed"
+    out["blocking"] = failed
+    return out
+
+
+def _non_negative_int(value: Any) -> int:
+    if isinstance(value, bool) or not isinstance(value, int):
+        return 0
+    return max(0, value)
 
 
 def _phase0_coverage_check(coverage: dict[str, Any]) -> dict[str, Any]:
@@ -904,6 +1240,7 @@ def build_phase0_regression_record(
         "repair_ready": False,
         "reference_anchored_judge_status": reference_status,
         "reference_anchored_judge": reference_summary,
+        "fact_sheet_summary": _safe_phase0_fact_sheet_summary(record.get("fact_sheet_summary")),
         "regression_status": regression_status,
         "previous_overall_10": previous,
         "delta_overall_10": delta_overall_10,
@@ -1138,6 +1475,39 @@ def _safe_reference_axis_scores(value: Any) -> dict[str, int]:
         ):
             out[axis] = score
     return out
+
+
+def _safe_phase0_fact_sheet_summary(value: Any) -> dict[str, Any]:
+    if not isinstance(value, dict):
+        return _phase0_fact_sheet_summary(
+            fact_sheet_status="not_supplied",
+            recompute_verifier_status="not_run",
+            fact_sheet_numeric_count=0,
+            verified_numeric_count=0,
+            failed_numeric_count=0,
+            unverified_numeric_count=0,
+            canonical_numeric_count=0,
+            committed_numeric_count=0,
+            warnings=set(),
+        )
+    fact_sheet_status = value.get("fact_sheet_status")
+    if fact_sheet_status not in PHASE0_FACT_SHEET_STATUSES:
+        fact_sheet_status = "invalid"
+    recompute_status = value.get("recompute_verifier_status")
+    if recompute_status not in PHASE0_RECOMPUTE_VERIFIER_STATUSES:
+        recompute_status = "invalid"
+    warnings = set(value.get("warnings")) if isinstance(value.get("warnings"), list) else set()
+    return _phase0_fact_sheet_summary(
+        fact_sheet_status=str(fact_sheet_status),
+        recompute_verifier_status=str(recompute_status),
+        fact_sheet_numeric_count=_non_negative_int(value.get("fact_sheet_numeric_count")),
+        verified_numeric_count=_non_negative_int(value.get("verified_numeric_count")),
+        failed_numeric_count=_non_negative_int(value.get("failed_numeric_count")),
+        unverified_numeric_count=_non_negative_int(value.get("unverified_numeric_count")),
+        canonical_numeric_count=_non_negative_int(value.get("canonical_numeric_count")),
+        committed_numeric_count=_non_negative_int(value.get("committed_numeric_count")),
+        warnings={token for token in warnings if token in PHASE0_FACT_SHEET_WARNING_ORDER},
+    )
 
 
 def _assert_phase0_regression_record_safe(record: Any) -> None:

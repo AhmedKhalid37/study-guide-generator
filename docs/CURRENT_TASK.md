@@ -5,7 +5,47 @@
 
 ---
 
-## Slice 163 — **Phase 0 dev-time reference-anchored judge contract skeleton**, on `slice163-phase0-reference-anchored-judge-contract`. **NOT COMMITTED.**
+## Slice 164 — **Phase 0 fact-sheet schema + recompute verifier integration**, on `slice164-phase0-factsheet-recompute-integration`. **NOT COMMITTED.**
+
+- **Part 0 completed:** Slice 163 was committed as `c4d9607` ("Slice 163: Add Phase 0 reference judge contract"),
+  fast-forward merged to trunk `chrome-renderer-v1` (`06496d0..c4d9607`), and pushed with a normal `git push` (no
+  force-push). Final trunk status was clean before branching Slice 164; **no docker compose config was run**; **Docker
+  was not run**; the Slice 60 trace stash remains parked and untouched; `local_operator_baselines/` stayed
+  ignored/uncommitted; no private material was committed. The Phase 0 reference-anchored judge contract is now
+  committed; judge execution was **not** implemented; no provider/model/cloud/local-LLM calls were added;
+  `layer2_judge_included=false` by default; `overall_10` remains Layer-1 deterministic-only; the production offline
+  judge remains frozen (`judge_ready=false`, `repair_ready=false`).
+- **phase=Phase 0 — Eval harness + fact-sheet skeleton** (active; phase order unchanged).
+- **slice=164**
+- **phase0_fact_sheet_schema_integration_present=true** — `build_phase0_fact_sheet_summary(fact_sheet, golden_spec)` in
+  `pipeline/quality_safety_eval_harness.py` summarizes caller-supplied in-memory fact sheets using the existing Slice 110
+  fact-sheet schema. The summary is closed counts/statuses only: `fact_sheet_status`,
+  `recompute_verifier_status`, numeric counts, and closed warnings. It never returns fact labels, raw text, source/guide/
+  OCR/table/caption text, snippets, paths, filenames, hashes, byte counts, provider payloads, prompts/responses, or raw
+  artifact JSON.
+- **phase0_recompute_verifier_integration_present=true** — `score_phase0_layer1(..., fact_sheet=None)` optionally runs
+  the existing recompute verifier over a caller-supplied fact sheet and folds the safe summary into the Phase 0 eval
+  path. With no fact sheet, the Layer-1 numeric behavior is preserved and the record reports
+  `fact_sheet_status=not_supplied` / `recompute_verifier_status=not_run`. If recompute reports a failed numeric,
+  `numeric_correctness` fails and `shippable=false` even when the candidate prints the supplied value. Verified/canonical
+  numeric facts add committed numeric targets that the candidate must still contain; unverified/low-confidence values are
+  counted/warned and never used to pass numeric correctness.
+- **fact_sheet_input_mode=caller_supplied_in_memory_only** — no producer, discovery, file reader, job wiring, API route,
+  frontend, OCR/table/source parsing, clean.md parsing, raw artifact reader, or production behavior was added.
+- **production_fact_sheet_wiring_changed=false**
+- **overall_score_kind=layer1_deterministic_only**
+- **layer2_judge_included=false**
+- **golden_pair_ids=nn3,ensemble**
+- **production_offline_judge_frozen=true**, **judge_ready=false**, **repair_ready=false**
+- **numeric_strategy=recompute_first_not_manual_known_numbers** — this is not manual operator `known_numbers`
+  infrastructure and it preserves the factsheet-spec invariant: unverified numeric facts never become confident values;
+  no repair/production wiring was added.
+- **Validation (host, so far):** `test_quality_safety_eval_harness.py` **254/0** (was 238/0). Full Slice 164 validation
+  still pending.
+- **next_step=phase0_eval_harness_runner_or_exit_check.** **Slice 164 is NOT committed.**
+
+
+## Slice 163 — **Phase 0 dev-time reference-anchored judge contract skeleton**, on `slice163-phase0-reference-anchored-judge-contract`. **COMMITTED as `c4d9607`; merged to trunk (`06496d0..c4d9607`) and pushed.**
 
 - **Part 0 completed:** Slice 162 was committed as `06496d0` ("Slice 162: Add Phase 0 overall score regression record"),
   fast-forward merged to trunk `chrome-renderer-v1` (`e76173f..06496d0`), and pushed with a normal `git push` (no
@@ -56,8 +96,8 @@
   `test_quality_safety_eval_harness.py` **238/0** (was 199/0); `test_quality_safety_recompute_verifier.py` 99/0;
   `test_quality_safety_unified_qa.py` 73/0; `test_guide_quality_baseline.py` 207/0;
   `validate_guide_quality_baseline_harness.py` ok; `git diff --check` clean. **Docker not run.**
-- **next_step=phase0_fact_sheet_schema_eval_integration_or_reference_judge_runner_design.** **Slice 163 is NOT
-  committed.**
+- **next_step=phase0_fact_sheet_schema_eval_integration_or_reference_judge_runner_design.** **Slice 163 is committed,
+  merged to trunk, and pushed.**
 
 
 ## Slice 162 — **Phase 0 overall score + regression record shape/persistence**, on `slice162-phase0-overall-score-regression-record`. **COMMITTED as `06496d0`; merged to trunk (`e76173f..06496d0`) and pushed.**

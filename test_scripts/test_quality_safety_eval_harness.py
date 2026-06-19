@@ -22,6 +22,7 @@ sys.path.insert(0, str(REPO))
 from pipeline.quality_safety_eval_harness import (  # noqa: E402
     GoldenPairSpecError,
     append_phase0_regression_record_jsonl,
+    build_phase0_fact_sheet_summary,
     build_phase0_regression_record,
     build_phase0_report_skeleton,
     build_quality_safety_regression_record,
@@ -705,6 +706,84 @@ REQUIRED_PHASE0_FIELDS = (
 )
 
 
+def synthetic_fact_sheet(*facts: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "version": 1,
+        "kind": "quality_safety_fact_sheet",
+        "lecture_id": "nn3",
+        "source_quality": "clean",
+        "concepts": [
+            {
+                "concept": "Synthetic Numeric Concept",
+                "facts": list(facts),
+                "teaching_notes": [],
+                "worked_examples": [],
+            }
+        ],
+    }
+
+
+def total_error_fact(
+    *,
+    fact_id: str = "synthetic_numeric_fact",
+    label: str = "synthetic_verified_value",
+    value: float = 0.20,
+    supplied_status: str = "verified",
+    provenance: str = "computed",
+    confidence: str = "high",
+    computed_value: float = 0.20,
+) -> dict[str, Any]:
+    return {
+        "id": fact_id,
+        "concept": "Synthetic Numeric Concept",
+        "label": label,
+        "value": value,
+        "type": "numeric",
+        "provenance": provenance,
+        "verification_status": supplied_status,
+        "confidence": confidence,
+        "source_ref": "source_page_1",
+        "computation": {
+            "method": "total_error",
+            "inputs": {"misclassified_weight": computed_value},
+            "tolerance": 0.01,
+        },
+    }
+
+
+def canonical_fact(
+    *,
+    fact_id: str = "synthetic_canonical_fact",
+    label: str = "synthetic_canonical_value",
+    value: float = 0.30,
+) -> dict[str, Any]:
+    return {
+        "id": fact_id,
+        "concept": "Synthetic Numeric Concept",
+        "label": label,
+        "value": value,
+        "type": "numeric",
+        "provenance": "canonical_fixture",
+        "verification_status": "verified",
+        "confidence": "high",
+        "source_ref": "source_page_2",
+    }
+
+
+def unverified_fact() -> dict[str, Any]:
+    return {
+        "id": "synthetic_unverified_fact",
+        "concept": "Synthetic Numeric Concept",
+        "label": "synthetic_unverified_value",
+        "value": 0.77,
+        "type": "numeric",
+        "provenance": "unverified",
+        "verification_status": "unverified",
+        "confidence": "low",
+        "source_ref": "source_page_3",
+    }
+
+
 def test_phase0_scorer_clean_candidate_passes() -> None:
     for lecture_id in ("nn3", "ensemble"):
         spec = load_golden_pair_spec(read_golden_pair(lecture_id))
@@ -753,6 +832,205 @@ def test_phase0_scorer_clean_candidate_passes() -> None:
             record["overall_10"] is None and isinstance(record["shippable"], bool),
         )
         no_canary(f"{lecture_id} phase0 clean record", record)
+
+
+def test_phase0_fact_sheet_not_supplied_preserves_layer1_behavior() -> None:
+    spec = load_golden_pair_spec(read_golden_pair("nn3"))
+    legacy = score_phase0_layer1(golden_candidate(spec), spec)
+    explicit_none = score_phase0_layer1(golden_candidate(spec), spec, fact_sheet=None)
+    summary = explicit_none["fact_sheet_summary"]
+    check(
+        "phase0 no fact sheet reports not supplied",
+        summary["fact_sheet_status"] == "not_supplied"
+        and summary["recompute_verifier_status"] == "not_run"
+        and summary["verified_numeric_count"] == 0
+        and summary["failed_numeric_count"] == 0
+        and summary["unverified_numeric_count"] == 0,
+        str(summary),
+    )
+    check(
+        "phase0 no fact sheet keeps numeric behavior",
+        phase0_check(legacy, "numeric_correctness") == phase0_check(explicit_none, "numeric_correctness")
+        and legacy["shippable"] == explicit_none["shippable"],
+        str(explicit_none),
+    )
+
+
+def test_phase0_fact_sheet_verified_and_canonical_summary_passes() -> None:
+    spec = load_golden_pair_spec(read_golden_pair("nn3"))
+    sheet = synthetic_fact_sheet(total_error_fact(), canonical_fact())
+    summary = build_phase0_fact_sheet_summary(sheet, spec)
+    record = score_phase0_layer1(
+        "\n".join(
+            [
+                golden_candidate(spec),
+                "synthetic_verified_value = 0.20",
+                "synthetic_canonical_value = 0.30",
+            ]
+        ),
+        spec,
+        fact_sheet=sheet,
+    )
+    numeric = phase0_check(record, "numeric_correctness")
+    check(
+        "phase0 valid fact sheet summary passed",
+        summary["fact_sheet_status"] == "ok"
+        and summary["recompute_verifier_status"] == "passed"
+        and summary["verified_numeric_count"] == 1
+        and summary["canonical_numeric_count"] == 1
+        and summary["committed_numeric_count"] == 2,
+        str(summary),
+    )
+    check(
+        "phase0 verified/canonical numerics still require candidate text and pass",
+        numeric["status"] == "passed"
+        and numeric["expected_count"] >= len(spec["ground_truth_numerics"]) + 2
+        and record["shippable"] is True,
+        str(numeric),
+    )
+    no_canary("phase0 verified fact sheet record", record)
+
+
+def test_phase0_recompute_failed_numeric_blocks_even_if_printed() -> None:
+    spec = load_golden_pair_spec(read_golden_pair("nn3"))
+    sheet = synthetic_fact_sheet(
+        total_error_fact(
+            fact_id="synthetic_failed_fact",
+            label="synthetic_failed_value",
+            value=0.50,
+            computed_value=0.20,
+        )
+    )
+    record = score_phase0_layer1(
+        "\n".join([golden_candidate(spec), "synthetic_failed_value = 0.50"]),
+        spec,
+        fact_sheet=sheet,
+    )
+    numeric = phase0_check(record, "numeric_correctness")
+    summary = record["fact_sheet_summary"]
+    check(
+        "phase0 recompute failed numeric fails summary",
+        summary["fact_sheet_status"] == "ok"
+        and summary["recompute_verifier_status"] == "failed"
+        and summary["failed_numeric_count"] == 1,
+        str(summary),
+    )
+    check(
+        "phase0 recompute failed numeric blocks despite printed value",
+        numeric["status"] == "failed"
+        and numeric["recompute_failed_count"] == 1
+        and "numeric_correctness" in record["blocking_checks"]
+        and record["shippable"] is False,
+        str(numeric),
+    )
+
+
+def test_phase0_unverified_fact_never_creates_confidence() -> None:
+    spec = load_golden_pair_spec(read_golden_pair("nn3"))
+    sheet = synthetic_fact_sheet(unverified_fact())
+    record = score_phase0_layer1(
+        "\n".join([golden_candidate(spec), "synthetic_unverified_value = 0.77"]),
+        spec,
+        fact_sheet=sheet,
+    )
+    summary = record["fact_sheet_summary"]
+    numeric = phase0_check(record, "numeric_correctness")
+    check(
+        "phase0 unverified numeric is warning only and not committed",
+        summary["fact_sheet_status"] == "partial"
+        and summary["recompute_verifier_status"] == "partial"
+        and summary["unverified_numeric_count"] == 1
+        and summary["committed_numeric_count"] == 0
+        and "fact_sheet_unverified_numeric" in summary["warnings"],
+        str(summary),
+    )
+    check(
+        "phase0 unverified numeric does not pass numeric correctness by itself",
+        numeric["status"] == "passed"
+        and numeric["verified_numeric_count"] == 0
+        and numeric["unverified_numeric_count"] == 1
+        and numeric["expected_count"] == len(spec["ground_truth_numerics"]),
+        str(numeric),
+    )
+
+
+def test_phase0_verified_fact_still_requires_candidate_value() -> None:
+    spec = load_golden_pair_spec(read_golden_pair("nn3"))
+    sheet = synthetic_fact_sheet(total_error_fact())
+    record = score_phase0_layer1(golden_candidate(spec), spec, fact_sheet=sheet)
+    numeric = phase0_check(record, "numeric_correctness")
+    check(
+        "phase0 verified fact missing from candidate blocks",
+        numeric["status"] == "failed"
+        and numeric["missing_count"] >= 1
+        and "numeric_correctness" in record["blocking_checks"]
+        and "committed_numeric_missing" in record["warnings"],
+        str(numeric),
+    )
+
+
+def test_phase0_fact_sheet_summary_is_counts_only() -> None:
+    spec = load_golden_pair_spec(read_golden_pair("nn3"))
+    hostile_sheet = synthetic_fact_sheet(
+        {
+            **total_error_fact(label=HOSTILE_PATH, value=0.20, computed_value=0.20),
+            "raw_text": HOSTILE_OCR,
+            "payload": HOSTILE_PROVIDER,
+        }
+    )
+    summary = build_phase0_fact_sheet_summary(hostile_sheet, spec)
+    blob = json.dumps(summary, sort_keys=True)
+    present_keys = collect_record_keys(summary)
+    leaked_keys = [key for key in FORBIDDEN_RECORD_KEYS if key in present_keys]
+    check(
+        "phase0 fact sheet summary contains counts/statuses only",
+        set(summary) == {
+            "kind",
+            "fact_sheet_status",
+            "recompute_verifier_status",
+            "fact_sheet_numeric_count",
+            "verified_numeric_count",
+            "failed_numeric_count",
+            "unverified_numeric_count",
+            "canonical_numeric_count",
+            "committed_numeric_count",
+            "warnings",
+        }
+        and leaked_keys == [],
+        str(summary),
+    )
+    check(
+        "phase0 fact sheet summary omits raw labels and hostile material",
+        "synthetic_verified_value" not in blob
+        and "Synthetic Numeric Concept" not in blob
+        and HOSTILE_PATH not in blob
+        and HOSTILE_OCR not in blob
+        and HOSTILE_PROVIDER not in blob,
+        blob,
+    )
+    no_canary("phase0 fact sheet summary", summary)
+
+
+def test_phase0_regression_record_includes_safe_fact_sheet_summary() -> None:
+    spec = load_golden_pair_spec(read_golden_pair("nn3"))
+    sheet = synthetic_fact_sheet(total_error_fact())
+    layer1 = score_phase0_layer1(
+        "\n".join([golden_candidate(spec), "synthetic_verified_value = 0.20"]),
+        spec,
+        fact_sheet=sheet,
+    )
+    regression = build_phase0_regression_record(layer1, run_id="r", model_tier="premium")
+    check(
+        "phase0 regression record safely includes fact sheet summary",
+        regression["fact_sheet_summary"]["fact_sheet_status"] == "ok"
+        and regression["fact_sheet_summary"]["recompute_verifier_status"] == "passed"
+        and regression["fact_sheet_summary"]["verified_numeric_count"] == 1,
+        str(regression["fact_sheet_summary"]),
+    )
+    present_keys = collect_record_keys(regression)
+    leaked_keys = [key for key in FORBIDDEN_RECORD_KEYS if key in present_keys]
+    check("phase0 fact sheet regression record has no forbidden keys", leaked_keys == [], str(leaked_keys))
+    no_canary("phase0 fact sheet regression record", regression)
 
 
 def test_phase0_scorer_leaked_reasoning_blocks() -> None:
@@ -1920,6 +2198,13 @@ def run() -> int:
     test_golden_pair_rejects_synthetic_fixtures()
     test_phase0_report_skeleton_judge_frozen()
     test_phase0_scorer_clean_candidate_passes()
+    test_phase0_fact_sheet_not_supplied_preserves_layer1_behavior()
+    test_phase0_fact_sheet_verified_and_canonical_summary_passes()
+    test_phase0_recompute_failed_numeric_blocks_even_if_printed()
+    test_phase0_unverified_fact_never_creates_confidence()
+    test_phase0_verified_fact_still_requires_candidate_value()
+    test_phase0_fact_sheet_summary_is_counts_only()
+    test_phase0_regression_record_includes_safe_fact_sheet_summary()
     test_phase0_scorer_leaked_reasoning_blocks()
     test_phase0_scorer_missing_numeric_blocks()
     test_phase0_scorer_ensemble_gini_weight_numeric()
