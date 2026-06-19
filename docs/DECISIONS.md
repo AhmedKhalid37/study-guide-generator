@@ -7034,3 +7034,38 @@ change, no numeric matcher change, no tolerance change, no aggregator patched, n
 hidden; offline judge stays frozen (`judge_ready`/`repair_ready` = `false`), no repair; tests use
 synthetic public text and no `local_operator_baselines/` or private content/paths/numbers were
 committed.
+
+## Product prompt refinement against trusted genuine leak signals (Slice 172)
+After Slice 171 separated legitimate study-question scaffolding from genuine leak signals, the
+solved-mock regenerated guides still failed `leaked_reasoning` on trusted genuine signals (NN3
+`signal_count=2` = signature 1 + genuine structural 1; Ensemble `signal_count=6` = signature 4 +
+genuine structural 2). Slice 172 therefore refines the generation prompt contract to prevent
+visible self-correction, source uncertainty, unresolved numeric uncertainty, and competing
+uncommitted values while preserving legitimate student-facing practice/mock/self-test questions.
+This is product prompt refinement based on trusted measurements, not detector weakening.
+**Mechanics (`pipeline/guide_quality_prompt_contract.py`, core rules only — applies to every guide
+at every depth):** (1) a new rule explicitly *separates* student-facing questions from model-facing
+questions — solved mock exam, practice questions, self-test checklist, active-recall prompts,
+exam-alert callouts, and concept-framed section headings stay **allowed and encouraged**, while the
+**model posing its own unresolved question in explanatory prose** is prohibited (an explanatory
+sentence must state the settled answer, not convert unresolved deliberation into a rhetorical
+question). The rule closes with "Question marks and concept-framed headings are never banned on
+their own; only unresolved model-facing uncertainty is." → **no global question-mark ban, no
+rhetorical-heading ban.** (2) The numeric final-answer rule now requires **one committed final
+value** (back-compat phrase "final committed value" retained), permits two-or-more candidate values
+**only when the contrast is explicitly pedagogical and unambiguous**, and states "never leave
+competing values unresolved as the final answer"; closed fallbacks "Not specified in the provided
+material." / "Not verified from provided material." retained. Slice 168 improvements preserved (no
+flat denylist; ordinary teaching phrases allowed; no `known_numbers`; no hardcoded private values;
+concrete `"Wait"`/`"Actually"`-self-correction/`"unclear"`/`"we'll trust"`/`"the table is
+confusing"`/`"= ?"`/`"≈ ?"` forms still prohibited). **No detector/eval change** (`quality_safety_eval_harness.py`
+and the wired `quality_safety_leak_scanner` untouched), **no numeric matcher / numeric fixture
+change, no tolerance change, no aggregator patched, no warning/failure hidden, no generation runtime
+wiring / frontend / API change**; offline judge stays frozen (`judge_ready`/`repair_ready` =
+`false`), no repair. New synthetic test `test_student_vs_model_facing_question_discipline`
+(`test_guide_quality_prompt_contract`, 383 pass) asserts the separation, the allowed student-facing
+kinds, the model-facing prohibition, the retained concrete prohibitions, one-committed-value /
+closed-unverifiable-fallback, no flat ordinary-word denylist, no global question-mark ban, and no
+hardcoded private numeric literal. Tests use synthetic public text; no `local_operator_baselines/`
+or private content/paths/numbers committed. No guide regenerated in this slice; next step is manual
+regenerate + rerun Phase 0 against the now-trustworthy genuine leak signal.

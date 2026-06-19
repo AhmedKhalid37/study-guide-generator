@@ -6,8 +6,24 @@
 > stable overview see `PROJECT_CONTEXT.md`; canonical brief is `../CLAUDE.md`.
 
 ## Current position
-- **Working tree:** **Slice 171 (Phase 0 leak structural-signal classification) — UNCOMMITTED**
-  on branch `slice171-phase0-leak-structural-classification`, branched from clean trunk `chrome-renderer-v1` (`1dc247f`).
+- **Working tree:** **Slice 172 (Product genuine-leak prompt discipline) — UNCOMMITTED**
+  on branch `slice172-product-genuine-leak-discipline`, branched from clean trunk `chrome-renderer-v1` (`023b55d`).
+- **Slice 171 is committed and on trunk:** `023b55d` ("Slice 171: Classify Phase 0 leak structural signals"),
+  fast-forward merged to `chrome-renderer-v1` and pushed normally (no force-push).
+- **Slice 172 is a product prompt slice, not a detector slice.** Slice 171 made the Phase 0 leak count trustworthy by
+  separating legitimate study-question scaffolding from genuine deliberation; the solved-mock guides still failed
+  `leaked_reasoning` on a small set of **trusted genuine** signals (NN3 `signal_count=2` = signature 1 + genuine 1;
+  Ensemble `signal_count=6` = signature 4 + genuine 2). Slice 172 (in `pipeline/guide_quality_prompt_contract.py`,
+  core rules only) adds a clause that **separates student-facing questions from model-facing questions** — solved
+  mock / practice / self-test / active-recall / exam-alert / concept-framed headings stay **allowed**, while the model
+  posing its **own unresolved question in explanatory prose** is prohibited (no global question-mark ban, no
+  rhetorical-heading ban) — and strengthens the numeric final-answer rule to require **one committed final value**,
+  permitting competing values only when the contrast is **explicitly pedagogical and unambiguous**. Slice 168
+  improvements preserved (no flat denylist; ordinary teaching phrases allowed; closed unverifiable fallback; no
+  `known_numbers`; no hardcoded private values). **No detector/eval/numeric-matcher change, no generation runtime
+  wiring change, no repair, judge frozen (`judge_ready=false`, `repair_ready=false`).** New synthetic test
+  `test_student_vs_model_facing_question_discipline` (`test_guide_quality_prompt_contract`, **383 pass**). **Slice 172
+  still NOT committed; no guide regenerated — next step is manual regenerate + rerun Phase 0.**
 - **Slices 168/169/170 are committed and on trunk:** `1d66f07` (168), `bf90b47` (169),
   `1dc247f` (170 — "Add Phase 0 numeric label attribution"), all fast-forward merged and pushed (no force-push).
 - **Slice 171 fixes leak *measurement trust* (not prompts).** A closed audit of the solved-mock regenerated guides

@@ -5,7 +5,55 @@
 
 ---
 
-## Slice 171 — **Phase 0 leak structural-signal classification**, on `slice171-phase0-leak-structural-classification`. **NOT COMMITTED.**
+## Slice 172 — **Product genuine-leak prompt discipline**, on `slice172-product-genuine-leak-discipline`. **NOT COMMITTED.**
+
+- **Product prompt slice, not a detector slice.** Slice 171 made the Phase 0 leak count trustworthy by separating
+  legitimate study-question scaffolding from genuine deliberation. The solved-mock regenerated guides still failed
+  `leaked_reasoning` on a small set of **trusted genuine** signals (NN3 `signal_count=2`: signature 1 + genuine
+  structural 1; Ensemble `signal_count=6`: signature 4 + genuine structural 2). So prompt refinement is now justified
+  by trusted product defects, not by the previously-inflated solved-mock false positives.
+- **phase=Phase 0 product quality** · **slice172_focus=genuine_leak_prompt_refinement** ·
+  **input_basis=slice171_trusted_leak_classification** · **false_positive_scaffolding_separated=true** ·
+  **prompt_changes_target_genuine_signals_only=true** · **numeric_matcher_changes=false** · **detector_changes=false** ·
+  **next_step=commit_then_manual_regenerate_and_rerun_phase0**
+- **Change (`pipeline/guide_quality_prompt_contract.py`, core rules only — applies to every guide at every depth):**
+  - **New rule — student-facing vs model-facing questions.** Explicitly *separates* the two: the guide **may** pose
+    questions when they are student-facing learning structure (solved mock exam, practice questions, self-test
+    checklist, active-recall prompts, exam-alert callouts, section headings framed as concept questions — all allowed
+    and encouraged). What is prohibited is the **model posing its own unresolved question in explanatory prose**: an
+    explanatory sentence/paragraph must state the settled answer and must not convert unresolved deliberation into a
+    rhetorical question. Closes with "Question marks and concept-framed headings are never banned on their own; only
+    unresolved model-facing uncertainty is." → **no global question-mark ban, no rhetorical-heading ban.**
+  - **Strengthened numeric final-answer rule** (existing "Preserve every numeric example and target"): now requires
+    **one committed final value** (kept the back-compat phrase "final committed value"), allows two-or-more candidate
+    values **only when the contrast is explicitly pedagogical and unambiguous** (e.g. a deliberately-shown wrong answer
+    beside the correct one), and states "never leave competing values unresolved as the final answer". Closed fallbacks
+    "Not specified in the provided material." / "Not verified from provided material." retained.
+  - **Preserved Slice 168 improvements:** the broad flat denylist stays removed; ordinary teaching phrases stay allowed
+    ("You need to normalize the weights.", "This will likely appear on the exam.", "This probably matters because…");
+    no `known_numbers` infrastructure; no hardcoded private values; concrete prohibited forms (`"Wait"`, `"Actually"`
+    self-correction, `"unclear"`, `"we'll trust"`, `"the table is confusing"`, `"= ?"`, `"≈ ?"`) still prohibited.
+- **No change to:** `pipeline/quality_safety_eval_harness.py`, the numeric matcher / numeric fixtures, the wired
+  `quality_safety_leak_scanner`, generation runtime wiring, frontend/API, or production judge/repair readiness
+  (`judge_ready=false`, `repair_ready=false` stay frozen). No detector/eval change; no repair added.
+- **Tests (`test_scripts/test_guide_quality_prompt_contract.py`):** new
+  `test_student_vs_model_facing_question_discipline` (synthetic public-safe only) asserts the contract separates
+  student-facing from model-facing questions; permits solved-mock/practice/self-test/active-recall/exam-alert/concept
+  headings; prohibits the model posing its own unresolved question in prose; keeps the concrete self-correction /
+  source-confusion / numeric-uncertainty forms prohibited; requires one committed final value or the closed
+  unverifiable fallback; does **not** flat-ban ordinary words (`maybe`, `probably`, `likely`, `we need to`,
+  `this might be`, `the material doesn't say`, `I will`, `I should`); contains **no** global question-mark ban; and
+  carries no hardcoded private numeric literal (4+ digit scan). Suite: **383 pass** (was 253).
+- **Validation (no Docker):** `python -m compileall api pipeline test_scripts`; `test_guide_quality_prompt_contract`
+  (383), `test_guide_quality_contract_lint` (150), `test_quality_safety_eval_harness` (577),
+  `test_quality_safety_recompute_verifier` (99), `test_quality_safety_unified_qa` (73); `git diff --check` clean.
+- **Changed files:** `pipeline/guide_quality_prompt_contract.py`, `test_scripts/test_guide_quality_prompt_contract.py`,
+  `docs/CURRENT_TASK.md`, `docs/NEXT_CHAT_HANDOFF.md`, `docs/DECISIONS.md`. **NOT COMMITTED.** No guide regenerated in
+  this slice; next step is manual regenerate + rerun Phase 0 against the now-trustworthy genuine leak signal.
+
+---
+
+## Slice 171 — **Phase 0 leak structural-signal classification**, on `slice171-phase0-leak-structural-classification`. **Committed `023b55d`; on trunk `chrome-renderer-v1`.**
 
 - **Measurement-trust slice, not prompt tuning.** Slices 168–170 trusted the leak signal as blocking, but a closed
   audit of the solved-mock regenerated guides showed the blocking structural `32` in **both** NN3 and Ensemble was

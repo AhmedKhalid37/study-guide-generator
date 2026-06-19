@@ -309,6 +309,124 @@ def test_phase0_blocker_directives() -> None:
             check(f"{depth}: blocker clauses never expose reasoning ({forbidden})", forbidden not in lowered)
 
 
+def test_student_vs_model_facing_question_discipline() -> None:
+    # Slice 172: product prompt refinement against *genuine* leak signals. After
+    # Slice 171 separated legitimate study-question scaffolding from genuine leak in
+    # the Phase 0 detector, the solved-mock regenerated guides still failed
+    # leaked_reasoning on a small number of TRUSTED genuine signals (self-correction
+    # / source uncertainty / unresolved numeric uncertainty). This slice narrowly
+    # strengthens the always-applied core contract so the generated guide does not
+    # expose model-facing deliberation, while explicitly PRESERVING legitimate
+    # student-facing questions (solved mock / practice / self-test / active recall /
+    # exam alerts / concept-framed headings). All synthetic/generic — no private
+    # NN3/Ensemble source content, numbers, or filenames appear here.
+    #
+    # The contract must (1) explicitly separate student-facing questions from
+    # model-facing deliberation questions, (2) permit the student-facing kinds,
+    # (3) prohibit the model posing its own unresolved question in explanatory prose,
+    # (4) keep the concrete self-correction / source-confusion / numeric-uncertainty
+    # forms prohibited, (5) require one committed final numeric value or the closed
+    # unverifiable fallback, and crucially (6) NOT introduce a global question-mark
+    # ban or a flat ordinary-word denylist.
+    SEPARATION_TERMS = [
+        "Distinguish student-facing questions from model-facing questions",
+        "student-facing learning structure",
+    ]
+    # Student-facing question kinds that must remain ALLOWED (not banned).
+    ALLOWED_QUESTION_KINDS = [
+        "solved mock exam",
+        "practice questions",
+        "self-test checklist",
+        "active-recall",
+        "exam-alert callouts",
+        "section headings framed as concept questions",
+    ]
+    # The model-facing prohibition: it must target the model posing its OWN
+    # unresolved question in prose, not student questions.
+    MODEL_FACING_PROHIBITION = [
+        "the model posing its own",
+        "unresolved question in explanatory prose",
+        "must state the settled answer",
+        "unresolved deliberation into a rhetorical question",
+    ]
+    # The slice must explicitly say question marks / concept headings are not banned.
+    NO_GLOBAL_QUESTION_BAN_TERMS = [
+        "Question marks and concept-framed headings are never banned",
+        "only unresolved model-facing uncertainty is",
+    ]
+    # Concrete deliberation / source-confusion / numeric-uncertainty forms that must
+    # stay prohibited (carried from Slice 168; synthetic generic examples only).
+    PROHIBITED_EXAMPLES = [
+        '"Wait"',
+        '"Actually" used as a self-correction',
+        '"unclear"',
+        '"we\'ll trust"',
+        '"the table is confusing"',
+        '"= ?"',
+        '"≈ ?"',
+    ]
+    # Numeric final-answer discipline: one committed value, pedagogical-only contrast,
+    # and the two closed fallbacks.
+    NUMERIC_COMMIT_TERMS = [
+        "one committed final value",
+        "explicitly pedagogical",
+        "never leave competing values unresolved",
+        "final committed value",
+    ]
+    CLOSED_FALLBACKS = [
+        "Not specified in the provided material.",
+        "Not verified from provided material.",
+    ]
+    # Ordinary words that must NOT be flat-banned as standalone quoted denylist forms.
+    NOT_FLAT_BANNED = [
+        '"maybe"', '"probably"', '"likely"', '"we need to"', '"this might be"',
+        '"the material doesn\'t say"', '"I will"', '"I should"',
+    ]
+    # Phrases a flat global question ban would use — must NOT appear.
+    NO_FLAT_QUESTION_BAN = [
+        "do not use question marks",
+        "never use a question mark",
+        "remove all question marks",
+        "no question marks",
+        "avoid question marks",
+    ]
+    # Core rules → present at every depth, including a minimal quick request.
+    for depth in ("quick", "balanced", "exhaustive"):
+        block = build_guide_quality_prompt_contract(output_depth=depth)["prompt_block"]
+        for term in SEPARATION_TERMS:
+            check(f"{depth}: separates student/model questions {term!r}", term in block)
+        for kind in ALLOWED_QUESTION_KINDS:
+            check(f"{depth}: permits student-facing question kind {kind!r}", kind in block)
+        for term in MODEL_FACING_PROHIBITION:
+            check(f"{depth}: prohibits model-facing question {term!r}", term in block)
+        for term in NO_GLOBAL_QUESTION_BAN_TERMS:
+            check(f"{depth}: keeps question marks allowed {term!r}", term in block)
+        for term in PROHIBITED_EXAMPLES:
+            check(f"{depth}: still prohibits deliberation form {term}", term in block)
+        for term in NUMERIC_COMMIT_TERMS:
+            check(f"{depth}: numeric commitment rule has {term!r}", term in block)
+        for term in CLOSED_FALLBACKS:
+            check(f"{depth}: offers closed fallback {term!r}", term in block)
+        for term in NOT_FLAT_BANNED:
+            check(f"{depth}: does not flat-ban ordinary word {term}", term not in block)
+        for term in NO_FLAT_QUESTION_BAN:
+            check(f"{depth}: no global question-mark ban ({term!r})", term not in block.lower())
+        # The new clause must not ask the model to expose hidden reasoning.
+        lowered = block.lower()
+        for forbidden in ("reveal your reasoning", "explain your thinking", "show your working out loud"):
+            check(f"{depth}: question clause never exposes reasoning ({forbidden})", forbidden not in lowered)
+    # No private numeric example may be hardcoded: the contract must carry no bare
+    # multi-digit literal (the only digits allowed are the synthetic structural
+    # minimums / version, which are single/low). Scan the emitted block for any 4+
+    # digit run, which would signal a copied private value.
+    block = build_guide_quality_prompt_contract(output_depth="exhaustive")["prompt_block"]
+    check(
+        "no hardcoded private numeric literal in contract",
+        re.search(r"\d{4,}", block) is None,
+        "found a 4+ digit run in the prompt block",
+    )
+
+
 def test_mock_question_minimum_for_exam_guides() -> None:
     # Comprehensive / exam guides carry a general high-detail product expectation: a
     # Mock Exam of meaningful practice questions, each with a worked solution and an
@@ -427,6 +545,7 @@ def main() -> None:
     test_final_output_hygiene_clause()
     test_line_initial_discourse_marker_clause()
     test_phase0_blocker_directives()
+    test_student_vs_model_facing_question_discipline()
     test_mock_question_minimum_for_exam_guides()
     test_comprehensive_structure_for_exhaustive()
     test_preset_and_style_infer_comprehensive()
