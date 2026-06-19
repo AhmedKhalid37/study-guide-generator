@@ -35,7 +35,14 @@ from pipeline.quality_safety_eval_harness import (  # noqa: E402
     PHASE0_REGRESSION_RECORD_KIND,
     PHASE0_RUN_KIND,
     GoldenPairSpecError,
+    NUMERIC_CLASS_FORMAT_MISSED,
+    NUMERIC_CLASS_MATCHED,
+    NUMERIC_CLASS_MISSING,
+    NUMERIC_CLASS_WRONG_VALUE,
     append_phase0_regression_record_jsonl,
+    classify_numeric_target,
+    classify_numeric_targets,
+    summarize_numeric_classification,
     build_phase0_exit_check,
     build_phase0_exit_check_from_operator_results,
     build_phase0_fact_sheet_summary,
@@ -3289,6 +3296,205 @@ def test_import_hygiene() -> None:
     check("import hygiene no network calls", bad_calls == [], str(bad_calls))
 
 
+def test_numeric_classification_diagnostic() -> None:
+    # Slice 169: closed per-target numeric classification proving a 0/n score is a
+    # real product gap vs. a matcher artifact. Synthetic public text only -- no
+    # private guide/source content, paths, hashes, or byte counts.
+    def classify_one(text: str, item: dict[str, Any]) -> dict[str, Any]:
+        return classify_numeric_targets(
+            text, {"lecture_id": "synthetic", "ground_truth_numerics": [item]}
+        )[0]
+
+    target = {"label": "synthetic accuracy", "value": 0.97, "tol": 0.01}
+
+    exact = classify_one("synthetic accuracy = 0.97", target)
+    check(
+        "classify exact -> found_and_matched",
+        exact["classification"] == NUMERIC_CLASS_MATCHED and exact["within_tolerance"],
+        str(exact),
+    )
+
+    rounded = classify_one(
+        "synthetic accuracy = 0.97", {"label": "synthetic accuracy", "value": 0.9667, "tol": 0.005}
+    )
+    check(
+        "classify rounded-within-tolerance -> matched",
+        rounded["classification"] == NUMERIC_CLASS_MATCHED,
+        str(rounded),
+    )
+
+    approx = classify_one("synthetic accuracy ≈ 0.97", target)
+    check(
+        "classify approx-symbol -> matched",
+        approx["classification"] == NUMERIC_CLASS_MATCHED,
+        str(approx),
+    )
+
+    percent = classify_one("synthetic accuracy 97%", target)
+    check(
+        "classify percent equivalence -> format/context missed",
+        percent["classification"] == NUMERIC_CLASS_FORMAT_MISSED
+        and percent["reason_code"] == "format_equivalent_same_line",
+        str(percent),
+    )
+
+    linebreak = classify_one("synthetic accuracy:\n0.97", target)
+    check(
+        "classify pdf line-break -> format/context missed",
+        linebreak["classification"] == NUMERIC_CLASS_FORMAT_MISSED
+        and linebreak["reason_code"] == "proximity_line_break",
+        str(linebreak),
+    )
+
+    wrong = classify_one("synthetic accuracy = 0.50", target)
+    check(
+        "classify wrong value -> found_but_wrong_value (sacred)",
+        wrong["classification"] == NUMERIC_CLASS_WRONG_VALUE and not wrong["within_tolerance"],
+        str(wrong),
+    )
+
+    absent = classify_one("no number stated for the metric", target)
+    check(
+        "classify absent -> genuinely_missing (label not found)",
+        absent["classification"] == NUMERIC_CLASS_MISSING
+        and absent["reason_code"] == "label_not_found",
+        str(absent),
+    )
+
+    label_only = classify_one("synthetic accuracy is discussed in this section", target)
+    check(
+        "classify label-present value-absent -> genuinely_missing",
+        label_only["classification"] == NUMERIC_CLASS_MISSING
+        and label_only["reason_code"] == "label_present_value_absent",
+        str(label_only),
+    )
+
+    stray = classify_one("an unrelated total of 0.97 appears far away", target)
+    check(
+        "classify stray value not blindly matched",
+        stray["classification"] == NUMERIC_CLASS_MISSING and not stray["within_tolerance"],
+        str(stray),
+    )
+
+    competing = classify_one(
+        "synthetic accuracy = 0.97 then synthetic accuracy = 0.50", target
+    )
+    check(
+        "classify competing unresolved values -> found_but_wrong_value",
+        competing["classification"] == NUMERIC_CLASS_WRONG_VALUE
+        and competing["reason_code"] == "competing_unresolved_values",
+        str(competing),
+    )
+
+    records = classify_numeric_targets(
+        "synthetic accuracy = 0.97\nsynthetic recall = 0.50\nsynthetic f1:\n0.80",
+        {
+            "lecture_id": "synthetic",
+            "ground_truth_numerics": [
+                {"label": "synthetic accuracy", "value": 0.97, "tol": 0.01},
+                {"label": "synthetic recall", "value": 0.90, "tol": 0.01},
+                {"label": "synthetic f1", "value": 0.80, "tol": 0.01},
+            ],
+        },
+    )
+    summary = summarize_numeric_classification(records)
+    check(
+        "mixed classification is a valid honest outcome",
+        summary[NUMERIC_CLASS_MATCHED] == 1
+        and summary[NUMERIC_CLASS_WRONG_VALUE] == 1
+        and summary[NUMERIC_CLASS_FORMAT_MISSED] == 1,
+        str(summary),
+    )
+    check("classification summary totals all targets", sum(summary.values()) == 3, str(summary))
+    no_canary("numeric classification diagnostic", records)
+
+
+def test_numeric_matcher_format_equivalence_gate() -> None:
+    # Slice 169: the gate now recovers format-equivalent and PDF line-break values
+    # WITHIN the existing tolerance, but wrong values are never laundered into a
+    # pass and expected values / tolerances are unchanged.
+    fixture = base_fixture(
+        expected_topics=[],
+        min_mock_questions=0,
+        ground_truth_numerics=[{"label": "synthetic ratio", "value": 0.97, "tol": 0.01}],
+    )
+
+    pct = report_check(run_quality_safety_layer1_checks("synthetic ratio 97%", fixture), "numeric_correctness")
+    check(
+        "gate percent equivalence passes within tolerance",
+        pct["status"] == "passed" and pct["pass_count"] == 1,
+        str(pct),
+    )
+
+    prox = report_check(run_quality_safety_layer1_checks("synthetic ratio:\n0.97", fixture), "numeric_correctness")
+    check(
+        "gate line-break proximity passes within tolerance",
+        prox["status"] == "passed" and prox["pass_count"] == 1,
+        str(prox),
+    )
+
+    wrong = run_quality_safety_layer1_checks("synthetic ratio = 0.40", fixture)
+    wrong_check = report_check(wrong, "numeric_correctness")
+    check(
+        "gate wrong value still fails (not laundered)",
+        wrong_check["status"] == "failed" and "numeric_correctness" in wrong["blocking_failures"],
+        str(wrong_check),
+    )
+
+    wrong_pct = report_check(run_quality_safety_layer1_checks("synthetic ratio 40%", fixture), "numeric_correctness")
+    check(
+        "gate wrong percent still fails (equivalence is not a free pass)",
+        wrong_pct["status"] == "failed",
+        str(wrong_pct),
+    )
+
+
+def test_mock_question_counter_sanity() -> None:
+    # Slice 169: count a structurally present Mock Exam that uses "Question N" /
+    # "Solution" headings (the form the measured Ensemble guide used), and never
+    # credit a bare heading, a Solution/Answer-key line, or a stray "?".
+    fixture = base_fixture(expected_topics=[], ground_truth_numerics=[], min_mock_questions=3)
+    exam = "\n".join(
+        [
+            "## Mock Exam",
+            "### Question 1",
+            "Compute the synthetic ratio.",
+            "**Solution**",
+            "Substitute and finish.",
+            "### Question 2",
+            "State the synthetic definition.",
+            "Worked Solution: restate the synthetic idea plainly.",
+            "- **Question 3.** Compare the two synthetic methods.",
+            "Answer key: see the worked solutions above.",
+        ]
+    )
+    mock = report_check(run_quality_safety_layer1_checks(exam, fixture), "mock_question_count")
+    check(
+        "mock counter counts Question N and bulleted question forms",
+        mock["mock_question_count"] == 3 and mock["status"] == "passed",
+        str(mock),
+    )
+
+    barren = "\n".join(
+        [
+            "## Mock Exam",
+            "This section will contain practice material.",
+            "Is this clear? Yes.",
+            "**Solution**",
+            "Answer key: pending.",
+        ]
+    )
+    empty = run_quality_safety_layer1_checks(
+        barren, base_fixture(expected_topics=[], ground_truth_numerics=[], min_mock_questions=3)
+    )
+    empty_mock = report_check(empty, "mock_question_count")
+    check(
+        "mock counter gives no credit without present questions",
+        empty_mock["mock_question_count"] == 0 and empty_mock["status"] == "warning",
+        str(empty_mock),
+    )
+
+
 def run() -> int:
     test_fixture_loader()
     test_seed_fixture_file_consumption()
@@ -3297,6 +3503,9 @@ def run() -> int:
     test_worked_answer_completeness()
     test_coverage()
     test_mock_question_count()
+    test_numeric_classification_diagnostic()
+    test_numeric_matcher_format_equivalence_gate()
+    test_mock_question_counter_sanity()
     test_regression_record()
     test_no_leak_sweep()
     test_run_quality_safety_eval_wrapper()

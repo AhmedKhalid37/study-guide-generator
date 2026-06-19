@@ -6920,3 +6920,43 @@ production job/API/frontend wiring changed; the offline judge stays frozen
 (`judge_ready`/`repair_ready` = `false`). No NN3/Ensemble private source content,
 numbers, or filenames were embedded in the prompt or tests.
 Next step: `measurement_sanity_numeric_and_mock_matcher_or_regenerate_then_rerun`.
+
+## Phase 0 measurement trust: fix the numeric matcher + mock counter before regenerating (Slice 169)
+After the real Phase 0 current-pair run, the Ensemble guide proved that
+`mock_question_count=0` and `numeric_correctness` matched 0/n cannot be trusted
+blindly: the generated guide contains a full Mock Exam with worked solutions and
+worked numeric examples. Slice 169 therefore fixes **measurement trust** before any
+regeneration or prompt tuning — the scorer must tell the truth, it must not be made
+to pass by laundering failures. In `pipeline/quality_safety_eval_harness.py` the
+numeric check now uses a shared **label-anchored value scan**: same-line numbers,
+same-line **format equivalents** (a `97%` reads as both `97` and `0.97`), and a
+bounded **PDF line-break proximity** fallback (the single next non-empty line, only
+when the label's own line has no number). Every candidate is anchored to an actual
+label occurrence, so a stray number elsewhere is never blindly matched; contradiction
+stays judged on the literally written numbers; **expected golden values were not
+edited and fixture tolerances were not widened**; wrong and competing/unresolved
+values still **fail** (blocking) the gate. A closed per-target classifier
+(`classify_numeric_targets`) puts each golden target into exactly one of
+`found_and_matched`, `found_but_format_or_context_missed`, `found_but_wrong_value`,
+`genuinely_missing`, where `found_and_matched` reflects the pre-Slice-169 strict
+matcher and `found_but_format_or_context_missed` flags a value correct within the
+**existing** tolerance but only recovered by this slice's format/proximity work — so a
+clean run can be audited rather than trusted blindly. **`found_but_wrong_value` is
+sacred**: a present-but-wrong or competing value remains a real product defect routed
+to later generation/verifier work, never reclassified as correct here. The mock
+counter gets a separate **count-only** matcher (`_is_mock_question_count_line`) that
+recognizes structurally present `Mock/Practice Question`, `Question N`, and `Q4.`
+forms; it is kept independent of the reasoning-leak `?`-exemption matcher so **leak
+detection is not weakened**, and it never credits a bare `Mock Exam`/`Solution`/
+`Answer key` heading or a stray `?`. **Why:** a 0/n that is really a matcher/format
+artifact must not be allowed to drive a broad product change, and a real wrong number
+must not be hidden by matcher work; separating "did a value match" from "is the value
+correct" keeps the measurement honest in both directions. This is a
+scorer-measurement/diagnostic change only — **no** gate loosened, warning/failure
+hidden, aggregator patched, generation prompt changed, or guide regenerated; numeric
+strategy stays **recompute-first** (the classifier passes a `recompute_verifier_status`
+through, it does not replace the verifier). No production job/API/frontend wiring
+changed; the offline judge stays frozen (`judge_ready`/`repair_ready` = `false`); no
+`local_operator_baselines/` and no private guide/source content, numbers, paths,
+filenames, hashes, or byte counts were committed (tests use synthetic public text).
+Next step: `rerun_current_guides_after_matcher_sanity`.

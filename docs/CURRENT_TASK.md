@@ -5,7 +5,83 @@
 
 ---
 
-## Slice 168 — **Narrow product generation fix for the trusted Phase 0 blocker (visible deliberation)**, on `slice168-product-generation-phase0-blocker-fix`. **NOT COMMITTED.**
+## Slice 169 — **Phase 0 numeric-matcher + mock-counter measurement-trust sanity**, on `slice169-phase0-matcher-mock-sanity`. **NOT COMMITTED.**
+
+- **Produce-before-scaffold gate:** the real Phase 0 current-pair run already exists; this slice does **not** regenerate
+  any guide. It fixes **measurement trust** (the scorer must tell the truth) before any regeneration or prompt tuning.
+- **Why:** the run reported `numeric_correctness` matched 0/n and Ensemble `mock_question_count=0`, but the current
+  generated guides actually contain worked numeric examples and a full Mock Exam — so those zeros are **matcher /
+  counter artifacts**, not proof of product absence, and may not drive a product change until proven.
+- **phase=Phase 0 measurement trust**
+- **slice169_focus=numeric_matcher_and_mock_counter_sanity**
+- **regeneration_blocked_until_matcher_sanity=true** · **numeric_0n_untrusted_until_classified=true** ·
+  **mock_0_untrusted_until_counter_sanity=true** · **found_but_wrong_value_routes_to_product_fix=true**
+- **Numeric matcher (`pipeline/quality_safety_eval_harness.py`):**
+  - Added a shared **label-anchored value scan** (`_label_value_scan`) used by the gate and the diagnostic: same-line
+    numbers, same-line **format equivalents** (a `97%` reads as both `97` and `0.97`), and a bounded **PDF line-break
+    proximity** fallback (the single next non-empty line, only when the label's own line carries no number). Every
+    value is **anchored to an actual label occurrence**, so a stray number elsewhere is never blindly matched.
+  - Contradiction is still judged on the **literally written** numbers; the within-tolerance test additionally accepts
+    format equivalents. **Expected golden values were not edited; fixture tolerances were not widened.** Wrong values
+    and competing/unresolved values still **fail** the gate (blocking), exactly as before.
+- **Closed per-target classification** (`classify_numeric_targets` / `classify_numeric_target` /
+  `summarize_numeric_classification`): each golden target → exactly one of `found_and_matched`,
+  `found_but_format_or_context_missed`, `found_but_wrong_value`, `genuinely_missing`, with closed fields
+  (`expected_value`, `matched_value`, `within_tolerance`, `label_found`, `value_found`, `reason_code`,
+  `recompute_verifier_status`, `lecture_id`, `target_id`). `found_and_matched` = pre-Slice-169 strict matcher;
+  `found_but_format_or_context_missed` = correct within the **existing** tolerance but only recovered by Slice 169's
+  format/proximity work (so a clean run can be audited). **`found_but_wrong_value` is sacred** — a present-but-wrong
+  or competing value stays a real defect routed to later generation/verifier work, never laundered into a match.
+- **Mock counter:** added a **count-only** matcher (`_is_mock_question_count_line`) that recognizes structurally
+  present `Mock/Practice Question`, `Question N`, and `Q4.` forms after stripping Markdown heading/list/emphasis
+  decoration. Kept **independent** of `_is_mock_question_line` (the reasoning-leak `?` exemption) so **leak detection
+  is unchanged**. It credits a present question only — never a bare `Mock Exam`/`Solution`/`Answer key` heading or a
+  stray `?`.
+- **Not changed / not weakened:** no eval gate loosened, no warning/failure hidden, no aggregator patched, no
+  leak-detector weakened, no generation prompt changed, no guide regenerated, no `local_operator_baselines/` committed.
+  Numeric strategy stays **recompute-first** (tolerance/contradiction adjudicates wrongness; classifier passes a
+  `recompute_verifier_status` through, it does not replace the verifier). Production offline judge stays **frozen**
+  (`judge_ready=false`, `repair_ready=false`); no API/frontend/job wiring touched. **Docker not run; no
+  `docker compose config` run.** Slice 60 trace stash parked and untouched.
+- **Tests:** added `test_numeric_classification_diagnostic`, `test_numeric_matcher_format_equivalence_gate`,
+  `test_mock_question_counter_sanity` in `test_scripts/test_quality_safety_eval_harness.py` (synthetic public text
+  only) covering exact/rounded/approx/percent/line-break matches, present-but-wrong, absent, label-without-value,
+  value-without-label-proximity, competing values, and the Mock-Exam `Question N`/`Solution` counting.
+- **Closed diagnostic — rerun on current unchanged local guides (NOT a green pass; truthful/mixed).** Ran the
+  Slice-169 matcher/counter against the current unchanged local NN3 + Ensemble guide text (gitignored; no
+  regeneration). Closed counts only, stable target ids only, no guide snippets. Expected values + tolerances were
+  **not** edited; fixtures unchanged.
+  - **NN3 (5 targets):** with the committed opaque stable-id labels **and** with natural exam-form anchor labels →
+    `found_and_matched=0`, `found_but_format_or_context_missed=0`, `found_but_wrong_value=0`, `genuinely_missing=5`
+    (all `label_not_found`). Numeric gate: matched 0, missing 5, mismatch 0, status `unknown`, **blocking false**.
+    **Honesty note:** all five values are literally present in the guide (auxiliary value-presence scan = true for all
+    5); the misses are **matcher-anchoring limits** — the guide states them in LaTeX/prose (`a_{\text{top}}`,
+    `\max(0,0.572)`, `-\ln(0.57)`), so the label-anchored scan cannot attribute them. NN3 numerics are therefore
+    **still untrusted in both directions** (neither confirmed present nor proven absent). The format-equivalence /
+    proximity additions did **not** rescue NN3.
+  - **Ensemble (7 targets), natural anchors:** `found_and_matched=1` (`proximity_4_3` → 0.80, strict same-line),
+    `found_but_format_or_context_missed=0`, `found_but_wrong_value=6`, `genuinely_missing=0`. Numeric gate: matched 1,
+    missing 0, mismatch 6, status `failed`, **blocking true**. `found_but_wrong_value` stayed failing/blocking; **no
+    wrong value was reclassified as matched**. **Honesty note:** of the six `found_but_wrong_value`, only
+    `gini_weight_gt_176` (golden 0.20) is a **confirmed genuine** product confusion (the guide vacillates 0.42 vs
+    0.19, never a clean 0.20); the other five are `competing_unresolved_values` driven by **generic-anchor + messy
+    PDF-extraction** multi-occurrence, so they are flagged-not-credited rather than five proven defects. The matcher
+    correctly refused to launder any of them into a match.
+  - **Mock counter (count-only `_is_mock_question_count_line`):** NN3 `mock_question_count=12` (min 8 → passed),
+    Ensemble `mock_question_count=10` (min 8 → passed). The fix **does** detect the current guides' Mock-Exam
+    structure (`Question N` / `Q4.` forms); no credit for bare `Mock Exam`/`Solution` headings or stray `?` — counts
+    equal the actual question totals (NN3 Q1–Q12; Ensemble Question 1–10). This is the one signal cleanly rescued.
+  - **Verdict:** truthful **mixed** result, not a suspicious clean pass. Mock-count zero was a real counter artifact
+    (now fixed). Numeric zero is **partly** a matcher artifact (Ensemble proximity now matches; NN3 values present
+    but unanchorable) but is **not** a clean rescue — numeric measurement trust is **not** established; the gate stays
+    honest (Ensemble blocks on real+generic-driven wrongness, NN3 stays non-blocking `unknown`). No eval gate was
+    weakened; `judge_ready=false`/`repair_ready=false` unchanged.
+- **next_step=numeric_label_anchoring_robustness_or_targeted_regeneration_then_rerun** (numeric matcher still cannot
+  trust real LaTeX/PDF guide text; mock counter trusted). **Slice 169 still NOT committed.**
+
+---
+
+## Slice 168 — **Narrow product generation fix for the trusted Phase 0 blocker (visible deliberation)**, on `slice168-product-generation-phase0-blocker-fix`. **COMMITTED `1d66f07`, fast-forward merged to trunk `chrome-renderer-v1`, pushed.**
 
 - **Produce-before-scaffold gate applied:** a real Phase 0 Layer-1 run was produced locally on real gitignored
   GuideForge outputs, so the measured artifact exists. Eval-harness scaffolding stays **paused**; work shifted to

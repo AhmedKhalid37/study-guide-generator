@@ -2407,20 +2407,29 @@ def _check_numeric_correctness(
         expected = float(item.get("value", 0.0))
         tol = float(item.get("tol", 0.0))
         label_norm = _normalize(label)
-        values: list[float] = []
-        for line_norm, line in normalized_lines:
-            if label_norm and label_norm in line_norm:
-                values.extend(_extract_numbers(_strip_label_spans(line, label_norm)))
-        unique_values = _dedupe_floats(values)
-        if not unique_values:
+        scan = _label_value_scan(normalized_lines, label_norm)
+        # Same-line evidence wins. Only when the label's own line carries no number
+        # at all do we accept a value recovered from the next non-empty line (a
+        # common PDF-extraction line break). Contradiction is judged on the
+        # literally written numbers; the within-tolerance test additionally accepts
+        # format-equivalent readings (e.g. a percent written as 97% matching a
+        # golden 0.97) -- equivalence implied by the fixture's own tolerance, never
+        # a widened tolerance and never a manufactured value.
+        if scan["same_match"]:
+            literal_values = _dedupe_floats(scan["same_literal"])
+            match_values = _dedupe_floats(scan["same_match"])
+        else:
+            literal_values = _dedupe_floats(scan["prox_literal"])
+            match_values = _dedupe_floats(scan["prox_match"])
+        if not match_values:
             missing_count += 1
             status = "unknown"
             warnings.add("numeric_target_missing")
-        elif _has_numeric_contradiction(unique_values, tol):
+        elif _has_numeric_contradiction(literal_values, tol):
             fail_count += 1
             status = "failed"
             warnings.add("numeric_contradiction_signal")
-        elif any(abs(value - expected) <= tol for value in unique_values):
+        elif any(abs(value - expected) <= tol for value in match_values):
             pass_count += 1
             status = "passed"
         else:
@@ -2433,8 +2442,8 @@ def _check_numeric_correctness(
                 "status": status,
                 "expected_value": expected,
                 "tolerance": tol,
-                "found_values": unique_values,
-                "distinct_value_count": len(unique_values),
+                "found_values": match_values,
+                "distinct_value_count": len(match_values),
             }
         )
 
@@ -2524,7 +2533,7 @@ def _check_mock_question_count(
 ) -> dict[str, Any]:
     minimum = fixture.get("min_mock_questions")
     minimum = minimum if isinstance(minimum, int) and not isinstance(minimum, bool) else 0
-    count = sum(1 for line in candidate.splitlines() if _is_mock_question_line(line))
+    count = sum(1 for line in candidate.splitlines() if _is_mock_question_count_line(line))
     status = "passed" if count >= minimum else "warning"
     if status == "warning":
         warnings.add("mock_question_count_below_minimum")
@@ -2768,6 +2777,247 @@ def _has_numeric_contradiction(values: list[float], tolerance: float) -> bool:
             if not math.isclose(left, right, rel_tol=0.0, abs_tol=tol):
                 return True
     return False
+
+
+# --- Slice 169: shared label-anchored value scan + closed numeric diagnostic ---
+# Phase 0 measurement trust: the real current-pair run reported numeric 0/n, but the
+# generated guides do contain numeric worked examples, so a blind 0 is not proof the
+# values are absent. These helpers (1) make the matcher recognize format/proximity
+# equivalents that are already implied by the fixture tolerance, and (2) classify
+# every target so a 0/n score can be proven a real product gap vs. a matcher
+# artifact BEFORE any regeneration. They never edit expected values, widen a
+# tolerance, or turn a wrong value into a match.
+NUMERIC_CLASS_MATCHED = "found_and_matched"
+NUMERIC_CLASS_FORMAT_MISSED = "found_but_format_or_context_missed"
+NUMERIC_CLASS_WRONG_VALUE = "found_but_wrong_value"
+NUMERIC_CLASS_MISSING = "genuinely_missing"
+
+_PERCENT_RE = re.compile(r"(?<![A-Za-z0-9_])(-?(?:\d+(?:\.\d*)?|\.\d+))\s*%")
+
+
+def _match_candidate_values(text: str) -> list[float]:
+    """Numbers in ``text`` plus format-equivalent readings of those same numbers.
+
+    A percent token such as ``97%`` is read both as its written value ``97`` and as
+    its fractional equivalent ``0.97`` so a golden target stored in either form can
+    match within the fixture's own tolerance. This only ADDS an equivalent reading
+    of a number that is literally present -- it never invents a value and never
+    widens a tolerance. It feeds the within-tolerance match test only; contradiction
+    detection stays on the literally written numbers so an equivalent reading is not
+    mistaken for a competing value.
+    """
+    values = list(_extract_numbers(text))
+    for match in _PERCENT_RE.finditer(text):
+        try:
+            pct = float(match.group(1))
+        except ValueError:
+            continue
+        if math.isfinite(pct):
+            values.append(pct / 100.0)
+    return values
+
+
+def _label_value_scan(
+    normalized_lines: list[tuple[str, str]], label_norm: str
+) -> dict[str, list[float]]:
+    """Label-anchored candidate-value scan shared by the gate and the classifier.
+
+    Returns four value lists, every one anchored to an actual occurrence of the
+    label so a stray number elsewhere in the guide is never attributed to this
+    target:
+
+    - ``same_literal`` : numbers written on the label's own line(s)
+    - ``same_match``   : same line(s) + format-equivalent readings (percent)
+    - ``prox_literal`` : numbers on the first non-empty line *after* a label line
+                         that itself carries no number -- recovers a value split off
+                         by a PDF-extraction line break
+    - ``prox_match``   : that proximity line + format-equivalent readings
+
+    All four are empty when the label appears on no line, so an unrelated value is
+    never blindly matched. Proximity is bounded to the single next non-empty line.
+    """
+    result: dict[str, list[float]] = {
+        "same_literal": [],
+        "same_match": [],
+        "prox_literal": [],
+        "prox_match": [],
+    }
+    if not label_norm:
+        return result
+    total = len(normalized_lines)
+    for index in range(total):
+        line_norm, line_raw = normalized_lines[index]
+        if label_norm not in line_norm:
+            continue
+        stripped = _strip_label_spans(line_raw, label_norm)
+        same_literal = _extract_numbers(stripped)
+        same_match = _match_candidate_values(stripped)
+        result["same_literal"].extend(same_literal)
+        result["same_match"].extend(same_match)
+        if same_match:
+            continue
+        # The label's own line carries no number: recover a value that spilled onto
+        # the next non-empty line (a common PDF-extraction line break).
+        for probe in range(index + 1, total):
+            probe_norm, probe_raw = normalized_lines[probe]
+            if not probe_norm.strip():
+                continue
+            result["prox_literal"].extend(_extract_numbers(probe_raw))
+            result["prox_match"].extend(_match_candidate_values(probe_raw))
+            break
+    return result
+
+
+def classify_numeric_target(
+    normalized_lines: list[tuple[str, str]], item: dict[str, Any]
+) -> dict[str, Any]:
+    """Classify one golden numeric target against the candidate's normalized lines.
+
+    Returns a closed diagnostic record (no guide/source snippets) placing the
+    target in exactly one of ``found_and_matched``,
+    ``found_but_format_or_context_missed``, ``found_but_wrong_value``, or
+    ``genuinely_missing``. ``found_and_matched`` reflects the pre-Slice-169 strict
+    same-line matcher; ``found_but_format_or_context_missed`` marks a value present
+    and correct within the EXISTING tolerance but recovered only by Slice 169's
+    percent/line-break handling -- so a clean run can be audited for how many
+    matches were format-rescued. A number present near the label but outside
+    tolerance, or two competing unresolved values, stays ``found_but_wrong_value``:
+    a real product defect, never laundered into a match.
+    """
+    label = str(item.get("label", ""))
+    expected = _finite_float(item.get("value"))
+    tol = _finite_float(item.get("tol")) or 0.0
+    label_norm = _normalize(label)
+    label_found = bool(label_norm) and any(
+        label_norm in line_norm for line_norm, _ in normalized_lines
+    )
+    scan = _label_value_scan(normalized_lines, label_norm)
+
+    strict_literal = _dedupe_floats(scan["same_literal"])
+    same_match = _dedupe_floats(scan["same_match"])
+    prox_literal = _dedupe_floats(scan["prox_literal"])
+    prox_match = _dedupe_floats(scan["prox_match"])
+    value_found = bool(strict_literal or same_match or prox_literal or prox_match)
+
+    def _within(values: list[float]) -> float | None:
+        if expected is None:
+            return None
+        for value in values:
+            if abs(value - expected) <= tol:
+                return value
+        return None
+
+    strict_clean = bool(strict_literal) and not _has_numeric_contradiction(strict_literal, tol)
+    same_clean = bool(same_match) and not _has_numeric_contradiction(strict_literal, tol)
+    prox_clean = bool(prox_match) and not _has_numeric_contradiction(prox_literal, tol)
+
+    if strict_clean and _within(strict_literal) is not None:
+        classification = NUMERIC_CLASS_MATCHED
+        reason_code = "strict_same_line_match"
+        matched_value = _within(strict_literal)
+    elif same_clean and _within(same_match) is not None:
+        classification = NUMERIC_CLASS_FORMAT_MISSED
+        reason_code = "format_equivalent_same_line"
+        matched_value = _within(same_match)
+    elif prox_clean and _within(prox_match) is not None:
+        classification = NUMERIC_CLASS_FORMAT_MISSED
+        reason_code = "proximity_line_break"
+        matched_value = _within(prox_match)
+    elif value_found:
+        contradiction = _has_numeric_contradiction(strict_literal or prox_literal, tol)
+        classification = NUMERIC_CLASS_WRONG_VALUE
+        reason_code = "competing_unresolved_values" if contradiction else "value_out_of_tolerance"
+        matched_value = None
+    elif label_found:
+        classification = NUMERIC_CLASS_MISSING
+        reason_code = "label_present_value_absent"
+        matched_value = None
+    else:
+        classification = NUMERIC_CLASS_MISSING
+        reason_code = "label_not_found"
+        matched_value = None
+
+    recompute_status = item.get("recompute_status")
+    if not isinstance(recompute_status, str) or not recompute_status:
+        recompute_status = "not_applicable"
+    return {
+        "classification": classification,
+        "reason_code": reason_code,
+        "expected_value": expected,
+        "tolerance": tol,
+        "matched_value": matched_value,
+        "within_tolerance": classification
+        in (NUMERIC_CLASS_MATCHED, NUMERIC_CLASS_FORMAT_MISSED),
+        "label_found": label_found,
+        "value_found": value_found,
+        "recompute_verifier_status": recompute_status,
+    }
+
+
+def classify_numeric_targets(candidate: str, fixture: dict[str, Any]) -> list[dict[str, Any]]:
+    """Closed per-target numeric diagnostic for every golden target in ``fixture``.
+
+    Runs against the supplied candidate guide text (the operator points it at the
+    current unchanged local guide; nothing is regenerated). Returns one closed
+    record per target -- safe to log as aggregate counts. Never returns or writes
+    guide/source snippets, paths, hashes, or byte counts.
+    """
+    targets = fixture.get("ground_truth_numerics")
+    if not isinstance(targets, list):
+        return []
+    normalized_lines = [(_normalize(line), line) for line in candidate.splitlines()]
+    lecture_id = str(fixture.get("lecture_id") or fixture.get("id") or "")
+    out: list[dict[str, Any]] = []
+    for position, item in enumerate(targets):
+        if not isinstance(item, dict):
+            continue
+        record = classify_numeric_target(normalized_lines, item)
+        record["lecture_id"] = lecture_id
+        record["target_id"] = str(item.get("id") or item.get("label") or f"target_{position}")
+        out.append(record)
+    return out
+
+
+def summarize_numeric_classification(records: list[dict[str, Any]]) -> dict[str, int]:
+    """Aggregate closed counts per classification (no per-target detail)."""
+    summary = {
+        NUMERIC_CLASS_MATCHED: 0,
+        NUMERIC_CLASS_FORMAT_MISSED: 0,
+        NUMERIC_CLASS_WRONG_VALUE: 0,
+        NUMERIC_CLASS_MISSING: 0,
+    }
+    for record in records:
+        key = record.get("classification")
+        if key in summary:
+            summary[key] += 1
+    return summary
+
+
+# Count-only mock/practice/exam question detector (Slice 169). Kept SEPARATE from
+# ``_is_mock_question_line`` (which exempts genuine exam-question lines from the
+# reasoning-leak ``?`` heuristic): broadening the counter must not change what the
+# leak detector treats as a question, so the two matchers stay independent.
+_MOCK_COUNT_DECORATION_RE = re.compile(r"^[\s>#*_+\-]+")
+_MOCK_COUNT_BODY_RE = re.compile(
+    r"(?:(?:mock|practice)\s+question\b"
+    r"|question\s+\d+\b"
+    r"|q\d+\b(?:[\s:.)\-]|$))",
+    re.IGNORECASE,
+)
+
+
+def _is_mock_question_count_line(line: str) -> bool:
+    """Recognize a structurally present mock/practice/exam question line.
+
+    Matches the forms real exam guides emit -- "Mock Question 1", "Practice
+    Question 2", "Question 3", "Q4." -- after stripping leading Markdown
+    heading/list/emphasis decoration and PDF spacing. It credits a present question
+    only: a bare "Mock Exam"/"Solution"/"Answer key" heading, a sentence without a
+    question marker, and a stray "?" are not counted, so it cannot manufacture
+    questions that are not there.
+    """
+    cleaned = _MOCK_COUNT_DECORATION_RE.sub("", line, count=1)
+    return bool(_MOCK_COUNT_BODY_RE.match(cleaned))
 
 
 def _is_mock_question_line(line: str) -> bool:

@@ -6,11 +6,38 @@
 > stable overview see `PROJECT_CONTEXT.md`; canonical brief is `../CLAUDE.md`.
 
 ## Current position
-- **Working tree:** **Slice 168 (Narrow product generation fix for the trusted Phase 0 blocker) — UNCOMMITTED**
-  on branch `slice168-product-generation-phase0-blocker-fix`, branched from clean trunk `chrome-renderer-v1`
-  (`8e2138d`, already up to date). **Slice 167 was already committed as `8e2138d`** ("Add Phase 0 closed summary
-  validator"); the real Phase 0 Layer-1 measurement has since superseded more validator work, so Slice 167 was not
-  revisited.
+- **Working tree:** **Slice 169 (Phase 0 numeric-matcher + mock-counter measurement-trust sanity) — UNCOMMITTED**
+  on branch `slice169-phase0-matcher-mock-sanity`, branched from clean trunk `chrome-renderer-v1` (`1d66f07`).
+- **Slice 168 is committed and on trunk:** `1d66f07` ("Slice 168: Narrow prompt contract against visible
+  deliberation"), fast-forward merged to `chrome-renderer-v1` (`8e2138d..1d66f07`) and pushed with a normal
+  `git push` (no force-push). Slice 167 is trunk commit `8e2138d`.
+- **Slice 169 fixes measurement trust before any regeneration.** The real Phase 0 current-pair run reported
+  `numeric_correctness` 0/n and Ensemble `mock_question_count=0`, but the current generated guides contain worked
+  numeric examples and a full Mock Exam — so those zeros are **matcher/counter artifacts**, not proof of absence.
+  This slice (in `pipeline/quality_safety_eval_harness.py`) adds a **label-anchored value scan** giving the gate
+  same-line format-equivalence (`97%`↔`0.97`) and bounded **PDF line-break proximity** within the **existing**
+  tolerance, plus a **closed per-target classifier** (`classify_numeric_targets`) into `found_and_matched` /
+  `found_but_format_or_context_missed` / `found_but_wrong_value` / `genuinely_missing`, and a **count-only** mock
+  matcher (`_is_mock_question_count_line`) recognizing `Question N`/`Q4.` forms. **Expected values were not edited,
+  tolerances were not widened, `found_but_wrong_value` stays a real failure, leak detection is untouched, no guide
+  was regenerated, numeric strategy stays recompute-first.** New synthetic tests in
+  `test_scripts/test_quality_safety_eval_harness.py`. No scorer-gate loosening, no aggregator patch, no
+  API/frontend/job wiring; offline judge stays frozen (`judge_ready=false`, `repair_ready=false`).
+  **Closed diagnostic done (rerun on current unchanged local guides; truthful/mixed, NOT a green pass):**
+  NN3 numerics 5/5 `genuinely_missing` (`label_not_found`) under both opaque and natural anchors — yet all 5 values
+  are literally present in the guide (LaTeX/prose anchoring miss), gate `unknown`/non-blocking; format+proximity did
+  **not** rescue NN3. Ensemble numerics natural anchors: 1 `found_and_matched` (`proximity_4_3`=0.80), 6
+  `found_but_wrong_value` (only `gini_weight_gt_176` a confirmed guide confusion 0.42↔0.19↔golden 0.20; the other 5
+  are generic-anchor + messy-PDF competing-value flags, never laundered into matches), gate `failed`/blocking. Mock
+  counter rescued cleanly: NN3=12, Ensemble=10 (both ≥8, passed), no bare-heading/stray-`?` credit. Expected values +
+  tolerances untouched, fixtures unchanged, no gate weakened, judge frozen, no regeneration, `local_operator_baselines/`
+  uncommitted. **Conclusion: mock-count zero was a real counter artifact (fixed); numeric trust is still NOT
+  established (matcher cannot anchor real LaTeX/PDF guide text).**
+  **next_step: numeric_label_anchoring_robustness_or_targeted_regeneration_then_rerun. Slice 169 still NOT committed.**
+- **Superseded:** Slice 168 (committed) narrowed the always-applied guide-quality prompt contract
+  (`pipeline/guide_quality_prompt_contract.py`) to a resolve-then-emit / no-visible-deliberation rule that
+  explicitly allows ordinary teaching language and offers the closed "Not specified in the provided material."
+  fallback; that work is now on trunk.
 - **Real Phase 0 Layer-1 run now exists** (produced locally on gitignored outputs). **Supervisor review then
   narrowed this slice:** only the **leaked-reasoning / visible-deliberation** signal is TRUSTED as a product
   defect. `numeric_correctness=0/n` is at least partly a **matcher artifact** (the guides do contain numeric
