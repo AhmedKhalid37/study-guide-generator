@@ -6,22 +6,32 @@
 > stable overview see `PROJECT_CONTEXT.md`; canonical brief is `../CLAUDE.md`.
 
 ## Current position
-- **Working tree:** branch `slice176c-one-table-family-row-cell-reconstructor`; Slice 176C
-  one-table-family row/cell reconstructor (module + test + docs), built and run on the real Ensemble
-  deck, **NOT committed**. Slice 176B is committed/merged as `0a9794b`; Slice 176A is `b9c6ee9`;
-  Slice 174A is `e8f8cac`; Slice 173C is `3aaea34`; Slice 173B is `1a38c12`; Slice 173A
-  is `1905af7`. Slice 175A was a no-change provenance gate (no files; not committed).
-- **Slice 176C result:** added pure `pipeline/quality_safety_one_table_family_row_cell_reconstructor.py`
-  + focused test. The real missing piece = **spatial clustering of positioned tokens (`{x,y,text}`)
-  into rows/cells** (linear text extraction destroys the grid). Synthetic masked-recompute proof
-  through the REAL verifier passes for both families; anti-laundering refuses answer matrices / lone
-  values. **Real Ensemble proximity_4_3 attempt:** grid reconstructed
-  (`row_cell_extraction_status=parsed_from_extraction_output`, nonzero rows/cols/numeric cells) but
-  `source_input_record_status=not_created`, `machine_consumable_for_recompute=false`,
-  `blocked_by=source_input_mapping`, warning `answer_matrix_not_input` — the source holds the proximity
-  **answer matrix**, not the per-tree **inputs**. **next_step=`target_region_detection_for_numeric_tables`**;
-  trends toward proximity_4_3 being **absent-in-source** (not extraction-gated). Reconstructor module
-  is committable; the gitignored real-deck harness and `local_operator_baselines/` stay uncommitted.
+- **Working tree:** branch `slice176d-target-input-existence-classification`; **revised Slice 176D**
+  numeric-target input-existence classifier (`pipeline/quality_safety_numeric_target_input_existence.py`
+  + test) + doc updates, **NOT committed**. Slice 176C is committed as `1771dd9`; 176B `0a9794b`;
+  176A `b9c6ee9`; 174A `e8f8cac`; 173C `3aaea34`; 173B `1a38c12`; 173A `1905af7`. 175A was a
+  no-change provenance gate.
+- **176C laundering contradiction — RESOLVED from disk; 176C STANDS (no revert).** The pasted "masked
+  recompute passed for both families through the verifier" was a **pasted-report artifact**: that
+  `passed` is the synthetic public-safe test (§4 of the 176C doc), not the real run. The **real**
+  Ensemble deck refused the proximity answer matrix and never ran masked recompute. Clean disk verdict:
+  `masked_recompute_status=not_run` · `source_input_record_status=not_created` · `source_input_origin=none` ·
+  `machine_consumable_for_recompute=false` · `anti_laundering_answer_matrix_refused=true` ·
+  `verifier_called_on_answer_matrix=false` · `clean_176c_verdict=commit_stands_honest_blocker`. Control
+  flow confirms the answer matrix returns a blocked record **before** the verifier is reached.
+- **Reframe.** The earlier uncommitted 176D ("improve target-region detection") was **abandoned** (its
+  files discarded; Path 2 clean branch) because it routed to "detect better" off a zero-candidate manifest
+  without proving an input table exists. Replaced by an **input-existence classifier**: for each hard-deck
+  numeric target, does the source carry computation **inputs** or only the **answer/result**?
+- **Revised 176D result (committed closed evidence; no raw source touched):** Ensemble 7 targets →
+  `computation_input_present=5` (3 Gini + total_error + amount_of_say; `gini_weight_gt_176`
+  masked-recompute-proven, others spot-check-only), `answer_output_only=1` (`proximity_4_3`, the answer
+  matrix — `mark_unverifiable_from_source`), `inconclusive=1` (`weighted_weight_impute`, partial).
+  `absent=0`; `reconstruction_candidate=5`; `source_unverifiable=1`; all `machine_consumable_now=false`.
+  **next_step=`reconstruct_present_input_target`.** Do **not** chase proximity's input table or improve
+  its region detection — it is answer-only. **Product reframe:** the reconstructable proximity answer/output
+  matrix is still useful for **student-visible table/figure insertion**. `local_operator_baselines/` and the
+  gitignored real-deck harness stay uncommitted.
 - **Slice 176B result (docs-only):** added `docs/TABLE_STRUCTURE_PHASE2_SEAM_MAP.md`. NN3
   `partial_text` numeric path = `unstructured_text_only` (numeric chain is unwired + consumes
   caller-supplied candidates; `numeric_observation_recoverable=no`); no new NN3 parser built. Existing

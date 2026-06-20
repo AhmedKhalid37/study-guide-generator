@@ -5,6 +5,64 @@
 
 ---
 
+## Phase 2 input-existence — **Revised Slice 176D numeric-target input-existence classification; built + run on committed evidence; NOT committed.**
+
+- **phase=Phase 2 input-existence classification** · **slice=revised 176D** ·
+  **module=`pipeline/quality_safety_numeric_target_input_existence.py`** ·
+  **test=`test_scripts/test_quality_safety_numeric_target_input_existence.py`** ·
+  **branch=`slice176d-target-input-existence-classification`** · **judge_ready=false** · **repair_ready=false**.
+- **176C laundering contradiction — resolved from disk before any work.** The pasted
+  "masked recompute passed for both families through the verifier" was a **pasted-report
+  artifact**, not disk truth. On disk (commit `1771dd9`): the `passed` masked recompute is
+  the **synthetic public-safe test** (§4 of the 176C attempt doc) that exercises the chain;
+  the **real Ensemble deck** (§5) refused the proximity **answer matrix** and never ran masked
+  recompute. Control flow confirmed: `_map_proximity` returns `blocked_by=source_input_mapping`
+  and the function returns a **blocked record before** the `_masked_recompute`/verifier call.
+  Clean 176C disk verdict: `masked_recompute_status=not_run` · `source_input_record_status=not_created` ·
+  `source_input_origin=none` · `machine_consumable_for_recompute=false` ·
+  `anti_laundering_answer_matrix_refused=true` · `verifier_called_on_answer_matrix=false` ·
+  **`clean_176c_verdict=commit_stands_honest_blocker`**. **1771dd9 stands; no revert.**
+- **Reframe.** The honest next question was **not** "detect better" (the abandoned 176D
+  region-detector wrongly routed to `improve_target_region_detection` off a zero-candidate
+  manifest). The correct question: for each hard-deck numeric target, does the **source** carry
+  computation **inputs**, or only the **answer/result**? The abandoned 176D region-detector
+  files were discarded (Path 2); a clean branch + classifier replaces them.
+- **Classifier (pure, total, closed-vocab, no I/O).** Consumes closed per-target evidence
+  descriptors (booleans/tokens/small counts summarizing **already-committed** closed findings) and
+  emits a closed per-target + aggregate classification. Reads no files, no PDF, no OCR, no network.
+  Never consumes fixture values, answer strings, generated-guide candidates, or hand-authored rows.
+- **Committed Ensemble evidence vector (closed):** assembled strictly from prior committed slices —
+  173C recoverability (`computation_input_present_count=5`, `partial=2`) + Gini masked-recompute
+  spot-check (passed for `gini_weight_gt_176` only); 174A method-gated→`source_input_missing`;
+  175A/176A `machine_consumable=0` (no parsed record); 176C proximity→answer matrix + 0 typed
+  candidate regions. No raw values/formulas/answer strings baked in.
+- **Closed Ensemble classification result:** status=`completed` · source_label=`ensemble` ·
+  targets_considered_count=7 · computation_input_present_count=5 · answer_output_only_count=1 ·
+  absent_or_not_found_count=0 · inconclusive_count=1 · reconstruction_candidate_count=5 ·
+  source_unverifiable_count=1 · **next_step=`reconstruct_present_input_target`** (Part 1F rule A).
+  All 7 `machine_consumable_now=false` (no parsed source-input record committed yet).
+- **Per-target (closed):**
+  - `gini_chest_pain`, `gini_blocked_arteries`, `gini_weight_gt_176`, `total_error_stump_1`,
+    `amount_of_say_half_ln_7` → `computation_input_present` · evidence=`existing_recompute_sidecar` ·
+    priority=`high` · future=`reconstruct_rows_cells`. (`gini_weight_gt_176` is masked-recompute-proven;
+    the other four carry `single_target_spot_check_only`.)
+  - `proximity_4_3` → `answer_output_only` · evidence=`mixed` (reconstructed answer matrix + 0 typed
+    candidate regions) · priority=`none` · future=`mark_unverifiable_from_source`.
+  - `weighted_weight_impute` → `inconclusive` · evidence=`existing_recompute_sidecar` (partial) ·
+    priority=`medium` · future=`inspect_more_closed_evidence`.
+- **Decision (numeric recompute for Ensemble continues — but pivots target).** Do **not** keep chasing
+  proximity's input table and do **not** `improve_target_region_detection` for it: proximity is answer-only
+  / unverifiable-from-source. The worthwhile reconstruction work is the **input-present** Gini/total-error/
+  amount-of-say targets → `reconstruct_present_input_target`. **Product reframe:** the reconstructable
+  proximity **answer/output** matrix remains useful for **student-visible table/figure insertion** even
+  though it cannot verify numerics.
+- **Validation:** `compileall api pipeline test_scripts` OK; input-existence test 120/120; 176C
+  reconstructor + recompute-verifier tests still pass; `git diff --check` clean. No Docker; no
+  `docker compose config`. No Chandra; no cloud OCR; no provider/model generation; no Layer-2 judge; no repair.
+- **NOT committed** (per supervisor stop condition). `docs/SUPERVISOR_PROTOCOL.md` remains untracked.
+
+---
+
 ## Phase 2 row/cell reconstruction — **Slice 176C one-table-family reconstructor; built + run on real deck; NOT committed.**
 
 - **phase=Phase 2 row/cell reconstruction** · **slice=176C (one table family, one deck)** ·

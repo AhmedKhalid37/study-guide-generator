@@ -7309,3 +7309,51 @@ absent, record proximity_4_3 as absent and stop routing it to extraction). No Ch
 provider/model generation; no Layer-2 judge; no repair. `judge_ready=false`; `repair_ready=false`.
 hand_authored_rows / fixture_derived / answer_string_derived / guide_candidate_derived /
 raw_values_committed / raw_ocr_committed all false.
+
+## Revised Slice 176D — input-existence classification over "detect better"; 176C laundering contradiction resolved from disk
+
+**176C contradiction, resolved before any new work.** Two pasted reports disagreed: one said 176C refused
+the proximity answer matrix (`masked_recompute_status=not_run`, `blocked_by=source_input_mapping`); the
+other said masked recompute "passed for both families through the verifier." These cannot both describe the
+real run. Resolved by inspecting commit `1771dd9` directly. The `passed` belongs to the **synthetic
+public-safe test** (§4 of the 176C attempt doc), which exercises the full chain to prove it works; the
+**real Ensemble deck** (§5) refused the answer matrix and never reached the verifier. Code confirms:
+`_map_proximity` returns `blocked_by=source_input_mapping`, and the function returns a blocked record
+**before** the `_masked_recompute` call. Clean disk verdict: `masked_recompute_status=not_run`,
+`source_input_record_status=not_created`, `source_input_origin=none`, `machine_consumable_for_recompute=false`,
+`anti_laundering_answer_matrix_refused=true`, `verifier_called_on_answer_matrix=false`,
+`clean_176c_verdict=commit_stands_honest_blocker`. **1771dd9 stands; no revert.** The "masked recompute
+passed" phrase was a pasted-report artifact, not disk truth.
+
+**Why a new question, not "detect better".** The first (uncommitted) 176D built a target-region detector and
+concluded `next_step=improve_target_region_detection` off a **zero typed-candidate** manifest — i.e. it asked
+to detect harder without first proving an input table exists. That is premature: 176C had only proven the
+proximity **answer matrix** exists. The honest prior question is **input existence**: for each hard-deck
+numeric target, does the source carry computation **inputs**, or only the **answer/result**? Chasing /
+improving detection for an input table that is not in the source is wasted effort. The uncommitted
+region-detector files were therefore **abandoned** (Path 2: discarded; clean branch
+`slice176d-target-input-existence-classification`), not committed.
+
+**What was built.** A pure, total, closed-vocabulary classifier
+`pipeline/quality_safety_numeric_target_input_existence.py` (no file/PDF/OCR/network I/O). It consumes closed
+per-target **evidence descriptors** — booleans/tokens/small counts that summarize **already-committed**
+closed findings — and emits a closed per-target + aggregate classification. It never consumes fixture
+values, answer strings, generated-guide candidates, or hand-authored rows; the committed Ensemble evidence
+vector encodes only closed bools/ids with source-slice attribution (173C recoverability + Gini spot-check,
+174A method-gated→source_input_missing, 175A/176A machine_consumable=0, 176C proximity→answer matrix + 0
+typed candidate regions). No raw values/formulas baked in.
+
+**Closed Ensemble result (7 targets):** `computation_input_present=5` (`gini_chest_pain`,
+`gini_blocked_arteries`, `gini_weight_gt_176`, `total_error_stump_1`, `amount_of_say_half_ln_7`;
+`gini_weight_gt_176` masked-recompute-proven, the other four carry `single_target_spot_check_only`),
+`answer_output_only=1` (`proximity_4_3`), `inconclusive=1` (`weighted_weight_impute`, partial), `absent=0`,
+`reconstruction_candidate=5`, `source_unverifiable=1`. All `machine_consumable_now=false` — no parsed
+source-input record exists yet (175A/176A). **next_step=`reconstruct_present_input_target`** (Part 1F rule A:
+≥1 input-present target). **Numeric recompute for Ensemble continues but pivots target:** stop chasing
+proximity's input table and do not improve its region detection — proximity is answer-only /
+unverifiable-from-source; reconstruct the input-present Gini/total-error/amount-of-say targets instead.
+**Product reframe:** the reconstructable proximity answer/output matrix is still useful for **student-visible
+table/figure insertion** even though it cannot verify numerics. No Chandra; no cloud OCR; no provider/model
+generation; no Layer-2 judge; no repair. `judge_ready=false`; `repair_ready=false`. used_fixture_values /
+used_answer_strings / used_generated_guide_text / used_hand_authored_rows / raw_text_committed /
+raw_values_committed all false.
