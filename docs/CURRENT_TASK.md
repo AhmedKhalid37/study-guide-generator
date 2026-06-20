@@ -5,7 +5,49 @@
 
 ---
 
-## Phase 2 product path — **Slice 176O: flat-score diagnostic before packaging iteration; private guides compared; scorer semantics inspected; NOT committed.**
+## Phase 2 product path — **Slice 176P: deterministic deck-specific coverage eval; private baseline vs 176N guide compared on closed markers; NOT committed.**
+
+- **phase=Phase 2 (deck-specific coverage diagnostic after 176O proved scorer insensitivity)** · **slice=176P** ·
+  **module=`pipeline/deck_specific_coverage_eval.py`** ·
+  **runner=`test_scripts/run_deck_specific_coverage_eval.py`** ·
+  **test=`test_scripts/test_deck_specific_coverage_eval.py`** ·
+  **doc=`docs/DECK_SPECIFIC_COVERAGE_EVAL.md`** ·
+  **branch=`slice176p-deck-specific-coverage-eval`** · **judge_ready=false** · **repair_ready=false**.
+- **Why this slice.** 176O found that 176N's unchanged score is best explained by `eval_insensitive`: the existing
+  scorer is mostly `structural_contract`, with high structure weight and low deck-specific weight. 176P measures
+  deck-specific coverage directly, using deterministic closed marker IDs derived from the private 176I/176K
+  artifact categories.
+- **What it is / is NOT.** IS: a closed diagnostic comparing the private baseline guide and the private 176N
+  OCR-context guide against expected deck-specific marker categories. NOT: packaging-v2 generation, another
+  provider run, a new LLM judge, Layer-2 judge, repair, scorer threshold tuning, numeric recompute, cloud OCR,
+  frontend/API rollout, or normal guide-generation behavior change.
+- **Real result (private diagnostic over existing artifacts).** `status=completed` ·
+  `private_baseline_guide_available=true` · `private_baseline_guide_gitignored=true` ·
+  `private_176n_guide_available=true` · `private_176n_guide_gitignored=true` ·
+  `private_ocr_artifact_available=true` · `private_ocr_artifact_gitignored=true` ·
+  `private_visible_artifact_available=true` · `private_visible_artifact_gitignored=true` ·
+  `provider_call_made=false` · `generation_rerun=false` ·
+  `marker_source=private_artifact_categories` · `marker_count_bucket=high` ·
+  `baseline_deck_specific_coverage=high` · `ocr_context_deck_specific_coverage=high` ·
+  `deck_specific_coverage_delta=unchanged` · `visible_asset_coverage_delta=unchanged` ·
+  `recovered_content_usage_delta=unchanged` ·
+  `active_recall_from_recovered_content_delta=unchanged` ·
+  `coverage_eval_role=diagnostic` · `should_modify_contract_scorer=no` ·
+  `recommended_next_step=test_on_uncommon_deck`.
+- **Interpretation.** This common deck is already highly covered by the baseline guide on the deterministic
+  deck-specific markers, and the 176N guide stays high rather than improving the aggregate. The result supports
+  176O's conclusion that the old flat score should not be patched upward. It also argues against immediate
+  packaging-v2 generation for this deck; next evidence should come from an uncommon deck or a visible-asset route,
+  not threshold tuning.
+- **Validation.** `compileall api pipeline test_scripts` OK; `test_deck_specific_coverage_eval` OK;
+  `test_flat_score_diagnostic` OK; `test_real_ocr_context_generation_score` OK; private coverage runner completed.
+  No provider generation rerun; provider_call_made=false. No Docker. No raw OCR/guide/table/caption/prompt/
+  response/provider payload/source PDF/private path committed; generated artifacts and `local_operator_baselines/`
+  stay ignored. **NOT committed.**
+
+---
+
+## Phase 2 product path — **Slice 176O: flat-score diagnostic before packaging iteration; private guides compared; scorer semantics inspected; committed `910a56c` / merged to trunk.**
 
 - **phase=Phase 2 (diagnose 176N unchanged score before spending another generation run)** · **slice=176O** ·
   **module=`pipeline/flat_score_diagnostic.py`** ·
@@ -41,11 +83,11 @@
   `test_real_ocr_context_generation_score` OK; `test_ocr_context_private_guide_score` OK; private diagnostic
   runner completed. No provider generation rerun; provider_call_made=false. No Docker. No raw OCR/guide/table/
   caption/prompt/response/provider payload/source PDF/private path committed; generated artifacts and
-  `local_operator_baselines/` stay ignored. **NOT committed.**
+  `local_operator_baselines/` stay ignored. **Committed `910a56c` / merged to trunk.**
 
 ---
 
-## Phase 2 product path — **Slice 176N: real OCR-context guide generation + score; fair private measurement after 176L stub confound; real guide produced and scored; NOT committed.**
+## Phase 2 product path — **Slice 176N: real OCR-context guide generation + score; fair private measurement after 176L stub confound; real guide produced and scored; committed `7abf61d` / merged to trunk.**
 
 - **phase=Phase 2 (fair real-generation measurement from the 176I private OCR content)** · **slice=176N** ·
   **module=`pipeline/real_ocr_context_generation.py`** ·
@@ -85,7 +127,7 @@
   `test_real_ocr_context_generation_score` OK; `test_ocr_context_private_guide_score` OK;
   `test_visible_table_figure_pilot` OK; `test_slide_raster_ocr_ingestion` OK; `git diff --check` clean.
   No Docker. No raw OCR/guide/table/caption/prompt/response/provider payload/source PDF/private path committed;
-  generated artifacts and `local_operator_baselines/` stay ignored. **NOT committed.**
+  generated artifacts and `local_operator_baselines/` stay ignored. **Committed `7abf61d` / merged to trunk.**
 - **Next route.** Start a flat-score diagnostic slice over the existing private baseline guide, private 176N guide,
   private closed scoring artifacts, and scorer code. Do **not** run another provider generation, do **not** run
   packaging-v2, do **not** add a new evaluator/judge/repair, and do **not** patch thresholds to make numbers green.

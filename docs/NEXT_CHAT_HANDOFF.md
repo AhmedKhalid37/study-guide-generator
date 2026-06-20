@@ -6,8 +6,31 @@
 > stable overview see `PROJECT_CONTEXT.md`; canonical brief is `../CLAUDE.md`.
 
 ## Current position
-- **Working tree:** branch `slice176o-flat-score-diagnostic`; **Slice 176O** diagnosed the flat 176N score before
-  any packaging iteration. **NOT committed.**
+- **Working tree:** branch `slice176p-deck-specific-coverage-eval`; **Slice 176P** added a deterministic
+  deck-specific coverage diagnostic after 176O found the existing score was structurally weighted. **NOT committed.**
+- **Slice 176P result (deck-specific coverage eval).** Existing private artifacts were inspected locally with
+  closed labels only: `private_baseline_guide_available=true` · `private_baseline_guide_gitignored=true` ·
+  `private_176n_guide_available=true` · `private_176n_guide_gitignored=true` ·
+  `private_ocr_artifact_available=true` · `private_ocr_artifact_gitignored=true` ·
+  `private_visible_artifact_available=true` · `private_visible_artifact_gitignored=true` ·
+  `provider_call_made=false` · `generation_rerun=false` ·
+  `marker_source=private_artifact_categories` · `marker_count_bucket=high` ·
+  `baseline_deck_specific_coverage=high` · `ocr_context_deck_specific_coverage=high` ·
+  `deck_specific_coverage_delta=unchanged` · `visible_asset_coverage_delta=unchanged` ·
+  `recovered_content_usage_delta=unchanged` ·
+  `active_recall_from_recovered_content_delta=unchanged` ·
+  `coverage_eval_role=diagnostic` · `should_modify_contract_scorer=no` ·
+  `recommended_next_step=test_on_uncommon_deck`. No raw guide/OCR/table/caption/prompt/response/provider payload/
+  private path is committed; no normal-generation, frontend, or API behavior changed; no cloud OCR; no new LLM
+  judge; no repair.
+- **176P interpretation.** The baseline and OCR-context guide both score high on closed deck-specific markers for
+  this common deck, with aggregate coverage unchanged. Do not patch the old scorer thresholds and do not run
+  packaging-v2 immediately from this evidence. Next route is an uncommon-deck check or a visible-asset insertion
+  route, depending on product priority.
+- **Validation for 176P.** `compileall api pipeline test_scripts` OK; `test_deck_specific_coverage_eval` OK;
+  `test_flat_score_diagnostic` OK; `test_real_ocr_context_generation_score` OK; private coverage runner completed.
+  Docker was not run. `local_operator_baselines/` remains ignored/uncommitted. **NOT committed.**
+- **Slice 176O is committed/merged/pushed as `910a56c`** (flat-score diagnostic before packaging iteration).
 - **Slice 176O result (flat-score diagnostic).** Existing private artifacts were inspected locally with closed
   labels only: `private_baseline_guide_available=true` · `private_baseline_guide_gitignored=true` ·
   `private_176n_guide_available=true` · `private_176n_guide_gitignored=true` ·
@@ -27,7 +50,8 @@
   generation run.
 - **Validation for 176O.** `compileall api pipeline test_scripts` OK; `test_flat_score_diagnostic` OK;
   `test_real_ocr_context_generation_score` OK; `test_ocr_context_private_guide_score` OK; private diagnostic
-  runner completed. Docker was not run. `local_operator_baselines/` remains ignored/uncommitted. **NOT committed.**
+  runner completed. Docker was not run. `local_operator_baselines/` remains ignored/uncommitted. **Committed
+  `910a56c` / merged to trunk.**
 - **Slice 176N is committed/merged/pushed as `7abf61d`** (real OCR-context generation score).
 - **Slice 176N prior result.** Slice 176N ran the fair private
   measurement after 176L's stub-vs-full-guide confound: a real OCR-context guide generated through the existing
@@ -49,12 +73,9 @@
   `test_real_ocr_context_generation_score` OK; `test_ocr_context_private_guide_score` OK;
   `test_visible_table_figure_pilot` OK; `test_slide_raster_ocr_ingestion` OK; `git diff --check` clean.
   Docker was not run. `local_operator_baselines/` remains ignored/uncommitted. **NOT committed.**
-- **Next slice:** run a flat-score diagnostic before any packaging iteration. Compare the existing private 176N
-  OCR-context guide with the private baseline and inspect what the existing scorer actually measures, committing
-  only closed labels. Decide whether the flat score is best explained by `packaging_weak`,
-  `model_already_knew`, `eval_insensitive`, or `inconclusive`. Do not run another provider generation, do not run
-  packaging-v2, do not add a new judge, do not run Layer-2 judge, do not add repair, and do not wire frontend/API
-  behavior yet.
+- **Next route:** do not run packaging-v2 from 176O/176P alone. Either test the deterministic coverage probe on an
+  uncommon deck or pivot toward rendered visible-asset insertion. Do not run another provider generation, do not
+  add a new LLM judge, do not run Layer-2 judge, do not add repair, and do not wire frontend/API behavior yet.
 - **Slice 176M is committed/merged/pushed as `fb227dd`** (gated animation-frame redundancy detector + setting;
   cheap measurement-only gate for a future expensive frame-selection branch).
 - **Slice 176M prior result.** Added the **cheap gate**

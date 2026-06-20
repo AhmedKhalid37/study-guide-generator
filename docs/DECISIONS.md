@@ -7726,7 +7726,7 @@ insensitivity to deck-specific coverage. Only route to packaging-v2 if that diag
 **Privacy:** the generated guide, source context bundle, visible asset material, and scoring artifacts live only
 in ignored private storage. No raw guide/OCR/table/caption text, prompts, responses, provider payloads, rendered
 guide files, source PDFs, filenames, hashes, byte counts, private paths, model files/caches, or thumbnails are
-committed. `local_operator_baselines/` stays ignored. `judge_ready=false`; `repair_ready=false`. **NOT committed.**
+committed. `local_operator_baselines/` stays ignored. `judge_ready=false`; `repair_ready=false`. **Committed `7abf61d` / merged to trunk.**
 
 ## Slice 176O — diagnose the 176N unchanged score before packaging iteration
 176N's unchanged score is a real negative measurement, not a stub-vs-full-guide confound. 176O diagnoses that
@@ -7752,4 +7752,20 @@ slice should add deck-specific coverage evaluation/diagnostic before spending an
 
 **Privacy:** no raw baseline guide, 176N guide, OCR text, table text, captions, prompts, responses, provider
 payloads, private paths, source PDFs, rendered files, thumbnails, hashes, byte counts, model files, or caches are
-committed. `judge_ready=false`; `repair_ready=false`. **NOT committed.**
+committed. `judge_ready=false`; `repair_ready=false`. **Committed `910a56c` / merged to trunk.**
+
+## Slice 176P — deck-specific coverage stays unchanged on this common deck
+176O showed the 176N flat score was best explained by `eval_insensitive`: the existing
+coverage signal is structurally weighted, not deck-specific. 176P added a separate,
+deterministic, closed-marker coverage diagnostic over the private baseline guide, the
+private 176N OCR-context guide, and the private 176I/176K artifact categories. The result
+was `baseline_deck_specific_coverage=high`,
+`ocr_context_deck_specific_coverage=high`, and
+`deck_specific_coverage_delta=unchanged`, with `provider_call_made=false` and
+`generation_rerun=false`.
+
+**Decision:** do not modify the old contract scorer or tune thresholds to manufacture
+movement, and do not run packaging-v2 immediately from this evidence. The next evidence
+should come from `test_on_uncommon_deck` or a visible-asset insertion route. Raw guide/OCR/
+table/caption/prompt/response/provider payload content and private paths stay out of git;
+`judge_ready=false` and `repair_ready=false` remain frozen. **NOT committed.**
