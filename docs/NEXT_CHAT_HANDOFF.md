@@ -6,9 +6,27 @@
 > stable overview see `PROJECT_CONTEXT.md`; canonical brief is `../CLAUDE.md`.
 
 ## Current position
-- **Working tree:** branch `slice176j-gini-input-cell-parser-private-artifact`; **Slice 176J** added the
-  first numeric consumer of the 176I private OCR artifact (`pipeline/gini_input_cell_parser.py` +
-  `test_scripts/test_gini_input_cell_parser.py` + live-doc updates), **NOT committed**.
+- **Working tree:** branch `slice176k-visible-table-figure-pilot-private-ocr`; **Slice 176K** added the
+  first **product-facing** consumer of the 176I private OCR artifact
+  (`pipeline/visible_table_figure_pilot.py` + `test_scripts/test_visible_table_figure_pilot.py` +
+  live-doc updates), **NOT committed**.
+- **Slice 176K result (visible table/figure pilot — display assets, not numerics).** 176J settled the Gini
+  numeric path as `answer_output_only` and routed to `pivot_to_visible_table_pilot`; 176K is that pivot. Ran
+  the pilot on the private 176I artifact and selected the 3 priority student-visible assets cleanly recovered
+  by 176I: `selected_assets_count=3` · `selected_asset_categories=[proximity_matrix, patient_dataset_table,
+  decision_tree_or_split_diagram]` · `private_visible_artifact_written=true` ·
+  `private_visible_artifact_gitignored=true` · `table_asset_status=ready` · `figure_asset_status=partial` ·
+  `caption_or_context_status=ready` · `guide_insertion_readiness=ready_for_off_by_default_private_pilot` ·
+  `numeric_verification_role=display_only` · `numeric_recompute_claimed=false` · `blocked_by=none` ·
+  `recommended_next_step=wire_visible_assets_into_private_guide_preview`. These are **display / study assets**,
+  never fed into recompute. Raw reconstructed tables/captions live only in the private gitignored artifact. No
+  cloud OCR; no provider/model generation; no guide-generation / frontend/API wiring. **NOT committed.**
+- **176K is the last preparation slice.** The next slice (176L) must produce the first **student-visible**
+  artifact after the OCR breakthrough: a private regenerated guide / guide preview from the extracted 176I OCR
+  content (optionally referencing the selected 176K visible assets), scored against the existing baseline with
+  existing eval tooling **if available** (no new judge, no repair, no cloud OCR, no frontend/API wiring).
+- **Slice 176J is committed/merged/pushed as `91c32ab`** (Gini OCR input-cell parser; numeric path stays
+  blocked — the Gini slide is an answer summary, not a raw class-count grid).
 - **Slice 176J result (first numeric consumer — honest BLOCK, no laundering).** Ran the parser on the private
   176I OCR artifact's Gini slide. That slide is a **per-split answer summary** (each row: one count + one
   unit-interval Gini **value**), **not** a raw class-count grid. The parser **refused the Gini answer column**

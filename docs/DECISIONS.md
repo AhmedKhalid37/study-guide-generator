@@ -7576,3 +7576,47 @@ though numeric input parsing is blocked here. The parser's synthetic public-safe
 gap. No cloud OCR; no provider/model generation; no guide-generation wiring; no Layer-2 judge; no repair. No raw
 OCR/table text, raw values, leaf counts, formulas, or private paths committed; the private artifact and
 `local_operator_baselines/` stay ignored. `judge_ready=false`; `repair_ready=false`. **NOT committed.**
+
+## Slice 176K — visible table/figure pilot is the first PRODUCT-FACING consumer of the private 176I OCR artifact
+176J settled the Gini numeric path for this artifact: the representative Gini slide is a per-split **answer
+summary** (`candidate_kind=computed_gini_answer`, `blocked_by=answer_output_only`,
+`machine_consumable_for_recompute=false`), and its `recommended_next_step` was `pivot_to_visible_table_pilot`.
+Per produce-before-scaffold, the correct next action was to **run a minimal product-facing consumer on the
+artifact that already exists**, not to build more numeric or OCR plumbing. So 176K adds exactly one small module
+(`pipeline/visible_table_figure_pilot.py`) that selects a **very small** set (max 3) of high-value,
+student-visible assets out of the private 176I OCR extraction (proximity matrix, patient-dataset table, optional
+decision-tree/split diagram), packages reconstructed table markdown / structured table JSON / caption-context /
+a closed placement hint into a **private, gitignored** pilot artifact, and emits a committed-safe closed summary.
+It reuses the 176H private-artifact policy (`is_private_artifact_dir`); it is **not** a numeric parser,
+numeric-recompute wiring, a broad table engine, guide-generation wiring, frontend/API, a Layer-2 judge, repair,
+cloud OCR, or provider/model generation.
+**Anti-laundering (display-only, load-bearing):** visible table/figure assets are **display / study assets only**
+— they do not prove numeric correctness. No asset is ever marked `numeric_verification`; numeric-bearing display
+tables are at most `numeric_verification_role=display_only`; nothing is fed into recompute and
+`numeric_recompute_claimed` is a hardwired `False`. Raw reconstructed tables, OCR captions, rendered crops,
+source PDFs, model files/caches, and private paths are written **only** into the private artifact directory and
+never committed — the committed summary's `*_committed` flags are hardwired `False` and the summary builder
+accepts no raw-text / path / size argument. If the private artifact directory is missing or not confirmed
+private, the pilot **blocks** instead of writing.
+**Real result (ran on the private artifact):** selected the 3 priority categories cleanly recovered by 176I —
+`status=completed`, `selected_assets_count=3` (max 3), `selected_asset_categories=[proximity_matrix,
+patient_dataset_table, decision_tree_or_split_diagram]`, `selected_asset_kinds=mixed`,
+`private_visible_artifact_written=true`, `private_visible_artifact_gitignored=true`, `table_asset_status=ready`,
+`figure_asset_status=partial` (the decision-tree slide was recovered as a table grid, not a true figure image),
+`caption_or_context_status=ready`, `guide_insertion_readiness=ready_for_off_by_default_private_pilot`,
+`numeric_verification_role=display_only`, `numeric_recompute_claimed=false`, `blocked_by=none`,
+`recommended_next_step=wire_visible_assets_into_private_guide_preview`. The module's synthetic public-safe tests
+prove the selection cap, the display-only invariant, the privacy split (private payload carries raw markdown/JSON
+while the committed summary carries none), and the missing/unsafe/no-asset blockers.
+**Interpretation:** the product path is now a private guide preview (off by default) or a caption/placement
+policy; numeric verification for this deck remains out of scope (Gini stays `unverified` from 176J). No cloud
+OCR; no provider/model generation; no guide-generation wiring; no frontend/API wiring; no Layer-2 judge; no
+repair. No raw OCR/table/caption text, raw values, rendered images, source PDFs, model files/caches, or private
+paths committed; the private artifacts and `local_operator_baselines/` stay ignored. `judge_ready=false`;
+`repair_ready=false`. **NOT committed.**
+**176K is the last preparation slice.** Per the byte-identical invariant, no further readiness / seam / adapter /
+policy-only / numeric-parser slice may follow. The next slice (176L) must change what a student can actually
+read: a private regenerated guide / guide preview produced from the extracted 176I OCR content (optionally
+referencing the selected 176K visible assets), compared against the existing baseline with a **scored comparison
+if existing eval tooling supports it** — using only existing scoring (no new judge), no repair, no cloud OCR, and
+no frontend/API/normal-generation wiring.

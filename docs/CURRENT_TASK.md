@@ -5,7 +5,47 @@
 
 ---
 
-## Phase 2 numeric consumer — **Slice 176J: Gini input-cell parser over the private 176I OCR artifact; numeric path stays blocked (slide is an answer summary); NOT committed.**
+## Phase 2 product path — **Slice 176K: visible table/figure pilot from the private 176I OCR artifact; first product-facing consumer; private pilot artifact produced; NOT committed.**
+
+- **phase=Phase 2 (first product-facing consumer of the 176I private OCR artifact)** · **slice=176K** ·
+  **module=`pipeline/visible_table_figure_pilot.py`** · **test=`test_scripts/test_visible_table_figure_pilot.py`** ·
+  **branch=`slice176k-visible-table-figure-pilot-private-ocr`** · **judge_ready=false** · **repair_ready=false**.
+- **Why this slice.** 176J settled the Gini numeric path for this artifact as **answer_output_only / not
+  machine-consumable** and routed to `pivot_to_visible_table_pilot`. 176K is that pivot: the **product path**,
+  the first downstream consumer that turns recovered OCR content into **student-visible display assets** (not
+  numerics). It exists because 176I produced real extracted content.
+- **What it is / is NOT.** A minimal selector that picks a **very small** set (max 3) of high-value
+  student-visible assets and packages reconstructed table markdown / structured table JSON / caption-context /
+  a placement hint into a **private, gitignored** pilot artifact, emitting a committed-safe closed summary. NOT
+  a numeric parser, numeric-recompute wiring, broad table engine, guide-generation wiring, frontend/API, full
+  ingestion rollout, Layer-2 judge, repair, cloud OCR, or provider/model generation.
+- **Real result (ran on the private artifact).** Selected the 3 priority categories cleanly recovered by 176I:
+  `selected_assets_count=3` (max 3) · `selected_asset_categories=[proximity_matrix, patient_dataset_table,
+  decision_tree_or_split_diagram]` · `selected_asset_kinds=mixed` · `private_artifact_available=true` ·
+  `private_artifact_gitignored=true` · `private_visible_artifact_written=true` ·
+  `private_visible_artifact_gitignored=true` · `table_asset_status=ready` · `figure_asset_status=partial`
+  (the decision-tree slide was recovered as a table grid, not a true figure image) ·
+  `caption_or_context_status=ready` · `guide_insertion_readiness=ready_for_off_by_default_private_pilot` ·
+  `numeric_verification_role=display_only` · `numeric_recompute_claimed=false` · `blocked_by=none` ·
+  `recommended_next_step=wire_visible_assets_into_private_guide_preview`.
+- **Anti-laundering (display-only).** These are **display / study assets**, not numeric verification. No asset
+  is `numeric_verification`; the numeric-bearing tables are `display_only`; nothing is fed into recompute and
+  no numeric correctness is claimed. Raw reconstructed tables, captions, rendered crops, source PDFs, model
+  files/caches, and private paths live **only** in the private artifact directory — never committed.
+- **Validation.** `compileall api pipeline test_scripts` OK; `test_visible_table_figure_pilot` OK;
+  `test_gini_input_cell_parser` OK; `test_slide_raster_ocr_ingestion` OK; `git diff --check` clean. No Docker.
+  No frontend/API/generation code touched. The private artifacts and `local_operator_baselines/` stay ignored.
+  **NOT committed.**
+- **176K is the last preparation slice.** No further readiness/seam/adapter/policy-only/numeric-parser slice
+  may follow. Per the byte-identical invariant, the **next** slice (176L) must change what a student can
+  actually read: a private regenerated guide / guide preview built from the extracted 176I OCR content (and,
+  if safe in scope, the selected 176K visible assets), compared against the existing baseline with a **scored
+  comparison if existing eval tooling supports it** — no new judge, no repair, no cloud OCR, no frontend/API
+  wiring.
+
+---
+
+## Phase 2 numeric consumer — **Slice 176J: Gini input-cell parser over the private 176I OCR artifact; numeric path stays blocked (slide is an answer summary); committed `91c32ab` / merged to trunk.**
 
 - **phase=Phase 2 (first numeric consumer of the 176I private OCR artifact)** · **slice=176J** ·
   **module=`pipeline/gini_input_cell_parser.py`** · **test=`test_scripts/test_gini_input_cell_parser.py`** ·
