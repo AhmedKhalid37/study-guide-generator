@@ -5,7 +5,41 @@
 
 ---
 
-## Phase 2 slide-raster OCR ingestion — **Slice 176G local-Chandra structured-OCR rerun gate; ran local Chandra on real slides; NOT committed.**
+## Phase 2 slide-raster OCR ingestion — **Slice 176H local slide-OCR ingestion artifact seam; off-by-default; NOT committed.**
+
+- **phase=Phase 2 slide-raster OCR ingestion** · **slice=176H (ingestion artifact seam)** ·
+  **module=`pipeline/slide_raster_ocr_ingestion.py`** · **test=`test_scripts/test_slide_raster_ocr_ingestion.py`** ·
+  **branch=`slice176h-local-slide-ocr-ingestion-seam`** · **judge_ready=false** · **repair_ready=false**.
+- **Why this slice.** 176G's recorded next step was `build_local_slide_ocr_ingestion_pipeline`. This is its
+  **first minimal, off-by-default increment** — only the artifact **seam**, not guide-generation wiring,
+  not frontend/API integration, not numeric-recompute wiring, not a Layer-2 judge, not repair, not cloud OCR.
+- **What it IS.** Pure/testable helpers + an inert-by-default runner: `classify_pdf_text_layer`,
+  `detect_full_page_image_blocks`, `is_private_artifact_dir`, `render_selected_pages_to_temp_images`,
+  `run_tesseract_if_available`, `run_local_structured_ocr_if_configured`, `write_private_ocr_artifact`,
+  `build_closed_slide_ocr_summary`, `run_slide_raster_ocr_ingestion`. Raw OCR / rendered images go **only**
+  to a private gitignored/temp directory; if none is available the seam **degrades to a closed `blocked`
+  status rather than writing into the repo**. Every persisted field is a closed token/count/bool.
+- **Closed safety posture (hardwired).** `cloud_ocr_used=false`; `raw_ocr_committed=false`,
+  `raw_table_text_committed=false`, `rendered_images_committed=false`, `model_files_committed=false`,
+  `model_cache_committed=false`. Structured-OCR engine labels stay closed and a GGUF/VLM route is **not**
+  relabelled hf/cli (`structured_ocr_engine=chandra_gguf_local` ≠ `chandra_hf_local`/`chandra_cli_local`).
+  **`numeric_recompute_readiness` can never be `ready_for_masked_recompute` from this seam** — a later
+  masked-recompute consumer owns that (it is forced down to `needs_input_cell_parser`).
+- **Optional local smoke (real deck, 2-page subset, rendered to `/tmp` only, auto-deleted; closed labels
+  only).** `status=completed` · `pages_rendered_count=2` · `tesseract_status=available` (binary present,
+  python bindings absent in host → bulk text `not_run`) · `structured_ocr_status=not_available` ·
+  `cloud_ocr_used=false` · `private_artifact_written=true` · `rendered_images_committed=false` ·
+  `numeric_recompute_readiness=needs_input_cell_parser`. The smoke sampled the **first two pages**
+  (title/intro → `text_layer`/`usable`), which does **not** contradict the 176F/176G `near_empty` finding
+  on the **category-selected dense grid slides** — a different page class.
+- **Validation.** `compileall` OK; `test_slide_raster_ocr_ingestion` OK; 176F gate OK; recompute_verifier
+  311/0; `git diff --check` clean. No Docker. No frontend/API/generation code touched. No model
+  files/caches/raw OCR/rendered images/source PDFs/private paths committed; `local_operator_baselines/`
+  stays ignored. **NOT committed.**
+
+---
+
+## Phase 2 slide-raster OCR ingestion — **Slice 176G local-Chandra structured-OCR rerun gate; ran local Chandra on real slides; committed `0bc9230` / merged to trunk.**
 
 - **phase=Phase 2 slide-raster OCR ingestion** · **slice=176G (local-Chandra rerun gate)** ·
   **doc=`docs/TABLE_STRUCTURE_PHASE2_LOCAL_CHANDRA_OCR_GATE.md`** ·

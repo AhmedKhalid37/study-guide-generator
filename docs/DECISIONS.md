@@ -7468,3 +7468,35 @@ this slice (rerun gate only). Cloud OCR stays banned. Committed:
 `docs/TABLE_STRUCTURE_PHASE2_LOCAL_CHANDRA_OCR_GATE.md` + live-doc updates. No model files,
 model caches, raw Chandra OCR/HTML, rendered images, source PDFs, or private paths committed;
 `local_operator_baselines/` stays ignored. `judge_ready=false`; `repair_ready=false`.
+
+## Slice 176H — build the local slide-OCR ingestion **seam** off-by-default, raw OCR private-only
+176G recorded `recommended_next_step=build_local_slide_ocr_ingestion_pipeline`. This slice builds
+its **first minimal increment**: an ingestion artifact **seam** (`pipeline/slide_raster_ocr_ingestion.py`),
+not the full pipeline, not guide-generation wiring, not frontend/API, not numeric-recompute wiring,
+not a Layer-2 judge, not repair, not cloud OCR. **Why a seam and not "just run it":** the producer so
+far only existed as the 176F/176G verification harnesses (transient, gitignored). A reusable,
+testable writer/runner did not exist, so per the roadmap this is the next real artifact — built
+small and off-by-default rather than as a broad framework. **Design decisions:** (1) **inert by
+default** — the runner returns `status=skipped` unless a config explicitly enables it, so it can
+never run as a side effect; (2) **raw OCR / rendered images are private-only** — `is_private_artifact_dir`
+permits writes only under the system temp dir or a known gitignored runtime segment
+(`local_operator_baselines/`, `jobs/`, `.private_ocr/`, `.trash/`); a tracked repo path is **refused**
+and the seam degrades to a closed `blocked` status rather than writing into the repo; (3) **closed
+summary only** — every persisted field is a closed token/count/bool, `cloud_ocr_used` and all
+`*_committed` flags are hardwired `false`, and no path/filename/size/text argument is accepted by the
+summary builder; (4) **engine honesty** — structured-OCR labels stay in a closed set and a GGUF/local-VLM
+route is **not** relabelled `chandra_hf_local`/`chandra_cli_local` (176G recorded the pip package is not
+installed); (5) **no numeric claim** — `numeric_recompute_readiness` can never be
+`ready_for_masked_recompute` from this seam (forced down to `needs_input_cell_parser`); the masked-recompute
+Gini proof remains a **later** downstream consumer's job and Gini stays `unverified`. The first downstream
+consumer is the **Phase 4 visible table/figure insertion** path; numeric recompute is the later one.
+**Optional local smoke** (real deck, first 2 pages, rendered to `/tmp`, auto-deleted, closed labels only):
+`status=completed`, `pages_rendered_count=2`, `tesseract_status=available` (binary present, python bindings
+absent → bulk text `not_run`), `structured_ocr_status=not_available`, `cloud_ocr_used=false`,
+`private_artifact_written=true`, `numeric_recompute_readiness=needs_input_cell_parser`; the smoke sampled the
+title/intro pages (`text_layer`/`usable`), which does **not** contradict the 176F/176G `near_empty` finding on
+the category-selected dense grid slides. Committed: `pipeline/slide_raster_ocr_ingestion.py` +
+`test_scripts/test_slide_raster_ocr_ingestion.py` + `docs/SLIDE_RASTER_OCR_INGESTION_SEAM.md` + live-doc
+updates (when committed). No frontend/API/generation code touched. No model files/caches, raw OCR/table text,
+rendered images, source PDFs, or private paths committed; `local_operator_baselines/` stays ignored. Cloud OCR
+stays banned. `judge_ready=false`; `repair_ready=false`.

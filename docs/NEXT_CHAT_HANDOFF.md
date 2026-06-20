@@ -6,10 +6,26 @@
 > stable overview see `PROJECT_CONTEXT.md`; canonical brief is `../CLAUDE.md`.
 
 ## Current position
-- **Working tree:** branch `slice176g-local-chandra-ocr-rerun-gate`; **Slice 176G** local-Chandra
-  structured-OCR rerun gate (`docs/TABLE_STRUCTURE_PHASE2_LOCAL_CHANDRA_OCR_GATE.md` + doc updates),
-  **NOT committed**.
-- **Slice 176G result (local-Chandra rerun gate; real slides via gitignored transient harness).**
+- **Working tree:** branch `slice176h-local-slide-ocr-ingestion-seam`; **Slice 176H** local slide-OCR
+  **ingestion artifact seam** (`pipeline/slide_raster_ocr_ingestion.py` +
+  `test_scripts/test_slide_raster_ocr_ingestion.py` + `docs/SLIDE_RASTER_OCR_INGESTION_SEAM.md` + doc
+  updates), **NOT committed**.
+- **Slice 176H result (off-by-default ingestion seam — only the seam, no guide-generation wiring).**
+  First minimal increment of 176G's `build_local_slide_ocr_ingestion_pipeline`. Pure helpers + an
+  inert-by-default runner that classifies the PDF text layer / content form, renders selected raster pages
+  and runs **local** OCR engines **only** into a private gitignored/temp directory, and emits a
+  committed-safe **closed summary**. If no private dir is available it returns a closed `blocked` status
+  rather than writing into the repo. Hardwired: `cloud_ocr_used=false`, `raw_ocr_committed=false`,
+  `rendered_images_committed=false`, `model_files_committed=false`, `model_cache_committed=false`; engine
+  labels stay closed (GGUF/VLM **not** relabelled hf/cli); **`numeric_recompute_readiness` can never be
+  `ready_for_masked_recompute` from this seam**. Optional local smoke (real deck, first 2 pages → `/tmp`,
+  auto-deleted, closed labels only): `status=completed` · `pages_rendered_count=2` ·
+  `tesseract_status=available` · `structured_ocr_status=not_available` · `private_artifact_written=true` ·
+  `numeric_recompute_readiness=needs_input_cell_parser`. **NOT committed.** Next: the visible
+  table/figure-insertion consumer (Phase 4); numeric recompute is a **later** consumer requiring masked
+  proof from raw input cells (Gini still `unverified`).
+- **Slice 176G is committed/merged/pushed as `0bc9230`** (local-Chandra structured-OCR rerun gate; real
+  slides via gitignored transient harness).
   Ran local **Chandra OCR 2 GGUF** (`llama.cpp`/`llama-server`, `Q5_K_M`+self-generated `mmproj`,
   RTX 5070 Ti — the Slice-41 path; the `chandra-ocr` pip package hf/vllm/cli is **not installed**;
   local-only, no cloud/API). Closed result: `chandra_status=ran_local` · `chandra_mode=gguf_local` ·
@@ -22,8 +38,7 @@
   **Decision:** `corrected_blocker=local_ocr_available_needs_pipeline`;
   `recommended_next_step=build_local_slide_ocr_ingestion_pipeline` (**Gini-proof-gated**: the numeric path
   must first pass a masked recompute from raw split counts on a worked-example slide; Gini stays
-  `unverified` until then). **No ingestion pipeline built.** No model files/caches/raw OCR committed.
-  **NOT committed.**
+  `unverified` until then).
 - **Slice 176F is committed/merged/pushed** (slide-raster OCR correction + Tesseract-first gate:
   both decks near-empty-text full-page raster slides; blocker corrected to extraction-gated-on-raster-OCR
   while only Tesseract had run; `test_scripts/test_quality_safety_slide_raster_ocr_gate.py` +
