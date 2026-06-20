@@ -5,7 +5,60 @@
 
 ---
 
-## Phase 2 input-existence — **Revised Slice 176D numeric-target input-existence classification; built + run on committed evidence; NOT committed.**
+## Phase 2 present-input reconstruction — **Slice 176E one-target cold reconstruction attempt; built + run on real deck; NOT committed.**
+
+- **phase=Phase 2 present-input reconstruction** · **slice=176E (one input-present target)** ·
+  **module=`pipeline/quality_safety_present_input_target_reconstructor.py`** ·
+  **test=`test_scripts/test_quality_safety_present_input_target_reconstructor.py`** ·
+  **doc=`docs/TABLE_STRUCTURE_PHASE2_PRESENT_INPUT_RECONSTRUCTION.md`** ·
+  **branch=`slice176e-reconstruct-present-input-target`** · **judge_ready=false** · **repair_ready=false**.
+- **Framing.** 176E does **not** inherit 176D's `computation_input_present_count=5` as proven source
+  truth. It is the **validation test** for one selected target: does its computation-**input** table
+  actually exist in the source in a form the local extractor can find+parse when the region is
+  **rediscovered cold from extraction** (no hand-located region, no spot-check hint, no fixture/answer
+  values supplied to the parser)?
+- **Selected target:** `gini_chest_pain` · family `weighted_gini` ·
+  `selection_reason=simplest_row_cell_mapping`+`cleaner_extraction_region` (categorical 2-class split;
+  avoids reusing `gini_weight_gt_176`'s hand-located spot-check region and avoids chaining a downstream
+  formula). Non-selected: other 4 input-present → `deferred_by_scope`; `proximity_4_3` → answer_output_only;
+  `weighted_weight_impute` → inconclusive.
+- **GATE-2 catch (the key event).** A first naive mapper accepted *any* row with ≥2 integers as a Gini
+  group and reported `status=parsed`/`created`/`masked_recompute=passed` on the real deck — a **false
+  positive**: it grabbed 2 coincidental small integers and the masked recompute returned a finite Gini.
+  Verified the measurement (the 2 integer-pair rows were coincidental; no corroborating printed Gini),
+  refused to bank it, and added a **column-alignment credibility guard** (≥2 shared x-columns each ≥2
+  cells; ≥2 multi-column rows) — magnitude/answer-agnostic, not tuned to any expected value.
+- **Real-deck result (closed; gitignored transient harness, local PyMuPDF only):**
+  `status=blocked` · `selected_region_origin=discovered_from_extraction` ·
+  `parser_received_hand_located_region=false` · `parser_received_spot_check_region_hint=false` ·
+  `target_region_status=found` · `row_cell_extraction_status=parsed_from_extraction_output` ·
+  `source_input_record_status=not_created` · `source_input_origin=none` · `inputs_status=unavailable` ·
+  `machine_consumable_for_recompute=false` · `masked_recompute_status=not_run` ·
+  `input_presence_claim_basis=inconclusive` · `input_presence_confirmed_against_source=inconclusive` ·
+  `source_confirmation_status=no_input_region_found` · `blocked_by=row_cell_reconstruction` ·
+  warning `no_input_columns_found`.
+- **Finding/verdict.** Cold rediscovery does **not** expose a machine-parseable, column-aligned
+  class-count **input** table for `gini_chest_pain`; the only integers extraction recovers are
+  coincidental. **Consistent with** 174A/175A `source_input_missing`, 176A `machine_consumable=0`, 176C
+  answer-matrix + `typed_candidate_region_count=0`: the deck presents worked **answers** and tree
+  **diagrams**, not typed class-count input tables in extractable text. Therefore **176D's
+  `computation_input_present` for this target was prior-evidence optimism, not source-confirmed truth —
+  do not keep treating the five-count as hard fact.**
+- **next_step=`improve_input_region_evidence`** (inputs, if present, live in tree-diagram **images**/prose
+  — a heavier image-region path, not text reconstruction) **or** `choose_different_input_present_target`.
+  Slice-level: try at most one more input-present Gini target at the same cold bar; **if it also collapses,
+  stop the Ensemble numeric grind and pivot to student-visible table/figure insertion** (the proximity
+  answer matrix remains a presentation asset, never a recompute input).
+- **Validation:** `compileall api pipeline test_scripts` OK; new test 76/76; 176D input-existence 120/120;
+  176C reconstructor + recompute-verifier (311) still pass; `git diff --check` clean. No Docker; no
+  `docker compose config`. No Chandra; no cloud OCR; no provider/model generation; no guide regeneration;
+  no Layer-2 judge; no repair.
+- **NOT committed** (per supervisor stop condition). `docs/SUPERVISOR_PROTOCOL.md` remains untracked;
+  `local_operator_baselines/` + the transient real-deck harness stay uncommitted/ignored.
+
+---
+
+## Phase 2 input-existence — **Revised Slice 176D numeric-target input-existence classification; built + run on committed evidence; committed `e3a0102`.**
 
 - **phase=Phase 2 input-existence classification** · **slice=revised 176D** ·
   **module=`pipeline/quality_safety_numeric_target_input_existence.py`** ·

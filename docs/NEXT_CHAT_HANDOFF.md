@@ -6,11 +6,28 @@
 > stable overview see `PROJECT_CONTEXT.md`; canonical brief is `../CLAUDE.md`.
 
 ## Current position
-- **Working tree:** branch `slice176d-target-input-existence-classification`; **revised Slice 176D**
-  numeric-target input-existence classifier (`pipeline/quality_safety_numeric_target_input_existence.py`
-  + test) + doc updates, **NOT committed**. Slice 176C is committed as `1771dd9`; 176B `0a9794b`;
-  176A `b9c6ee9`; 174A `e8f8cac`; 173C `3aaea34`; 173B `1a38c12`; 173A `1905af7`. 175A was a
-  no-change provenance gate.
+- **Working tree:** branch `slice176e-reconstruct-present-input-target`; **Slice 176E**
+  present-input target reconstructor (`pipeline/quality_safety_present_input_target_reconstructor.py`
+  + test + `docs/TABLE_STRUCTURE_PHASE2_PRESENT_INPUT_RECONSTRUCTION.md`) + doc updates, **NOT committed**.
+  Revised **Slice 176D is committed/merged as `e3a0102`**; 176C `1771dd9`; 176B `0a9794b`; 176A `b9c6ee9`;
+  174A `e8f8cac`; 173C `3aaea34`; 173B `1a38c12`; 173A `1905af7`. 175A was a no-change provenance gate.
+- **Slice 176E result (one-target cold reconstruction; real deck via gitignored harness).** Selected
+  `gini_chest_pain` (`weighted_gini`; `simplest_row_cell_mapping`+`cleaner_extraction_region`). A first
+  naive mapper (any ≥2-integer row = a group) **false-positived** to `parsed`/`created` on the real deck
+  by grabbing coincidental integers; GATE-2 verification caught it (no shared columns, no corroborating
+  printed Gini), so it was **not banked** and a **column-alignment credibility guard** was added.
+  Honest closed result: `status=blocked` · `source_input_record_status=not_created` ·
+  `machine_consumable_for_recompute=false` · `masked_recompute_status=not_run` ·
+  `input_presence_confirmed_against_source=inconclusive` · `source_confirmation_status=no_input_region_found`
+  · `blocked_by=row_cell_reconstruction` · `selected_region_origin=discovered_from_extraction` ·
+  `parser_received_hand_located_region=false` · `parser_received_spot_check_region_hint=false`.
+  **Verdict:** cold extraction does not expose a parseable class-count input table for this target →
+  **176D's `computation_input_present` for `gini_chest_pain` was prior-evidence optimism, not source-confirmed
+  truth.** Consistent with 174A/175A/176A/176C. **next_step=`improve_input_region_evidence` (inputs, if
+  present, are in tree-diagram images/prose) or `choose_different_input_present_target`; if one more Gini
+  target also collapses, stop the Ensemble numeric grind and pivot to student-visible table/figure insertion.**
+  The proximity answer matrix remains a presentation asset only. `local_operator_baselines/` + the transient
+  harness stay uncommitted/ignored.
 - **176C laundering contradiction — RESOLVED from disk; 176C STANDS (no revert).** The pasted "masked
   recompute passed for both families through the verifier" was a **pasted-report artifact**: that
   `passed` is the synthetic public-safe test (§4 of the 176C doc), not the real run. The **real**

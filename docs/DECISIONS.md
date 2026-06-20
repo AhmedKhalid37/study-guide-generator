@@ -7357,3 +7357,54 @@ table/figure insertion** even though it cannot verify numerics. No Chandra; no c
 generation; no Layer-2 judge; no repair. `judge_ready=false`; `repair_ready=false`. used_fixture_values /
 used_answer_strings / used_generated_guide_text / used_hand_authored_rows / raw_text_committed /
 raw_values_committed all false.
+
+## Slice 176E — present-input target cold reconstruction; GATE-2 catches a false positive; gini_chest_pain not source-confirmed
+
+**What this slice validates.** Revised 176D classified five Ensemble targets `computation_input_present`
+from committed closed evidence, but proved no parsed machine-consumable record exists. 176E is the
+validation test for ONE of them: does the selected target's computation-**input** table actually exist in
+the source in a form the local extractor can find+parse when the region is **rediscovered cold from
+extraction** — no hand-located region, no spot-check hint, no fixture value, no answer value supplied to
+the parser? 176E explicitly does **not** inherit the five-count as proven source truth.
+
+**Selection.** `gini_chest_pain` (`weighted_gini`), `selection_reason=simplest_row_cell_mapping` +
+`cleaner_extraction_region`: a categorical 2-class split is the simplest class-count mapping, avoids
+reusing `gini_weight_gt_176`'s prior **hand-located** spot-check region (which anti-laundering forbids
+feeding the parser), and avoids chaining a downstream formula (total_error / amount_of_say). Other four
+input-present targets deferred by scope; `proximity_4_3` answer-only; `weighted_weight_impute` inconclusive.
+Selection used closed input-presence + mapping-simplicity only — no fixture/answer/guide/hand-authored data.
+
+**The GATE-2 event (why this slice matters).** A first naive `_map_weighted_gini` accepted *any* row with
+≥2 integers as a class-count group. On the real deck it reported `status=parsed` / `source_input_record_status=created`
+/ `masked_recompute_status=passed` — a **false positive**. Verification showed the two integer-pair rows it
+grabbed were coincidental small integers (no shared columns; no corroborating printed Gini decimal on the
+band), and a finite masked Gini proves nothing about whether those integers are the real inputs (GATE 2 #3:
+answer/finite presence ≠ inputs present). The result was **refused, not banked.** Fix: a **column-alignment
+credibility guard** — a created record now requires an x-column-aligned integer grid (≥2 shared columns each
+≥2 cells; ≥2 multi-column rows), which is magnitude-agnostic and answer-agnostic (no threshold tuned to any
+expected value). The Gini value (unit-interval decimal) stays refused as the answer. Hand-located / spot-check
+regions are refused outright (`blocked_by=privacy_boundary`).
+
+**Honest real-deck result (closed; gitignored transient harness, local PyMuPDF only).** `status=blocked` ·
+`selected_region_origin=discovered_from_extraction` · `parser_received_hand_located_region=false` ·
+`parser_received_spot_check_region_hint=false` · `target_region_status=found` ·
+`row_cell_extraction_status=parsed_from_extraction_output` · `source_input_record_status=not_created` ·
+`source_input_origin=none` · `inputs_status=unavailable` · `machine_consumable_for_recompute=false` ·
+`masked_recompute_status=not_run` · `input_presence_claim_basis=inconclusive` ·
+`input_presence_confirmed_against_source=inconclusive` · `source_confirmation_status=no_input_region_found` ·
+`blocked_by=row_cell_reconstruction` · warning `no_input_columns_found`.
+
+**Verdict.** Cold rediscovery does not expose a machine-parseable, column-aligned class-count **input** table
+for `gini_chest_pain`; the only integers extraction recovers are coincidental. This is consistent with
+174A/175A (`source_input_missing`), 176A (`machine_consumable=0`), and 176C (answer matrix,
+`typed_candidate_region_count=0`): the deck presents worked **answers** and tree **diagrams**, not typed
+class-count input tables in extractable text. Therefore **176D's `computation_input_present` for
+`gini_chest_pain` was prior-evidence optimism, not source-confirmed truth — the five-count must not be
+treated as hard fact.** next_step=`improve_input_region_evidence` (inputs, if present at all, are in
+tree-diagram images/prose — a heavier image-region path, not text reconstruction) or
+`choose_different_input_present_target`; if one more input-present Gini target also collapses to
+inconclusive/answer-only, **stop the Ensemble numeric grind and pivot table reconstruction toward
+student-visible table/figure insertion** (the proximity answer matrix remains a presentation asset, never a
+recompute input). No Chandra; no cloud OCR; no provider/model generation; no guide regeneration; no Layer-2
+judge; no repair. `judge_ready=false`; `repair_ready=false`. hand_authored_rows / fixture_derived /
+answer_string_derived / guide_candidate_derived / raw_values_committed / raw_ocr_committed all false.
