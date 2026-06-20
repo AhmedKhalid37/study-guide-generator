@@ -5,6 +5,53 @@
 
 ---
 
+## Phase 2 product path — **Slice 176N: real OCR-context guide generation + score; fair private measurement after 176L stub confound; real guide produced and scored; NOT committed.**
+
+- **phase=Phase 2 (fair real-generation measurement from the 176I private OCR content)** · **slice=176N** ·
+  **module=`pipeline/real_ocr_context_generation.py`** ·
+  **runner=`test_scripts/run_real_ocr_context_generation_score.py`** ·
+  **test=`test_scripts/test_real_ocr_context_generation_score.py`** ·
+  **doc=`docs/REAL_OCR_CONTEXT_GENERATION_SCORE.md`** ·
+  **branch=`slice176n-real-ocr-context-generation-score`** · **judge_ready=false** · **repair_ready=false**.
+- **Why this slice.** 176L scored a deterministic OCR-context preview against a full generated baseline guide,
+  so its regression was a **stub-vs-full-guide confound**. 176N runs the fair measurement: feed the private
+  OCR-extracted lecture content through the existing real guide-generation path, keep the generated guide private,
+  and score/compare it with existing deterministic tooling.
+- **What it is / is NOT.** IS: an off-by-default private runner over `generate_study_guide` and
+  `build_provider_config`, using `claude_review` + exhaustive depth and the existing configured provider path.
+  It packages OCR context as private source material, optionally includes the 176K visible assets as display-only
+  context, writes the real generated guide only to the ignored private artifact area, and emits closed summary
+  fields. NOT: a deterministic stub, new evaluator, Layer-2 judge, repair, cloud OCR, numeric recompute, new
+  provider integration, frontend/API wiring, or normal-generation behavior change.
+- **Real result (ran on the private OCR artifact vs the private baseline guide).** `status=completed` ·
+  `generation_mode=existing_configured_provider` · `guide_artifact_status=generated` ·
+  `private_ocr_artifact_available=true` · `private_ocr_artifact_gitignored=true` ·
+  `private_visible_artifact_available=true` · `private_visible_artifact_gitignored=true` ·
+  `private_generated_guide_written=true` · `private_generated_guide_gitignored=true` ·
+  `visible_assets_used=yes` ·
+  `selected_visible_asset_categories=[patient_dataset_table, decision_tree_or_split_diagram, proximity_matrix]` ·
+  `render_status=not_run` · `score_status=scored` · `baseline_comparison_status=unchanged` ·
+  `coverage_signal=unchanged` · `figure_table_signal=unchanged` · `stub_vs_full_confounded=false` ·
+  `numeric_verification_claimed=false` · `blocked_by=none` ·
+  `recommended_next_step=improve_prompt_context_packaging`.
+- **GATE-2 interpretation.** This result resolves the 176L confound: the candidate is now a **real generated**
+  OCR-context guide, not a deterministic stub. The existing contract lint scored it as unchanged against the
+  baseline on closed coverage/table signals. That unchanged score is a **load-bearing diagnostic result**, not
+  a green light to grind packaging iterations. The closed `recommended_next_step=improve_prompt_context_packaging`
+  token records the suspected lever, but the next work must first diagnose whether the flat score reflects
+  `packaging_weak`, `model_already_knew`, or `eval_insensitive`. No score improvement is claimed.
+- **Validation.** Initial sandboxed provider call was unavailable; the approved unrestricted run succeeded using
+  the existing configured provider path. `compileall api pipeline test_scripts` OK;
+  `test_real_ocr_context_generation_score` OK; `test_ocr_context_private_guide_score` OK;
+  `test_visible_table_figure_pilot` OK; `test_slide_raster_ocr_ingestion` OK; `git diff --check` clean.
+  No Docker. No raw OCR/guide/table/caption/prompt/response/provider payload/source PDF/private path committed;
+  generated artifacts and `local_operator_baselines/` stay ignored. **NOT committed.**
+- **Next route.** Start a flat-score diagnostic slice over the existing private baseline guide, private 176N guide,
+  private closed scoring artifacts, and scorer code. Do **not** run another provider generation, do **not** run
+  packaging-v2, do **not** add a new evaluator/judge/repair, and do **not** patch thresholds to make numbers green.
+
+---
+
 ## Architecture branch — **Slice 176M: gated animation-frame redundancy detector + `frame_dedup_mode` setting; cheap measurement-only gate for a future expensive frame-selection branch; NOT committed.**
 
 - **slice=176M** · **module=`pipeline/slide_redundancy_detector.py`** ·

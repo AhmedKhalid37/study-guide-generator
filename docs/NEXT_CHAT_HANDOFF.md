@@ -6,11 +6,39 @@
 > stable overview see `PROJECT_CONTEXT.md`; canonical brief is `../CLAUDE.md`.
 
 ## Current position
-- **Working tree:** branch `slice176m-frame-redundancy-detector-setting`; **Slice 176M** added the **cheap gate**
+- **Working tree:** branch `slice176n-real-ocr-context-generation-score`; **Slice 176N** ran the fair private
+  measurement after 176L's stub-vs-full-guide confound: a real OCR-context guide generated through the existing
+  generation path, scored against the private baseline with existing deterministic tooling. **NOT committed.**
+- **Slice 176N result (real OCR-context generation + score).** The private OCR-extracted lecture content was
+  packaged as generation context, the 176K visible assets were included as display-only private context, and the
+  existing configured provider path generated a real guide into the ignored private artifact area. Closed result:
+  `status=completed` · `generation_mode=existing_configured_provider` · `guide_artifact_status=generated` ·
+  `private_generated_guide_written=true` · `private_generated_guide_gitignored=true` ·
+  `visible_assets_used=yes` · `selected_visible_asset_categories=[patient_dataset_table,
+  decision_tree_or_split_diagram, proximity_matrix]` · `score_status=scored` ·
+  `baseline_comparison_status=unchanged` · `coverage_signal=unchanged` · `figure_table_signal=unchanged` ·
+  `stub_vs_full_confounded=false` · `numeric_verification_claimed=false` · `blocked_by=none` ·
+  `recommended_next_step=improve_prompt_context_packaging`. No score improvement is claimed. No raw guide/OCR/
+  table/caption/prompt/response/provider payload/private path is committed; no normal-generation, frontend, or
+  API behavior changed; no cloud OCR; no new judge; no repair.
+- **Validation for 176N.** Initial sandboxed provider call was unavailable; the approved unrestricted run
+  succeeded using the existing configured provider path. `compileall api pipeline test_scripts` OK;
+  `test_real_ocr_context_generation_score` OK; `test_ocr_context_private_guide_score` OK;
+  `test_visible_table_figure_pilot` OK; `test_slide_raster_ocr_ingestion` OK; `git diff --check` clean.
+  Docker was not run. `local_operator_baselines/` remains ignored/uncommitted. **NOT committed.**
+- **Next slice:** run a flat-score diagnostic before any packaging iteration. Compare the existing private 176N
+  OCR-context guide with the private baseline and inspect what the existing scorer actually measures, committing
+  only closed labels. Decide whether the flat score is best explained by `packaging_weak`,
+  `model_already_knew`, `eval_insensitive`, or `inconclusive`. Do not run another provider generation, do not run
+  packaging-v2, do not add a new judge, do not run Layer-2 judge, do not add repair, and do not wire frontend/API
+  behavior yet.
+- **Slice 176M is committed/merged/pushed as `fb227dd`** (gated animation-frame redundancy detector + setting;
+  cheap measurement-only gate for a future expensive frame-selection branch).
+- **Slice 176M prior result.** Added the **cheap gate**
   for a future expensive frame-selection branch — a measurement-only animation-frame redundancy detector +
   the three-state `frame_dedup_mode` setting (`pipeline/slide_redundancy_detector.py` +
   `test_scripts/test_slide_redundancy_detector.py` + `docs/FRAME_REDUNDANCY_DETECTOR_AND_SETTING.md` +
-  live-doc updates), **NOT committed**.
+  live-doc updates), committed/merged/pushed.
 - **Slice 176M result (gated frame-redundancy detector + setting).** A cheap, OCR-free, model-free, network-free
   detector hashes low-res page thumbnails **in memory** (dHash, 64-bit), measures consecutive-page redundancy,
   and emits closed metrics; a deterministic resolver maps `frame_dedup_mode=auto|force_on|force_off` (default

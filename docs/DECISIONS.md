@@ -7690,3 +7690,40 @@ counts committed; the committed summary is closed tokens + coarse counts only, a
 `false`. Synthetic public-safe hash sequences in tests. No Docker; no cloud OCR; no provider/model generation; no
 Layer-2 judge; no repair. `local_operator_baselines/` stays ignored. `judge_ready=false`; `repair_ready=false`.
 **NOT committed.**
+
+## Slice 176N — fair real OCR-context guide generation measurement after the 176L stub confound
+176L proved the OCR-extracted content could become a private student-readable preview, but its scored regression
+was a **stub-vs-full-guide confound**: a deterministic preview scaffold was compared with a full generated
+baseline guide. 176N resolves that measurement problem by running the private OCR-extracted lecture content
+through the existing real guide-generation path (`generate_study_guide` with the existing provider config path),
+then scoring the real generated guide with the existing deterministic contract lint. This is an off-by-default
+private runner only; normal generation behavior, frontend, and API behavior are unchanged.
+
+**Scope boundaries:** no deterministic stub is allowed as the fair candidate; no new evaluator or judge; no
+Layer-2 judge; no repair; no cloud OCR; no numeric recompute; no new provider integration; no frontend/API
+wiring. The 176K visible assets are display-only private context when available, and numeric verification remains
+unclaimed.
+
+**Real result (ran on the private OCR artifact vs the private baseline guide):** `status=completed`,
+`generation_mode=existing_configured_provider`, `guide_artifact_status=generated`,
+`private_ocr_artifact_available=true`, `private_ocr_artifact_gitignored=true`,
+`private_visible_artifact_available=true`, `private_visible_artifact_gitignored=true`,
+`private_generated_guide_written=true`, `private_generated_guide_gitignored=true`, `visible_assets_used=yes`,
+`selected_visible_asset_categories=[patient_dataset_table, decision_tree_or_split_diagram, proximity_matrix]`,
+`render_status=not_run`, `score_status=scored`, `baseline_comparison_status=unchanged`,
+`coverage_signal=unchanged`, `figure_table_signal=unchanged`, `stub_vs_full_confounded=false`,
+`numeric_verification_claimed=false`, `judge_ready=false`, `repair_ready=false`, `blocked_by=none`,
+`recommended_next_step=improve_prompt_context_packaging`.
+
+**Interpretation:** the fair candidate is now a real generated OCR-context guide, not a deterministic stub, so
+the 176L confound is resolved. The existing scoring path produced an unchanged comparison rather than an
+improvement; do not claim improvement and do not patch thresholds. The flat score is a **load-bearing negative
+measurement**. Do not immediately spend another provider run on packaging-v2. First diagnose whether the unchanged
+score is best explained by weak context packaging, model prior knowledge on common ensemble material, or scorer
+insensitivity to deck-specific coverage. Only route to packaging-v2 if that diagnostic supports
+`packaging_weak`.
+
+**Privacy:** the generated guide, source context bundle, visible asset material, and scoring artifacts live only
+in ignored private storage. No raw guide/OCR/table/caption text, prompts, responses, provider payloads, rendered
+guide files, source PDFs, filenames, hashes, byte counts, private paths, model files/caches, or thumbnails are
+committed. `local_operator_baselines/` stays ignored. `judge_ready=false`; `repair_ready=false`. **NOT committed.**
