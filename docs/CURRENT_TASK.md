@@ -5,7 +5,46 @@
 
 ---
 
-## Phase 2 product path — **Slice 176L: OCR-context private guide preview + score; first student-visible artifact after the OCR breakthrough; private preview produced and scored vs baseline; NOT committed.**
+## Architecture branch — **Slice 176M: gated animation-frame redundancy detector + `frame_dedup_mode` setting; cheap measurement-only gate for a future expensive frame-selection branch; NOT committed.**
+
+- **slice=176M** · **module=`pipeline/slide_redundancy_detector.py`** ·
+  **test=`test_scripts/test_slide_redundancy_detector.py`** ·
+  **doc=`docs/FRAME_REDUNDANCY_DETECTOR_AND_SETTING.md`** ·
+  **branch=`slice176m-frame-redundancy-detector-setting`** · **judge_ready=false** · **repair_ready=false**.
+- **Why this slice.** The OCR work surfaced a narrow pathology: ~1–2% of sources (esp. **StatQuest-style
+  video-export decks**) emit one PDF page per animation build-step, so the deck is dominated by runs of
+  near-identical frames. The eventual fix (phash-collapse → terminal-frame → coverage-coupled →
+  VLM-classify-survivors selection) is **expensive** and must stay a **gated conditional branch**, never a core
+  path. 176M builds only the **cheap gate**: a detector + the three-state setting that decides whether that
+  branch should run.
+- **What it is / is NOT.** IS: a cheap, OCR-free, model-free, network-free detector that hashes low-res page
+  thumbnails **in memory** (dHash, 64-bit), measures consecutive-page redundancy, and emits closed metrics; plus
+  a deterministic resolver for `frame_dedup_mode=auto|force_on|force_off` (default `auto`). NOT: the expensive
+  frame-selection pipeline (explicitly **not built**), OCR/guide generation wiring, regeneration, Layer-2 judge,
+  repair, provider/model generation, cloud OCR, or a frontend-wide redesign.
+- **Detector decision (conservative — false positives are real).** `high` only when a clear share of adjacent
+  pairs are near-duplicates (`high_similarity_pair_ratio ≥ 0.30`) AND clusters collapse pages
+  (`cluster_to_page_ratio ≤ 0.60`); `low` when pages are mostly distinct and clusters ≈ pages; `medium` between;
+  `unknown` under 3 pages. dHash (horizontal gradients) keeps repetitive-template-but-distinct decks off `high`.
+- **Setting / resolver.** `auto`+`high`→`on`(`detector_high`); `auto`+`low|medium`→`off`(`detector_low`);
+  `auto`+`unknown`→`off`(`detector_unknown_default_off`); `force_on`→`on`(`user_force_on`);
+  `force_off`→`off`(`user_force_off`). `medium` stays OFF by design. Resolver is self-contained (like the
+  off-by-default `SlideOcrIngestionConfig` seam) — **not** wired into normal generation; the ~98% path is
+  untouched.
+- **Real validation (local gitignored decks; closed labels only).** Animation-export-style decks →
+  `slide_redundancy=high` → `auto resolved_frame_dedup=on`; normal lecture decks → `slide_redundancy=low` →
+  `auto resolved_frame_dedup=off`. `statquest_validation_status=passed` · `normal_deck_validation_status=passed`
+  · `repetitive_template_validation_status=passed` · `false_positive_risk=low` ·
+  `detector_calibration_status=ready_for_off_by_default_gate`. The build-order gate (animation high/on, normal
+  low/off) **passes on real decks**.
+- **Validation.** `compileall api pipeline test_scripts` OK; `test_slide_redundancy_detector` OK;
+  `test_ocr_context_private_guide_score` OK; `test_slide_raster_ocr_ingestion` OK; `git diff --check` clean. No
+  Docker. No OCR/guide-generation code touched. No raw images/thumbnails/source PDFs/filenames/paths committed;
+  `local_operator_baselines/` stays ignored. **NOT committed.**
+
+---
+
+## Phase 2 product path — **Slice 176L: OCR-context private guide preview + score; first student-visible artifact after the OCR breakthrough; private preview produced and scored vs baseline; committed `54c3bd6` / merged to trunk.**
 
 - **phase=Phase 2 (first student-visible product artifact from the 176I private OCR content)** · **slice=176L** ·
   **module=`pipeline/ocr_context_private_guide.py`** · **runner=`test_scripts/run_ocr_context_private_guide_score.py`** ·
@@ -38,7 +77,7 @@
 - **Validation.** `compileall api pipeline test_scripts` OK; `test_ocr_context_private_guide_score` OK;
   `test_visible_table_figure_pilot` OK; `test_slide_raster_ocr_ingestion` OK; `git diff --check` clean. No Docker.
   No frontend/API/normal-generation code touched. The private OCR artifact, the private preview, and
-  `local_operator_baselines/` stay ignored. **NOT committed.**
+  `local_operator_baselines/` stay ignored. **Committed `54c3bd6` / merged to trunk.**
 
 ---
 

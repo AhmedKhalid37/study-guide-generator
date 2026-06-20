@@ -6,11 +6,28 @@
 > stable overview see `PROJECT_CONTEXT.md`; canonical brief is `../CLAUDE.md`.
 
 ## Current position
-- **Working tree:** branch `slice176l-ocr-context-private-guide-score`; **Slice 176L** added the first
-  **student-visible** artifact after the OCR breakthrough — a private OCR-context guide **preview** + a closed
-  score/comparison (`pipeline/ocr_context_private_guide.py` +
-  `test_scripts/run_ocr_context_private_guide_score.py` + `test_scripts/test_ocr_context_private_guide_score.py`
-  + live-doc updates), **NOT committed**.
+- **Working tree:** branch `slice176m-frame-redundancy-detector-setting`; **Slice 176M** added the **cheap gate**
+  for a future expensive frame-selection branch — a measurement-only animation-frame redundancy detector +
+  the three-state `frame_dedup_mode` setting (`pipeline/slide_redundancy_detector.py` +
+  `test_scripts/test_slide_redundancy_detector.py` + `docs/FRAME_REDUNDANCY_DETECTOR_AND_SETTING.md` +
+  live-doc updates), **NOT committed**.
+- **Slice 176M result (gated frame-redundancy detector + setting).** A cheap, OCR-free, model-free, network-free
+  detector hashes low-res page thumbnails **in memory** (dHash, 64-bit), measures consecutive-page redundancy,
+  and emits closed metrics; a deterministic resolver maps `frame_dedup_mode=auto|force_on|force_off` (default
+  `auto`) to `resolved_frame_dedup=on|off`. Conservative: `auto` only engages on a clear `high`; `medium`/`low`/
+  `unknown` → `off`. **Real validation on local gitignored decks (closed labels only):** animation-export-style
+  decks → `slide_redundancy=high` → `auto resolved=on`; normal lecture decks → `slide_redundancy=low` →
+  `auto resolved=off`. `statquest_validation_status=passed` · `normal_deck_validation_status=passed` ·
+  `repetitive_template_validation_status=passed` · `false_positive_risk=low` ·
+  `detector_calibration_status=ready_for_off_by_default_gate`. The expensive selection pipeline (phash-collapse →
+  terminal-frame → coverage-coupled → VLM-classify-survivors) was **NOT built**; it remains a gated branch that
+  engages only when the resolved flag is `on`. Normal ~98% path untouched. No raw images/thumbnails/source PDFs
+  committed. **NOT committed.**
+- **Next slice (only after this gate — which passed):** build the expensive frame-selection pipeline as a
+  **gated** branch that engages only when `resolved_frame_dedup=on`; keep it off the normal path.
+- **Slice 176L is committed/merged/pushed as `54c3bd6`** (OCR-context private guide preview + score; first
+  student-visible artifact after the OCR breakthrough; `regressed` is a stub-vs-full-guide confound, not a
+  finding).
 - **Slice 176L result (OCR-context private guide preview + score).** Assembled a private student guide preview
   from the 176I OCR-extracted slide content, embedded the three 176K visible assets, and scored it against the
   private baseline guide with the **committed deterministic** `guide_quality_contract_lint` (no LLM, no new
@@ -26,7 +43,7 @@
   student-readable in the private preview; the scorer/thresholds were not touched. The fair next measurement is
   OCR content through the **real** off-by-default generation path, then re-score. Raw guide/OCR/table text stays
   in the private gitignored artifact; no cloud OCR; no provider/model generation; no normal-generation /
-  frontend/API wiring. **NOT committed.**
+  frontend/API wiring. **Committed `54c3bd6` / merged to trunk.**
 - **176K was the last preparation slice — committed/merged/pushed as `1dc6eac`** (visible table/figure pilot;
   display assets only, not numeric verification).
 - **Slice 176J is committed/merged/pushed as `91c32ab`** (Gini OCR input-cell parser; numeric path stays

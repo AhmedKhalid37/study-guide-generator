@@ -7653,3 +7653,40 @@ path / size argument accepted). Visible assets are display/study only; nothing i
 `unverified`. No raw guide / OCR / table / caption text, prompts, responses, provider payloads, rendered files,
 source PDFs, model files/caches, or private paths committed; `local_operator_baselines/` (incl. the private OCR
 artifact and the private preview) stays ignored. `judge_ready=false`; `repair_ready=false`. **NOT committed.**
+
+## Slice 176M — animation-frame redundancy must be a GATED conditional branch, not a core path: build only the cheap detector + the three-state `frame_dedup_mode` setting
+The OCR work (176F–176L) surfaced a narrow pathology: ~1–2% of sources — especially **StatQuest-style
+video-export slide decks** — emit one PDF page per animation build-step, so the deck is dominated by runs of
+near-identical frames. The eventual remedy (phash-collapse → terminal-frame → coverage-coupled →
+VLM-classify-survivors frame selection) is **expensive**, so making it an always-on path would tax the ~98% of
+normal decks that have no such redundancy. **Decision:** the frame-selection branch must be a **gated
+conditional**, and the next slice builds **only the cheap gate** — a measurement-only detector plus the setting
+that resolves whether the branch should run. The expensive selection pipeline is explicitly **NOT built** here.
+**Detector design.** `pipeline/slide_redundancy_detector.py` renders low-resolution page thumbnails **in memory**
+via PyMuPDF and computes a 64-bit **difference hash (dHash)** per page — no image files are written, so raster
+frames never reach the repo. It measures mean adjacent similarity, the near-duplicate (≥0.92) adjacent-pair
+ratio, and a single-linkage visual-cluster count / cluster-to-page ratio, then derives a closed
+`slide_redundancy=low|medium|high|unknown` with a `detector_confidence`. dHash (horizontal gradients) is chosen
+over average-hash specifically so **repetitive-template-but-content-distinct** lecture decks are not flagged —
+the main false-positive guard. The decision is conservative: `high` only when ≥30% of adjacent pairs are
+near-duplicates AND clusters collapse pages (`cluster_to_page_ratio ≤ 0.60`); `low` when pages are mostly
+distinct and clusters ≈ pages; `medium` between; `unknown` under 3 pages.
+**Setting + resolver.** `frame_dedup_mode = auto | force_on | force_off` (default `auto`). `auto`+`high`→`on`;
+`auto`+`low|medium`→`off`; `auto`+`unknown`→`off`; `force_on`→`on` (for animation decks the detector misses);
+`force_off`→`off` (for false positives). **`medium` resolves OFF by design** because false positives are real and
+harmful. Following the off-by-default `SlideOcrIngestionConfig` precedent, the resolver is self-contained and is
+**not** wired into the normal generation path in this slice, so normal generation behavior is unchanged; the
+expensive branch may only ever engage when the resolved flag is `on`.
+**Real validation (local gitignored decks; closed labels only — no filenames/paths/raw counts).** Animation-
+export-style decks → `slide_redundancy=high` → `auto resolved_frame_dedup=on`; normal lecture decks →
+`slide_redundancy=low` → `auto resolved_frame_dedup=off`. `statquest_validation_status=passed` ·
+`normal_deck_validation_status=passed` · `repetitive_template_validation_status=passed` (synthetic guard + real
+normal/template lecture decks all resolve off) · `false_positive_risk=low` ·
+`detector_calibration_status=ready_for_off_by_default_gate`. The build-order gate (animation high/on, normal
+low/off) **passes on real decks**, so the expensive selection pipeline is the sanctioned next slice — still
+gated, still off unless the resolved flag is `on`.
+**Privacy/scope.** No raw images, thumbnails, source PDFs, OCR/guide text, filenames, paths, hashes, or byte
+counts committed; the committed summary is closed tokens + coarse counts only, all `*_committed` flags hardwired
+`false`. Synthetic public-safe hash sequences in tests. No Docker; no cloud OCR; no provider/model generation; no
+Layer-2 judge; no repair. `local_operator_baselines/` stays ignored. `judge_ready=false`; `repair_ready=false`.
+**NOT committed.**
