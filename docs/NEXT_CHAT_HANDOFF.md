@@ -6,9 +6,28 @@
 > stable overview see `PROJECT_CONTEXT.md`; canonical brief is `../CLAUDE.md`.
 
 ## Current position
-- **Working tree:** branch `slice176f-slide-raster-ocr-verification-gate`; **Slice 176F**
-  slide-raster OCR correction + verification gate (`test_scripts/test_quality_safety_slide_raster_ocr_gate.py`
-  + `docs/TABLE_STRUCTURE_PHASE2_SLIDE_RASTER_OCR_GATE.md` + doc updates), **NOT committed**.
+- **Working tree:** branch `slice176g-local-chandra-ocr-rerun-gate`; **Slice 176G** local-Chandra
+  structured-OCR rerun gate (`docs/TABLE_STRUCTURE_PHASE2_LOCAL_CHANDRA_OCR_GATE.md` + doc updates),
+  **NOT committed**.
+- **Slice 176G result (local-Chandra rerun gate; real slides via gitignored transient harness).**
+  Ran local **Chandra OCR 2 GGUF** (`llama.cpp`/`llama-server`, `Q5_K_M`+self-generated `mmproj`,
+  RTX 5070 Ti — the Slice-41 path; the `chandra-ocr` pip package hf/vllm/cli is **not installed**;
+  local-only, no cloud/API). Closed result: `chandra_status=ran_local` · `chandra_mode=gguf_local` ·
+  `cloud_ocr_used=false` · `chandra_structured_table_quality=clean` · `chandra_dense_grid_quality=clean`
+  (**the dense 5×5 proximity matrix Tesseract failed in 176F was recovered**, `proximity_matrix_recovered=yes`)
+  · `chandra_math_quality=partial` · `nn3_numeric_content_recovered=partial`. **Gini not banked:** the
+  auto-selected representative Gini slide is a per-split **summary** (count + computed Gini *answer*/row),
+  not the raw ≥2-class grid → `gini_input_cells_recovered=no` · `gini_input_cells_engine=chandra_local` ·
+  **`gini_masked_recompute_from_ocr_status=not_run`** (`warning=answer_or_unrelated_values_not_inputs`).
+  **Decision:** `corrected_blocker=local_ocr_available_needs_pipeline`;
+  `recommended_next_step=build_local_slide_ocr_ingestion_pipeline` (**Gini-proof-gated**: the numeric path
+  must first pass a masked recompute from raw split counts on a worked-example slide; Gini stays
+  `unverified` until then). **No ingestion pipeline built.** No model files/caches/raw OCR committed.
+  **NOT committed.**
+- **Slice 176F is committed/merged/pushed** (slide-raster OCR correction + Tesseract-first gate:
+  both decks near-empty-text full-page raster slides; blocker corrected to extraction-gated-on-raster-OCR
+  while only Tesseract had run; `test_scripts/test_quality_safety_slide_raster_ocr_gate.py` +
+  `docs/TABLE_STRUCTURE_PHASE2_SLIDE_RASTER_OCR_GATE.md`).
   **Slice 176E is committed/merged/pushed as `92e389d`** (its earlier "NOT committed" note was stale);
   Revised **Slice 176D `e3a0102`**; 176C `1771dd9`; 176B `0a9794b`; 176A `b9c6ee9`;
   174A `e8f8cac`; 173C `3aaea34`; 173B `1a38c12`; 173A `1905af7`. 175A was a no-change provenance gate.

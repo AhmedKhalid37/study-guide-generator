@@ -7438,3 +7438,33 @@ masked recompute routed through the real `_recompute_weighted_gini`) +
 `docs/TABLE_STRUCTURE_PHASE2_SLIDE_RASTER_OCR_GATE.md`. No raw OCR/source/table text,
 rendered images, source PDFs, or private paths committed; `local_operator_baselines/` stays
 ignored. `judge_ready=false`; `repair_ready=false`.
+
+## Slice 176G — local Chandra recovers dense structure Tesseract can't; blocker moves to (Gini-proof-gated) pipeline
+176F recommended `install_local_chandra_and_rerun_gate`; this slice **ran it**. The
+`chandra-ocr` pip package (hf/vllm/cli) is **not installed**, but a **local GGUF route is
+available** — Chandra OCR 2 quantised to GGUF (`Q5_K_M` + self-generated `mmproj`) served
+via `llama.cpp`/`llama-server` build 9307 on the RTX 5070 Ti, the exact path proven in
+`CHANDRA_GGUF_SPIKE_REPORT.md` (Slice 41), **local-only, no cloud/API**. **Why it matters:**
+per SUPERVISOR_PROTOCOL produce-before-scaffold, declaring `setup_required` while a working
+local Chandra exists would contradict prior evidence — so the gate was run, not re-documented.
+**Result:** Chandra **materially beats Tesseract** on dense raster slides — well-formed HTML
+tables, LaTeX math, captions, per-block bboxes, and decisively the **dense 5×5 proximity
+matrix** that Tesseract failed in 176F (`proximity_matrix_recovered` no → **yes**);
+`chandra_structured_table_quality=clean`, `chandra_dense_grid_quality=clean`,
+`chandra_math_quality=partial`, `nn3_numeric_content_recovered=partial`. **GATE-2 held on
+Gini:** the auto-selected representative Gini slide is a **per-split summary** (one count +
+the *computed* Gini decimal per row), not the raw ≥2-class contingency grid a recompute needs;
+the decimals are answers and were excluded → `gini_input_cells_recovered=no`,
+**`gini_masked_recompute_from_ocr_status=not_run`**, `warning=answer_or_unrelated_values_not_inputs`.
+A recovered Gini *answer* is not a recovered Gini *input*. **Decision (recorded honestly, a
+Rule B/C blend):** `corrected_blocker=local_ocr_available_needs_pipeline` — local structured
+OCR is demonstrably available, so the blocker is no longer raster-OCR capability (Rule C's
+improve-Tesseract / compare-alternatives would misroute, since Chandra already beat Tesseract).
+`recommended_next_step=build_local_slide_ocr_ingestion_pipeline`, **Gini-proof-gated:** the
+pipeline's numeric path must first obtain a masked-recompute Gini proof from raw split counts
+on a worked-example slide (answer excluded); **until then Gini stays `unverified`** and the §0
+safety invariant holds — no confident-but-wrong cleanup. **No ingestion pipeline was built**
+this slice (rerun gate only). Cloud OCR stays banned. Committed:
+`docs/TABLE_STRUCTURE_PHASE2_LOCAL_CHANDRA_OCR_GATE.md` + live-doc updates. No model files,
+model caches, raw Chandra OCR/HTML, rendered images, source PDFs, or private paths committed;
+`local_operator_baselines/` stays ignored. `judge_ready=false`; `repair_ready=false`.

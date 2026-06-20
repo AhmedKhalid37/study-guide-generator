@@ -5,6 +5,41 @@
 
 ---
 
+## Phase 2 slide-raster OCR ingestion — **Slice 176G local-Chandra structured-OCR rerun gate; ran local Chandra on real slides; NOT committed.**
+
+- **phase=Phase 2 slide-raster OCR ingestion** · **slice=176G (local-Chandra rerun gate)** ·
+  **doc=`docs/TABLE_STRUCTURE_PHASE2_LOCAL_CHANDRA_OCR_GATE.md`** ·
+  **branch=`slice176g-local-chandra-ocr-rerun-gate`** · **judge_ready=false** · **repair_ready=false**.
+- **Why this slice.** 176F recommended `install_local_chandra_and_rerun_gate`: Tesseract read prose
+  but failed the dense Gini/proximity grids. This slice ran the local **Chandra OCR 2 GGUF** route
+  (`llama.cpp`/`llama-server`, `Q5_K_M`+self-generated `mmproj`, RTX 5070 Ti, the Slice-41 path) on the
+  same representative slide categories. The `chandra-ocr` pip package (hf/vllm/cli) is **not installed**;
+  the GGUF route is local-only (no cloud, no API).
+- **Produce-before-scaffold.** Rendered representative pages (PyMuPDF) → local `llama-server` image path
+  (`enable_thinking=false`, `--image-min-tokens 1024`, `--temp 0`); parsed layout-HTML **structurally
+  only**; masked Gini recompute routed through the **real** `_recompute_weighted_gini`, gated on a
+  credible column-aligned class-count grid, with the printed Gini decimal **excluded** as an answer.
+- **Real gate result (closed):** `chandra_status=ran_local` · `chandra_mode=gguf_local` ·
+  `cloud_ocr_used=false` · `model_files_committed=false` · `raw_chandra_output_committed=false` ·
+  `chandra_structured_table_quality=clean` · `chandra_dense_grid_quality=clean` (the dense **5×5
+  proximity matrix Tesseract failed in 176F was recovered**) · `chandra_math_quality=partial` (LaTeX on
+  the softmax slide) · `proximity_matrix_recovered=yes` · `nn3_numeric_content_recovered=partial`.
+- **Gini (load-bearing, not banked).** The auto-selected representative Gini slide is a **per-split
+  summary** (one count + the computed Gini *answer* per row), **not** the raw ≥2-class contingency grid.
+  `gini_input_cells_recovered=no` · `gini_input_cells_engine=chandra_local` ·
+  **`gini_masked_recompute_from_ocr_status=not_run`** · `warning=answer_or_unrelated_values_not_inputs`.
+  A recovered Gini **answer** is not a recovered Gini **input** (GATE-2 held).
+- **Decision.** **`corrected_blocker=local_ocr_available_needs_pipeline`** (local structured OCR is
+  demonstrably available — Rule B/C blend; Rule C's improve-Tesseract/compare-alternatives would
+  misroute). **`recommended_next_step=build_local_slide_ocr_ingestion_pipeline`**, **Gini-proof-gated**:
+  its numeric path must first obtain a masked-recompute Gini proof from raw split counts on a
+  worked-example slide; until then Gini stays `unverified`. **No ingestion pipeline built.** No cloud
+  OCR; no provider/model generation; no guide regeneration; no Layer-2 judge; no repair. Raw Chandra
+  output / rendered images / source PDFs / GGUF model files / caches stay in `/tmp`+`~`, uncommitted;
+  `local_operator_baselines/` stays ignored. **NOT committed.**
+
+---
+
 ## Phase 2 slide-raster OCR verification gate — **Slice 176F correction + Tesseract-first OCR gate; run on real decks; NOT committed.**
 
 - **phase=Phase 2 slide-raster OCR ingestion (reframed)** · **slice=176F (correction + verification gate)** ·
