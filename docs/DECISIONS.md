@@ -7727,3 +7727,29 @@ insensitivity to deck-specific coverage. Only route to packaging-v2 if that diag
 in ignored private storage. No raw guide/OCR/table/caption text, prompts, responses, provider payloads, rendered
 guide files, source PDFs, filenames, hashes, byte counts, private paths, model files/caches, or thumbnails are
 committed. `local_operator_baselines/` stays ignored. `judge_ready=false`; `repair_ready=false`. **NOT committed.**
+
+## Slice 176O — diagnose the 176N unchanged score before packaging iteration
+176N's unchanged score is a real negative measurement, not a stub-vs-full-guide confound. 176O diagnoses that
+flat score before another provider-generation run. It inspects the existing private baseline guide, the existing
+private 176N OCR-context guide, private closed scoring artifacts, and the existing scorer code, emitting only
+closed labels. It does **not** run packaging-v2, rerun generation, call a provider, add a new evaluator/judge,
+tune scorer thresholds, run Layer-2 judge, add repair, use cloud OCR, or wire frontend/API behavior.
+
+**Real diagnostic result:** `status=completed`, `private_baseline_guide_available=true`,
+`private_baseline_guide_gitignored=true`, `private_176n_guide_available=true`,
+`private_176n_guide_gitignored=true`, `private_score_artifacts_available=true`,
+`private_score_artifacts_gitignored=true`, `generation_rerun=false`, `provider_call_made=false`,
+`guide_content_difference=high`, `ocr_specific_content_added=partial`, `visible_asset_difference=medium`,
+`scorer_coverage_semantics=structural_contract`, `scorer_structure_weight=high`,
+`scorer_deck_specific_weight=low`, `eval_insensitive_likelihood=high`, `model_prior_likelihood=low`,
+`packaging_weak_likelihood=low`, `flat_score_explanation=eval_insensitive`,
+`recommended_next_step=add_deck_specific_coverage_eval`.
+
+**Decision:** packaging-v2 is **not** supported as the immediate next route. The private guides differ and the
+OCR-context guide contains partial OCR-specific material, but the scorer coverage signal is mainly structural
+contract compliance (required sections + table count + warnings), not deck-specific concept coverage. The next
+slice should add deck-specific coverage evaluation/diagnostic before spending another provider-generation run.
+
+**Privacy:** no raw baseline guide, 176N guide, OCR text, table text, captions, prompts, responses, provider
+payloads, private paths, source PDFs, rendered files, thumbnails, hashes, byte counts, model files, or caches are
+committed. `judge_ready=false`; `repair_ready=false`. **NOT committed.**

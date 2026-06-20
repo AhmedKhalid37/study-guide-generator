@@ -6,9 +6,32 @@
 > stable overview see `PROJECT_CONTEXT.md`; canonical brief is `../CLAUDE.md`.
 
 ## Current position
-- **Working tree:** branch `slice176n-real-ocr-context-generation-score`; **Slice 176N** ran the fair private
+- **Working tree:** branch `slice176o-flat-score-diagnostic`; **Slice 176O** diagnosed the flat 176N score before
+  any packaging iteration. **NOT committed.**
+- **Slice 176O result (flat-score diagnostic).** Existing private artifacts were inspected locally with closed
+  labels only: `private_baseline_guide_available=true` · `private_baseline_guide_gitignored=true` ·
+  `private_176n_guide_available=true` · `private_176n_guide_gitignored=true` ·
+  `private_score_artifacts_available=true` · `private_score_artifacts_gitignored=true` ·
+  `generation_rerun=false` · `provider_call_made=false` · `guide_content_difference=high` ·
+  `ocr_specific_content_added=partial` · `visible_asset_difference=medium` ·
+  `scorer_coverage_semantics=structural_contract` · `scorer_structure_weight=high` ·
+  `scorer_deck_specific_weight=low` · `eval_insensitive_likelihood=high` ·
+  `model_prior_likelihood=low` · `packaging_weak_likelihood=low` ·
+  `flat_score_explanation=eval_insensitive` · `recommended_next_step=add_deck_specific_coverage_eval`.
+  No raw guide/OCR/table/caption/prompt/response/provider payload/private path is committed; no normal-generation,
+  frontend, or API behavior changed; no cloud OCR; no new judge; no repair.
+- **176O interpretation.** The private guides differ substantially and the OCR-context guide carries partial
+  OCR-specific material, but the scorer coverage path is structural (required sections + tables + warnings) with
+  low deck-specific weight. The flat score is best explained as scorer insensitivity, not supported evidence for
+  packaging-v2. **Next route:** add deck-specific coverage eval/diagnostic before spending another provider
+  generation run.
+- **Validation for 176O.** `compileall api pipeline test_scripts` OK; `test_flat_score_diagnostic` OK;
+  `test_real_ocr_context_generation_score` OK; `test_ocr_context_private_guide_score` OK; private diagnostic
+  runner completed. Docker was not run. `local_operator_baselines/` remains ignored/uncommitted. **NOT committed.**
+- **Slice 176N is committed/merged/pushed as `7abf61d`** (real OCR-context generation score).
+- **Slice 176N prior result.** Slice 176N ran the fair private
   measurement after 176L's stub-vs-full-guide confound: a real OCR-context guide generated through the existing
-  generation path, scored against the private baseline with existing deterministic tooling. **NOT committed.**
+  generation path, scored against the private baseline with existing deterministic tooling.
 - **Slice 176N result (real OCR-context generation + score).** The private OCR-extracted lecture content was
   packaged as generation context, the 176K visible assets were included as display-only private context, and the
   existing configured provider path generated a real guide into the ignored private artifact area. Closed result:

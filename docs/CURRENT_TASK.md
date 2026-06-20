@@ -5,6 +5,46 @@
 
 ---
 
+## Phase 2 product path — **Slice 176O: flat-score diagnostic before packaging iteration; private guides compared; scorer semantics inspected; NOT committed.**
+
+- **phase=Phase 2 (diagnose 176N unchanged score before spending another generation run)** · **slice=176O** ·
+  **module=`pipeline/flat_score_diagnostic.py`** ·
+  **runner=`test_scripts/run_flat_score_diagnostic.py`** ·
+  **test=`test_scripts/test_flat_score_diagnostic.py`** ·
+  **doc=`docs/FLAT_SCORE_DIAGNOSTIC.md`** ·
+  **branch=`slice176o-flat-score-diagnostic`** · **judge_ready=false** · **repair_ready=false**.
+- **Why this slice.** 176N resolved the 176L stub-vs-full-guide confound and produced a real OCR-context guide,
+  but the existing score stayed `unchanged`. That flat score is load-bearing negative evidence. 176O diagnoses
+  whether the likely cause is `packaging_weak`, `model_already_knew`, or `eval_insensitive` before any
+  packaging-v2/provider-generation run.
+- **What it is / is NOT.** IS: a closed private diagnostic over the existing private baseline guide, private 176N
+  guide, private closed score artifacts, and scorer code. It reads private guide text only at runtime and emits
+  closed labels. NOT: packaging-v2 generation, another provider run, a stub preview, new evaluator/judge,
+  scorer threshold tuning, Layer-2 judge, repair, cloud OCR, numeric recompute, frontend/API rollout, or normal
+  guide-generation behavior change.
+- **Real result (private diagnostic over existing artifacts).** `status=completed` ·
+  `private_baseline_guide_available=true` · `private_baseline_guide_gitignored=true` ·
+  `private_176n_guide_available=true` · `private_176n_guide_gitignored=true` ·
+  `private_score_artifacts_available=true` · `private_score_artifacts_gitignored=true` ·
+  `generation_rerun=false` · `provider_call_made=false` · `guide_content_difference=high` ·
+  `ocr_specific_content_added=partial` · `visible_asset_difference=medium` ·
+  `scorer_coverage_semantics=structural_contract` · `scorer_structure_weight=high` ·
+  `scorer_deck_specific_weight=low` · `eval_insensitive_likelihood=high` ·
+  `model_prior_likelihood=low` · `packaging_weak_likelihood=low` ·
+  `flat_score_explanation=eval_insensitive` · `recommended_next_step=add_deck_specific_coverage_eval`.
+- **Interpretation.** The private guides differ substantially and the 176N guide carries at least partial OCR-
+  specific material, but the existing `coverage_signal` is driven by structural contract lint counts (required
+  sections + table count + warnings), not deck-specific concept coverage. Packaging-v2 is **not** supported as the
+  immediate next route by this evidence. The next slice should add a deck-specific coverage eval/diagnostic before
+  spending another provider-generation run.
+- **Validation.** `compileall api pipeline test_scripts` OK; `test_flat_score_diagnostic` OK;
+  `test_real_ocr_context_generation_score` OK; `test_ocr_context_private_guide_score` OK; private diagnostic
+  runner completed. No provider generation rerun; provider_call_made=false. No Docker. No raw OCR/guide/table/
+  caption/prompt/response/provider payload/source PDF/private path committed; generated artifacts and
+  `local_operator_baselines/` stay ignored. **NOT committed.**
+
+---
+
 ## Phase 2 product path — **Slice 176N: real OCR-context guide generation + score; fair private measurement after 176L stub confound; real guide produced and scored; NOT committed.**
 
 - **phase=Phase 2 (fair real-generation measurement from the 176I private OCR content)** · **slice=176N** ·
