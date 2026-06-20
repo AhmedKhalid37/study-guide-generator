@@ -6,11 +6,28 @@
 > stable overview see `PROJECT_CONTEXT.md`; canonical brief is `../CLAUDE.md`.
 
 ## Current position
-- **Working tree:** branch `slice176e-reconstruct-present-input-target`; **Slice 176E**
-  present-input target reconstructor (`pipeline/quality_safety_present_input_target_reconstructor.py`
-  + test + `docs/TABLE_STRUCTURE_PHASE2_PRESENT_INPUT_RECONSTRUCTION.md`) + doc updates, **NOT committed**.
-  Revised **Slice 176D is committed/merged as `e3a0102`**; 176C `1771dd9`; 176B `0a9794b`; 176A `b9c6ee9`;
+- **Working tree:** branch `slice176f-slide-raster-ocr-verification-gate`; **Slice 176F**
+  slide-raster OCR correction + verification gate (`test_scripts/test_quality_safety_slide_raster_ocr_gate.py`
+  + `docs/TABLE_STRUCTURE_PHASE2_SLIDE_RASTER_OCR_GATE.md` + doc updates), **NOT committed**.
+  **Slice 176E is committed/merged/pushed as `92e389d`** (its earlier "NOT committed" note was stale);
+  Revised **Slice 176D `e3a0102`**; 176C `1771dd9`; 176B `0a9794b`; 176A `b9c6ee9`;
   174A `e8f8cac`; 173C `3aaea34`; 173B `1a38c12`; 173A `1905af7`. 175A was a no-change provenance gate.
+- **Slice 176F result (correction + Tesseract-first OCR gate; real decks via gitignored harness).**
+  Direct source inspection + real re-measurement: **both decks are near-empty-text-layer, full-page raster
+  slide images** (Ensemble 446pp ~5045 chars; NN3 340pp ~234 chars). The prior "absent /
+  unverifiable-from-source" and "NN3 partial_text" labels are **corrected** — the blocker is
+  **`extraction_gated_on_raster_ocr`**, not absent. Ran Tesseract 5.x locally (render + preprocessing +
+  anchor-crop); masked Gini recompute via the **real** verifier, gated by the **176E credibility guard**.
+  Closed result: `tesseract_status=ran` · `chandra_status=not_available` · `cloud_ocr_used=false` ·
+  `tesseract_bulk_text_quality=clean` (keyword/prose layer recovered despite empty text layers) ·
+  `tesseract_dense_grid_quality=failed` · `gini_input_cells_recovered=no` · `gini_input_cells_engine=none` ·
+  **`gini_masked_recompute_from_ocr_status=not_run`** (a naive finite-Gini false positive was rejected by
+  the guard, not banked) · `proximity_matrix_recovered=no` · `nn3_numeric_content_recovered=partial`.
+  **Decision (rule C):** `corrected_blocker=extraction_gated_on_raster_ocr`;
+  `recommended_next_step=install_local_chandra_and_rerun_gate` (secondary `improve_tesseract_preprocessing`).
+  **No ingestion pipeline built.** Phase 2 reframed as **slide-raster OCR ingestion**: Tesseract is the
+  bulk-text/caption/loose-table baseline; local Chandra is the structured-table/math gate to try next.
+  `local_operator_baselines/` + transient render/OCR stay uncommitted/ignored. **NOT committed.**
 - **Slice 176E result (one-target cold reconstruction; real deck via gitignored harness).** Selected
   `gini_chest_pain` (`weighted_gini`; `simplest_row_cell_mapping`+`cleaner_extraction_region`). A first
   naive mapper (any ≥2-integer row = a group) **false-positived** to `parsed`/`created` on the real deck

@@ -5,7 +5,41 @@
 
 ---
 
-## Phase 2 present-input reconstruction — **Slice 176E one-target cold reconstruction attempt; built + run on real deck; NOT committed.**
+## Phase 2 slide-raster OCR verification gate — **Slice 176F correction + Tesseract-first OCR gate; run on real decks; NOT committed.**
+
+- **phase=Phase 2 slide-raster OCR ingestion (reframed)** · **slice=176F (correction + verification gate)** ·
+  **test=`test_scripts/test_quality_safety_slide_raster_ocr_gate.py`** ·
+  **doc=`docs/TABLE_STRUCTURE_PHASE2_SLIDE_RASTER_OCR_GATE.md`** ·
+  **branch=`slice176f-slide-raster-ocr-verification-gate`** · **judge_ready=false** · **repair_ready=false**.
+- **Pre-state correction.** Revised **Slice 176E is committed/merged/pushed as `92e389d`** (the earlier
+  "NOT committed" handoff text was stale). 176F starts from trunk `chrome-renderer-v1` at `92e389d`.
+- **Why this slice.** Direct source inspection overturned the prior "absent / unverifiable-from-source"
+  inference. Both decks were re-measured: **near-empty text layers, full-page raster slide images.**
+  The blocker is **`extraction_gated_on_raster_ocr`**, not absent. NN3 is **not** clean partial_text.
+- **Produce-before-scaffold.** Ran **Tesseract 5.x** (local, PyMuPDF render + preprocessing +
+  anchor-cropping) on the **real** decks; masked Gini recompute routed through the **real**
+  `_recompute_weighted_gini`, gated by the **176E column-alignment credibility guard**.
+- **Real gate result (closed):** `tesseract_status=ran` · `chandra_status=not_available` ·
+  `cloud_ocr_used=false` · `tesseract_bulk_text_quality=clean` (gini/chest/patient/softmax/
+  cross-entropy keyword layer recovered at clean confidence despite near-empty text layers) ·
+  `tesseract_dense_grid_quality=failed` · `tesseract_preprocessed_gini_quality=failed` ·
+  `gini_input_cells_recovered=no` · `gini_input_cells_engine=none` ·
+  **`gini_masked_recompute_from_ocr_status=not_run`** · `proximity_matrix_recovered=no` ·
+  `nn3_numeric_content_recovered=partial`.
+- **GATE-2 catch (again).** A naive "finite Gini from a couple of OCR integers" appeared and was
+  **rejected** by the credibility guard as the same coincidental false positive — **not banked**.
+- **Decision (rule C).** **`corrected_blocker=extraction_gated_on_raster_ocr`** ·
+  **`recommended_next_step=install_local_chandra_and_rerun_gate`** (secondary
+  `improve_tesseract_preprocessing`). Inputs are present as slide pixels; Tesseract reads prose but
+  not the dense numeric grids; Chandra (local) is the designed structured-table OCR — rerun this gate
+  before building any ingestion pipeline. **No ingestion pipeline built.** No Chandra ran (unavailable
+  locally); no cloud OCR; no provider/model generation; no guide regeneration; no Layer-2 judge; no
+  repair. `local_operator_baselines/` + transient render/OCR stay uncommitted/ignored; no raw
+  OCR/source/table text, images, or private paths committed. **NOT committed.**
+
+---
+
+## Phase 2 present-input reconstruction — **Slice 176E one-target cold reconstruction attempt; committed/merged as `92e389d`.**
 
 - **phase=Phase 2 present-input reconstruction** · **slice=176E (one input-present target)** ·
   **module=`pipeline/quality_safety_present_input_target_reconstructor.py`** ·

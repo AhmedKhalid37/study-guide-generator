@@ -7408,3 +7408,33 @@ student-visible table/figure insertion** (the proximity answer matrix remains a 
 recompute input). No Chandra; no cloud OCR; no provider/model generation; no guide regeneration; no Layer-2
 judge; no repair. `judge_ready=false`; `repair_ready=false`. hand_authored_rows / fixture_derived /
 answer_string_derived / guide_candidate_derived / raw_values_committed / raw_ocr_committed all false.
+
+## Slice 176F — the hard-deck blocker is extraction-gated on raster OCR, not absent
+Direct source inspection + real local re-measurement corrected the prior closed-evidence
+inference. **Both** decks (Ensemble 446pp ≈5045 chars; NN3 340pp ≈234 chars) are
+**near-empty-text-layer, full-page raster slide images.** The earlier "Ensemble numeric
+inputs absent / unverifiable-from-source" and "NN3 clean partial_text" labels are **wrong**;
+the correct category is **`extraction_gated_on_raster_ocr`**. **Why it matters:** per
+SUPERVISOR_PROTOCOL's three failure types, calling an extraction-gated target "absent" or
+"method-gated" misroutes the project; this is the case that legitimately routes to **Phase 2
+OCR**, not to more numeric-context plumbing or another text-layer Gini attempt. **Produce
+step:** a Tesseract-first OCR gate was run on the **real** decks (local PyMuPDF render +
+grayscale/upscale/binarize + anchor-region crop; `--psm 6/11`; per-word confidence as a
+text-free quality proxy). **Result:** Tesseract recovers the bulk-text/caption/keyword layer
+at **clean** confidence (gini / chest / patient / softmax / cross-entropy all read despite
+empty text layers) but the **dense numeric grids fail** the 176E column-alignment credibility
+guard on every Gini / proximity / NN3 numeric slide — `tesseract_dense_grid_quality=failed`,
+`gini_input_cells_recovered=no`, **`gini_masked_recompute_from_ocr_status=not_run`**. A naive
+"finite Gini from a couple of OCR integers" surfaced and was **rejected** by the same guard
+(GATE-2: finite ≠ inputs; a Gini is finite for *any* positive integers). **Decision:**
+`corrected_blocker=extraction_gated_on_raster_ocr`;
+`recommended_next_step=install_local_chandra_and_rerun_gate` (secondary
+`improve_tesseract_preprocessing`). **No ingestion pipeline was built** — this is a
+correction + verification gate only; Tesseract is the bulk-text baseline and local Chandra
+(per `CHANDRA_OCR_VERIFICATION.md`, local HF/vLLM only — cloud OCR stays banned) is the
+structured-table/math gate to run next on the same slides before any pipeline. Committed:
+`test_scripts/test_quality_safety_slide_raster_ocr_gate.py` (public-safe gate-logic test,
+masked recompute routed through the real `_recompute_weighted_gini`) +
+`docs/TABLE_STRUCTURE_PHASE2_SLIDE_RASTER_OCR_GATE.md`. No raw OCR/source/table text,
+rendered images, source PDFs, or private paths committed; `local_operator_baselines/` stays
+ignored. `judge_ready=false`; `repair_ready=false`.
