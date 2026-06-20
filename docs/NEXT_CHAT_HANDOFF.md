@@ -6,11 +6,18 @@
 > stable overview see `PROJECT_CONTEXT.md`; canonical brief is `../CLAUDE.md`.
 
 ## Current position
-- **Working tree:** branch `slice176a-focused-table-structure-extraction`; Slice 176A focused
-  table-structure attempt, **not committed**. Slice 174A is committed as `e8f8cac`; Slice 173C is
-  committed as `3aaea34`; Slice 173B is `1a38c12`; Slice 173A is `1905af7`. Slice 175A was a
-  no-change provenance gate (no files; not committed).
-- **Current phase:** `Phase 2 OCR/table-structure extraction`.
+- **Working tree:** branch `slice176b-table-pilot-inventory-nn3-check`; Slice 176B NN3 check +
+  table-pilot seam map, **docs-only, not committed**. Slice 176A is committed/merged as `b9c6ee9`;
+  Slice 174A is committed as `e8f8cac`; Slice 173C is `3aaea34`; Slice 173B is `1a38c12`; Slice 173A
+  is `1905af7`. Slice 175A was a no-change provenance gate (no files; not committed).
+- **Slice 176B result (docs-only):** added `docs/TABLE_STRUCTURE_PHASE2_SEAM_MAP.md`. NN3
+  `partial_text` numeric path = `unstructured_text_only` (numeric chain is unwired + consumes
+  caller-supplied candidates; `numeric_observation_recoverable=no`); no new NN3 parser built. Existing
+  visual/table stack: `reuse_boundary=region_detection_plus_crops`, `missing_piece=row_cell_reconstruction`
+  (region detection + crops + decision policy exist; rows/cells do not). Slice 60 stash inspected
+  read-only (name-only/stat; not applied/popped/dropped) → `selection_trace`, not relevant to the
+  reconstructor seam. **Decision next_step=`build_one_table_family_row_cell_reconstructor` (Slice 176C).**
+- **Current phase:** `Phase 2 table-pilot seam map` → next `Phase 2 row/cell reconstruction`.
   `reason=175A_proved_existing_outputs_not_machine_consumable`;
   `previous_recompute_ready_count=2`; `source_input_missing_count=10`;
   `focused_targets=[proximity_4_3, weighted_weight_impute]`;

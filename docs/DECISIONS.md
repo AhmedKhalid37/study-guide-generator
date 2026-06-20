@@ -7257,3 +7257,26 @@ Chandra, not cloud OCR, not a generic table-reconstruction framework, not anothe
 bridge. `chandra_used=false`; `cloud_ocr_used=false`; `hand_authored_target_inputs=false`;
 `fixture_values_used_as_source_inputs=false`; `guide_candidate_values_used_as_source_inputs=false`;
 `existing_table_stack_checked=true`; `reuse_path=existing_visual_manifest`.
+
+## Slice 176B: NN3-separate check + table-pilot seam map before building the reconstructor (2026-06-19)
+Before building any row/cell extractor, this docs-only slice (a) checked whether NN3 (`partial_text`) can
+be parsed by the existing **non-table** numeric chain, and (b) inventoried the existing visual/table pilot
+stack to define the exact reconstruction seam. **NN3 finding:** the numeric chain
+(`quality_safety_safe_numeric_extractor` → `..._numeric_extraction_mapper` → `..._fact_sheet_producer` →
+`..._recompute_verifier`) is pure/unwired and consumes only caller-supplied sanitized candidates; the
+`quality_safety_extraction_bundle_adapter` records `numeric_observation_recoverable=no`. So
+`nn3_free_numeric_path_status=unstructured_text_only` — no existing producer parses NN3 numeric inputs from
+extraction, and per the hard rule no new NN3 parser was built or hand-authored. **Stack inventory:**
+`visual_asset_extractor` (crops, gated off), `visual_assets_manifest` (sanitizer), `table_candidate_manifest`
+(region candidates: counts + decision tokens, no cell values), `table_reconstruction_policy` (decision-only).
+`existing_row_cell_reconstruction_exists=false` → `reuse_boundary=region_detection_plus_crops`,
+`missing_piece=row_cell_reconstruction`. **Slice 60 stash** inspected read-only (name-only/stat; not
+applied/popped/dropped) = `selection_trace` (visual markdown insertion / downstream rendering), not relevant
+to the reconstructor seam (potentially relevant later to student-visible table insertion only). **Seam
+contract** defined: created records must be `parsed_from_extraction_output` + `structured_rows` and drop into
+the verifier's existing `source_inputs_by_target` ({method, inputs, value_kind, confidence}); reuse
+`SUPPORTED_METHODS`, no parallel engine; privacy_contract all true. **Decision-rule
+next_step=`build_one_table_family_row_cell_reconstructor`** (Slice 176C, option C): region detection/crops
+exist but rows/cells do not. Not another audit, not another source-input bridge, not a context hook, not
+Chandra, not cloud OCR, not a generic framework. Added `docs/TABLE_STRUCTURE_PHASE2_SEAM_MAP.md`; no
+extraction code changed.

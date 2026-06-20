@@ -5,7 +5,41 @@
 
 ---
 
-## Phase 2 OCR/table-structure extraction — **Slice 176A focused table-structure attempt; NOT committed.**
+## Phase 2 table-pilot seam map — **Slice 176B NN3 check + seam map; docs-only; NOT committed.**
+
+- **phase=Phase 2 table-pilot seam map** · **slice=176B (inventory + seam, no extraction code)** ·
+  **doc=`docs/TABLE_STRUCTURE_PHASE2_SEAM_MAP.md`** · **chandra_used=false** · **cloud_ocr_used=false** ·
+  **judge_ready=false** · **repair_ready=false**.
+- **NN3 separate recoverability check:** source_label=nn3 · source_quality=partial_text ·
+  targets_considered=5 · existing_structured_source_input_producer_exists=true (unwired numeric chain) ·
+  producer_ran=true · producer_output_has_target_records=false · parsed_from_existing_extraction_count=0 ·
+  machine_consumable_count=0 · source_input_records_created_count=0 · remaining_source_required_count=5 ·
+  **nn3_free_numeric_path_status=`unstructured_text_only`**. The numeric chain
+  (safe_numeric_extractor→numeric_extraction_mapper→fact_sheet_producer→recompute_verifier) is pure/unwired
+  and consumes caller-supplied sanitized candidates; the extraction-bundle adapter records
+  `numeric_observation_recoverable=no`. No new NN3 parser built or hand-authored.
+- **Existing visual/table pilot inventory:** existing_visual_manifest_exists=true ·
+  existing_visual_asset_extractor_exists=true · existing_table_candidate_manifest_exists=true ·
+  existing_table_reconstruction_policy_exists=true · existing_row_cell_reconstruction_exists=false ·
+  existing_crop_generation_exists=true · existing_region_detection_reusable=true ·
+  existing_stack_outputs_rows_cells=false · existing_stack_outputs_counts_only=true ·
+  existing_stack_outputs_region_crops=true · **reuse_boundary=`region_detection_plus_crops`** ·
+  **missing_piece=`row_cell_reconstruction`**.
+- **Slice 60 stash (read-only name-only/stat; not applied/popped/dropped):** slice60_stash_relevant=false ·
+  slice60_stash_relevance=`selection_trace` (visual markdown insertion / downstream rendering, not numeric
+  row/cell extraction; potentially relevant later to student-visible table insertion only).
+- **Reconstructor seam contract:** input=region/crop/table-candidate handles + local private OCR + safe
+  page/region ref; output=`row_cell_extraction_status` + `source_input_record_status` +
+  origin must be `parsed_from_extraction_output` to count, shaped to drop into the verifier's
+  `source_inputs_by_target` ({method, inputs, value_kind, confidence}); privacy_contract all true;
+  success_bar=one_table_family_one_deck_end_to_end + recompute_proof_from_parsed_inputs.
+- **Decision-rule next_step=`build_one_table_family_row_cell_reconstructor`** (Slice 176C, option C):
+  region detection/crops exist but rows/cells do not. Not another audit, not another source-input bridge,
+  not Chandra, not cloud OCR, not a generic framework.
+
+---
+
+## Phase 2 OCR/table-structure extraction — **Slice 176A focused table-structure attempt; committed `b9c6ee9`.**
 
 - **phase=Phase 2 OCR/table-structure extraction** ·
   **reason=175A_proved_existing_outputs_not_machine_consumable** ·
