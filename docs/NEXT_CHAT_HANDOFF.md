@@ -6,7 +6,23 @@
 > stable overview see `PROJECT_CONTEXT.md`; canonical brief is `../CLAUDE.md`.
 
 ## Current position
-- **Working tree:** branch `slice176i-run-local-structured-ocr-content-extraction`; **Slice 176I-real**
+- **Working tree:** branch `slice176j-gini-input-cell-parser-private-artifact`; **Slice 176J** added the
+  first numeric consumer of the 176I private OCR artifact (`pipeline/gini_input_cell_parser.py` +
+  `test_scripts/test_gini_input_cell_parser.py` + live-doc updates), **NOT committed**.
+- **Slice 176J result (first numeric consumer — honest BLOCK, no laundering).** Ran the parser on the private
+  176I OCR artifact's Gini slide. That slide is a **per-split answer summary** (each row: one count + one
+  unit-interval Gini **value**), **not** a raw class-count grid. The parser **refused the Gini answer column**
+  and created **no** source-input record: `status=blocked` · `selected_target_id=gini_chest_pain` ·
+  `input_cell_candidate_status=rejected_false_positive` · `candidate_kind=computed_gini_answer` ·
+  `column_alignment_status=failed` · `answer_agnostic_guard_status=passed` ·
+  `source_input_record_status=not_created` · `machine_consumable_for_recompute=false` ·
+  `masked_recompute_status=not_run` · `false_positive_rejected=true` · `blocked_by=answer_output_only` ·
+  `recommended_next_step=pivot_to_visible_table_pilot`. **Gini stays `unverified`** (no raw inputs parsed, no
+  masked recompute). Consistent with 176G/176H (the Gini slide is an answer summary). Numeric truth via raw
+  class-count cells is not available on this slide; the guide-context / visible-table pilots remain valid
+  downstream. No cloud OCR; no provider/model generation; no guide-generation wiring. **NOT committed.**
+- **Slice 176I is committed/merged/pushed as `937f843`** (first real local structured OCR content extraction).
+- **Working tree (prior):** branch `slice176i-run-local-structured-ocr-content-extraction`; **Slice 176I-real**
   ran the proven local structured OCR producer on real content slides
   (`test_scripts/run_local_structured_ocr_content_extraction.py` +
   `docs/LOCAL_STRUCTURED_OCR_CONTENT_EXTRACTION.md` + live-doc updates), **NOT committed**.

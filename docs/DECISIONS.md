@@ -7539,3 +7539,40 @@ OCR; no provider/model generation; no guide-generation wiring; no Layer-2 judge;
 text, rendered images, source PDFs, model files/caches, or private paths committed; the private
 extracted-content artifact and `local_operator_baselines/` stay ignored. `judge_ready=false`;
 `repair_ready=false`. **NOT committed.**
+
+## Slice 176J — Gini input-cell parser is the first NUMERIC consumer of the private 176I OCR artifact
+176I extracted real slide content and explicitly set `numeric_recompute_readiness=needs_input_cell_parser` —
+content was recovered but **no numeric input cells were parsed and no masked recompute was run**. Per
+produce-before-scaffold, the correct next action was to **run a minimal parser on the artifact that already
+exists**, not to build more OCR plumbing. So 176J adds exactly one small module
+(`pipeline/gini_input_cell_parser.py`) that attempts to parse **raw Gini class-count input cells** for one
+selected weighted-Gini target out of the private OCR extraction and — only if credible raw inputs are found —
+runs a **masked** recompute (the printed Gini answer is never supplied to the parser). It reuses the committed
+recompute verifier (`recompute_quality_safety_fact` / `SUPPORTED_METHODS`) and the 176H private-artifact policy
+(`is_private_artifact_dir`); it is **not** an OCR engine, a broad table engine, guide-generation wiring,
+frontend/API, a Layer-2 judge, repair, cloud OCR, or provider/model generation.
+**No-laundering guards (load-bearing, mirror 176E):** the weighted-Gini value is a decimal in (0,1) — the
+**answer**, never an input; a unit-interval decimal column is refused as `answer_output_only`. A credible
+class-count table requires integers forming **≥ 2 shared columns across ≥ 2 rows** (real per-node class counts);
+a single integer column, scattered integers, or an answer/leaf-count column are rejected as false positives. A
+record is created (and a masked recompute attempted) **only** for genuine column-aligned class-count rows, and
+**never** when an expected answer is available to the parser.
+**Real result (honest BLOCK):** ran on the private 176I artifact's Gini slide; that slide is a **per-split
+answer summary** — each row carries a single count and a single Gini value — **not** a raw class-count grid. The
+parser refused the answer column and created no record: `status=blocked`, `selected_target_id=gini_chest_pain`,
+`selected_target_family=weighted_gini`, `private_artifact_available=true`, `private_artifact_gitignored=true`,
+`input_cell_candidate_status=rejected_false_positive`, `input_cell_candidate_origin=private_ocr_artifact`,
+`candidate_kind=computed_gini_answer`, `class_label_coherence=not_applicable`, `column_alignment_status=failed`,
+`answer_agnostic_guard_status=passed`, `source_input_record_status=not_created`, `source_input_origin=none`,
+`machine_consumable_for_recompute=false`, `masked_recompute_status=not_run`, `false_positive_rejected=true`,
+`warning=answer_or_unrelated_values_not_inputs`, `blocked_by=answer_output_only`,
+`recommended_next_step=pivot_to_visible_table_pilot`.
+**Interpretation:** Gini stays `unverified`. This is **consistent** with 176G/176H (the representative Gini
+slide is an answer summary, not the raw class-count grid). Artifact quality was sufficient — the table was
+cleanly recovered — so the raw class-count inputs are simply **not on this slide**; the next step is therefore
+**not** more OCR plumbing. The private guide-context and visible-table pilots remain valid downstream even
+though numeric input parsing is blocked here. The parser's synthetic public-safe tests prove the positive path
+(a genuine class-count grid parses + masked-recomputes) so the BLOCK is a real source finding, not a parser
+gap. No cloud OCR; no provider/model generation; no guide-generation wiring; no Layer-2 judge; no repair. No raw
+OCR/table text, raw values, leaf counts, formulas, or private paths committed; the private artifact and
+`local_operator_baselines/` stay ignored. `judge_ready=false`; `repair_ready=false`. **NOT committed.**

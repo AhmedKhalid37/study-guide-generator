@@ -5,7 +5,44 @@
 
 ---
 
-## Phase 2 slide-raster OCR ingestion — **Slice 176I-real: ran local structured OCR on real content slides; private extracted-content artifact produced; NOT committed.**
+## Phase 2 numeric consumer — **Slice 176J: Gini input-cell parser over the private 176I OCR artifact; numeric path stays blocked (slide is an answer summary); NOT committed.**
+
+- **phase=Phase 2 (first numeric consumer of the 176I private OCR artifact)** · **slice=176J** ·
+  **module=`pipeline/gini_input_cell_parser.py`** · **test=`test_scripts/test_gini_input_cell_parser.py`** ·
+  **branch=`slice176j-gini-input-cell-parser-private-artifact`** · **judge_ready=false** · **repair_ready=false**.
+- **Why this slice.** 176I extracted real slide content and set
+  `numeric_recompute_readiness=needs_input_cell_parser`. 176J is the **first numeric consumer**: it tries to
+  parse **raw Gini class-count input cells** for one target out of the private OCR artifact and run a **masked**
+  recompute (printed answer never supplied) — only if credible raw inputs are found.
+- **What it is / is NOT.** A minimal, answer-agnostic parser for one weighted-Gini target. NOT an OCR engine,
+  broad table engine, guide-generation wiring, frontend/API, Layer-2 judge, repair, cloud OCR, or
+  provider/model generation. No raw OCR/table text, raw values, or private paths committed.
+- **Real result (honest, anti-laundering).** Ran the parser on the private 176I artifact's gini slide. That
+  slide is a **per-split answer summary** — each row carries a single count and a single Gini **value** (a
+  unit-interval decimal), **not** a raw class-count grid (which needs ≥2 paired class-count integer columns per
+  node). The parser correctly **refused the Gini answer column** and created **no** source-input record:
+  `status=blocked` · `selected_target_id=gini_chest_pain` · `selected_target_family=weighted_gini` ·
+  `private_artifact_available=true` · `private_artifact_gitignored=true` ·
+  `input_cell_candidate_status=rejected_false_positive` · `input_cell_candidate_origin=private_ocr_artifact` ·
+  `candidate_kind=computed_gini_answer` · `class_label_coherence=not_applicable` ·
+  `column_alignment_status=failed` · `answer_agnostic_guard_status=passed` ·
+  `source_input_record_status=not_created` · `source_input_origin=none` ·
+  `machine_consumable_for_recompute=false` · `masked_recompute_status=not_run` · `false_positive_rejected=true` ·
+  `warning=answer_or_unrelated_values_not_inputs` · `blocked_by=answer_output_only` ·
+  `recommended_next_step=pivot_to_visible_table_pilot`.
+- **Numeric truth NOT claimed.** Gini stays `unverified`: no raw class-count inputs were parsed, no masked
+  recompute ran. This is **consistent** with the 176G/176H note that the representative Gini slide is an answer
+  summary, not the raw class-count grid. Artifact quality was sufficient (table cleanly recovered); the inputs
+  simply are not on this slide — so the next step is **not** more OCR plumbing. The private guide-context and
+  visible-table pilots remain valid downstream regardless.
+- **Validation.** `compileall api pipeline test_scripts` OK; `test_gini_input_cell_parser` OK;
+  `test_slide_raster_ocr_ingestion` OK; `recompute_verifier` 311/0; `git diff --check` clean. No Docker. No
+  frontend/API/generation code touched. The private artifact and `local_operator_baselines/` stay ignored.
+  **NOT committed.**
+
+---
+
+## Phase 2 slide-raster OCR ingestion — **Slice 176I-real: ran local structured OCR on real content slides; private extracted-content artifact produced; committed `937f843` / merged to trunk.**
 
 - **phase=Phase 2 slide-raster OCR ingestion** · **slice=176I-real (real content extraction run)** ·
   **runner=`test_scripts/run_local_structured_ocr_content_extraction.py`** ·
