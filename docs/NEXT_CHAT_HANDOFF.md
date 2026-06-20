@@ -6,10 +6,30 @@
 > stable overview see `PROJECT_CONTEXT.md`; canonical brief is `../CLAUDE.md`.
 
 ## Current position
-- **Working tree:** branch `slice176h-local-slide-ocr-ingestion-seam`; **Slice 176H** local slide-OCR
-  **ingestion artifact seam** (`pipeline/slide_raster_ocr_ingestion.py` +
-  `test_scripts/test_slide_raster_ocr_ingestion.py` + `docs/SLIDE_RASTER_OCR_INGESTION_SEAM.md` + doc
-  updates), **NOT committed**.
+- **Working tree:** branch `slice176i-run-local-structured-ocr-content-extraction`; **Slice 176I-real**
+  ran the proven local structured OCR producer on real content slides
+  (`test_scripts/run_local_structured_ocr_content_extraction.py` +
+  `docs/LOCAL_STRUCTURED_OCR_CONTENT_EXTRACTION.md` + live-doc updates), **NOT committed**.
+- **Slice 176I-real result (first real content-extraction run — NOT a seam/adapter slice).** Ran Chandra
+  OCR 2 **GGUF** via local `llama-server` (OpenAI-compatible `/v1/chat/completions`, local-only, no
+  cloud/API) on **content-bearing** ensemble slides selected by a Tesseract keyword + numeric-density
+  pre-scan, driven by the committed `chandra_local_provider` + `chandra_normalizer`. Raw layout-HTML +
+  manifest written **only** to a private gitignored dir; committed docs carry closed labels only.
+  **GATE-2 confound caught:** first pass under-recovered (4/5 slides empty) — server **thinking** was on,
+  so transcription went to the hidden reasoning channel; re-running thinking-off (the 176G setting)
+  recovered tables, **consistent with 176G**. Banked closed summary: `status=completed` ·
+  `source_label=ensemble` · `selected_slide_categories_count=5` (4 distinct pages) · `pages_rendered_count=5` ·
+  `structured_ocr_status=ran_local` · `structured_ocr_engine=chandra_gguf_local` · `cloud_ocr_used=false` ·
+  `private_artifact_written=true` · `private_artifact_gitignored=true` · `content_extraction_status=extracted` ·
+  `dense_grid_recovery_status=recovered` · `patient_dataset_table_status=recovered` ·
+  `proximity_matrix_status=recovered` · `gini_or_leaf_count_status=partial` ·
+  `visible_table_readiness=ready_for_visible_table_pilot` ·
+  `guide_content_readiness=ready_for_private_prompt_context_pilot` ·
+  `numeric_recompute_readiness=needs_input_cell_parser` · `gini_masked_recompute_from_ocr_status=not_attempted`.
+  **Numeric truth NOT claimed** — Gini stays `unverified` (no masked recompute from raw input cells).
+  Next: a private guide-context / visible-table pilot (Phase 4); numeric recompute is a **later** consumer
+  requiring a masked input-cell parser proof. **NOT committed.**
+- **Slice 176H is committed/merged/pushed as `29420cc`** (off-by-default local slide-OCR ingestion seam).
 - **Slice 176H result (off-by-default ingestion seam — only the seam, no guide-generation wiring).**
   First minimal increment of 176G's `build_local_slide_ocr_ingestion_pipeline`. Pure helpers + an
   inert-by-default runner that classifies the PDF text layer / content form, renders selected raster pages

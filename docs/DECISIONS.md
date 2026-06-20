@@ -7500,3 +7500,42 @@ the category-selected dense grid slides. Committed: `pipeline/slide_raster_ocr_i
 updates (when committed). No frontend/API/generation code touched. No model files/caches, raw OCR/table text,
 rendered images, source PDFs, or private paths committed; `local_operator_baselines/` stays ignored. Cloud OCR
 stays banned. `judge_ready=false`; `repair_ready=false`.
+
+## Slice 176I-real — RUN the proven local structured OCR producer on real content slides (not another seam)
+Per the supervisor's produce-before-scaffold gate: 176G already **ran** local structured OCR and recovered
+dense grids, and 176H built the **seam**. So the correct next action was **not** another adapter/readiness
+slice but to **run the proven producer on real content-bearing slides** and emit the actual private
+extracted-content artifact. This slice does exactly that, adding only the minimum runner
+(`test_scripts/run_local_structured_ocr_content_extraction.py`) needed to capture the artifact safely.
+**Producer (real, local):** Chandra OCR 2 **GGUF** served by local `llama-server` over the OpenAI-compatible
+`/v1/chat/completions` path (local-only, no cloud/API), driven by the **committed** `chandra_local_provider`
+payload builder + `chandra_normalizer`. **Selection:** a Tesseract keyword + numeric-density pre-scan over
+locally-rendered pages picks the most numeric-dense content slide per category and excludes title/intro/agenda
+pages (the 176F/176G selection idea; the binary tesseract is used via subprocess — pytesseract bindings absent).
+**Privacy:** raw layout-HTML + a manifest are written **only** to a gitignored private artifact directory;
+committed docs carry closed labels/counts/buckets only.
+**GATE-2 discipline (load-bearing):** the **first** extraction pass under-recovered (4/5 content slides returned
+empty content), which **contradicted** 176G's dense-grid recovery. Rather than bank the surprising-bad result,
+the contradiction was diagnosed: with server-side **thinking enabled**, this qwen3vl-based server emitted the
+whole transcription into the hidden reasoning channel and returned an **empty** content field. 176G ran
+thinking-off; re-running with `enable_thinking=false` (via `chat_template_kwargs`) plus a larger token budget
+recovered well-formed tables on the same slides — **consistent with 176G**. The confound was a config issue, not
+an OCR-capability regression; the runner now hardwires thinking off and the corrected run is the banked one.
+**Banked closed result:** `status=completed`, `source_label=ensemble`, `selected_slide_categories_count=5`
+(over 4 distinct pages — one page satisfied two categories), `pages_rendered_count=5`,
+`structured_ocr_status=ran_local`, `structured_ocr_engine=chandra_gguf_local`, `cloud_ocr_used=false`,
+`private_artifact_written=true`, `private_artifact_gitignored=true`, `content_extraction_status=extracted`,
+`extracted_text_block_count_bucket=high`, `extracted_table_count_bucket=medium`,
+`extracted_figure_or_diagram_count_bucket=low`, `dense_grid_recovery_status=recovered`,
+`patient_dataset_table_status=recovered`, `proximity_matrix_status=recovered`, `gini_or_leaf_count_status=partial`,
+`visible_table_readiness=ready_for_visible_table_pilot`,
+`guide_content_readiness=ready_for_private_prompt_context_pilot`,
+`numeric_recompute_readiness=needs_input_cell_parser`, `gini_masked_recompute_from_ocr_status=not_attempted`,
+`recommended_next_step=run_gini_input_cell_parser_on_private_artifact`. **Anti-laundering:** "recovered" means
+slide **structure** was extracted, **not** numeric verification; no masked recompute was run from raw input
+cells, so **Gini stays `unverified`** and numeric truth is a later consumer's job. First downstream consumer is
+a private guide-context or visible table/figure pilot (Phase 4); numeric recompute is the later one. No cloud
+OCR; no provider/model generation; no guide-generation wiring; no Layer-2 judge; no repair. No raw OCR/table
+text, rendered images, source PDFs, model files/caches, or private paths committed; the private
+extracted-content artifact and `local_operator_baselines/` stay ignored. `judge_ready=false`;
+`repair_ready=false`. **NOT committed.**

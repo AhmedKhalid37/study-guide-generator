@@ -5,7 +5,44 @@
 
 ---
 
-## Phase 2 slide-raster OCR ingestion — **Slice 176H local slide-OCR ingestion artifact seam; off-by-default; NOT committed.**
+## Phase 2 slide-raster OCR ingestion — **Slice 176I-real: ran local structured OCR on real content slides; private extracted-content artifact produced; NOT committed.**
+
+- **phase=Phase 2 slide-raster OCR ingestion** · **slice=176I-real (real content extraction run)** ·
+  **runner=`test_scripts/run_local_structured_ocr_content_extraction.py`** ·
+  **doc=`docs/LOCAL_STRUCTURED_OCR_CONTENT_EXTRACTION.md`** ·
+  **branch=`slice176i-run-local-structured-ocr-content-extraction`** · **judge_ready=false** · **repair_ready=false**.
+- **Why this slice.** 176G proved local structured OCR recovers dense grids; 176H built only the seam. This is
+  the **first real content-extraction run** of that proven producer on **content-bearing** slides (not
+  title/intro/text-layer pages) — produce-before-scaffold, no new adapter framework.
+- **What ran (real, local).** Chandra OCR 2 **GGUF** via local `llama-server` (OpenAI-compatible
+  `/v1/chat/completions`, local-only, no cloud/API), driven by the **committed** `chandra_local_provider`
+  payload builder + `chandra_normalizer`. Content slides selected by a Tesseract keyword + numeric-density
+  pre-scan; rendered locally (PyMuPDF). Raw layout-HTML + manifest written **only** to a private gitignored dir.
+- **GATE-2 confound caught + fixed (not banked blind).** The first pass under-recovered (4/5 slides empty),
+  which **contradicted 176G**. Diagnosis: server-side **thinking** was on → the transcription went to the
+  hidden reasoning channel and content came back empty. 176G ran thinking-off; re-running with
+  `enable_thinking=false` recovered well-formed tables — **consistent with 176G**. Corrected run is the banked one.
+- **Closed extraction summary (corrected run).** `status=completed` · `source_label=ensemble` ·
+  `selected_slide_categories_count=5` (4 distinct pages) · `pages_rendered_count=5` ·
+  `structured_ocr_status=ran_local` · `structured_ocr_engine=chandra_gguf_local` · `cloud_ocr_used=false` ·
+  `private_artifact_written=true` · `private_artifact_gitignored=true` · `content_extraction_status=extracted` ·
+  `extracted_text_block_count_bucket=high` · `extracted_table_count_bucket=medium` ·
+  `extracted_figure_or_diagram_count_bucket=low` · `dense_grid_recovery_status=recovered` ·
+  `patient_dataset_table_status=recovered` · `proximity_matrix_status=recovered` ·
+  `gini_or_leaf_count_status=partial` · `guide_content_readiness=ready_for_private_prompt_context_pilot` ·
+  `visible_table_readiness=ready_for_visible_table_pilot` · `numeric_recompute_readiness=needs_input_cell_parser` ·
+  `gini_masked_recompute_from_ocr_status=not_attempted` ·
+  `recommended_next_step=run_gini_input_cell_parser_on_private_artifact`.
+- **Anti-laundering.** "recovered" = structure extracted, **not** numeric verification. Gini stays
+  `unverified`: no masked recompute was run from raw input cells. Numeric truth is a **later** consumer.
+- **Validation.** `compileall api pipeline test_scripts` OK; `test_slide_raster_ocr_ingestion` OK; 176F gate OK;
+  `recompute_verifier` 311/0; `git diff --check` clean. No Docker. No frontend/API/generation code touched. No
+  raw OCR/table text, rendered images, source PDFs, model files/caches, or private paths committed;
+  `local_operator_baselines/` (incl. the private extracted-content artifact) stays ignored. **NOT committed.**
+
+---
+
+## Phase 2 slide-raster OCR ingestion — **Slice 176H local slide-OCR ingestion artifact seam; off-by-default; committed `29420cc` / merged to trunk.**
 
 - **phase=Phase 2 slide-raster OCR ingestion** · **slice=176H (ingestion artifact seam)** ·
   **module=`pipeline/slide_raster_ocr_ingestion.py`** · **test=`test_scripts/test_slide_raster_ocr_ingestion.py`** ·
