@@ -5,7 +5,44 @@
 
 ---
 
-## Phase 2 product path — **Slice 176K: visible table/figure pilot from the private 176I OCR artifact; first product-facing consumer; private pilot artifact produced; NOT committed.**
+## Phase 2 product path — **Slice 176L: OCR-context private guide preview + score; first student-visible artifact after the OCR breakthrough; private preview produced and scored vs baseline; NOT committed.**
+
+- **phase=Phase 2 (first student-visible product artifact from the 176I private OCR content)** · **slice=176L** ·
+  **module=`pipeline/ocr_context_private_guide.py`** · **runner=`test_scripts/run_ocr_context_private_guide_score.py`** ·
+  **test=`test_scripts/test_ocr_context_private_guide_score.py`** ·
+  **branch=`slice176l-ocr-context-private-guide-score`** · **judge_ready=false** · **repair_ready=false**.
+- **Why this slice.** 176K was the last preparation slice; per the byte-identical invariant the next commit had to
+  change what a student can read. 176L assembles a private student guide **preview** from the OCR-extracted slide
+  content (which the deck's near-empty text layer dropped), embeds the three 176K visible assets, and scores it
+  against the existing private baseline guide using the **committed deterministic** `guide_quality_contract_lint`
+  (counts only, no LLM, no new judge).
+- **What it is / is NOT.** Pure offline preview builder + thin wrapper over existing contract lint + deterministic
+  closed baseline comparison. NOT a new judge, Layer-2 judge, repair, numeric-recompute wiring, provider/model
+  generation, guide-generation wiring into normal app behavior, frontend/API, or cloud OCR.
+- **Real result (ran on the private artifact vs the private baseline guide).** `status=completed` ·
+  `generation_mode=deterministic_stub_preview` · `guide_artifact_status=preview_generated` ·
+  `private_ocr_artifact_available=true` · `private_ocr_artifact_gitignored=true` ·
+  `private_visible_artifact_available=true` · `private_visible_artifact_gitignored=true` ·
+  `private_guide_artifact_written=true` · `private_guide_artifact_gitignored=true` · `visible_assets_used=yes` ·
+  `selected_visible_asset_categories=[patient_dataset_table, decision_tree_or_split_diagram, proximity_matrix]` ·
+  `score_status=scored` · `baseline_comparison_status=regressed` · `coverage_signal=regressed` ·
+  `figure_table_signal=unchanged` · `numeric_verification_claimed=false` · `blocked_by=none` ·
+  `recommended_next_step=build_off_by_default_ocr_context_generation_path`.
+- **GATE-2 interpretation (regressed is a confound, not a finding).** The candidate is a **deterministic stub**
+  (recovered tables + generic scaffold prose); the baseline is the **full LLM-generated** app guide. A thin stub is
+  expected to carry fewer present required sections / exam alerts than a complete guide, so it scores lower on the
+  contract lint regardless of content quality — this is **not** evidence that OCR content hurts. The slice DID make
+  the recovered OCR tables student-readable in a private preview, and the existing scorer ran cleanly on both. The
+  scorer/thresholds were **not** touched to manufacture an "improved" result; the honest next measurement is OCR
+  content through the **real** off-by-default generation path, then re-score.
+- **Validation.** `compileall api pipeline test_scripts` OK; `test_ocr_context_private_guide_score` OK;
+  `test_visible_table_figure_pilot` OK; `test_slide_raster_ocr_ingestion` OK; `git diff --check` clean. No Docker.
+  No frontend/API/normal-generation code touched. The private OCR artifact, the private preview, and
+  `local_operator_baselines/` stay ignored. **NOT committed.**
+
+---
+
+## Phase 2 product path — **Slice 176K: visible table/figure pilot from the private 176I OCR artifact; first product-facing consumer; private pilot artifact produced; committed `1dc6eac` / merged to trunk.**
 
 - **phase=Phase 2 (first product-facing consumer of the 176I private OCR artifact)** · **slice=176K** ·
   **module=`pipeline/visible_table_figure_pilot.py`** · **test=`test_scripts/test_visible_table_figure_pilot.py`** ·
@@ -35,13 +72,12 @@
 - **Validation.** `compileall api pipeline test_scripts` OK; `test_visible_table_figure_pilot` OK;
   `test_gini_input_cell_parser` OK; `test_slide_raster_ocr_ingestion` OK; `git diff --check` clean. No Docker.
   No frontend/API/generation code touched. The private artifacts and `local_operator_baselines/` stay ignored.
-  **NOT committed.**
-- **176K is the last preparation slice.** No further readiness/seam/adapter/policy-only/numeric-parser slice
-  may follow. Per the byte-identical invariant, the **next** slice (176L) must change what a student can
-  actually read: a private regenerated guide / guide preview built from the extracted 176I OCR content (and,
-  if safe in scope, the selected 176K visible assets), compared against the existing baseline with a **scored
-  comparison if existing eval tooling supports it** — no new judge, no repair, no cloud OCR, no frontend/API
-  wiring.
+  **Committed `1dc6eac` / merged to trunk.**
+- **176K was the last preparation slice.** No further readiness/seam/adapter/policy-only/numeric-parser slice
+  follows. Per the byte-identical invariant, 176L (above) changed what a student can read: a private guide
+  preview built from the extracted 176I OCR content + the selected 176K visible assets, scored against the
+  existing baseline with the committed deterministic contract lint — no new judge, no repair, no cloud OCR,
+  no frontend/API wiring.
 
 ---
 

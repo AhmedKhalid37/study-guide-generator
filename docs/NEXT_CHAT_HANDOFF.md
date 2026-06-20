@@ -6,25 +6,29 @@
 > stable overview see `PROJECT_CONTEXT.md`; canonical brief is `../CLAUDE.md`.
 
 ## Current position
-- **Working tree:** branch `slice176k-visible-table-figure-pilot-private-ocr`; **Slice 176K** added the
-  first **product-facing** consumer of the 176I private OCR artifact
-  (`pipeline/visible_table_figure_pilot.py` + `test_scripts/test_visible_table_figure_pilot.py` +
-  live-doc updates), **NOT committed**.
-- **Slice 176K result (visible table/figure pilot — display assets, not numerics).** 176J settled the Gini
-  numeric path as `answer_output_only` and routed to `pivot_to_visible_table_pilot`; 176K is that pivot. Ran
-  the pilot on the private 176I artifact and selected the 3 priority student-visible assets cleanly recovered
-  by 176I: `selected_assets_count=3` · `selected_asset_categories=[proximity_matrix, patient_dataset_table,
-  decision_tree_or_split_diagram]` · `private_visible_artifact_written=true` ·
-  `private_visible_artifact_gitignored=true` · `table_asset_status=ready` · `figure_asset_status=partial` ·
-  `caption_or_context_status=ready` · `guide_insertion_readiness=ready_for_off_by_default_private_pilot` ·
-  `numeric_verification_role=display_only` · `numeric_recompute_claimed=false` · `blocked_by=none` ·
-  `recommended_next_step=wire_visible_assets_into_private_guide_preview`. These are **display / study assets**,
-  never fed into recompute. Raw reconstructed tables/captions live only in the private gitignored artifact. No
-  cloud OCR; no provider/model generation; no guide-generation / frontend/API wiring. **NOT committed.**
-- **176K is the last preparation slice.** The next slice (176L) must produce the first **student-visible**
-  artifact after the OCR breakthrough: a private regenerated guide / guide preview from the extracted 176I OCR
-  content (optionally referencing the selected 176K visible assets), scored against the existing baseline with
-  existing eval tooling **if available** (no new judge, no repair, no cloud OCR, no frontend/API wiring).
+- **Working tree:** branch `slice176l-ocr-context-private-guide-score`; **Slice 176L** added the first
+  **student-visible** artifact after the OCR breakthrough — a private OCR-context guide **preview** + a closed
+  score/comparison (`pipeline/ocr_context_private_guide.py` +
+  `test_scripts/run_ocr_context_private_guide_score.py` + `test_scripts/test_ocr_context_private_guide_score.py`
+  + live-doc updates), **NOT committed**.
+- **Slice 176L result (OCR-context private guide preview + score).** Assembled a private student guide preview
+  from the 176I OCR-extracted slide content, embedded the three 176K visible assets, and scored it against the
+  private baseline guide with the **committed deterministic** `guide_quality_contract_lint` (no LLM, no new
+  judge): `status=completed` · `generation_mode=deterministic_stub_preview` ·
+  `guide_artifact_status=preview_generated` · `private_guide_artifact_written=true` (gitignored) ·
+  `visible_assets_used=yes` · `selected_visible_asset_categories=[patient_dataset_table,
+  decision_tree_or_split_diagram, proximity_matrix]` · `score_status=scored` ·
+  `baseline_comparison_status=regressed` · `coverage_signal=regressed` · `figure_table_signal=unchanged` ·
+  `numeric_verification_claimed=false` · `recommended_next_step=build_off_by_default_ocr_context_generation_path`.
+- **GATE-2: `regressed` is a stub-vs-full-guide confound, not a finding.** The candidate is a *deterministic
+  stub* (recovered tables + generic scaffold); the baseline is the *full LLM-generated* guide, so the stub is
+  expected to score lower — this is NOT evidence OCR content hurts. The recovered OCR tables are now
+  student-readable in the private preview; the scorer/thresholds were not touched. The fair next measurement is
+  OCR content through the **real** off-by-default generation path, then re-score. Raw guide/OCR/table text stays
+  in the private gitignored artifact; no cloud OCR; no provider/model generation; no normal-generation /
+  frontend/API wiring. **NOT committed.**
+- **176K was the last preparation slice — committed/merged/pushed as `1dc6eac`** (visible table/figure pilot;
+  display assets only, not numeric verification).
 - **Slice 176J is committed/merged/pushed as `91c32ab`** (Gini OCR input-cell parser; numeric path stays
   blocked — the Gini slide is an answer summary, not a raw class-count grid).
 - **Slice 176J result (first numeric consumer — honest BLOCK, no laundering).** Ran the parser on the private

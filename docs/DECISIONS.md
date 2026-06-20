@@ -7620,3 +7620,36 @@ read: a private regenerated guide / guide preview produced from the extracted 17
 referencing the selected 176K visible assets), compared against the existing baseline with a **scored comparison
 if existing eval tooling supports it** — using only existing scoring (no new judge), no repair, no cloud OCR, and
 no frontend/API/normal-generation wiring.
+
+## Slice 176L — first student-visible artifact after the OCR breakthrough: a private OCR-context guide preview, scored vs baseline with EXISTING deterministic tooling
+176K was the final preparation slice, so 176L is the first product step that changes what a student can read.
+Per produce-before-scaffold, the correct action was to **run the existing generation/scoring paths on the
+artifact that already exists**, not to build new readiness infrastructure. So 176L adds one small offline module
+(`pipeline/ocr_context_private_guide.py`) + a thin runner that: (1) assembles a private student guide **preview**
+markdown from the private 176I OCR-extracted slide content (embedding the three 176K visible assets), writing it
+**only** into the gitignored private dir; (2) scores both the preview and the private baseline guide with the
+**already-committed deterministic** `guide_quality_contract_lint` (counts only, no LLM, no new judge); and (3)
+derives a **closed** baseline comparison (reference-table count, present required-section count, lint warnings).
+`generation_mode=deterministic_stub_preview` (fully offline; no provider/model call). It is **not** a new
+evaluator/judge, a Layer-2 judge, repair, numeric-recompute wiring, provider/model generation, guide-generation
+wiring into normal app behavior, frontend/API, or cloud OCR.
+**Real result (ran on the private artifact vs the private baseline guide):** `status=completed`,
+`guide_artifact_status=preview_generated`, `private_guide_artifact_written=true` (gitignored), `visible_assets_used=yes`,
+`selected_visible_asset_categories=[patient_dataset_table, decision_tree_or_split_diagram, proximity_matrix]`,
+`score_status=scored`, `baseline_comparison_status=regressed`, `coverage_signal=regressed`,
+`figure_table_signal=unchanged`, `numeric_verification_claimed=false`,
+`recommended_next_step=build_off_by_default_ocr_context_generation_path`.
+**GATE-2 (do not bank "regressed" as a finding):** the candidate is a **deterministic stub** (recovered tables +
+generic scaffold prose) and the baseline is the **full LLM-generated** app guide, so the stub is *expected* to
+carry fewer present required sections / exam alerts and score lower on the contract lint — a stub-vs-full-guide
+confound, **not** evidence that OCR content hurts. The scorer/thresholds were **not** modified to manufacture an
+"improved" result. What the slice did establish: the recovered OCR tables (dropped by the near-empty text layer)
+are now student-readable in a private preview, and the existing deterministic scorer runs cleanly on both guides.
+The fair next measurement is to feed the OCR content through the **real** off-by-default generation path and
+re-score — hence the routed next step.
+**Privacy:** the preview markdown (reconstructed OCR tables + context) lives only in the private gitignored dir;
+the committed summary is closed tokens / bools only (all `*_committed` flags hardwired `false`, no raw-text /
+path / size argument accepted). Visible assets are display/study only; nothing is fed into recompute; Gini stays
+`unverified`. No raw guide / OCR / table / caption text, prompts, responses, provider payloads, rendered files,
+source PDFs, model files/caches, or private paths committed; `local_operator_baselines/` (incl. the private OCR
+artifact and the private preview) stays ignored. `judge_ready=false`; `repair_ready=false`. **NOT committed.**
