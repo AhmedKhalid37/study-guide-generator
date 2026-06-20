@@ -6,10 +6,22 @@
 > stable overview see `PROJECT_CONTEXT.md`; canonical brief is `../CLAUDE.md`.
 
 ## Current position
-- **Working tree:** branch `slice176b-table-pilot-inventory-nn3-check`; Slice 176B NN3 check +
-  table-pilot seam map, **docs-only, not committed**. Slice 176A is committed/merged as `b9c6ee9`;
-  Slice 174A is committed as `e8f8cac`; Slice 173C is `3aaea34`; Slice 173B is `1a38c12`; Slice 173A
+- **Working tree:** branch `slice176c-one-table-family-row-cell-reconstructor`; Slice 176C
+  one-table-family row/cell reconstructor (module + test + docs), built and run on the real Ensemble
+  deck, **NOT committed**. Slice 176B is committed/merged as `0a9794b`; Slice 176A is `b9c6ee9`;
+  Slice 174A is `e8f8cac`; Slice 173C is `3aaea34`; Slice 173B is `1a38c12`; Slice 173A
   is `1905af7`. Slice 175A was a no-change provenance gate (no files; not committed).
+- **Slice 176C result:** added pure `pipeline/quality_safety_one_table_family_row_cell_reconstructor.py`
+  + focused test. The real missing piece = **spatial clustering of positioned tokens (`{x,y,text}`)
+  into rows/cells** (linear text extraction destroys the grid). Synthetic masked-recompute proof
+  through the REAL verifier passes for both families; anti-laundering refuses answer matrices / lone
+  values. **Real Ensemble proximity_4_3 attempt:** grid reconstructed
+  (`row_cell_extraction_status=parsed_from_extraction_output`, nonzero rows/cols/numeric cells) but
+  `source_input_record_status=not_created`, `machine_consumable_for_recompute=false`,
+  `blocked_by=source_input_mapping`, warning `answer_matrix_not_input` — the source holds the proximity
+  **answer matrix**, not the per-tree **inputs**. **next_step=`target_region_detection_for_numeric_tables`**;
+  trends toward proximity_4_3 being **absent-in-source** (not extraction-gated). Reconstructor module
+  is committable; the gitignored real-deck harness and `local_operator_baselines/` stay uncommitted.
 - **Slice 176B result (docs-only):** added `docs/TABLE_STRUCTURE_PHASE2_SEAM_MAP.md`. NN3
   `partial_text` numeric path = `unstructured_text_only` (numeric chain is unwired + consumes
   caller-supplied candidates; `numeric_observation_recoverable=no`); no new NN3 parser built. Existing

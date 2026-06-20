@@ -7280,3 +7280,32 @@ next_step=`build_one_table_family_row_cell_reconstructor`** (Slice 176C, option 
 exist but rows/cells do not. Not another audit, not another source-input bridge, not a context hook, not
 Chandra, not cloud OCR, not a generic framework. Added `docs/TABLE_STRUCTURE_PHASE2_SEAM_MAP.md`; no
 extraction code changed.
+
+## Slice 176C: one-table-family row/cell reconstructor + honest absent-input finding (2026-06-20)
+Acted on 176B's `next_step=build_one_table_family_row_cell_reconstructor`. Selected exactly one family by
+closed rule: `proximity_4_3` (family `proximity`) over `weighted_weight_impute`, reason
+`fewer_join_requirements` (proximity is one ratio; weighted_average needs aligned values+weights = more
+joins). **The real missing piece, discovered by probing the source deck:** linear text extraction
+collapses tables to one token per line, destroying the grid — so the genuine reconstruction step is
+**spatial clustering of positioned tokens (`{x,y,text}`) into rows/cells**. Added the pure module
+`pipeline/quality_safety_one_table_family_row_cell_reconstructor.py`: it consumes already-extracted
+positioned tokens (no OCR/PDF/network imports; reuses `SUPPORTED_METHODS` + the real
+`recompute_quality_safety_fact`, no parallel engine), rebuilds the grid, maps it to the family's recompute
+inputs, and runs an advisory **masked** recompute (answer never supplied to the parser). **Anti-laundering
+is enforced in code:** a proximity *matrix* (decimal cells in (0,1)) and a lone result value are refused
+as inputs (`blocked_by=source_input_mapping`, warning `answer_matrix_not_input`). The committed `record`
+is closed-vocabulary only; real parsed values live solely in the separate `recompute_input` channel the
+caller may feed to the verifier and must never commit. The test proves the full chain on synthetic
+public-safe tokens (both families recompute through the real verifier with the answer masked) plus the
+anti-laundering refusals and degrade paths. **Real-deck attempt** (Ensemble proximity region, gitignored
+harness, closed labels only): the reconstructor RAN and rebuilt the grid
+(`row_cell_extraction_status=parsed_from_extraction_output`, nonzero rows/cols/numeric cells), but
+`source_input_record_status=not_created`, `machine_consumable_for_recompute=false`,
+`blocked_by=source_input_mapping` — **the source contains the proximity answer matrix, not the per-tree
+inputs.** This corroborates 174A/175A `source_input_missing` and trends toward classifying proximity_4_3
+as **absent-in-source** (not extraction-gated, so not an OCR problem).
+`next_step=target_region_detection_for_numeric_tables` (detect the input numeric table; if confirmed
+absent, record proximity_4_3 as absent and stop routing it to extraction). No Chandra; no cloud OCR; no
+provider/model generation; no Layer-2 judge; no repair. `judge_ready=false`; `repair_ready=false`.
+hand_authored_rows / fixture_derived / answer_string_derived / guide_candidate_derived /
+raw_values_committed / raw_ocr_committed all false.

@@ -5,7 +5,43 @@
 
 ---
 
-## Phase 2 table-pilot seam map — **Slice 176B NN3 check + seam map; docs-only; NOT committed.**
+## Phase 2 row/cell reconstruction — **Slice 176C one-table-family reconstructor; built + run on real deck; NOT committed.**
+
+- **phase=Phase 2 row/cell reconstruction** · **slice=176C (one table family, one deck)** ·
+  **module=`pipeline/quality_safety_one_table_family_row_cell_reconstructor.py`** ·
+  **test=`test_scripts/test_quality_safety_one_table_family_row_cell_reconstructor.py`** ·
+  **chandra_used=false** · **cloud_ocr_used=false** · **judge_ready=false** · **repair_ready=false**.
+- **Selection (closed):** selected_source_label=ensemble · selected_target_id=proximity_4_3 ·
+  selected_target_family=proximity · selection_reason=`fewer_join_requirements` (proximity is a single
+  ratio; weighted_average needs aligned values+weights → more joins). non_selected target
+  weighted_weight_impute · non_selected_target_reason=`more_join_requirements`.
+- **Missing piece found:** linear text extraction collapses tables to one token per line (grid
+  destroyed); the genuine reconstruction step is **spatial clustering of positioned tokens
+  (`{x,y,text}`) into rows/cells**. The reconstructor consumes already-extracted positioned tokens
+  (text-extractable deck → `local_ocr_status=skipped`, no OCR/PDF/network in the module).
+- **Synthetic proof (test):** reconstruct → inputs → **masked** recompute through the REAL verifier:
+  proximity per-tree `same_terminal_node` indicators recompute the ratio and weighted_average
+  values+weights recompute the mean, both with the answer hidden from the parser. Anti-laundering proven:
+  a proximity *matrix* (decimal answer cells) and a lone result value are refused as inputs.
+- **Real-deck attempt (Ensemble proximity region, gitignored harness, closed labels only):**
+  status=`blocked` · target_region_status=`found` · crop_or_region_input_status=`available` ·
+  row_cell_extraction_status=`parsed_from_extraction_output` (grid reconstructed: rows/cols/numeric
+  cells all nonzero) · source_input_record_status=`not_created` · source_input_origin=`none` ·
+  machine_consumable_for_recompute=`false` · masked_recompute_status=`not_run` ·
+  blocked_by=`source_input_mapping` · warnings include `answer_matrix_not_input`.
+  **Finding:** the source contains the proximity **answer matrix** (decimal values), not the per-tree
+  **inputs** (leaf assignments / same-terminal-node counts). The reconstructor correctly refused to
+  launder matrix answers into inputs. hand_authored_rows / fixture_derived / answer_string_derived /
+  guide_candidate_derived / raw_values_committed / raw_ocr_committed all `false`.
+- **next_step=`target_region_detection_for_numeric_tables`** — the reconstructor works; the gap is now
+  an **input** numeric table that appears **absent** for proximity_4_3 (answer-only source). This
+  corroborates 174A/175A `source_input_missing` and trends toward classifying proximity_4_3 as
+  **absent-in-source** (not extraction-gated → not an OCR problem). No Chandra; no cloud OCR; no
+  provider/model generation; no Layer-2 judge; no repair.
+
+---
+
+## Phase 2 table-pilot seam map — **Slice 176B NN3 check + seam map; docs-only; committed `0a9794b`.**
 
 - **phase=Phase 2 table-pilot seam map** · **slice=176B (inventory + seam, no extraction code)** ·
   **doc=`docs/TABLE_STRUCTURE_PHASE2_SEAM_MAP.md`** · **chandra_used=false** · **cloud_ocr_used=false** ·
