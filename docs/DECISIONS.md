@@ -7905,4 +7905,84 @@ the next built slice is Phase 4 table-companion work (add an explanation beneath
 reconstructed table plus a simplified clearer study-friendly version alongside it), not another inspection step or
 an automated inspection harness. Raw source/OCR/guide/table/caption/prompt/response/provider payload content and
 private paths stay out of git; `judge_ready=false` and `repair_ready=false` remain frozen.
-**Committed.**
+**Committed `809ed1f` / merged to trunk.**
+
+## Slice 176V — Phase 4 table companion: explanation beneath the table + a simplified study-friendly table
+176U proved the mechanical rendered reconstructed-table path and the operator confirmed all rendered tables are
+readable. 176V is the first real Phase 4 table-companion slice: it reuses the 176U reconstructed-table path and
+adds the two student-facing deliverables beside the faithful table — a non-placeholder explanation beneath the
+table and a non-placeholder simplified clearer study-friendly table version — then renders a private HTML
+companion guide. It uses existing private artifacts only and writes only into a confirmed-private (gitignored)
+directory. It does not run provider generation, guide generation, OCR, coverage evaluation, cloud OCR, a new
+judge, Layer-2 judge, repair, frontend/API wiring, Docker, or normal generation behavior changes, and it builds
+no automated inspection module.
+
+**Content sourcing decision:** explanation prose is **never synthesized** — it must come from a real private
+source (a private artifact field or an operator-provided `PRIVATE_TABLE_EXPLANATION_MD` file) and must pass a
+placeholder check. The simplified table may come from a private artifact field, an operator-provided
+`PRIVATE_SIMPLIFIED_TABLE_MD` file, or a deterministic transform that trims the faithful table to fewer real
+columns/rows (a genuine reduction of the private table's real cells, not a placeholder). `completed` requires a
+faithful table that renders visibly, a non-placeholder explanation present beneath it, and a non-placeholder
+simplified table that also renders; any failure degrades or blocks honestly.
+
+**Result:** the public-safe tests prove the full faithful→explanation→simplified render path completes with
+synthetic operator content (`status=completed`, two rendered tables plus an explanation section, all raw canaries
+absent from the closed summary). The private runner over the existing private artifacts blocks honestly:
+`status=blocked`, `faithful_table_present=true`, `simplified_table_source=deterministic_private_transform`,
+`simplified_table_non_placeholder=true`, `explanation_source=unavailable`, `blocked_by=explanation_missing`,
+`phase4_requirement_status=needs_private_content`,
+`recommended_next_step=provide_private_phase4_companion_content`, `operator_private_readability_prior=acceptable`,
+`provider_call_made=false`, `generation_rerun=false`, `ocr_rerun=false`, `coverage_eval_rerun=false`,
+`cloud_ocr_used=false`, `numeric_verification_claimed=false`, `frontend_api_changed=false`.
+
+**Decision:** the Phase 4 mechanical companion path is real, but the explanation is operator-provided private
+content, so without it the slice blocks rather than inserting placeholder prose. Explanation/simplification
+quality is not claimed and requires private operator inspection (the operator's manual review remains the
+inspection producer — no parser harness). Numeric verification is not claimed. Once private companion content is
+provided, the next route is `inspect_private_table_companion_guide` or
+`harden_off_by_default_table_companion_insertion`. Raw source/OCR/guide/table/caption/explanation/simplified-table/
+prompt/response/provider payload content and private paths stay out of git; `judge_ready=false` and
+`repair_ready=false` remain frozen. **NOT committed.**
+
+## Slice 176W — writer-generated table companion (first Phase 4 generation slice)
+176V proved the mechanical companion slots beside the faithful table but blocked because
+its explanation had to be operator-provided / deterministic — `generation_behavior_changed=false`,
+`provider_call_made=false`. 176W is the first Phase 4 slice where **generation behavior actually
+changes**: a real provider/model WRITER is given the existing private recovered table as a closed
+**extracted descriptor** (no image — `writer_saw_image=false`) and must (a) insert
+`{{table:patient_dataset}}` exactly once, (b) write a genuine non-placeholder explanation beneath it,
+and (c) emit a simplified study-friendly Markdown table generated from the descriptor. The single
+writer token is then resolved through the existing render path to the faithful recovered Markdown
+table (a real table, never an image) and rendered to private gitignored HTML.
+
+**Why a new producer rather than re-running 176V.** Per the supervisor gates, the required artifact
+(a writer-generated, token-bearing companion) did not exist and no existing producer made it — 176V
+explicitly never calls a provider and required operator/deterministic content. So 176W builds **and
+runs** the producer in one slice with one real provider call, instead of banking scaffolding.
+
+**Why writer-inserted, never postprocessor-injected.** The token must come from the model's raw
+response (`writer_token_inserted_by_writer=true`, `postprocessor_token_injected=false`). This module
+contains no code path that writes the token or any prose; if the writer emits zero/two tokens, or a
+placeholder explanation, or a simplified table that is just a copy of the faithful one, the slice
+blocks/degrades honestly (`writer_token_missing` / `writer_token_duplicate` / `placeholder_content_detected`).
+The deterministic simplification from 176V is deliberately **not** reused as the main simplified
+version — completion requires `simplified_table_source=writer_generated_from_descriptor`.
+
+**Real run (deepseek / deepseek-v4-pro, one call):** `status=completed`, `provider_call_made=true`,
+`generation_rerun=true`, `generation_behavior_changed=true`, `writer_token_count=1`,
+`writer_token_inserted_by_writer=true`, `faithful_table_present=true`, `table_inserted_as_image=false`,
+`explanation_source=writer_generated_from_descriptor`, `explanation_non_placeholder=true`,
+`simplified_table_source=writer_generated_from_descriptor`, `simplified_table_non_placeholder=true`,
+`render_status=rendered`, `private_rendered_guide_written=true`, `private_rendered_guide_gitignored=true`,
+producer visibility statuses `operator_pending`, `blocked_by=none`,
+`recommended_next_step=operator_read_private_rendered_guide`.
+
+**Decision.** The slice does NOT claim explanation/simplified **quality** or table **faithfulness** —
+those route to a private operator read and `numeric_verification_claimed=false`. The operator private read is
+done: `faithful_table_visibility_status=visible`, `explanation_visibility_status=visible`,
+`simplified_table_visibility_status=visible`, `operator_table_readability=acceptable`,
+`operator_explanation_quality=acceptable`, and `operator_simplified_table_quality=acceptable`. Operator note:
+faithful table is readable but very wide; do not block the 176W commit on width, but consider table-layout
+hardening later. No parser/judge is introduced. No raw guide/table/explanation/simplified/caption/source/OCR text,
+no prompt/response, no provider payload, no private path/hash/byte count is committed; `judge_ready=false`,
+`repair_ready=false`.

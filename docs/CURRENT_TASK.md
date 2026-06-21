@@ -5,6 +5,119 @@
 
 ---
 
+## Phase 4 product path — **Slice 176W: writer-generated table companion; real provider call inserts the token + writes explanation + simplified table; rendered private HTML; operator read PASS; committing.**
+
+- **phase=Phase 4 (first generation-behavior-changing slice; supersedes the 176V operator-content path)** · **slice=176W** ·
+  **module=`pipeline/writer_generated_table_companion.py`** ·
+  **runner=`test_scripts/run_writer_generated_table_companion.py`** ·
+  **test=`test_scripts/test_writer_generated_table_companion.py`** ·
+  **doc=`docs/WRITER_GENERATED_TABLE_COMPANION.md`** ·
+  **branch=`slice176w-writer-generated-table-companion`** · **judge_ready=false** · **repair_ready=false**.
+- **Why this slice.** 176V added the explanation/simplified slots but blocked because they were operator-provided /
+  deterministic — `generation_behavior_changed=false`, `provider_call_made=false`. 176W is the first Phase 4 slice
+  where generation behavior actually changes: a real provider/model **writer** receives the existing private
+  recovered table as a closed **extracted descriptor** (no image — `writer_saw_image=false`) and must insert
+  `{{table:patient_dataset}}` exactly once, write a genuine explanation beneath it, and emit a simplified
+  study-friendly table generated from the descriptor. The single token is resolved through the existing render path
+  to the faithful recovered Markdown table (real table, never an image) and rendered to private gitignored HTML.
+- **What it is / is NOT.** IS: a private runner that makes one real provider generation call, parses the writer
+  output against the one-token + explanation + simplified-table contract, resolves the token, renders private HTML,
+  and emits a closed summary. NOT: OCR rerun, candidate_1 work, coverage eval, a new validator/ingest/schema/bridge
+  as primary output, frontend/API rollout, Layer-2 judge, repair, cloud OCR, or numeric recompute. The writer
+  inserts the token; this module never injects it (`postprocessor_token_injected=false`). The 176V deterministic
+  simplification is deliberately NOT reused as the main simplified version — completion requires
+  `simplified_table_source=writer_generated_from_descriptor`.
+- **Real result (one real provider call — `deepseek` / `deepseek-v4-pro` — over the existing private recovered table).**
+  `artifact_name=writer_generated_table_companion` · `status=completed` · `source_label=ensemble` ·
+  `selected_asset_category=patient_dataset_table` · `selected_asset_kind=table` ·
+  `asset_descriptor_source=private_recovered_table_artifact` · `writer_input_descriptor_present=true` ·
+  `writer_saw_image=false` · `provider_call_made=true` · `provider_name_closed=deepseek` ·
+  `model_name_closed_or_redacted=deepseek-v4-pro` · `generation_rerun=true` ·
+  `generation_behavior_changed=true` · `writer_token_present=true` · `writer_token_count=1` ·
+  `writer_token_inserted_by_writer=true` · `postprocessor_token_injected=false` · `faithful_table_present=true` ·
+  `faithful_table_source=private_recovered_table` · `table_inserted_as_image=false` ·
+  `explanation_beneath_asset_present=true` · `explanation_source=writer_generated_from_descriptor` ·
+  `explanation_non_placeholder=true` · `simplified_table_present=true` ·
+  `simplified_table_source=writer_generated_from_descriptor` · `simplified_table_non_placeholder=true` ·
+  `render_format=html` · `render_status=rendered` · `private_rendered_guide_written=true` ·
+  `private_rendered_guide_gitignored=true` · `faithful_table_visibility_status=operator_pending` ·
+  `explanation_visibility_status=operator_pending` · `simplified_table_visibility_status=operator_pending` ·
+  `operator_private_read_required=true` · `operator_private_read_done=false` · `cloud_ocr_used=false` ·
+  `ocr_rerun=false` · `coverage_eval_rerun=false` · `numeric_verification_claimed=false` ·
+  `frontend_api_changed=false` · `blocked_by=none` · `recommended_next_step=operator_read_private_rendered_guide`.
+- **Interpretation.** All hard PASS conditions are met: a real generation call produced a single writer-inserted
+  token, a non-placeholder explanation, and a distinct writer-generated simplified table; the token resolved to the
+  faithful recovered table; the private HTML renders two real `<table>` elements (faithful + simplified), zero image
+  tags, and no leftover token. Code still does not claim numeric verification
+  (`numeric_verification_claimed=false`) and no judge/parser is introduced. Operator private read is done:
+  `faithful_table_visibility_status=visible`, `explanation_visibility_status=visible`,
+  `simplified_table_visibility_status=visible`, `operator_table_readability=acceptable`,
+  `operator_explanation_quality=acceptable`, and `operator_simplified_table_quality=acceptable`. Operator note:
+  faithful table is readable but very wide; do not block the 176W commit on width, but consider table-layout
+  hardening later. Next route: extend to figure assets (`fallback_to_descriptor_captioning_for_figures`) or harden
+  insertion/table layout.
+- **Validation.** `compileall api pipeline test_scripts` OK; `test_writer_generated_table_companion` OK (synthetic,
+  no provider call); `test_reconstructed_table_companion` OK; `test_rendered_visible_asset_insertion_proof` OK;
+  `test_visible_table_figure_pilot` OK; one real private runner call completed; `git diff --check` clean. No-leak
+  sweep clean (only the no-image guard literal `data:image` in policy code). Docker not run. No raw
+  guide/source/OCR/table/caption/explanation/simplified-table/prompt/response/provider payload/private path/hash/byte
+  count committed; private rendered output and `local_operator_baselines/` stay ignored. **Commit Slice 176W only.**
+
+---
+
+## Phase 4 product path — **Slice 176V: reconstructed-table companion (explanation + simplified table beside the faithful table); private runner blocks honestly on missing companion content; NOT committed.**
+
+- **phase=Phase 4 (first table-companion slice after the 176U rendered reconstructed-table proof)** · **slice=176V** ·
+  **module=`pipeline/reconstructed_table_companion.py`** ·
+  **runner=`test_scripts/run_reconstructed_table_companion.py`** ·
+  **test=`test_scripts/test_reconstructed_table_companion.py`** ·
+  **doc=`docs/RECONSTRUCTED_TABLE_COMPANION.md`** ·
+  **branch=`slice176v-phase4-reconstructed-table-companion`** · **judge_ready=false** · **repair_ready=false**.
+- **Why this slice.** 176U proved the mechanical rendered reconstructed-table path and the operator manually
+  confirmed all tables are readable. 176V adds the two Phase 4 student-facing deliverables beside the faithful
+  table: an explanation beneath the inserted table and a simplified clearer study-friendly table version.
+- **What it is / is NOT.** IS: a private companion runner that reuses the 176U reconstructed-table path, adds a
+  non-placeholder explanation and a non-placeholder simplified table, renders private HTML, and emits a closed
+  summary. NOT: an automated inspection module, provider generation, guide generation, OCR rerun, coverage
+  evaluation, packaging-v2, frame selection, frontend/API rollout, new LLM judge, Layer-2 judge, repair, cloud
+  OCR, numeric recompute, or placeholder-content insertion.
+- **Content rules.** Explanation must come from a real private source (private artifact field or operator-provided
+  `PRIVATE_TABLE_EXPLANATION_MD`); prose is never synthesized. The simplified table may come from a private
+  artifact field, operator-provided `PRIVATE_SIMPLIFIED_TABLE_MD`, or a deterministic transform that trims the
+  faithful table to fewer real columns/rows (real cells, not a placeholder). Placeholder explanation/simplified
+  content can never reach `completed`; the slice blocks/degrades honestly with
+  `recommended_next_step=provide_private_phase4_companion_content`.
+- **Real result (private runner over existing private artifacts).** `artifact_name=reconstructed_table_companion` ·
+  `status=blocked` · `source_label=ensemble` · `selected_asset_category=patient_dataset_table` ·
+  `selected_asset_kind=table` · `selected_asset_role=display_only` · `faithful_table_present=true` ·
+  `faithful_table_rendered=false` · `faithful_table_visibility_status=not_checked` ·
+  `explanation_beneath_asset_present=false` · `explanation_source=unavailable` ·
+  `explanation_non_placeholder=false` · `simplified_table_present=true` ·
+  `simplified_table_source=deterministic_private_transform` · `simplified_table_non_placeholder=true` ·
+  `simplified_table_rendered=false` · `companion_layout=not_run` · `render_format=not_run` ·
+  `render_status=not_run` · `private_rendered_companion_written=false` ·
+  `operator_private_readability_prior=acceptable` · `provider_call_made=false` · `generation_rerun=false` ·
+  `ocr_rerun=false` · `coverage_eval_rerun=false` · `cloud_ocr_used=false` ·
+  `numeric_verification_claimed=false` · `generation_behavior_changed=false` · `frontend_api_changed=false` ·
+  `blocked_by=explanation_missing` · `phase4_requirement_status=needs_private_content` ·
+  `recommended_next_step=provide_private_phase4_companion_content`.
+- **Interpretation.** The mechanical companion path is real: the faithful table is present and a deterministic
+  simplified table is produced from its real cells. The slice blocks honestly because no non-placeholder
+  explanation is staged — the explanation is operator-provided private content, never synthesized. The completed
+  faithful→explanation→simplified render path is proven by the public-safe tests using synthetic operator content
+  (`status=completed`, two rendered tables + explanation section, all canaries absent from the closed summary).
+  Numeric verification is not claimed; explanation/simplification quality is not claimed and requires private
+  operator inspection. Next route once private companion content is provided:
+  `inspect_private_table_companion_guide` or `harden_off_by_default_table_companion_insertion`.
+- **Validation.** `compileall api pipeline test_scripts` OK; `test_reconstructed_table_companion` OK;
+  `test_rendered_visible_asset_insertion_proof` OK; `test_visible_table_figure_pilot` OK; private runner blocks
+  honestly on missing companion content; `git diff --check` clean. No-leak sweep found only expected
+  policy/closed-label/test false positives. Docker was not run. No raw source/OCR/guide/table/caption/explanation/
+  simplified-table/prompt/response/provider payload/private path committed; private artifacts and
+  `local_operator_baselines/` stay ignored. **NOT committed.**
+
+---
+
 ## Phase 2 product path — **Slice 176P: deterministic deck-specific coverage eval; private baseline vs 176N guide compared on closed markers; committed `32707fc` / merged to trunk.**
 
 - **phase=Phase 2 (deck-specific coverage diagnostic after 176O proved scorer insensitivity)** · **slice=176P** ·
@@ -210,7 +323,7 @@
 
 ---
 
-## Phase 2 product path — **Slice 176U: rendered reconstructed table proof; private HTML artifact written; operator confirmed tables readable; merged to trunk (hash recorded in 176V docs).**
+## Phase 2 product path — **Slice 176U: rendered reconstructed table proof; private HTML artifact written; operator confirmed tables readable; committed `809ed1f` / merged to trunk.**
 
 - **phase=Phase 2 (pivot from OCR coverage research to student-visible recovered assets)** · **slice=176U** ·
   **module=`pipeline/rendered_visible_asset_insertion_proof.py`** ·
@@ -262,7 +375,7 @@
   `test_uncommon_deck_coverage_eval` OK; private runner completed; `git diff --check` clean. No-leak sweep found
   only expected policy/closed-label/test false positives. No raw source/OCR/guide/table/caption/
   prompt/response/provider payload/private path committed; private rendered artifacts and `local_operator_baselines/`
-  stay ignored. **Merged to trunk (hash recorded in 176V docs).**
+  stay ignored. **Committed `809ed1f` / merged to trunk.**
 
 ---
 
