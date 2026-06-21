@@ -7840,7 +7840,7 @@ frontend/API wiring, or Docker.
 **Decision:** the generated guide is directionally better on the weak closed static markers, but the marker source
 is too weak to bank official coverage improvement or justify provider generation. The next route is improving
 candidate_1 extraction. Raw source/OCR/guide/table/caption/prompt/response/provider payload content and private
-paths stay out of git; `judge_ready=false` and `repair_ready=false` remain frozen. **NOT committed.**
+paths stay out of git; `judge_ready=false` and `repair_ready=false` remain frozen. **Committed `0deb4f9` / merged to trunk.**
 
 ## Slice 176T — candidate_1 tesseract attempt did not improve marker reliability
 176S found a directionally positive candidate_1 coverage comparison, but `marker_reliability=low`, so the result
@@ -7868,4 +7868,41 @@ marker reliability over the 176R text-layer artifact. Do not bank candidate_1 as
 thesis and do not run provider generation from this result. The next route is a visible-asset insertion pivot or
 a better uncommon fixture, not another broad OCR setup slice unless a concrete local-engine gap is identified.
 Raw source/OCR/guide/table/caption/prompt/response/provider payload content and private paths stay out of git;
-`judge_ready=false` and `repair_ready=false` remain frozen. **NOT committed.**
+`judge_ready=false` and `repair_ready=false` remain frozen. **Committed `52228c8` / merged to trunk.**
+
+## Slice 176U — recovered structured table renders in a private guide artifact
+176T showed the candidate_1 local OCR attempt did not improve marker reliability, so the route pivots away from
+more OCR coverage research and toward the strongest student-visible value: recovered tables/figures. 176U uses an
+existing private recovered table artifact, inserts one recovered display-only table as a reconstructed Markdown
+table into a private guide artifact, and renders it through the existing HTML renderer. It does not run provider generation, guide generation, OCR,
+coverage evaluation, cloud OCR, a new judge, Layer-2 judge, repair, frontend/API wiring, Docker, or normal
+generation behavior changes.
+
+**Result:** `artifact_name=rendered_reconstructed_table_proof`, `status=completed`, `source_label=ensemble`, `private_visible_artifact_available=true`,
+`private_visible_artifact_gitignored=true`, `private_guide_source_available=true`,
+`private_guide_source_gitignored=true`, `private_rendered_guide_written=true`,
+`private_rendered_guide_gitignored=true`, `selected_asset_category=patient_dataset_table`,
+`selected_asset_kind=table`, `selected_asset_role=display_only`, `insertion_mode=private_markdown_table`,
+`table_inserted_as_image=false`, `render_format=html`, `render_status=rendered`, `asset_visibility_status=visible`,
+`export_visibility_status=visible`, `provider_call_made=false`, `generation_rerun=false`,
+`ocr_rerun=false`, `coverage_eval_rerun=false`, `cloud_ocr_used=false`,
+`numeric_verification_claimed=false`, `generation_behavior_changed=false`, `frontend_api_changed=false`,
+`blocked_by=none`, `phase4_next_requirement=add_explanation_beneath_asset`,
+`recommended_next_step=inspect_private_rendered_reconstructed_table_guide`.
+
+**Operator inspection (closed note):** the operator manually opened the private rendered HTML guide and confirmed
+readability — `operator_private_rendered_html_inspection=done`, `operator_table_readability=acceptable`,
+`operator_table_readability_note=all_tables_are_readable`, `operator_table_faithfulness=not_formally_claimed`.
+This manual inspection is the inspection producer for 176U; no automated rendered-table inspection module was or
+will be built, because a parser can only re-confirm table tags and cannot judge real readability/faithfulness.
+Exact table-cell faithfulness is not claimed.
+
+**Decision:** the reconstructed-table path now has a private rendered proof without reviving provider generation
+or OCR. A table cannot be inserted as an image and counted as success, markdown-only is not a completed proof, and
+completed status requires rendered table visibility. Numeric verification is not claimed. The operator has
+inspected the private rendered guide and confirmed the tables are readable, so the readability gate is satisfied;
+the next built slice is Phase 4 table-companion work (add an explanation beneath the inserted asset and a faithful
+reconstructed table plus a simplified clearer study-friendly version alongside it), not another inspection step or
+an automated inspection harness. Raw source/OCR/guide/table/caption/prompt/response/provider payload content and
+private paths stay out of git; `judge_ready=false` and `repair_ready=false` remain frozen.
+**Committed.**

@@ -6,8 +6,44 @@
 > stable overview see `PROJECT_CONTEXT.md`; canonical brief is `../CLAUDE.md`.
 
 ## Current position
-- **Working tree:** branch `slice176t-candidate1-structured-ocr-attempt`; **Slice 176T** added a candidate_1
-  structured/local OCR attempt. **NOT committed.**
+- **Working tree:** **Slice 176U** added a private rendered reconstructed-table proof; operator confirmed all
+  tables readable. **Merged to trunk (hash recorded in 176V docs).**
+- **Slice 176U result (rendered reconstructed-table proof).** Existing private recovered table artifacts were used
+  to insert one display-only structured table into a private rendered guide artifact: `artifact_name=rendered_reconstructed_table_proof` ·
+  `status=completed` ·
+  `source_label=ensemble` · `private_visible_artifact_available=true` ·
+  `private_visible_artifact_gitignored=true` · `private_guide_source_available=true` ·
+  `private_guide_source_gitignored=true` · `private_rendered_guide_written=true` ·
+  `private_rendered_guide_gitignored=true` · `selected_asset_category=patient_dataset_table` ·
+  `selected_asset_kind=table` · `selected_asset_role=display_only` ·
+  `insertion_mode=private_markdown_table` · `table_inserted_as_image=false` ·
+  `render_format=html` · `render_status=rendered` ·
+  `asset_visibility_status=visible` · `export_visibility_status=visible` · `provider_call_made=false` ·
+  `generation_rerun=false` · `ocr_rerun=false` · `coverage_eval_rerun=false` · `cloud_ocr_used=false` ·
+  `numeric_verification_claimed=false` · `generation_behavior_changed=false` · `frontend_api_changed=false` ·
+  `blocked_by=none` · `phase4_next_requirement=add_explanation_beneath_asset` ·
+  `recommended_next_step=inspect_private_rendered_reconstructed_table_guide`.
+  No raw source/OCR/guide/table/caption/prompt/response/provider payload/private path is committed; no provider
+  generation, guide generation, OCR, coverage eval, cloud OCR, new judge, repair, frontend, or API behavior
+  changed.
+- **176U interpretation.** The OCR coverage campaign pivot produced a student-visible mechanical proof: a
+  recovered patient-dataset table rendered as a real HTML table in a private guide. Table-as-image insertion
+  cannot count as success, markdown-only is not a completed proof, and rendered visibility must be checked.
+  Numeric verification is not claimed. Next Phase 4 work is adding an explanation beneath the asset and a
+  faithful reconstructed table plus a simplified clearer study-friendly version.
+- **176U operator inspection (closed note).** The operator manually opened the private rendered HTML guide:
+  `operator_private_rendered_html_inspection=done` · `operator_table_readability=acceptable` ·
+  `operator_table_readability_note=all_tables_are_readable` · `operator_table_faithfulness=not_formally_claimed`.
+  This manual inspection is the readability producer; no automated inspection module was or will be built for
+  176U, and exact table-cell faithfulness is not claimed. The readability gate is satisfied, so the next built
+  slice is Phase 4 table-companion work, not another inspection step.
+- **Validation for 176U.** `compileall api pipeline test_scripts` OK;
+  `test_rendered_visible_asset_insertion_proof` OK; `test_visible_table_figure_pilot` OK;
+  `test_candidate1_structured_ocr_attempt` OK; `test_uncommon_deck_coverage_eval` OK; private runner completed;
+  `git diff --check` clean. No-leak sweep found only expected policy/closed-label/test false positives. Docker
+  was not run. `local_operator_baselines/` remains
+  ignored/uncommitted. **Merged to trunk (hash recorded in 176V docs).**
+- **Slice 176T is committed/merged/pushed as `52228c8`** (candidate_1 structured/local OCR attempt).
 - **Slice 176T result (candidate_1 structured/local OCR attempt).** Private local OCR attempt completed with
   closed labels only: `status=degraded` · `source_label=candidate_1` ·
   `candidate_type=uncommon_course_deck` · `previous_extraction_engine=text_layer` ·
@@ -33,7 +69,7 @@
   `test_candidate1_structured_ocr_attempt` OK; `test_uncommon_deck_local_ocr_extraction` OK;
   `test_uncommon_deck_coverage_eval` OK; `test_slide_raster_ocr_ingestion` OK; private runner completed;
   `git diff --check` clean. Docker was not run. `local_operator_baselines/` remains ignored/uncommitted.
-  **NOT committed.**
+  **Committed `52228c8` / merged to trunk.**
 - **Slice 176S is committed/merged/pushed as `0deb4f9`** (uncommon-deck coverage eval).
 - **Slice 176S result (uncommon-deck coverage eval).** Private closed comparison completed over existing
   candidate_1 baseline/generated guides and the 176R extraction artifact: `status=degraded` ·

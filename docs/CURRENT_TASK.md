@@ -166,7 +166,7 @@
 
 ---
 
-## Phase 2 product path — **Slice 176T: candidate_1 structured/local OCR attempt; tesseract ran but did not improve reliability; NOT committed.**
+## Phase 2 product path — **Slice 176T: candidate_1 structured/local OCR attempt; tesseract ran but did not improve reliability; committed `52228c8` / merged to trunk.**
 
 - **phase=Phase 2 (improve candidate_1 extraction after weak 176S markers)** · **slice=176T** ·
   **module=`pipeline/candidate1_structured_ocr_attempt.py`** ·
@@ -206,7 +206,63 @@
   `test_slide_raster_ocr_ingestion` OK; private runner completed; `git diff --check` clean. No provider
   generation; no guide generation; no coverage eval; no Docker. No raw source/OCR/guide/table/caption/prompt/
   response/provider payload/private path committed; private artifacts and `local_operator_baselines/` stay
-  ignored. **NOT committed.**
+  ignored. **Committed `52228c8` / merged to trunk.**
+
+---
+
+## Phase 2 product path — **Slice 176U: rendered reconstructed table proof; private HTML artifact written; operator confirmed tables readable; merged to trunk (hash recorded in 176V docs).**
+
+- **phase=Phase 2 (pivot from OCR coverage research to student-visible recovered assets)** · **slice=176U** ·
+  **module=`pipeline/rendered_visible_asset_insertion_proof.py`** ·
+  **runner=`test_scripts/run_rendered_visible_asset_insertion_proof.py`** ·
+  **test=`test_scripts/test_rendered_visible_asset_insertion_proof.py`** ·
+  **doc=`docs/RENDERED_VISIBLE_ASSET_INSERTION_PROOF.md`** ·
+  **branch=`slice176u-rendered-visible-asset-insertion-proof`** · **judge_ready=false** ·
+  **repair_ready=false**.
+- **Why this slice.** 176T showed candidate_1 extraction did not improve through the available local
+  tesseract route. The strongest student-visible value from the OCR arc remains recovered tables/figures, so
+  176U proves one existing recovered structured table can be inserted as a reconstructed real table into a
+  private rendered guide artifact.
+- **What it is / is NOT.** IS: a private reconstructed-table insertion/render proof using an existing recovered
+  table artifact and closed summary labels. NOT: provider generation, guide generation, OCR rerun, coverage evaluation,
+  candidate_1 OCR retry, packaging-v2, frame selection, frontend/API rollout, new LLM judge, Layer-2 judge,
+  repair, cloud OCR, numeric recompute, or raw artifact dumping.
+- **Real result (private rendered reconstructed-table proof).** `artifact_name=rendered_reconstructed_table_proof` ·
+  `status=completed` · `source_label=ensemble` · `private_visible_artifact_available=true` ·
+  `private_visible_artifact_gitignored=true` · `private_guide_source_available=true` ·
+  `private_guide_source_gitignored=true` · `private_rendered_guide_written=true` ·
+  `private_rendered_guide_gitignored=true` · `selected_asset_category=patient_dataset_table` ·
+  `selected_asset_kind=table` · `selected_asset_role=display_only` ·
+  `insertion_mode=private_markdown_table` · `table_inserted_as_image=false` ·
+  `render_format=html` · `render_status=rendered` ·
+  `asset_visibility_status=visible` · `export_visibility_status=visible` ·
+  `provider_call_made=false` · `generation_rerun=false` · `ocr_rerun=false` ·
+  `coverage_eval_rerun=false` · `cloud_ocr_used=false` · `numeric_verification_claimed=false` ·
+  `generation_behavior_changed=false` · `frontend_api_changed=false` · `blocked_by=none` ·
+  `phase4_next_requirement=add_explanation_beneath_asset` ·
+  `recommended_next_step=inspect_private_rendered_reconstructed_table_guide`.
+- **Operator inspection (closed note).** The operator manually opened the private rendered HTML guide and
+  confirmed readability: `operator_private_rendered_html_inspection=done` ·
+  `operator_table_readability=acceptable` · `operator_table_readability_note=all_tables_are_readable` ·
+  `operator_table_faithfulness=not_formally_claimed`. This manual inspection is the inspection producer; no
+  automated inspection module was or will be built for 176U, and exact table-cell faithfulness is not claimed.
+  Because the inspection step is now done, the next built slice routes to Phase 4 table-companion work
+  (`add_explanation_beneath_asset` / `add_faithful_table_plus_simplified_version`), not an inspection harness.
+- **Interpretation.** A recovered display-only patient-dataset table from existing private visible/OCR artifacts
+  was inserted as a reconstructed Markdown table, rendered through the existing HTML renderer, and verified by
+  checking the rendered output contains a table. A table inserted as an image cannot count as success, and
+  markdown-only output is not a completed proof. This does not run OCR, guide generation, provider generation,
+  coverage evaluation, frontend/API wiring, a new judge, or repair. Numeric verification is not claimed.
+  Phase 4 still needs an explanation beneath the inserted asset and a faithful reconstructed table plus a
+  simplified clearer study-friendly version alongside it. The operator has inspected the private rendered guide
+  and confirmed the tables are readable, so the readability gate is satisfied and the next route is Phase 4
+  table-companion work rather than another inspection step.
+- **Validation.** `compileall api pipeline test_scripts` OK; `test_rendered_visible_asset_insertion_proof` OK;
+  `test_visible_table_figure_pilot` OK; `test_candidate1_structured_ocr_attempt` OK;
+  `test_uncommon_deck_coverage_eval` OK; private runner completed; `git diff --check` clean. No-leak sweep found
+  only expected policy/closed-label/test false positives. No raw source/OCR/guide/table/caption/
+  prompt/response/provider payload/private path committed; private rendered artifacts and `local_operator_baselines/`
+  stay ignored. **Merged to trunk (hash recorded in 176V docs).**
 
 ---
 
