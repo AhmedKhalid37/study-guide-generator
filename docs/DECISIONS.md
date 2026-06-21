@@ -8029,3 +8029,22 @@ prompt/response, provider payload, private path/hash/byte count is committed. No
 frontend/API rollout, Chandra path, cloud OCR path, or figure slice is introduced. Operator private read completed:
 the faithful table, explanation, and simplified table are visible/acceptable, and the simplified table is accepted
 as role-aware study simplification rather than a row-reduced copy. Commit Slice 176X only.
+# Decisions
+
+## Slice 176Y
+
+- Operator review rejected the prior rendered 176Y artifact because it was a
+  table/grid-like matrix companion, not a true figure/diagram proof.
+- Tighten 176Y selection so tables, matrices, grids, proximity matrices, dataset
+  tables, table-like visuals, and structured table/grid assets are excluded.
+- Existing private visible-asset artifacts were inspected with closed structural
+  fields only. No acceptable non-table figure/diagram descriptor exists in the
+  current artifact set.
+- Corrected private run blocks with
+  `blocked_by=no_existing_non_table_figure_descriptor`,
+  `figure_diagram_companion_status=not_produced`, and
+  `table_like_visual_companion_status=completed_but_not_counted_for_figure_gate`.
+- Keep all committed summaries closed-label only: no raw figure text, captions,
+  descriptor JSON, private paths, screenshots, prompt text, provider responses,
+  hashes, or byte counts. Commit only as a negative/corrective guardrail; this
+  does not satisfy the Phase 4 figure/diagram requirement.

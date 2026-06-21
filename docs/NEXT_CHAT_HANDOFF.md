@@ -6,9 +6,31 @@
 > stable overview see `PROJECT_CONTEXT.md`; canonical brief is `../CLAUDE.md`.
 
 ## Current position
-- **Working tree:** branch `slice176x-table-simplification-semantics`; **Slice 176X** hardens the 176W
-  writer-generated table companion so simplified tables are role-aware study explanations, not row-reduced copies.
-  **Real private rerun complete; operator read PASS; commit Slice 176X only.**
+- **Working tree:** branch `slice176y-writer-generated-figure-companion`; **Slice 176Y** adds a
+  descriptor-driven writer-generated figure/diagram companion guardrail. Operator review rejected the table-like
+  rendered matrix/grid companion, and the corrected run is blocked; commit it only as a negative guardrail.
+- **Slice 176Y corrected result.** Existing private visible-asset artifacts were inspected with closed structural
+  fields only; no acceptable non-table figure/diagram descriptor exists in that artifact set. Corrected closed
+  summary: `artifact_name=writer_generated_figure_companion` · `slice=176Y` · `status=blocked` ·
+  `source_label=ensemble` · `selected_asset_category=none` · `selected_asset_kind=unknown` ·
+  `selected_asset_role=study_visual` · `asset_descriptor_source=private_visible_asset_inventory` ·
+  `writer_input_descriptor_present=false` · `writer_saw_image=false` · `provider_call_made=false` ·
+  `generation_rerun=false` · `generation_behavior_changed=false` · `visual_inserted=false` ·
+  `visual_insertion_mode=blocked` · `visual_is_table_like=false` · `visual_is_matrix=false` ·
+  `visual_is_grid=false` · `visual_inserted_as_raw_private_path=false` ·
+  `explanation_beneath_asset_present=false` · `study_reading_steps_present=false` ·
+  `render_format=not_run` · `render_status=not_run` · `private_rendered_guide_written=false` ·
+  `private_run_closed_summary_written=true` · `figure_diagram_companion_status=not_produced` ·
+  `table_like_visual_companion_status=completed_but_not_counted_for_figure_gate` ·
+  `operator_private_read_required=false` ·
+  `operator_private_read_done=false` · `numeric_verification_claimed=false` ·
+  `frontend_api_changed=false` · `judge_ready=false` · `repair_ready=false` ·
+  `blocked_by=no_existing_non_table_figure_descriptor` ·
+  `recommended_next_step=produce_private_non_table_figure_descriptor_from_existing_extraction`.
+- **176Y interpretation.** The previous table-like companion remains completed but is not banked for the
+  figure/diagram gate. Produce a private non-table figure descriptor from existing extraction before rerunning.
+- **Prior completed work:** **Slice 176X** hardens the 176W writer-generated table companion so simplified tables
+  are role-aware study explanations, not row-reduced copies. **Committed/pushed on trunk as `016431b`.**
 - **Operator clarification:** `operator_clarified_simplified_table_semantics=study_explanation_not_row_reduction`.
 - **Slice 176X result (one real provider call over the existing private recovered patient dataset table).**
   `artifact_name=writer_generated_table_companion` · `slice=176X` · `status=completed` ·
@@ -4256,3 +4278,24 @@ curl http://localhost:8000/api/options   # themes / styles / providers / models 
 curl http://localhost:8000/api/provider-settings  # provider settings, redacted (no raw keys; only configured/key_source/key_hint/base_url_host)
 python test_scripts/smoke_release.py     # end-to-end release smoke (~28 checks; outline-ordering check is known-flaky)
 ```
+# NEXT_CHAT_HANDOFF.md
+
+## Slice 176Y Active Handoff
+
+- Branch: `slice176y-writer-generated-figure-companion`
+- Trunk before branch: `chrome-renderer-v1`
+- Prior 176X commit already on trunk and origin: `016431b4a67106aa474db3d88427e03bd4622765`
+- Active task: descriptor-driven writer-generated figure/diagram companion proof.
+- Allowed new source: `pipeline/writer_generated_figure_companion.py`
+- Allowed runner/test: `test_scripts/run_writer_generated_figure_companion.py`,
+  `test_scripts/test_writer_generated_figure_companion.py`
+- Allowed docs: `docs/WRITER_GENERATED_FIGURE_COMPANION.md`,
+  `docs/CURRENT_TASK.md`, `docs/NEXT_CHAT_HANDOFF.md`, `docs/DECISIONS.md`
+
+The existing private 176I visible-asset payload has no acceptable non-table
+figure/diagram descriptor for this gate. Its table/matrix/grid-style assets are
+excluded and must not be used as the 176Y figure proof.
+
+Slice 176Y may be committed only as a negative/corrective guardrail. Next step:
+produce a private non-table figure descriptor from existing extraction, then
+rerun the 176Y producer.

@@ -5,7 +5,48 @@
 
 ---
 
-## Phase 4 product path — **Slice 176X: role-aware simplified table semantics; operator read PASS; committing.**
+## Phase 4 product path — **Slice 176Y: descriptor-driven figure/diagram companion proof; corrected blocked state.**
+
+- **phase=Phase 4 (writer-generated figure/diagram companion proof)** · **slice=176Y** ·
+  **module=`pipeline/writer_generated_figure_companion.py`** ·
+  **runner=`test_scripts/run_writer_generated_figure_companion.py`** ·
+  **test=`test_scripts/test_writer_generated_figure_companion.py`** ·
+  **doc=`docs/WRITER_GENERATED_FIGURE_COMPANION.md`** ·
+  **branch=`slice176y-writer-generated-figure-companion`** · **judge_ready=false** · **repair_ready=false**.
+- **Goal.** Produce one real private rendered HTML guide where the writer/model uses an existing recovered
+  figure/diagram descriptor or visible-asset descriptor and creates a student-visible companion: visual first,
+  writer-generated explanation beneath it, and committed-safe closed status only.
+- **Corrected asset rule.** 176Y now excludes tables, matrices, grids, proximity matrices, dataset tables,
+  table-like visuals, and structured table/grid assets. The previously rendered matrix/grid companion is not
+  counted as a figure/diagram proof.
+- **Private artifact inspection.** The existing private 176I visible-asset payload contains only table-like
+  structured assets for this gate; no acceptable existing non-table figure/diagram descriptor was found.
+- **Architecture rule.** Figure/table understanding remains extraction-side. Generation is descriptor-driven and
+  model-agnostic: the writer receives only descriptor/context, never raw private paths or committed screenshots.
+- **Corrected private run.** `artifact_name=writer_generated_figure_companion` · `slice=176Y` ·
+  `status=blocked` · `source_label=ensemble` · `selected_asset_category=none` ·
+  `selected_asset_kind=unknown` · `selected_asset_role=study_visual` ·
+  `asset_descriptor_source=private_visible_asset_inventory` · `writer_input_descriptor_present=false` ·
+  `writer_saw_image=false` · `provider_call_made=false` · `generation_rerun=false` ·
+  `generation_behavior_changed=false` · `visual_inserted=false` · `visual_insertion_mode=blocked` ·
+  `visual_is_table_like=false` · `visual_is_matrix=false` · `visual_is_grid=false` ·
+  `visual_inserted_as_raw_private_path=false` · `explanation_beneath_asset_present=false` ·
+  `study_reading_steps_present=false` · `render_format=not_run` · `render_status=not_run` ·
+  `private_rendered_guide_written=false` · `private_run_closed_summary_written=true` ·
+  `figure_diagram_companion_status=not_produced` ·
+  `table_like_visual_companion_status=completed_but_not_counted_for_figure_gate` ·
+  `operator_private_read_required=false` ·
+  `operator_private_read_done=false` · `numeric_verification_claimed=false` ·
+  `frontend_api_changed=false` · `judge_ready=false` · `repair_ready=false` ·
+  `blocked_by=no_existing_non_table_figure_descriptor` ·
+  `recommended_next_step=produce_private_non_table_figure_descriptor_from_existing_extraction`.
+- **Status.** Commit as a negative/corrective guardrail only. The table-like companion remains completed but is
+  not banked for the figure gate; a true non-table figure descriptor must be produced from existing extraction
+  before rerunning 176Y.
+
+---
+
+## Phase 4 product path — **Slice 176X: role-aware simplified table semantics; operator read PASS; committed/pushed.**
 
 - **phase=Phase 4 (writer-generated table companion semantics hardening)** · **slice=176X** ·
   **module=`pipeline/writer_generated_table_companion.py`** ·
