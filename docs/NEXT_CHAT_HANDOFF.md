@@ -6,36 +6,42 @@
 > stable overview see `PROJECT_CONTEXT.md`; canonical brief is `../CLAUDE.md`.
 
 ## Current position
-- **Working tree:** branch `slice176w-writer-generated-table-companion`; **Slice 176W** is the first Phase 4
-  slice where **generation behavior changes** — a real provider/model writer inserts the table token, writes the
-  explanation, and emits a simplified table; the token resolves to the faithful recovered table and renders to
-  private gitignored HTML. **Operator read PASS; commit Slice 176W only.**
-- **Slice 176W result (one real provider call — `deepseek` / `deepseek-v4-pro` — over the existing private recovered table).**
-  `artifact_name=writer_generated_table_companion` · `status=completed` · `provider_call_made=true` ·
-  `generation_rerun=true` · `generation_behavior_changed=true` · `writer_input_descriptor_present=true` ·
-  `writer_saw_image=false` · `provider_name_closed=deepseek` · `model_name_closed_or_redacted=deepseek-v4-pro` ·
-  `writer_token_count=1` · `writer_token_inserted_by_writer=true` · `postprocessor_token_injected=false` ·
-  `faithful_table_present=true` · `faithful_table_source=private_recovered_table` · `table_inserted_as_image=false` ·
+- **Working tree:** branch `slice176x-table-simplification-semantics`; **Slice 176X** hardens the 176W
+  writer-generated table companion so simplified tables are role-aware study explanations, not row-reduced copies.
+  **Real private rerun complete; operator read PASS; commit Slice 176X only.**
+- **Operator clarification:** `operator_clarified_simplified_table_semantics=study_explanation_not_row_reduction`.
+- **Slice 176X result (one real provider call over the existing private recovered patient dataset table).**
+  `artifact_name=writer_generated_table_companion` · `slice=176X` · `status=completed` ·
+  `provider_call_made=true` · `generation_rerun=true` · `generation_behavior_changed=true` ·
+  `writer_input_descriptor_present=true` · `writer_saw_image=false` · `writer_token_count=1` ·
+  `writer_token_inserted_by_writer=true` · `postprocessor_token_injected=false` ·
+  `faithful_table_present=true` · `table_inserted_as_image=false` ·
   `explanation_source=writer_generated_from_descriptor` · `explanation_non_placeholder=true` ·
   `simplified_table_source=writer_generated_from_descriptor` · `simplified_table_non_placeholder=true` ·
-  `render_status=rendered` · `private_rendered_guide_written=true` · `private_rendered_guide_gitignored=true` ·
-  all producer visibility statuses `operator_pending` · `operator_private_read_required=true` ·
-  `operator_private_read_done=false` · `numeric_verification_claimed=false` · `frontend_api_changed=false` ·
-  `judge_ready=false` · `repair_ready=false` · `blocked_by=none` ·
-  `recommended_next_step=operator_read_private_rendered_guide`.
-- **176W interpretation.** All hard PASS conditions met: a real generation call produced one writer-inserted token,
-  a non-placeholder explanation, and a distinct writer-generated simplified table; the token resolved to the
-  faithful recovered table; private HTML has two real `<table>` elements (faithful + simplified), no image tags, no
-  leftover token. Code does not claim numeric verification (`numeric_verification_claimed=false`) and no
-  parser/judge is introduced. Operator private read is done:
-  `faithful_table_visibility_status=visible`, `explanation_visibility_status=visible`,
-  `simplified_table_visibility_status=visible`, `operator_table_readability=acceptable`,
-  `operator_explanation_quality=acceptable`, and `operator_simplified_table_quality=acceptable`. Operator note:
-  faithful table is readable but very wide; do not block the 176W commit on width, but consider table-layout
-  hardening later. The 176V deterministic simplification is NOT reused as the main simplified version; completion
-  is writer-sourced only. Validation: `compileall` OK; `test_writer_generated_table_companion` OK (synthetic, no provider call);
-  `test_reconstructed_table_companion`/`test_rendered_visible_asset_insertion_proof`/`test_visible_table_figure_pilot`
-  OK; `git diff --check` clean; no-leak sweep clean; Docker not run.
+  `simplified_table_policy=role_aware_study_simplification` ·
+  `detected_or_requested_table_role=dataset_numeric` · `simplified_table_shape=dataset_patterns_takeaways` ·
+  `simplified_table_is_row_reduced_copy=false` · `simplified_table_is_study_oriented=true` ·
+  `simplified_table_preserves_key_meaning=true` · `render_status=rendered` ·
+  `private_rendered_guide_written=true` · `private_rendered_guide_gitignored=true` ·
+  `faithful_table_visibility_status=visible` · `explanation_visibility_status=visible` ·
+  `simplified_table_visibility_status=visible` · `operator_private_read_required=true` ·
+  `operator_private_read_done=true` · `operator_table_readability=acceptable` ·
+  `operator_explanation_quality=acceptable` · `operator_simplified_table_quality=acceptable` ·
+  `operator_simplified_table_semantics=accepted_role_aware_study_simplification` ·
+  `numeric_verification_claimed=false` ·
+  `frontend_api_changed=false` · `judge_ready=false` · `repair_ready=false` · `blocked_by=none` ·
+  `recommended_next_step=commit_slice_176x_only`.
+- **176X interpretation.** The faithful table remains the original reconstructed table. The explanation remains
+  writer-generated. The simplified table now uses the dataset/numeric study shape
+  (`Pattern / thing to notice | Meaning | Exam takeaway`) and is not a row subset or column-trimmed duplicate.
+  Operator private read confirmed all three visible pieces are visible/acceptable and accepted the simplified table
+  as a study-oriented explanation rather than a row-reduced copy.
+  Closed rendered-structure check: `table_count=2`, `leftover_token=false`, `has_img=false`,
+  `has_data_image=false`. Optional second real case:
+  `terminology_table_real_case_status=unavailable_existing_artifact_not_found`. Validation: `compileall` OK;
+  `test_writer_generated_table_companion` OK; `test_reconstructed_table_companion` OK;
+  `test_rendered_visible_asset_insertion_proof` OK; `test_visible_table_figure_pilot` OK; `git diff --check`
+  clean; no-leak sweep clean. Docker not run.
 - **Slice 176V** added the first Phase 4 reconstructed-table companion (explanation beneath the faithful table +
   simplified study-friendly table) but blocked honestly on operator-provided explanation content
   (`generation_behavior_changed=false`); superseded as the explanation producer by 176W. **NOT committed.**

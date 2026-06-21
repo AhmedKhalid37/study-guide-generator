@@ -1,4 +1,4 @@
-"""Slice 176W: writer-generated table companion (first Phase 4 generation slice).
+"""Slice 176X: writer-generated table companion (role-aware simplification).
 
 Slice 176U proved the mechanical rendered reconstructed-table path; Slice 176V added
 explanation + simplified-table *slots* beside the faithful table but blocked honestly
@@ -10,8 +10,8 @@ given a closed table descriptor (the existing private recovered table) and must
   * insert the ``{{table:patient_dataset}}`` token exactly once where the faithful
     table belongs (the writer inserts the token, never postprocessor/template code),
   * write a genuine, non-placeholder explanation beneath that token, and
-  * emit a simplified, clearer, study-friendly Markdown table generated *from the
-    descriptor* (never a deterministic placeholder).
+  * emit a role-aware, clearer, study-friendly Markdown table generated *from the
+    descriptor* (never a deterministic placeholder and never a row-reduced duplicate).
 
 The single token is then resolved through the existing render path: it is replaced by
 the faithful recovered Markdown table (a real table, never an image) and the whole
@@ -56,6 +56,7 @@ from pipeline.slide_raster_ocr_ingestion import is_private_artifact_dir  # noqa:
 from pipeline.visible_table_figure_pilot import SOURCE_LABEL_DEFAULT  # noqa: E402
 
 ARTIFACT_NAME = "writer_generated_table_companion"
+SLICE_LABEL = "176X"
 
 #: The single writer token. The writer must emit this exactly once; this module never
 #: injects it. Resolution replaces it with the faithful recovered Markdown table.
@@ -69,6 +70,27 @@ TOKEN_COUNTS = frozenset({"0", "1", "many"})
 EXPLANATION_SOURCES = frozenset({"writer_generated_from_descriptor", "unavailable", "invalid"})
 SIMPLIFIED_SOURCES = frozenset(
     {"writer_generated_from_descriptor", "deterministic_fallback", "unavailable"}
+)
+SIMPLIFIED_POLICIES = frozenset({"role_aware_study_simplification", "unavailable"})
+TABLE_ROLES = frozenset(
+    {
+        "terminology_definition",
+        "comparison",
+        "process_steps",
+        "formula_reference",
+        "dataset_numeric",
+        "unknown",
+    }
+)
+SIMPLIFIED_SHAPES = frozenset(
+    {
+        "terminology_study_cues",
+        "comparison_differences_usage",
+        "process_plain_action_purpose",
+        "formula_meaning_usage",
+        "dataset_patterns_takeaways",
+        "unknown",
+    }
 )
 RENDER_FORMATS = frozenset({"html", "not_run"})
 RENDER_STATUSES = frozenset({"rendered", "failed", "not_run"})
@@ -117,7 +139,11 @@ _PLACEHOLDER_MARKERS = (
 WriterFn = Callable[[list[dict[str, str]]], str]
 
 
-def build_writer_messages(*, faithful_markdown: str) -> list[dict[str, str]]:
+def build_writer_messages(
+    *,
+    faithful_markdown: str,
+    table_role: str | None = None,
+) -> list[dict[str, str]]:
     """Build the closed writer prompt. Carries the extracted table as a descriptor.
 
     The faithful Markdown table is real private content; it lives only in-memory and in
@@ -131,11 +157,17 @@ def build_writer_messages(*, faithful_markdown: str) -> list[dict[str, str]]:
         "study material. You never hedge, never say 'unclear' or 'I think', and never "
         "expose your reasoning. You write finished study-guide prose only."
     )
+    role = _coerce(table_role, TABLE_ROLES, detect_table_role(faithful_markdown))
+    role_instruction, shape_instruction = _role_prompt_parts(role)
     user = (
-        "You are writing ONE section of a study guide about a patient-dataset table that "
+        "You are writing ONE section of a study guide about a table that "
         "was EXTRACTED from lecture material. You are given the faithful extracted table "
         "below as a closed descriptor. You did NOT see an image and must not assume one; "
         "treat the extracted table as the authoritative content.\n\n"
+        f"Silently handle this descriptor as table_role={role}. {role_instruction} "
+        "A simplified table means a study-friendly simplification of the table's meaning, "
+        "not a smaller duplicate of the same data. Do not copy rows from the faithful table "
+        "row-for-row and do not merely delete columns.\n\n"
         "Produce Markdown that follows this contract EXACTLY:\n"
         f"1. Place the token {WRITER_TOKEN} on its own line, EXACTLY ONCE, at the point "
         "where the faithful table should appear. Do NOT paste the table itself — the "
@@ -144,10 +176,11 @@ def build_writer_messages(*, faithful_markdown: str) -> list[dict[str, str]]:
         "'## What this table shows' with a genuine teaching explanation (3-6 sentences) "
         "of what the table teaches a student: the variables, what they mean, and the "
         "study takeaway. No hedging, no placeholders.\n"
-        "3. Then write a section headed '## Simplified study table' containing a clearer, "
-        "study-friendly Markdown table: fewer columns or rows, or reorganized, while "
-        "preserving the key terms and meaning. It MUST be a real Markdown table (pipes "
-        "and a header separator row), never a placeholder and never an image.\n"
+        "3. Then write a section headed '## Simplified study table' containing a role-aware "
+        f"study table with this exact shape: {shape_instruction}. Preserve the important "
+        "keywords and meaning supported by the descriptor, but explain them in clearer "
+        "language that is easier to understand and memorize. It MUST be a real Markdown "
+        "table (pipes and a header separator row), never a placeholder and never an image.\n"
         "4. Do not reveal any file names or paths.\n\n"
         "Faithful extracted table (descriptor):\n\n"
         f"{faithful_markdown.strip()}\n"
@@ -158,26 +191,37 @@ def build_writer_messages(*, faithful_markdown: str) -> list[dict[str, str]]:
     ]
 
 
-def parse_writer_output(response: str, *, faithful_markdown: str) -> dict[str, Any]:
+def parse_writer_output(
+    response: str,
+    *,
+    faithful_markdown: str,
+    table_role: str | None = None,
+) -> dict[str, Any]:
     """Parse a raw writer response against the token/explanation/simplified contract.
 
     Returns closed-safe booleans/labels only (no raw text). ``token_count`` is the raw
     count; the rest describe whether the explanation beneath the token and the simplified
     table are present and non-placeholder. The simplified table is only counted as
-    writer-generated when it is a real Markdown table that is NOT a normalized copy of
-    the faithful table.
+    writer-generated when it is a real role-aware study table that is NOT a normalized
+    copy/subset of the faithful table.
     """
     text = response if isinstance(response, str) else ""
     count = text.count(WRITER_TOKEN)
     token_count_label = "0" if count == 0 else "1" if count == 1 else "many"
+    role = _coerce(table_role, TABLE_ROLES, detect_table_role(faithful_markdown))
     result = {
         "token_count": count,
         "token_count_label": token_count_label,
+        "detected_or_requested_table_role": role,
         "explanation_present": False,
         "explanation_real": False,
         "simplified_present": False,
         "simplified_real": False,
         "simplified_markdown": "",
+        "simplified_table_shape": "unknown",
+        "simplified_table_is_row_reduced_copy": False,
+        "simplified_table_is_study_oriented": False,
+        "simplified_table_preserves_key_meaning": False,
     }
     if count != 1:
         return result
@@ -190,9 +234,17 @@ def parse_writer_output(response: str, *, faithful_markdown: str) -> dict[str, A
         explanation_lines = after_lines[:table_start]
         result["simplified_markdown"] = simplified_md
         result["simplified_present"] = True
-        result["simplified_real"] = _simplified_is_writer_generated(
+        result["simplified_table_shape"] = detect_simplified_table_shape(simplified_md)
+        result["simplified_table_is_row_reduced_copy"] = _simplified_is_row_reduced_copy(
             simplified_md, faithful_markdown
         )
+        result["simplified_table_is_study_oriented"] = _simplified_is_study_oriented(
+            simplified_md, role
+        )
+        result["simplified_table_preserves_key_meaning"] = _simplified_preserves_key_meaning(
+            simplified_md, faithful_markdown
+        )
+        result["simplified_real"] = _simplified_is_writer_generated(simplified_md, faithful_markdown, role)
     else:
         explanation_lines = after_lines
 
@@ -253,6 +305,7 @@ def run_writer_generated_table_companion(
                         selected_asset_category=category,
                         blocked_by="private_artifact_missing",
                         recommended_next_step="fix_writer_prompt_and_rerun")
+    table_role = detect_table_role(faithful_markdown, asset_category=category)
 
     parent = Path(payload_path).parent if payload_path else Path.cwd()
     out_dir = Path(private_companion_dir) if private_companion_dir else parent / ARTIFACT_NAME
@@ -265,7 +318,7 @@ def run_writer_generated_table_companion(
                         recommended_next_step="fix_writer_prompt_and_rerun")
 
     # 2. Build the closed descriptor prompt for the writer.
-    messages = build_writer_messages(faithful_markdown=faithful_markdown)
+    messages = build_writer_messages(faithful_markdown=faithful_markdown, table_role=table_role)
 
     # 3. Make the real (or injected) writer call. Honest blocking on unavailability.
     provider_name = "none"
@@ -285,6 +338,7 @@ def run_writer_generated_table_companion(
     except MissingLLMConfigError:
         return _summary(status="blocked", source_label=label,
                         selected_asset_category=category,
+                        detected_or_requested_table_role=table_role,
                         writer_input_descriptor_present=True,
                         faithful_table_present=True,
                         provider_name_closed=_coerce(provider_name, PROVIDER_NAMES, "none"),
@@ -293,6 +347,7 @@ def run_writer_generated_table_companion(
     except Exception:
         return _summary(status="blocked", source_label=label,
                         selected_asset_category=category,
+                        detected_or_requested_table_role=table_role,
                         writer_input_descriptor_present=True,
                         faithful_table_present=True,
                         provider_name_closed=_coerce(provider_name, PROVIDER_NAMES, "none"),
@@ -303,10 +358,11 @@ def run_writer_generated_table_companion(
     provider_name_closed = _coerce(provider_name, PROVIDER_NAMES, "none")
 
     # 4. Parse the writer output against the contract.
-    parsed = parse_writer_output(response, faithful_markdown=faithful_markdown)
+    parsed = parse_writer_output(response, faithful_markdown=faithful_markdown, table_role=table_role)
     common = dict(
         source_label=label,
         selected_asset_category=category,
+        detected_or_requested_table_role=table_role,
         writer_input_descriptor_present=True,
         faithful_table_present=True,
         provider_call_made=True,
@@ -344,6 +400,10 @@ def run_writer_generated_table_companion(
                         simplified_table_source="writer_generated_from_descriptor"
                         if parsed["simplified_present"] else "unavailable",
                         simplified_table_non_placeholder=parsed["simplified_real"],
+                        simplified_table_shape=parsed["simplified_table_shape"],
+                        simplified_table_is_row_reduced_copy=parsed["simplified_table_is_row_reduced_copy"],
+                        simplified_table_is_study_oriented=parsed["simplified_table_is_study_oriented"],
+                        simplified_table_preserves_key_meaning=parsed["simplified_table_preserves_key_meaning"],
                         blocked_by="placeholder_content_detected",
                         recommended_next_step="fix_writer_prompt_and_rerun")
     if not parsed["simplified_real"]:
@@ -355,6 +415,10 @@ def run_writer_generated_table_companion(
                         simplified_table_source="writer_generated_from_descriptor"
                         if parsed["simplified_present"] else "unavailable",
                         simplified_table_non_placeholder=False,
+                        simplified_table_shape=parsed["simplified_table_shape"],
+                        simplified_table_is_row_reduced_copy=parsed["simplified_table_is_row_reduced_copy"],
+                        simplified_table_is_study_oriented=parsed["simplified_table_is_study_oriented"],
+                        simplified_table_preserves_key_meaning=parsed["simplified_table_preserves_key_meaning"],
                         blocked_by="placeholder_content_detected",
                         recommended_next_step="fix_writer_prompt_and_rerun")
 
@@ -421,6 +485,11 @@ def run_writer_generated_table_companion(
         simplified_table_present=True,
         simplified_table_source="writer_generated_from_descriptor",
         simplified_table_non_placeholder=True,
+        simplified_table_policy="role_aware_study_simplification",
+        simplified_table_shape=parsed["simplified_table_shape"],
+        simplified_table_is_row_reduced_copy=parsed["simplified_table_is_row_reduced_copy"],
+        simplified_table_is_study_oriented=parsed["simplified_table_is_study_oriented"],
+        simplified_table_preserves_key_meaning=parsed["simplified_table_preserves_key_meaning"],
         render_format=render_format,
         render_status=render_status,
         private_rendered_guide_written=rendered_written,
@@ -443,6 +512,7 @@ def _summary(
     status: str,
     source_label: str = SOURCE_LABEL_DEFAULT,
     selected_asset_category: str = "patient_dataset_table",
+    detected_or_requested_table_role: str = "unknown",
     writer_input_descriptor_present: bool = False,
     provider_call_made: bool = False,
     provider_name_closed: str = "none",
@@ -459,6 +529,11 @@ def _summary(
     simplified_table_present: bool = False,
     simplified_table_source: str = "unavailable",
     simplified_table_non_placeholder: bool = False,
+    simplified_table_policy: str = "role_aware_study_simplification",
+    simplified_table_shape: str = "unknown",
+    simplified_table_is_row_reduced_copy: bool = False,
+    simplified_table_is_study_oriented: bool = False,
+    simplified_table_preserves_key_meaning: bool = False,
     render_format: str = "not_run",
     render_status: str = "not_run",
     private_rendered_guide_written: bool = False,
@@ -472,6 +547,7 @@ def _summary(
     """Assemble the committed-safe closed summary (closed vocabulary only, no raw text)."""
     return {
         "artifact_name": ARTIFACT_NAME,
+        "slice": SLICE_LABEL,
         "status": _coerce(status, STATUSES, "blocked"),
         "source_label": _coerce(source_label, SOURCE_LABELS, "unknown"),
         "selected_asset_category": _coerce(selected_asset_category, ASSET_CATEGORIES, "none"),
@@ -497,6 +573,16 @@ def _summary(
         "simplified_table_present": bool(simplified_table_present),
         "simplified_table_source": _coerce(simplified_table_source, SIMPLIFIED_SOURCES, "unavailable"),
         "simplified_table_non_placeholder": bool(simplified_table_non_placeholder),
+        "simplified_table_policy": _coerce(
+            simplified_table_policy, SIMPLIFIED_POLICIES, "role_aware_study_simplification"
+        ),
+        "detected_or_requested_table_role": _coerce(
+            detected_or_requested_table_role, TABLE_ROLES, "unknown"
+        ),
+        "simplified_table_shape": _coerce(simplified_table_shape, SIMPLIFIED_SHAPES, "unknown"),
+        "simplified_table_is_row_reduced_copy": bool(simplified_table_is_row_reduced_copy),
+        "simplified_table_is_study_oriented": bool(simplified_table_is_study_oriented),
+        "simplified_table_preserves_key_meaning": bool(simplified_table_preserves_key_meaning),
         "render_format": _coerce(render_format, RENDER_FORMATS, "not_run"),
         "render_status": _coerce(render_status, RENDER_STATUSES, "not_run"),
         "private_rendered_guide_written": bool(private_rendered_guide_written),
@@ -552,6 +638,59 @@ def _faithful_table_markdown(asset: dict[str, Any]) -> str | None:
     return None
 
 
+def detect_table_role(markdown: str, *, asset_category: str = "none") -> str:
+    """Return a closed role label from the descriptor and closed asset category."""
+    if asset_category == "patient_dataset_table":
+        return "dataset_numeric"
+    grid = _parse_markdown_table(markdown)
+    headers = [h.lower() for h in grid[0]] if grid else []
+    header_text = " ".join(headers)
+    if any(word in header_text for word in ("term", "concept", "definition", "explanation")):
+        return "terminology_definition"
+    if any(word in header_text for word in ("step", "stage", "process", "action")):
+        return "process_steps"
+    if any(word in header_text for word in ("formula", "equation", "symbol", "reference")):
+        return "formula_reference"
+    if any(word in header_text for word in ("difference", "compare", "versus", "advantage", "disadvantage")):
+        return "comparison"
+    if any(word in header_text for word in ("age", "outcome", "patient", "score", "value")):
+        return "dataset_numeric"
+    numeric_cells = 0
+    total_cells = 0
+    for row in grid[1:]:
+        for cell in row:
+            total_cells += 1
+            if re.search(r"\d", cell):
+                numeric_cells += 1
+    if total_cells and numeric_cells / total_cells >= 0.25:
+        return "dataset_numeric"
+    return "unknown"
+
+
+def detect_simplified_table_shape(markdown: str) -> str:
+    grid = _parse_markdown_table(markdown)
+    if not grid:
+        return "unknown"
+    headers = [_clean_header(h) for h in grid[0]]
+    if len(headers) < 3:
+        return "unknown"
+    h0, h1, h2 = headers[:3]
+    if ("term" in h0 or "concept" in h0) and "simple" in h1 and "meaning" in h1:
+        if "remember" in h2 or "exam" in h2 or "cue" in h2:
+            return "terminology_study_cues"
+    if "item" in h0 and "difference" in h1 and (
+        "matter" in h2 or "mistake" in h2 or "usage" in h2 or "use" in h2
+    ):
+        return "comparison_differences_usage"
+    if "step" in h0 and ("plain english" in h1 or "action" in h1) and "matter" in h2:
+        return "process_plain_action_purpose"
+    if "item" in h0 and "meaning" in h1 and ("use" in h2 or "how" in h2):
+        return "formula_meaning_usage"
+    if ("pattern" in h0 or "notice" in h0 or "thing" in h0) and "meaning" in h1 and "takeaway" in h2:
+        return "dataset_patterns_takeaways"
+    return "unknown"
+
+
 def _extract_markdown_tables(text: str) -> list[tuple[int, str]]:
     """Return ``(start_line_index, table_markdown)`` for each Markdown table block."""
     lines = text.splitlines()
@@ -573,8 +712,12 @@ def _extract_markdown_tables(text: str) -> list[tuple[int, str]]:
     return blocks
 
 
-def _simplified_is_writer_generated(simplified_md: str, faithful_markdown: str) -> bool:
-    """True only for a real, non-placeholder table that is not a copy of the faithful one."""
+def _simplified_is_writer_generated(
+    simplified_md: str,
+    faithful_markdown: str,
+    table_role: str,
+) -> bool:
+    """True only for a role-aware study table that is not a copy/subset of the faithful one."""
     if not _looks_like_markdown_table(simplified_md):
         return False
     low = simplified_md.lower()
@@ -586,7 +729,49 @@ def _simplified_is_writer_generated(simplified_md: str, faithful_markdown: str) 
     cell_chars = sum(len(c.strip()) for row in grid for c in row)
     if cell_chars < 4:
         return False
-    return _normalize_table(simplified_md) != _normalize_table(faithful_markdown)
+    if _simplified_is_row_reduced_copy(simplified_md, faithful_markdown):
+        return False
+    if not _simplified_is_study_oriented(simplified_md, table_role):
+        return False
+    return _simplified_preserves_key_meaning(simplified_md, faithful_markdown)
+
+
+def _simplified_is_study_oriented(simplified_md: str, table_role: str) -> bool:
+    expected = _shape_for_role(table_role)
+    return expected != "unknown" and detect_simplified_table_shape(simplified_md) == expected
+
+
+def _simplified_preserves_key_meaning(simplified_md: str, faithful_markdown: str) -> bool:
+    faithful_tokens = _meaning_tokens(_normalize_table(faithful_markdown))
+    simplified_tokens = _meaning_tokens(_normalize_table(simplified_md))
+    if not faithful_tokens or not simplified_tokens:
+        return False
+    return bool(faithful_tokens & simplified_tokens)
+
+
+def _simplified_is_row_reduced_copy(simplified_md: str, faithful_markdown: str) -> bool:
+    if _normalize_table(simplified_md) == _normalize_table(faithful_markdown):
+        return True
+    faithful_grid = _parse_markdown_table(faithful_markdown)
+    simplified_grid = _parse_markdown_table(simplified_md)
+    if len(faithful_grid) < 2 or len(simplified_grid) < 2:
+        return False
+    faithful_headers = [_clean_header(c) for c in faithful_grid[0]]
+    simplified_headers = [_clean_header(c) for c in simplified_grid[0]]
+    if not simplified_headers or not all(h in faithful_headers for h in simplified_headers):
+        return False
+    indexes = [faithful_headers.index(h) for h in simplified_headers]
+    faithful_projected = {
+        tuple(_clean_cell(row[i]) for i in indexes if i < len(row))
+        for row in faithful_grid[1:]
+    }
+    simplified_rows = [
+        tuple(_clean_cell(c) for c in row[: len(simplified_headers)])
+        for row in simplified_grid[1:]
+    ]
+    if not simplified_rows:
+        return False
+    return all(row in faithful_projected for row in simplified_rows)
 
 
 def is_placeholder_text(text: Any) -> bool:
@@ -628,6 +813,60 @@ def _parse_markdown_table(markdown: Any) -> list[list[str]]:
             continue
         rows.append(cells)
     return rows
+
+
+def _role_prompt_parts(role: str) -> tuple[str, str]:
+    if role == "terminology_definition":
+        return (
+            "Simplify the terms into plain language and memory cues.",
+            "Term or concept | Simple meaning | What to remember / exam clue",
+        )
+    if role == "comparison":
+        return (
+            "Simplify the differences and when to use each item.",
+            "Item | Main difference | When it matters / common mistake",
+        )
+    if role == "process_steps":
+        return (
+            "Simplify the sequence into actions and purposes.",
+            "Step | Plain-English action | Why it matters",
+        )
+    if role == "formula_reference":
+        return (
+            "Simplify the references into meaning and usage.",
+            "Item | Meaning | How to use it",
+        )
+    return (
+        "Simplify the dataset into patterns, meanings, and exam takeaways.",
+        "Pattern / thing to notice | Meaning | Exam takeaway",
+    )
+
+
+def _shape_for_role(role: str) -> str:
+    return {
+        "terminology_definition": "terminology_study_cues",
+        "comparison": "comparison_differences_usage",
+        "process_steps": "process_plain_action_purpose",
+        "formula_reference": "formula_meaning_usage",
+        "dataset_numeric": "dataset_patterns_takeaways",
+    }.get(role, "unknown")
+
+
+def _clean_header(value: str) -> str:
+    return re.sub(r"\s+", " ", re.sub(r"[^a-z0-9]+", " ", str(value).lower())).strip()
+
+
+def _clean_cell(value: str) -> str:
+    return re.sub(r"\s+", " ", str(value).strip().lower()).strip()
+
+
+def _meaning_tokens(value: str) -> set[str]:
+    stop = {
+        "the", "and", "or", "to", "of", "in", "a", "an", "for", "with", "this",
+        "that", "table", "study", "meaning", "item", "pattern", "takeaway",
+        "simple", "what", "why", "how", "use", "matters", "remember", "exam",
+    }
+    return {token for token in re.findall(r"[a-z][a-z0-9_]{2,}", value.lower()) if token not in stop}
 
 
 def _normalize_table(markdown: str) -> str:

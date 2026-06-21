@@ -7986,3 +7986,46 @@ faithful table is readable but very wide; do not block the 176W commit on width,
 hardening later. No parser/judge is introduced. No raw guide/table/explanation/simplified/caption/source/OCR text,
 no prompt/response, no provider payload, no private path/hash/byte count is committed; `judge_ready=false`,
 `repair_ready=false`.
+
+## Slice 176X — role-aware simplified table semantics
+The operator clarified that `simplified_table` means a study explanation of the table's meaning, not a smaller
+duplicate, row subset, or column-trimmed version:
+`operator_clarified_simplified_table_semantics=study_explanation_not_row_reduction`.
+
+**Decision.** Keep the existing 176W writer/provider path and patch its prompt/parser contract rather than adding
+a parallel framework. The writer still inserts the table token exactly once, the postprocessor still only resolves
+the faithful recovered Markdown table, and explanation remains writer-generated from the descriptor. The simplified
+table now must satisfy `simplified_table_policy=role_aware_study_simplification` with a role-specific study shape:
+`terminology_study_cues`, `comparison_differences_usage`, `process_plain_action_purpose`,
+`formula_meaning_usage`, or `dataset_patterns_takeaways`. A copied, row-reduced, or column-trimmed faithful table
+blocks honestly.
+
+**Real run (closed labels only).** The required private patient-dataset rerun completed:
+`artifact_name=writer_generated_table_companion`, `slice=176X`, `status=completed`,
+`provider_call_made=true`, `generation_rerun=true`, `generation_behavior_changed=true`,
+`writer_token_count=1`, `writer_token_inserted_by_writer=true`, `postprocessor_token_injected=false`,
+`faithful_table_present=true`, `table_inserted_as_image=false`,
+`explanation_source=writer_generated_from_descriptor`, `explanation_non_placeholder=true`,
+`simplified_table_source=writer_generated_from_descriptor`, `simplified_table_non_placeholder=true`,
+`detected_or_requested_table_role=dataset_numeric`, `simplified_table_shape=dataset_patterns_takeaways`,
+`simplified_table_is_row_reduced_copy=false`, `simplified_table_is_study_oriented=true`,
+`simplified_table_preserves_key_meaning=true`, `render_status=rendered`,
+`private_rendered_guide_written=true`, `private_rendered_guide_gitignored=true`,
+`faithful_table_visibility_status=visible`, `explanation_visibility_status=visible`,
+`simplified_table_visibility_status=visible`, `operator_private_read_required=true`,
+`operator_private_read_done=true`, `operator_table_readability=acceptable`,
+`operator_explanation_quality=acceptable`, `operator_simplified_table_quality=acceptable`,
+`operator_simplified_table_semantics=accepted_role_aware_study_simplification`,
+`numeric_verification_claimed=false`, `frontend_api_changed=false`,
+`judge_ready=false`, `repair_ready=false`, `blocked_by=none`,
+`recommended_next_step=commit_slice_176x_only`.
+
+Closed rendered-structure check: `table_count=2`, `leftover_token=false`, `has_img=false`,
+`has_data_image=false`. Optional terminology real case:
+`terminology_table_real_case_status=unavailable_existing_artifact_not_found`.
+
+No screenshot, screenshot text, source/OCR/guide/table/caption/explanation/simplified-table content,
+prompt/response, provider payload, private path/hash/byte count is committed. No new judge, repair loop, OCR path,
+frontend/API rollout, Chandra path, cloud OCR path, or figure slice is introduced. Operator private read completed:
+the faithful table, explanation, and simplified table are visible/acceptable, and the simplified table is accepted
+as role-aware study simplification rather than a row-reduced copy. Commit Slice 176X only.
