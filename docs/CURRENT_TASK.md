@@ -128,7 +128,7 @@
 
 ---
 
-## Phase 2 product path — **Slice 176S: uncommon-deck coverage eval over existing candidate_1 artifacts; degraded diagnostic; NOT committed.**
+## Phase 2 product path — **Slice 176S: uncommon-deck coverage eval over existing candidate_1 artifacts; degraded diagnostic; committed `0deb4f9` / merged to trunk.**
 
 - **phase=Phase 2 (uncommon-deck coverage comparison enabled by 176Q/176R)** · **slice=176S** ·
   **module=`pipeline/deck_specific_coverage_eval.py`** ·
@@ -162,7 +162,51 @@
   `test_uncommon_deck_local_ocr_extraction` OK; `test_uncommon_deck_coverage_eval` OK; private coverage runner
   completed; `git diff --check` clean. No provider generation; no guide generation; no OCR; no Docker. No raw
   source/OCR/guide/table/caption/prompt/response/provider payload/private path committed; private artifacts and
-  `local_operator_baselines/` stay ignored. **NOT committed.**
+  `local_operator_baselines/` stay ignored. **Committed `0deb4f9` / merged to trunk.**
+
+---
+
+## Phase 2 product path — **Slice 176T: candidate_1 structured/local OCR attempt; tesseract ran but did not improve reliability; NOT committed.**
+
+- **phase=Phase 2 (improve candidate_1 extraction after weak 176S markers)** · **slice=176T** ·
+  **module=`pipeline/candidate1_structured_ocr_attempt.py`** ·
+  **runner=`test_scripts/run_candidate1_structured_ocr_attempt.py`** ·
+  **test=`test_scripts/test_candidate1_structured_ocr_attempt.py`** ·
+  **doc=`docs/CANDIDATE1_STRUCTURED_OCR_ATTEMPT.md`** ·
+  **branch=`slice176t-candidate1-structured-ocr-attempt`** · **judge_ready=false** ·
+  **repair_ready=false**.
+- **Why this slice.** 176S found the generated guide improved over baseline on weak closed markers, but
+  `marker_reliability=low`, so the coverage result is diagnostic only. 176T attempts a narrow candidate_1
+  extraction improvement using existing local OCR routes, without provider generation or broad OCR framework work.
+- **What it is / is NOT.** IS: a private local OCR attempt plus committed-safe closed summary. NOT: provider
+  generation, guide generation, coverage evaluation, baseline generation, another StatQuest/ensemble slice,
+  frame-selection pipeline, frontend/API rollout, new LLM judge, Layer-2 judge, repair, cloud OCR, numeric
+  recompute, or raw artifact dumping.
+- **Real result (private local attempt over candidate_1).** `artifact_name=candidate1_structured_ocr_attempt` ·
+  `status=degraded` · `source_label=candidate_1` · `candidate_type=uncommon_course_deck` ·
+  `previous_extraction_engine=text_layer` · `previous_marker_reliability=low` ·
+  `private_source_available=true` · `private_source_gitignored=true` ·
+  `private_improved_ocr_artifact_written=false` · `private_improved_ocr_artifact_gitignored=false` ·
+  `cloud_ocr_used=false` · `provider_call_made=false` · `generation_rerun=false` ·
+  `coverage_eval_rerun=false` · `ocr_rerun=true` · `attempted_structured_ocr=true` ·
+  `structured_ocr_engine=tesseract_cli` · `structured_ocr_status=ran` · `fallback_engine=none` ·
+  `local_ocr_engine=tesseract_cli` · `local_ocr_status=ran` · `pages_considered_count_bucket=low` ·
+  `pages_extracted_count_bucket=low` · `extracted_text_block_count_bucket=low` ·
+  `extracted_table_count_bucket=none` · `extracted_figure_or_diagram_count_bucket=none` ·
+  `marker_candidate_status=partial` · `marker_source=private_artifact_categories` ·
+  `marker_reliability=low` · `improvement_over_176r=no` ·
+  `next_test_readiness=needs_better_ocr` · `blocked_by=none` ·
+  `recommended_next_step=pivot_to_rendered_visible_asset_insertion`.
+- **Interpretation.** The local tesseract route ran on candidate_1 but did not recover table/figure-like structure
+  or improve marker reliability over the 176R text-layer artifact. Do not claim the OCR coverage thesis is proven
+  for candidate_1 and do not run provider generation from this result. The next route is a visible-asset insertion
+  pivot or a better uncommon fixture, not another broad OCR setup slice without a concrete local-engine gap.
+- **Validation.** `compileall api pipeline test_scripts` OK; `test_candidate1_structured_ocr_attempt` OK;
+  `test_uncommon_deck_local_ocr_extraction` OK; `test_uncommon_deck_coverage_eval` OK;
+  `test_slide_raster_ocr_ingestion` OK; private runner completed; `git diff --check` clean. No provider
+  generation; no guide generation; no coverage eval; no Docker. No raw source/OCR/guide/table/caption/prompt/
+  response/provider payload/private path committed; private artifacts and `local_operator_baselines/` stay
+  ignored. **NOT committed.**
 
 ---
 

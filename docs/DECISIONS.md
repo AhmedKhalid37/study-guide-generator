@@ -7841,3 +7841,31 @@ frontend/API wiring, or Docker.
 is too weak to bank official coverage improvement or justify provider generation. The next route is improving
 candidate_1 extraction. Raw source/OCR/guide/table/caption/prompt/response/provider payload content and private
 paths stay out of git; `judge_ready=false` and `repair_ready=false` remain frozen. **NOT committed.**
+
+## Slice 176T — candidate_1 tesseract attempt did not improve marker reliability
+176S found a directionally positive candidate_1 coverage comparison, but `marker_reliability=low`, so the result
+was diagnostic only and not enough to justify provider generation. 176T therefore attempts a narrow candidate_1
+extraction improvement using existing local OCR routes. It does not run provider generation, guide generation,
+coverage evaluation, cloud OCR, a new judge, Layer-2 judge, repair, frontend/API wiring, Docker, or broad OCR
+framework work.
+
+**Result:** `status=degraded`, `source_label=candidate_1`, `candidate_type=uncommon_course_deck`,
+`previous_extraction_engine=text_layer`, `previous_marker_reliability=low`,
+`private_source_available=true`, `private_source_gitignored=true`,
+`private_improved_ocr_artifact_written=false`, `private_improved_ocr_artifact_gitignored=false`,
+`cloud_ocr_used=false`, `provider_call_made=false`, `generation_rerun=false`, `coverage_eval_rerun=false`,
+`ocr_rerun=true`, `attempted_structured_ocr=true`, `structured_ocr_engine=tesseract_cli`,
+`structured_ocr_status=ran`, `fallback_engine=none`, `local_ocr_engine=tesseract_cli`,
+`local_ocr_status=ran`, `pages_considered_count_bucket=low`, `pages_extracted_count_bucket=low`,
+`extracted_text_block_count_bucket=low`, `extracted_table_count_bucket=none`,
+`extracted_figure_or_diagram_count_bucket=none`, `marker_candidate_status=partial`,
+`marker_source=private_artifact_categories`, `marker_reliability=low`, `improvement_over_176r=no`,
+`next_test_readiness=needs_better_ocr`, `blocked_by=none`,
+`recommended_next_step=pivot_to_rendered_visible_asset_insertion`.
+
+**Decision:** the local tesseract attempt ran but did not recover table/figure-like structure and did not improve
+marker reliability over the 176R text-layer artifact. Do not bank candidate_1 as proof for the OCR coverage
+thesis and do not run provider generation from this result. The next route is a visible-asset insertion pivot or
+a better uncommon fixture, not another broad OCR setup slice unless a concrete local-engine gap is identified.
+Raw source/OCR/guide/table/caption/prompt/response/provider payload content and private paths stay out of git;
+`judge_ready=false` and `repair_ready=false` remain frozen. **NOT committed.**

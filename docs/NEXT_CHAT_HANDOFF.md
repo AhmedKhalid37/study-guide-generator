@@ -6,8 +6,35 @@
 > stable overview see `PROJECT_CONTEXT.md`; canonical brief is `../CLAUDE.md`.
 
 ## Current position
-- **Working tree:** branch `slice176s-uncommon-deck-coverage-eval`; **Slice 176S** added the uncommon-deck
-  coverage eval over existing candidate_1 private artifacts. **NOT committed.**
+- **Working tree:** branch `slice176t-candidate1-structured-ocr-attempt`; **Slice 176T** added a candidate_1
+  structured/local OCR attempt. **NOT committed.**
+- **Slice 176T result (candidate_1 structured/local OCR attempt).** Private local OCR attempt completed with
+  closed labels only: `status=degraded` · `source_label=candidate_1` ·
+  `candidate_type=uncommon_course_deck` · `previous_extraction_engine=text_layer` ·
+  `previous_marker_reliability=low` · `private_source_available=true` ·
+  `private_source_gitignored=true` · `private_improved_ocr_artifact_written=false` ·
+  `private_improved_ocr_artifact_gitignored=false` · `cloud_ocr_used=false` ·
+  `provider_call_made=false` · `generation_rerun=false` · `coverage_eval_rerun=false` ·
+  `ocr_rerun=true` · `attempted_structured_ocr=true` · `structured_ocr_engine=tesseract_cli` ·
+  `structured_ocr_status=ran` · `fallback_engine=none` · `local_ocr_engine=tesseract_cli` ·
+  `local_ocr_status=ran` · `pages_considered_count_bucket=low` · `pages_extracted_count_bucket=low` ·
+  `extracted_text_block_count_bucket=low` · `extracted_table_count_bucket=none` ·
+  `extracted_figure_or_diagram_count_bucket=none` · `marker_candidate_status=partial` ·
+  `marker_source=private_artifact_categories` · `marker_reliability=low` · `improvement_over_176r=no` ·
+  `next_test_readiness=needs_better_ocr` · `blocked_by=none` ·
+  `recommended_next_step=pivot_to_rendered_visible_asset_insertion`.
+  No raw source/OCR/guide/table/caption/prompt/response/provider payload/private path is committed; no provider
+  generation, guide generation, coverage eval, cloud OCR, new judge, repair, frontend, or API behavior changed.
+- **176T interpretation.** Tesseract ran locally but did not improve candidate_1 marker reliability over the 176R
+  text-layer artifact. Do not claim the OCR coverage thesis is proven on candidate_1 and do not run provider
+  generation. The next route is a visible-asset insertion pivot or a better uncommon fixture, not another broad OCR
+  setup slice without a concrete local-engine gap.
+- **Validation for 176T.** `compileall api pipeline test_scripts` OK;
+  `test_candidate1_structured_ocr_attempt` OK; `test_uncommon_deck_local_ocr_extraction` OK;
+  `test_uncommon_deck_coverage_eval` OK; `test_slide_raster_ocr_ingestion` OK; private runner completed;
+  `git diff --check` clean. Docker was not run. `local_operator_baselines/` remains ignored/uncommitted.
+  **NOT committed.**
+- **Slice 176S is committed/merged/pushed as `0deb4f9`** (uncommon-deck coverage eval).
 - **Slice 176S result (uncommon-deck coverage eval).** Private closed comparison completed over existing
   candidate_1 baseline/generated guides and the 176R extraction artifact: `status=degraded` ·
   `source_label=candidate_1` · `candidate_type=uncommon_course_deck` ·
@@ -30,7 +57,7 @@
 - **Validation for 176S.** `compileall api pipeline test_scripts` OK; `test_deck_specific_coverage_eval` OK;
   `test_uncommon_deck_local_ocr_extraction` OK; `test_uncommon_deck_coverage_eval` OK; private coverage runner
   completed; `git diff --check` clean. Docker was not run. `local_operator_baselines/` remains
-  ignored/uncommitted. **NOT committed.**
+  ignored/uncommitted. **Committed `0deb4f9` / merged to trunk.**
 - **Slice 176R is committed/merged/pushed as `6570012`** (uncommon-deck local OCR extraction).
 - **Slice 176R result (uncommon-deck local OCR extraction).** Private local extraction completed with closed labels
   only: `status=degraded` · `source_label=candidate_1` · `candidate_type=uncommon_course_deck` ·
