@@ -7768,4 +7768,28 @@ was `baseline_deck_specific_coverage=high`,
 movement, and do not run packaging-v2 immediately from this evidence. The next evidence
 should come from `test_on_uncommon_deck` or a visible-asset insertion route. Raw guide/OCR/
 table/caption/prompt/response/provider payload content and private paths stay out of git;
-`judge_ready=false` and `repair_ready=false` remain frozen. **NOT committed.**
+`judge_ready=false` and `repair_ready=false` remain frozen. **Committed `32707fc` / merged to trunk.**
+
+## Slice 176Q — uncommon-deck OCR value diagnostic routes to OCR extraction, not provider generation
+176P showed no deck-specific coverage improvement on the common StatQuest/ensemble deck: both the baseline and
+OCR-context guides were already `high`, with `deck_specific_coverage_delta=unchanged`. That result does not
+support scorer-threshold tuning or packaging-v2 for the same deck. 176Q therefore inventories private/gitignored
+local artifacts to decide whether a meaningful uncommon-deck coverage test can be run from existing artifacts,
+without another provider generation or broad OCR campaign.
+
+**Result:** a non-StatQuest/private course-deck candidate exists locally with private source and guide artifacts,
+but no existing OCR artifact or marker candidates for that candidate. Closed result:
+`status=completed`, `source_label=candidate_1`, `uncommon_candidate_available=true`,
+`candidate_type=uncommon_course_deck`, `candidate_readiness=needs_ocr_artifact`,
+`private_source_available=true`, `private_source_gitignored=true`, `private_ocr_artifact_available=false`,
+`private_ocr_artifact_gitignored=false`, `private_baseline_guide_available=true`,
+`private_baseline_guide_gitignored=true`, `private_generated_guide_available=true`,
+`private_generated_guide_gitignored=true`, `marker_candidate_status=unavailable`,
+`marker_source=unavailable`, `provider_call_made=false`, `generation_rerun=false`, `ocr_rerun=false`,
+`next_test_readiness=ready_for_uncommon_deck_ocr_extraction`,
+`recommended_next_step=run_uncommon_deck_ocr_extraction`.
+
+**Decision:** the next route is an explicitly scoped uncommon-deck OCR extraction slice, not provider generation,
+not a same-deck packaging iteration, not a scorer patch, not a new judge, and not repair. Raw source/OCR/guide/
+table/caption/prompt/response/provider payload content and private paths stay out of git; `judge_ready=false`
+and `repair_ready=false` remain frozen. **NOT committed.**

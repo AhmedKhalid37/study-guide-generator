@@ -5,7 +5,7 @@
 
 ---
 
-## Phase 2 product path — **Slice 176P: deterministic deck-specific coverage eval; private baseline vs 176N guide compared on closed markers; NOT committed.**
+## Phase 2 product path — **Slice 176P: deterministic deck-specific coverage eval; private baseline vs 176N guide compared on closed markers; committed `32707fc` / merged to trunk.**
 
 - **phase=Phase 2 (deck-specific coverage diagnostic after 176O proved scorer insensitivity)** · **slice=176P** ·
   **module=`pipeline/deck_specific_coverage_eval.py`** ·
@@ -43,7 +43,45 @@
   `test_flat_score_diagnostic` OK; `test_real_ocr_context_generation_score` OK; private coverage runner completed.
   No provider generation rerun; provider_call_made=false. No Docker. No raw OCR/guide/table/caption/prompt/
   response/provider payload/source PDF/private path committed; generated artifacts and `local_operator_baselines/`
-  stay ignored. **NOT committed.**
+  stay ignored. **Committed `32707fc` / merged to trunk.**
+
+---
+
+## Phase 2 product path — **Slice 176Q: uncommon-deck OCR value diagnostic; private inventory shows source+guides but no OCR artifact; NOT committed.**
+
+- **phase=Phase 2 (test OCR-context value away from the common StatQuest/ensemble deck)** · **slice=176Q** ·
+  **module=`pipeline/uncommon_deck_ocr_value_diagnostic.py`** ·
+  **runner=`test_scripts/run_uncommon_deck_ocr_value_diagnostic.py`** ·
+  **test=`test_scripts/test_uncommon_deck_ocr_value_diagnostic.py`** ·
+  **doc=`docs/UNCOMMON_DECK_OCR_VALUE_DIAGNOSTIC.md`** ·
+  **branch=`slice176q-uncommon-deck-ocr-value-diagnostic`** · **judge_ready=false** · **repair_ready=false**.
+- **Why this slice.** 176P showed no deck-specific coverage improvement on the common StatQuest/ensemble deck:
+  both baseline and OCR-context guides were already `high`, with `deck_specific_coverage_delta=unchanged`.
+  176Q asks whether a meaningful uncommon/private-deck coverage test can be run from existing private artifacts,
+  before any new OCR or provider generation.
+- **What it is / is NOT.** IS: a closed private inventory/readiness diagnostic over gitignored local artifacts.
+  NOT: another StatQuest/ensemble packaging iteration, another provider-generation run, OCR rerun, scorer-threshold
+  patch, new LLM judge, Layer-2 judge, repair, frontend/API rollout, cloud OCR, numeric recompute, or raw artifact
+  dump.
+- **Real result (private diagnostic over existing inventory).** `artifact_name=uncommon_deck_ocr_value_diagnostic` ·
+  `status=completed` · `source_label=candidate_1` · `uncommon_candidate_available=true` ·
+  `candidate_type=uncommon_course_deck` · `candidate_readiness=needs_ocr_artifact` ·
+  `private_source_available=true` · `private_source_gitignored=true` ·
+  `private_ocr_artifact_available=false` · `private_ocr_artifact_gitignored=false` ·
+  `private_baseline_guide_available=true` · `private_baseline_guide_gitignored=true` ·
+  `private_generated_guide_available=true` · `private_generated_guide_gitignored=true` ·
+  `marker_candidate_status=unavailable` · `marker_source=unavailable` ·
+  `provider_call_made=false` · `generation_rerun=false` · `ocr_rerun=false` ·
+  `next_test_readiness=ready_for_uncommon_deck_ocr_extraction` ·
+  `recommended_next_step=run_uncommon_deck_ocr_extraction`.
+- **Interpretation.** A non-StatQuest/private course-deck candidate exists locally with private source and guide
+  artifacts, but no existing OCR artifact or closed marker candidates are available for it. The next valid route is
+  an explicitly scoped uncommon-deck OCR extraction slice, not provider generation and not a same-deck packaging
+  iteration.
+- **Validation.** `compileall api pipeline test_scripts` OK; `test_uncommon_deck_ocr_value_diagnostic` OK;
+  `test_deck_specific_coverage_eval` OK; `test_flat_score_diagnostic` OK; private runner completed. No provider
+  generation; no OCR rerun; no Docker. No raw source/OCR/guide/table/caption/prompt/response/provider payload/
+  private path committed; generated artifacts and `local_operator_baselines/` stay ignored. **NOT committed.**
 
 ---
 

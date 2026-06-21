@@ -6,8 +6,31 @@
 > stable overview see `PROJECT_CONTEXT.md`; canonical brief is `../CLAUDE.md`.
 
 ## Current position
-- **Working tree:** branch `slice176p-deck-specific-coverage-eval`; **Slice 176P** added a deterministic
-  deck-specific coverage diagnostic after 176O found the existing score was structurally weighted. **NOT committed.**
+- **Working tree:** branch `slice176q-uncommon-deck-ocr-value-diagnostic`; **Slice 176Q** added an uncommon-deck
+  OCR value diagnostic over private/gitignored inventory after 176P showed the common StatQuest/ensemble deck was
+  already highly covered. **NOT committed.**
+- **Slice 176Q result (uncommon-deck OCR value diagnostic).** Existing private inventory was inspected locally
+  with closed labels only: `status=completed` · `source_label=candidate_1` ·
+  `uncommon_candidate_available=true` · `candidate_type=uncommon_course_deck` ·
+  `candidate_readiness=needs_ocr_artifact` · `private_source_available=true` ·
+  `private_source_gitignored=true` · `private_ocr_artifact_available=false` ·
+  `private_ocr_artifact_gitignored=false` · `private_baseline_guide_available=true` ·
+  `private_baseline_guide_gitignored=true` · `private_generated_guide_available=true` ·
+  `private_generated_guide_gitignored=true` · `marker_candidate_status=unavailable` ·
+  `marker_source=unavailable` · `provider_call_made=false` · `generation_rerun=false` ·
+  `ocr_rerun=false` · `next_test_readiness=ready_for_uncommon_deck_ocr_extraction` ·
+  `recommended_next_step=run_uncommon_deck_ocr_extraction`. No raw source/OCR/guide/table/caption/prompt/
+  response/provider payload/private path is committed; no normal-generation, frontend, or API behavior changed;
+  no cloud OCR; no new LLM judge; no repair.
+- **176Q interpretation.** A non-StatQuest/private course-deck candidate exists locally with private source and
+  guide artifacts, but no existing OCR artifact or closed marker candidates are available for it. The next valid
+  route is an explicitly scoped uncommon-deck OCR extraction slice. Do not run provider generation, do not run a
+  same-deck packaging iteration, and do not patch scorer thresholds.
+- **Validation for 176Q.** `compileall api pipeline test_scripts` OK;
+  `test_uncommon_deck_ocr_value_diagnostic` OK; `test_deck_specific_coverage_eval` OK;
+  `test_flat_score_diagnostic` OK; private diagnostic runner completed. Docker was not run.
+  `local_operator_baselines/` remains ignored/uncommitted. **NOT committed.**
+- **Slice 176P is committed/merged/pushed as `32707fc`** (deck-specific coverage eval).
 - **Slice 176P result (deck-specific coverage eval).** Existing private artifacts were inspected locally with
   closed labels only: `private_baseline_guide_available=true` · `private_baseline_guide_gitignored=true` ·
   `private_176n_guide_available=true` · `private_176n_guide_gitignored=true` ·
@@ -29,7 +52,7 @@
   route, depending on product priority.
 - **Validation for 176P.** `compileall api pipeline test_scripts` OK; `test_deck_specific_coverage_eval` OK;
   `test_flat_score_diagnostic` OK; `test_real_ocr_context_generation_score` OK; private coverage runner completed.
-  Docker was not run. `local_operator_baselines/` remains ignored/uncommitted. **NOT committed.**
+  Docker was not run. `local_operator_baselines/` remains ignored/uncommitted. **Committed `32707fc` / merged to trunk.**
 - **Slice 176O is committed/merged/pushed as `910a56c`** (flat-score diagnostic before packaging iteration).
 - **Slice 176O result (flat-score diagnostic).** Existing private artifacts were inspected locally with closed
   labels only: `private_baseline_guide_available=true` · `private_baseline_guide_gitignored=true` ·
