@@ -4280,22 +4280,64 @@ python test_scripts/smoke_release.py     # end-to-end release smoke (~28 checks;
 ```
 # NEXT_CHAT_HANDOFF.md
 
-## Slice 176Y Active Handoff
+## Slice 176Z Handoff
 
-- Branch: `slice176y-writer-generated-figure-companion`
-- Trunk before branch: `chrome-renderer-v1`
-- Prior 176X commit already on trunk and origin: `016431b4a67106aa474db3d88427e03bd4622765`
-- Active task: descriptor-driven writer-generated figure/diagram companion proof.
-- Allowed new source: `pipeline/writer_generated_figure_companion.py`
-- Allowed runner/test: `test_scripts/run_writer_generated_figure_companion.py`,
-  `test_scripts/test_writer_generated_figure_companion.py`
-- Allowed docs: `docs/WRITER_GENERATED_FIGURE_COMPANION.md`,
-  `docs/CURRENT_TASK.md`, `docs/NEXT_CHAT_HANDOFF.md`, `docs/DECISIONS.md`
+- Branch: `slice176z-non-table-figure-descriptor`
+- Trunk: `chrome-renderer-v1`
+- 176Y integration: `2b01f73` is on local and origin trunk.
+- Slice 176Z is not committed; stop for operator review.
 
-The existing private 176I visible-asset payload has no acceptable non-table
-figure/diagram descriptor for this gate. Its table/matrix/grid-style assets are
-excluded and must not be used as the 176Y figure proof.
+176Y refused table-like assets as figure companions. Tables, matrices, grids,
+proximity matrices, dataset tables, dataframes, structured grids, scanned tables,
+and any row/column/cell visual cannot count as a figure descriptor.
 
-Slice 176Y may be committed only as a negative/corrective guardrail. Next step:
-produce a private non-table figure descriptor from existing extraction, then
-rerun the 176Y producer.
+176Z produced the missing private non-table descriptor from existing private
+source/extraction using local PDF geometry only. It did not run provider/model
+generation, did not rerun OCR, did not use cloud OCR or Chandra, did not change
+frontend/API behavior, and did not run the writer figure companion.
+Operator review rejected the prior selected crop as text-only or wrong-source;
+the corrected target is the ensemble structure diagram.
+
+Closed real-run result:
+
+- `artifact_name=non_table_figure_descriptor`
+- `slice=176Z`
+- `status=completed`
+- `source_label=ensemble`
+- `candidate_source=private_source_deck`
+- `candidate_scan_mode=pdf_local_geometry_crop`
+- `selected_asset_category=ensemble_structure_diagram`
+- `selected_asset_kind=conceptual_diagram`
+- `selected_asset_role=study_visual`
+- `operator_rejected_previous_crop_reason=text_only_or_wrong_source`
+- `operator_target_visual_type=ensemble_structure_diagram`
+- `descriptor_written=true`
+- `descriptor_gitignored=true`
+- `private_visual_asset_available=true`
+- `private_visual_asset_gitignored=true`
+- `visual_is_table_like=false`
+- `visual_is_matrix=false`
+- `visual_is_grid=false`
+- `visual_is_text_only=false`
+- `visual_is_partial_sliver=false`
+- `visual_source_matches_label=true`
+- `visual_is_non_table_figure=true`
+- `visual_type_closed=flow_or_structure_diagram`
+- `visual_descriptor_readiness=ready_for_writer_companion`
+- `figure_companion_input_ready=true`
+- `provider_call_made=false`
+- `generation_rerun=false`
+- `generation_behavior_changed=false`
+- `ocr_rerun=false`
+- `cloud_ocr_used=false`
+- `chandra_used=false`
+- `frontend_api_changed=false`
+- `numeric_verification_claimed=false`
+- `judge_ready=false`
+- `repair_ready=false`
+- `blocked_by=none`
+- `recommended_next_step=run_writer_generated_figure_companion_on_non_table_descriptor`
+
+Recommended next step: run the writer-generated figure companion on the private
+non-table descriptor. Do not claim Phase 4 figure companion completion until that
+separate writer/rendered proof is produced and reviewed.

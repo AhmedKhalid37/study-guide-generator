@@ -5,6 +5,39 @@
 
 ---
 
+## Phase 4 product path — **Slice 176Z: corrected non-table figure descriptor; operator review pending.**
+
+- **phase=Phase 4 (writer-generated figure/diagram companion proof)** · **slice=176Z** ·
+  **module=`pipeline/non_table_figure_descriptor.py`** ·
+  **runner=`test_scripts/run_non_table_figure_descriptor.py`** ·
+  **test=`test_scripts/test_non_table_figure_descriptor.py`** ·
+  **doc=`docs/NON_TABLE_FIGURE_DESCRIPTOR.md`** ·
+  **judge_ready=false** · **repair_ready=false**.
+- **Operator correction.** `operator_rejected_previous_crop_reason=text_only_or_wrong_source` ·
+  `operator_target_visual_type=ensemble_structure_diagram`.
+- **Corrected private run.** `artifact_name=non_table_figure_descriptor` · `slice=176Z` ·
+  `status=completed` · `source_label=ensemble` · `candidate_source=private_source_deck` ·
+  `candidate_scan_mode=pdf_local_geometry_crop` ·
+  `selected_asset_category=ensemble_structure_diagram` ·
+  `selected_asset_kind=conceptual_diagram` · `selected_asset_role=study_visual` ·
+  `descriptor_written=true` · `descriptor_gitignored=true` ·
+  `private_visual_asset_available=true` · `private_visual_asset_gitignored=true` ·
+  `visual_is_table_like=false` · `visual_is_matrix=false` · `visual_is_grid=false` ·
+  `visual_is_text_only=false` · `visual_is_partial_sliver=false` ·
+  `visual_source_matches_label=true` · `visual_is_non_table_figure=true` ·
+  `visual_type_closed=flow_or_structure_diagram` ·
+  `visual_descriptor_readiness=ready_for_writer_companion` ·
+  `figure_companion_input_ready=true` · `provider_call_made=false` ·
+  `generation_rerun=false` · `generation_behavior_changed=false` ·
+  `ocr_rerun=false` · `cloud_ocr_used=false` · `chandra_used=false` ·
+  `frontend_api_changed=false` · `numeric_verification_claimed=false` ·
+  `judge_ready=false` · `repair_ready=false` · `blocked_by=none` ·
+  `recommended_next_step=run_writer_generated_figure_companion_on_non_table_descriptor`.
+- **Status.** Do not commit Slice 176Z. Stop for operator visual review before
+  any commit or writer/provider generation.
+
+---
+
 ## Phase 4 product path — **Slice 176Y: descriptor-driven figure/diagram companion proof; corrected blocked state.**
 
 - **phase=Phase 4 (writer-generated figure/diagram companion proof)** · **slice=176Y** ·
@@ -12397,3 +12430,53 @@ sign-off.)
   branches (and the short-lived `salvage-compose-limits`, `integ-group-c`) are kept,
   not deleted, per the operator's "do not delete branches" rule.
 - **Group D** — not started. Do not begin without an explicit slice request.
+## Slice 176Z — Non-Table Figure Descriptor
+
+176Y is integrated on `chrome-renderer-v1` and refuses table-like assets as
+figure companions. Tables, matrices, grids, proximity matrices, dataset tables,
+dataframes, structured grids, scanned tables, and row/column/cell visuals cannot
+count as a figure descriptor.
+
+176Z produces the missing private non-table descriptor from existing private
+extraction/source artifacts. It does not run provider/model generation, does not
+rerun OCR, does not use cloud OCR or Chandra, does not change frontend/API
+behavior, and does not complete the writer figure companion.
+
+Closed real-run result:
+
+- `artifact_name=non_table_figure_descriptor`
+- `slice=176Z`
+- `status=completed`
+- `source_label=ensemble`
+- `candidate_source=private_source_deck`
+- `candidate_scan_mode=pdf_local_geometry_crop`
+- `selected_asset_category=conceptual_diagram`
+- `selected_asset_kind=conceptual_diagram`
+- `selected_asset_role=study_visual`
+- `descriptor_written=true`
+- `descriptor_gitignored=true`
+- `private_visual_asset_available=true`
+- `private_visual_asset_gitignored=true`
+- `visual_is_table_like=false`
+- `visual_is_matrix=false`
+- `visual_is_grid=false`
+- `visual_is_non_table_figure=true`
+- `visual_type_closed=conceptual_diagram`
+- `visual_descriptor_readiness=ready_for_writer_companion`
+- `figure_companion_input_ready=true`
+- `provider_call_made=false`
+- `generation_rerun=false`
+- `generation_behavior_changed=false`
+- `ocr_rerun=false`
+- `cloud_ocr_used=false`
+- `chandra_used=false`
+- `frontend_api_changed=false`
+- `numeric_verification_claimed=false`
+- `judge_ready=false`
+- `repair_ready=false`
+- `blocked_by=none`
+- `recommended_next_step=run_writer_generated_figure_companion_on_non_table_descriptor`
+
+Next route: run the writer-generated figure companion on the private non-table
+descriptor in a separate slice. Do not claim Phase 4 figure companion completion
+from 176Z alone.

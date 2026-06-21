@@ -8048,3 +8048,43 @@ as role-aware study simplification rather than a row-reduced copy. Commit Slice 
   descriptor JSON, private paths, screenshots, prompt text, provider responses,
   hashes, or byte counts. Commit only as a negative/corrective guardrail; this
   does not satisfy the Phase 4 figure/diagram requirement.
+
+## Slice 176Z
+
+- 176Z creates the missing private non-table figure descriptor from existing
+  private extraction/source artifacts before any writer companion rerun.
+- The selector keeps 176Y's refusal intact: table, matrix, grid, proximity
+  matrix, dataset table, dataframe, structured grid, scanned table, and other
+  row/column/cell visuals are not eligible.
+- Operator review rejected the previous selected crop as text-only or
+  wrong-source. The corrected target is the ensemble structure diagram, and a
+  crop may satisfy `visual_is_non_table_figure=true` only when dominated by
+  visible non-text structure.
+- The private runner may use local PDF geometry/crop extraction only inside a
+  gitignored/private output directory. It does not add a broad OCR framework,
+  cloud OCR, Chandra, provider/model generation, judge, repair, frontend/API
+  behavior, or writer-companion behavior.
+- Real run completed with closed labels:
+  `status=completed`, `source_label=ensemble`,
+  `candidate_source=private_source_deck`,
+  `candidate_scan_mode=pdf_local_geometry_crop`,
+  `selected_asset_category=ensemble_structure_diagram`,
+  `selected_asset_kind=conceptual_diagram`,
+  `operator_rejected_previous_crop_reason=text_only_or_wrong_source`,
+  `operator_target_visual_type=ensemble_structure_diagram`,
+  `descriptor_written=true`, `descriptor_gitignored=true`,
+  `private_visual_asset_available=true`,
+  `private_visual_asset_gitignored=true`,
+  `visual_is_table_like=false`, `visual_is_matrix=false`,
+  `visual_is_grid=false`, `visual_is_text_only=false`,
+  `visual_is_partial_sliver=false`, `visual_source_matches_label=true`,
+  `visual_is_non_table_figure=true`,
+  `visual_type_closed=flow_or_structure_diagram`,
+  `visual_descriptor_readiness=ready_for_writer_companion`,
+  `figure_companion_input_ready=true`, `provider_call_made=false`,
+  `generation_rerun=false`, `generation_behavior_changed=false`,
+  `ocr_rerun=false`, `cloud_ocr_used=false`, `chandra_used=false`,
+  `frontend_api_changed=false`, `numeric_verification_claimed=false`,
+  `judge_ready=false`, `repair_ready=false`, `blocked_by=none`.
+- 176Z does not complete the writer figure companion. Next route:
+  `run_writer_generated_figure_companion_on_non_table_descriptor`.
