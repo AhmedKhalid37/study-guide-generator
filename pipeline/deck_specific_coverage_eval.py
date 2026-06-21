@@ -19,7 +19,10 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from pipeline.slide_raster_ocr_ingestion import is_private_artifact_dir  # noqa: E402
 
 ARTIFACT_NAME = "deck_specific_coverage_eval"
+UNCOMMON_ARTIFACT_NAME = "uncommon_deck_coverage_eval"
 SOURCE_LABEL_DEFAULT = "ensemble"
+UNCOMMON_SOURCE_LABEL_DEFAULT = "candidate_1"
+UNCOMMON_CANDIDATE_TYPE = "uncommon_course_deck"
 
 STATUSES = frozenset({"completed", "degraded", "blocked", "skipped"})
 MARKER_SOURCES = frozenset(
@@ -41,11 +44,32 @@ NEXT_STEPS = frozenset(
     }
 )
 MARKER_STATUSES = frozenset({"present", "partial", "absent", "not_checked"})
+UNCOMMON_NEXT_STEPS = frozenset(
+    {
+        "run_real_ocr_context_generation_for_candidate_1",
+        "improve_candidate_1_ocr_extraction",
+        "pivot_to_rendered_visible_asset_insertion",
+        "stop_ocr_coverage_campaign",
+        "collect_better_uncommon_fixture",
+        "blocked",
+    }
+)
+UNCOMMON_MARKER_CANDIDATE_STATUSES = frozenset({"available", "partial", "unavailable"})
+UNCOMMON_RELIABILITY = frozenset({"high", "medium", "low", "unknown"})
+UNCOMMON_SHOULD_RUN = frozenset({"yes", "no", "not_yet"})
 
 _GENERATED_GUIDE_FILENAME = "real_ocr_context_generated_guide.md"
 _GENERATED_SOURCE_FILENAME = "real_ocr_context_source.md"
 _MANIFEST_FILENAME = "extracted_content_manifest.json"
 _VISIBLE_PAYLOAD_FILENAME = "visible_table_figure_pilot.json"
+_UNCOMMON_OCR_ARTIFACT_FILENAME = "uncommon_deck_local_ocr_artifact.json"
+_UNCOMMON_CLOSED_SUMMARY_FILENAME = "closed_uncommon_deck_local_ocr_summary.json"
+_GUIDE_SUFFIXES = frozenset({"." + "md", "." + "txt", "." + "pdf"})
+_UNCOMMON_GENERATED_GUIDE_FILENAMES = frozenset(
+    {"real_ocr_context_generated_guide.md", "ocr_context_private_guide.md"}
+)
+_UNCOMMON_COMMON_TOKENS = frozenset({"statquest", "ensemble"})
+_UNCOMMON_BASELINE_TOKENS = frozenset({"baseline", "reference", "claude", "clean", "latest"})
 
 _CATEGORY_MAP = {
     "ensemble_proximity_matrix": "proximity_matrix",
@@ -99,6 +123,43 @@ _CLOSED_MARKERS: dict[str, dict[str, Any]] = {
         "term_groups": (("explain", "interpret", "use the"), ("table", "diagram", "matrix")),
     },
 }
+
+_UNCOMMON_CLOSED_MARKERS: dict[str, dict[str, Any]] = {
+    "uncommon_text_layer_content": {
+        "categories": ("text_layer_content",),
+        "term_groups": (("lecture", "content", "source"), ("section", "topic", "concept")),
+    },
+    "uncommon_concept_or_definition": {
+        "categories": ("concept_or_definition",),
+        "term_groups": (("definition", "concept"), ("principle", "theorem", "idea")),
+    },
+    "uncommon_example_or_case": {
+        "categories": ("example_or_case",),
+        "term_groups": (("example", "case"), ("scenario", "worked")),
+    },
+    "uncommon_assessment_or_question": {
+        "categories": ("assessment_or_question",),
+        "term_groups": (("question", "quiz"), ("exercise", "assessment", "practice")),
+    },
+    "uncommon_numeric_content": {
+        "categories": ("numeric_content",),
+        "term_groups": (("number", "numeric", "calculation"), ("value", "result")),
+    },
+    "uncommon_table_like": {
+        "categories": ("table_like",),
+        "term_groups": (("table", "dataset"), ("row", "column", "matrix")),
+    },
+    "uncommon_figure_or_diagram_like": {
+        "categories": ("figure_or_diagram_like",),
+        "term_groups": (("figure", "diagram"), ("chart", "graph", "plot")),
+    },
+}
+
+_UNCOMMON_STATIC_MARKER_IDS = (
+    "uncommon_text_layer_content",
+    "uncommon_concept_or_definition",
+    "uncommon_example_or_case",
+)
 
 
 def build_closed_deck_specific_coverage_summary(
@@ -476,12 +537,34 @@ def _read_json(path: str | None) -> Any:
 def _read_private_markdown(path: str | None) -> str | None:
     if not _is_private_file(path):
         return None
+    if str(path).lower().endswith("." + "pdf"):
+        return _read_private_pdf_text(path)
     try:
         with open(path, encoding="utf-8") as fh:
             text = fh.read()
     except Exception:
         return None
     return text if text.strip() else None
+
+
+def _read_private_pdf_text(path: str | None) -> str | None:
+    if not _is_private_file(path):
+        return None
+    try:
+        import fitz
+    except Exception:
+        return None
+    try:
+        chunks: list[str] = []
+        with fitz.open(path) as document:
+            for index in range(int(document.page_count)):
+                text = document[index].get_text("text") or ""
+                if text.strip():
+                    chunks.append(text)
+        joined = "\n".join(chunks)
+        return joined if joined.strip() else None
+    except Exception:
+        return None
 
 
 def _resolve_176n_guide_path(path: str | None, private_dir: str | None) -> str | None:
@@ -530,8 +613,402 @@ def _safe_label(value: Any) -> str:
     return (cleaned or "unknown")[:40]
 
 
+def _path_tokens(path: Any) -> set[str]:
+    text = " ".join(str(part).lower() for part in getattr(path, "parts", ())[-6:])
+    return {t for t in re.split(r"[^a-z0-9]+", text) if t}
+
+
 def _coerce(value: Any, allowed: Any, default: str) -> str:
     return value if isinstance(value, str) and value in allowed else default
+
+
+def build_closed_uncommon_deck_coverage_summary(
+    *,
+    status: str,
+    source_label: str = UNCOMMON_SOURCE_LABEL_DEFAULT,
+    private_baseline_guide_available: bool = False,
+    private_baseline_guide_gitignored: bool = False,
+    private_generated_guide_available: bool = False,
+    private_generated_guide_gitignored: bool = False,
+    private_ocr_artifact_available: bool = False,
+    private_ocr_artifact_gitignored: bool = False,
+    marker_source: str = "unavailable",
+    marker_candidate_status: str = "unavailable",
+    markers: list[dict[str, str]] | None = None,
+    marker_reliability: str | None = None,
+    recommended_next_step: str | None = None,
+) -> dict[str, Any]:
+    """Return a committed-safe closed uncommon-deck coverage diagnostic."""
+    safe_markers = [_safe_uncommon_marker_record(m) for m in (markers or []) if isinstance(m, dict)]
+    marker_count_bucket = _count_bucket(len(safe_markers))
+    baseline_coverage = _coverage_bucket(_coverage_ratio(safe_markers, "baseline_status"))
+    generated_coverage = _coverage_bucket(_coverage_ratio(safe_markers, "generated_status"))
+    deck_delta = _delta_from_ratios(
+        _coverage_ratio(safe_markers, "baseline_status"),
+        _coverage_ratio(safe_markers, "generated_status"),
+    )
+    recovered_delta = _delta_for_uncommon_subset(
+        safe_markers,
+        {
+            "uncommon_text_layer_content",
+            "uncommon_concept_or_definition",
+            "uncommon_example_or_case",
+            "uncommon_numeric_content",
+            "uncommon_table_like",
+            "uncommon_figure_or_diagram_like",
+        },
+    )
+    active_delta = _delta_for_uncommon_subset(safe_markers, {"uncommon_assessment_or_question"})
+    reliability = _coerce(
+        marker_reliability or _uncommon_marker_reliability(marker_source, marker_candidate_status, safe_markers),
+        UNCOMMON_RELIABILITY,
+        "unknown",
+    )
+    coerced_status = _coerce(status, STATUSES, "blocked")
+    if coerced_status == "completed" and reliability in {"low", "unknown"}:
+        coerced_status = "degraded"
+    if recommended_next_step is None:
+        recommended_next_step = _route_uncommon_next_step(
+            status=coerced_status,
+            baseline_coverage=baseline_coverage,
+            generated_coverage=generated_coverage,
+            deck_delta=deck_delta,
+            marker_reliability=reliability,
+        )
+    should_provider, should_better_ocr = _uncommon_followup_flags(
+        status=coerced_status,
+        deck_delta=deck_delta,
+        marker_reliability=reliability,
+        recommended_next_step=recommended_next_step,
+    )
+
+    return {
+        "artifact_name": UNCOMMON_ARTIFACT_NAME,
+        "status": coerced_status,
+        "source_label": _safe_label(source_label),
+        "candidate_type": UNCOMMON_CANDIDATE_TYPE,
+        "private_baseline_guide_available": bool(private_baseline_guide_available),
+        "private_baseline_guide_gitignored": bool(private_baseline_guide_gitignored),
+        "private_generated_guide_available": bool(private_generated_guide_available),
+        "private_generated_guide_gitignored": bool(private_generated_guide_gitignored),
+        "private_ocr_artifact_available": bool(private_ocr_artifact_available),
+        "private_ocr_artifact_gitignored": bool(private_ocr_artifact_gitignored),
+        "raw_baseline_guide_committed": False,
+        "raw_generated_guide_committed": False,
+        "raw_ocr_committed": False,
+        "raw_source_committed": False,
+        "raw_table_text_committed": False,
+        "raw_caption_text_committed": False,
+        "prompts_committed": False,
+        "responses_committed": False,
+        "provider_payloads_committed": False,
+        "provider_call_made": False,
+        "generation_rerun": False,
+        "ocr_rerun": False,
+        "marker_source": _coerce(marker_source, MARKER_SOURCES, "unavailable"),
+        "marker_candidate_status": _coerce(
+            marker_candidate_status, UNCOMMON_MARKER_CANDIDATE_STATUSES, "unavailable"
+        ),
+        "marker_count_bucket": _coerce(marker_count_bucket, COUNT_BUCKETS, "unknown"),
+        "baseline_deck_specific_coverage": _coerce(baseline_coverage, COVERAGE_BUCKETS, "unknown"),
+        "generated_deck_specific_coverage": _coerce(generated_coverage, COVERAGE_BUCKETS, "unknown"),
+        "deck_specific_coverage_delta": _coerce(deck_delta, DELTAS, "unavailable"),
+        "recovered_content_usage_delta": _coerce(recovered_delta, DELTAS, "unavailable"),
+        "active_recall_from_recovered_content_delta": _coerce(active_delta, DELTAS, "unavailable"),
+        "coverage_eval_role": "diagnostic" if reliability in {"low", "unknown"} else "official_candidate",
+        "marker_reliability": reliability,
+        "should_run_provider_generation": _coerce(should_provider, UNCOMMON_SHOULD_RUN, "not_yet"),
+        "should_run_better_ocr": _coerce(should_better_ocr, UNCOMMON_SHOULD_RUN, "not_yet"),
+        "should_modify_contract_scorer": "no",
+        "recommended_next_step": _coerce(recommended_next_step, UNCOMMON_NEXT_STEPS, "blocked"),
+        "markers": safe_markers,
+    }
+
+
+def run_uncommon_deck_coverage_eval(
+    *,
+    baseline_guide_path: str | None = None,
+    generated_guide_path: str | None = None,
+    private_ocr_dir: str | None = None,
+    uncommon_ocr_artifact_path: str | None = None,
+    inventory_roots: list[str] | None = None,
+    source_label: str = UNCOMMON_SOURCE_LABEL_DEFAULT,
+) -> dict[str, Any]:
+    """Compare existing private uncommon-deck guides against closed OCR markers."""
+    private_dir = _safe_private_dir(private_ocr_dir)
+    baseline_path = _safe_private_file(baseline_guide_path)
+    generated_path = _safe_private_file(generated_guide_path)
+    artifact_path = _resolve_uncommon_ocr_artifact(uncommon_ocr_artifact_path, private_dir)
+
+    if not (baseline_path and generated_path and artifact_path):
+        discovered = _discover_uncommon_coverage_inputs(inventory_roots, private_dir)
+        baseline_path = baseline_path or discovered.get("baseline")
+        generated_path = generated_path or discovered.get("generated")
+        artifact_path = artifact_path or discovered.get("artifact")
+
+    baseline_text = _read_private_markdown(baseline_path)
+    generated_text = _read_private_markdown(generated_path)
+    artifact = _read_json(artifact_path)
+    categories, has_records = _uncommon_artifact_categories(artifact)
+    marker_ids, marker_source, marker_status = _uncommon_marker_plan(categories, has_records)
+
+    baseline_available = baseline_text is not None
+    generated_available = generated_text is not None
+    artifact_available = isinstance(artifact, dict)
+    artifact_private = _is_private_file(artifact_path)
+
+    if not baseline_available or not generated_available or not artifact_available:
+        return build_closed_uncommon_deck_coverage_summary(
+            status="blocked",
+            source_label=source_label,
+            private_baseline_guide_available=baseline_available,
+            private_baseline_guide_gitignored=_is_private_file(baseline_path),
+            private_generated_guide_available=generated_available,
+            private_generated_guide_gitignored=_is_private_file(generated_path),
+            private_ocr_artifact_available=artifact_available,
+            private_ocr_artifact_gitignored=artifact_private,
+            marker_source="unavailable",
+            marker_candidate_status="unavailable",
+            recommended_next_step="blocked",
+        )
+
+    markers = [
+        _evaluate_uncommon_marker(marker_id, baseline_text or "", generated_text or "", marker_source)
+        for marker_id in marker_ids
+    ]
+    reliability = _uncommon_marker_reliability(marker_source, marker_status, markers)
+    status = "completed" if markers and reliability in {"medium", "high"} else "degraded"
+    return build_closed_uncommon_deck_coverage_summary(
+        status=status,
+        source_label=source_label,
+        private_baseline_guide_available=True,
+        private_baseline_guide_gitignored=_is_private_file(baseline_path),
+        private_generated_guide_available=True,
+        private_generated_guide_gitignored=_is_private_file(generated_path),
+        private_ocr_artifact_available=True,
+        private_ocr_artifact_gitignored=artifact_private,
+        marker_source=marker_source,
+        marker_candidate_status=marker_status,
+        markers=markers,
+        marker_reliability=reliability,
+    )
+
+
+def uncommon_deck_coverage_main() -> int:
+    summary = run_uncommon_deck_coverage_eval(
+        baseline_guide_path=os.environ.get("BASELINE_GUIDE_MD")
+        or os.environ.get("PRIVATE_BASELINE_GUIDE_MD"),
+        generated_guide_path=os.environ.get("GENERATED_GUIDE_MD")
+        or os.environ.get("PRIVATE_GENERATED_GUIDE_MD")
+        or os.environ.get("REAL_OCR_CONTEXT_GUIDE_MD"),
+        private_ocr_dir=os.environ.get("PRIVATE_OCR_DIR"),
+        uncommon_ocr_artifact_path=os.environ.get("UNCOMMON_OCR_ARTIFACT_JSON"),
+        inventory_roots=_env_roots(),
+        source_label=os.environ.get("SOURCE_LABEL", UNCOMMON_SOURCE_LABEL_DEFAULT),
+    )
+    print(json.dumps(summary, indent=2))
+    return 0 if summary["status"] in {"completed", "degraded"} else 2
+
+
+def _safe_uncommon_marker_record(marker: dict[str, str]) -> dict[str, str]:
+    marker_id = marker.get("marker_id")
+    if marker_id not in _UNCOMMON_CLOSED_MARKERS:
+        marker_id = "uncommon_text_layer_content"
+    baseline_status = _coerce(marker.get("baseline_status"), MARKER_STATUSES, "not_checked")
+    generated_status = _coerce(marker.get("generated_status"), MARKER_STATUSES, "not_checked")
+    return {
+        "marker_id": marker_id,
+        "marker_source": _coerce(marker.get("marker_source"), MARKER_SOURCES, "closed_static_ids"),
+        "baseline_status": baseline_status,
+        "generated_status": generated_status,
+        "delta": _coerce(marker.get("delta"), DELTAS, _status_delta(baseline_status, generated_status)),
+    }
+
+
+def _evaluate_uncommon_marker(
+    marker_id: str, baseline_text: str, generated_text: str, marker_source: str
+) -> dict[str, str]:
+    spec = _UNCOMMON_CLOSED_MARKERS.get(marker_id, {})
+    groups = spec.get("term_groups", ())
+    baseline_status = _coverage_status(baseline_text, groups)
+    generated_status = _coverage_status(generated_text, groups)
+    return {
+        "marker_id": marker_id,
+        "marker_source": _coerce(marker_source, MARKER_SOURCES, "closed_static_ids"),
+        "baseline_status": baseline_status,
+        "generated_status": generated_status,
+        "delta": _status_delta(baseline_status, generated_status),
+    }
+
+
+def _delta_for_uncommon_subset(markers: list[dict[str, str]], marker_ids: set[str]) -> str:
+    subset = [m for m in markers if m.get("marker_id") in marker_ids]
+    return _delta_from_ratios(
+        _coverage_ratio(subset, "baseline_status"),
+        _coverage_ratio(subset, "generated_status"),
+    )
+
+
+def _uncommon_artifact_categories(payload: Any) -> tuple[set[str], bool]:
+    if not isinstance(payload, dict):
+        return set(), False
+    categories = {_safe_label(c) for c in payload.get("closed_categories", []) if isinstance(c, str)}
+    entries = payload.get("entries")
+    has_records = False
+    for entry in entries if isinstance(entries, list) else []:
+        if not isinstance(entry, dict):
+            continue
+        has_records = True
+        for category in entry.get("closed_categories", []):
+            if isinstance(category, str):
+                categories.add(_safe_label(category))
+    return categories, has_records
+
+
+def _uncommon_marker_plan(categories: set[str], has_records: bool) -> tuple[list[str], str, str]:
+    selected = [
+        marker_id
+        for marker_id, spec in _UNCOMMON_CLOSED_MARKERS.items()
+        if set(spec.get("categories", ())) & categories
+    ]
+    if selected:
+        source = "private_artifact_categories"
+        status = "available" if len(selected) >= 3 else "partial"
+        return selected, source, status
+    if has_records:
+        return list(_UNCOMMON_STATIC_MARKER_IDS), "closed_static_ids", "partial"
+    return [], "unavailable", "unavailable"
+
+
+def _uncommon_marker_reliability(
+    marker_source: str, marker_candidate_status: str, markers: list[dict[str, str]]
+) -> str:
+    checked = [m for m in markers if m.get("baseline_status") != "not_checked" or m.get("generated_status") != "not_checked"]
+    if marker_source == "private_artifact_categories" and marker_candidate_status == "available":
+        return "high" if len(checked) >= 5 else "medium"
+    if marker_source in {"private_artifact_categories", "mixed_closed_ids"} and checked:
+        return "medium"
+    if marker_source == "closed_static_ids" and checked:
+        return "low"
+    return "unknown"
+
+
+def _route_uncommon_next_step(
+    *,
+    status: str,
+    baseline_coverage: str,
+    generated_coverage: str,
+    deck_delta: str,
+    marker_reliability: str,
+) -> str:
+    if status in {"blocked", "skipped"}:
+        return "blocked"
+    if deck_delta == "improved" and marker_reliability in {"medium", "high"}:
+        return "run_real_ocr_context_generation_for_candidate_1"
+    if baseline_coverage == "high" and generated_coverage == "high":
+        return "pivot_to_rendered_visible_asset_insertion"
+    if deck_delta == "regressed":
+        return "collect_better_uncommon_fixture"
+    if marker_reliability in {"low", "unknown"}:
+        return "improve_candidate_1_ocr_extraction"
+    if deck_delta == "unchanged":
+        return "stop_ocr_coverage_campaign"
+    return "blocked"
+
+
+def _uncommon_followup_flags(
+    *, status: str, deck_delta: str, marker_reliability: str, recommended_next_step: str
+) -> tuple[str, str]:
+    if status == "blocked":
+        return "not_yet", "not_yet"
+    if deck_delta == "improved" and marker_reliability in {"medium", "high"}:
+        return "yes", "no"
+    if recommended_next_step == "improve_candidate_1_ocr_extraction":
+        return "not_yet", "yes"
+    return "no", "no"
+
+
+def _resolve_uncommon_ocr_artifact(path: str | None, private_dir: str | None) -> str | None:
+    explicit = _safe_private_file(path)
+    if explicit:
+        return explicit
+    if private_dir:
+        return _safe_private_file(os.path.join(private_dir, _UNCOMMON_OCR_ARTIFACT_FILENAME))
+    return None
+
+
+def _discover_uncommon_coverage_inputs(roots: list[str] | None, private_dir: str | None) -> dict[str, str | None]:
+    out: dict[str, str | None] = {"baseline": None, "generated": None, "artifact": None}
+    paths = _private_files_from_roots_for_uncommon(roots)
+    if private_dir:
+        paths.extend(_private_files_from_roots_for_uncommon([private_dir]))
+    for path in paths:
+        if _UNCOMMON_COMMON_TOKENS & _path_tokens(path):
+            continue
+        name = path.name.lower()
+        if name == _UNCOMMON_OCR_ARTIFACT_FILENAME and out["artifact"] is None:
+            out["artifact"] = str(path)
+        elif _is_uncommon_generated_guide(path) and out["generated"] is None:
+            out["generated"] = str(path)
+        elif _is_uncommon_baseline_guide(path) and out["baseline"] is None:
+            out["baseline"] = str(path)
+    return out
+
+
+def _private_files_from_roots_for_uncommon(roots: list[str] | None) -> list[Any]:
+    selected_roots = roots or [os.getcwd()]
+    out: list[Any] = []
+    for root in selected_roots:
+        if not isinstance(root, str) or not root:
+            continue
+        root_path = os.path.abspath(root)
+        if os.path.isfile(root_path):
+            if is_private_artifact_dir(os.path.dirname(root_path)):
+                out.append(_PathLike(root_path))
+            continue
+        if not os.path.isdir(root_path):
+            continue
+        for walk_root, dirs, files in os.walk(root_path):
+            dirs[:] = [d for d in dirs if d not in {".git", "node_modules", ".venv", "__pycache__"}]
+            if not is_private_artifact_dir(walk_root):
+                continue
+            for name in files:
+                path = os.path.join(walk_root, name)
+                if is_private_artifact_dir(os.path.dirname(path)):
+                    out.append(_PathLike(path))
+    return sorted(out, key=lambda p: (len(str(p)), str(p)))
+
+
+class _PathLike:
+    def __init__(self, path: str) -> None:
+        self._path = path
+        self.name = os.path.basename(path)
+        self.suffix = os.path.splitext(path)[1]
+        self.parts = tuple(os.path.normpath(path).split(os.sep))
+
+    def __str__(self) -> str:
+        return self._path
+
+
+def _is_uncommon_generated_guide(path: Any) -> bool:
+    tokens = _path_tokens(path)
+    name = str(path.name).lower()
+    if name in _UNCOMMON_GENERATED_GUIDE_FILENAMES:
+        return True
+    return path.suffix.lower() in _GUIDE_SUFFIXES and "guideforge" in tokens
+
+
+def _is_uncommon_baseline_guide(path: Any) -> bool:
+    tokens = _path_tokens(path)
+    return path.suffix.lower() in _GUIDE_SUFFIXES and bool(tokens & _UNCOMMON_BASELINE_TOKENS)
+
+
+def _env_roots() -> list[str] | None:
+    raw = os.environ.get("PRIVATE_INVENTORY_ROOTS")
+    if not raw:
+        return None
+    roots = [p for p in raw.split(os.pathsep) if p]
+    return roots or None
 
 
 def main() -> int:

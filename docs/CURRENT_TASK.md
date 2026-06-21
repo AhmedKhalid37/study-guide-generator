@@ -86,7 +86,7 @@
 
 ---
 
-## Phase 2 product path — **Slice 176R: uncommon-deck local OCR extraction artifact; private artifact written; NOT committed.**
+## Phase 2 product path — **Slice 176R: uncommon-deck local OCR extraction artifact; private artifact written; committed `6570012` / merged to trunk.**
 
 - **phase=Phase 2 (produce missing OCR artifact for uncommon candidate)** · **slice=176R** ·
   **module=`pipeline/uncommon_deck_local_ocr_extraction.py`** ·
@@ -124,7 +124,45 @@
   `test_slide_raster_ocr_ingestion` OK; private runner completed; `git diff --check` clean. No provider
   generation; no guide generation; no coverage eval; no Docker. No raw source/OCR/guide/table/caption/prompt/
   response/provider payload/private path committed; private OCR artifacts and `local_operator_baselines/` stay
-  ignored. **NOT committed.**
+  ignored. **Committed `6570012` / merged to trunk.**
+
+---
+
+## Phase 2 product path — **Slice 176S: uncommon-deck coverage eval over existing candidate_1 artifacts; degraded diagnostic; NOT committed.**
+
+- **phase=Phase 2 (uncommon-deck coverage comparison enabled by 176Q/176R)** · **slice=176S** ·
+  **module=`pipeline/deck_specific_coverage_eval.py`** ·
+  **runner=`test_scripts/run_uncommon_deck_coverage_eval.py`** ·
+  **test=`test_scripts/test_uncommon_deck_coverage_eval.py`** ·
+  **doc=`docs/UNCOMMON_DECK_COVERAGE_EVAL.md`** ·
+  **branch=`slice176s-uncommon-deck-coverage-eval`** · **judge_ready=false** · **repair_ready=false**.
+- **Why this slice.** 176Q found `candidate_1` needed an OCR artifact, and 176R produced one using the local
+  text layer. 176S runs the coverage comparison over existing private baseline/generated guides and that private
+  extraction artifact, emitting closed marker/status labels only.
+- **What it is / is NOT.** IS: a deterministic closed uncommon-deck coverage diagnostic over existing private
+  artifacts. NOT: provider generation, guide generation, packaging-v2, OCR rerun, baseline generation, official
+  scorer mutation, another extraction slice, cloud OCR, new LLM judge, Layer-2 judge, repair, or frontend/API
+  wiring.
+- **Real result (private diagnostic over existing candidate_1 artifacts).** `artifact_name=uncommon_deck_coverage_eval` ·
+  `status=degraded` · `source_label=candidate_1` · `candidate_type=uncommon_course_deck` ·
+  `private_baseline_guide_available=true` · `private_baseline_guide_gitignored=true` ·
+  `private_generated_guide_available=true` · `private_generated_guide_gitignored=true` ·
+  `private_ocr_artifact_available=true` · `private_ocr_artifact_gitignored=true` ·
+  `provider_call_made=false` · `generation_rerun=false` · `ocr_rerun=false` ·
+  `marker_source=closed_static_ids` · `marker_candidate_status=partial` · `marker_count_bucket=low` ·
+  `baseline_deck_specific_coverage=low` · `generated_deck_specific_coverage=high` ·
+  `deck_specific_coverage_delta=improved` · `recovered_content_usage_delta=improved` ·
+  `active_recall_from_recovered_content_delta=unavailable` · `coverage_eval_role=diagnostic` ·
+  `marker_reliability=low` · `should_run_provider_generation=not_yet` · `should_run_better_ocr=yes` ·
+  `recommended_next_step=improve_candidate_1_ocr_extraction`.
+- **Interpretation.** The generated guide improved coverage over the baseline on the weak closed static markers,
+  but marker reliability is low because 176R produced only partial marker candidates. Do not bank this as official
+  coverage evidence and do not run provider generation from it. The next route is better candidate_1 extraction.
+- **Validation.** `compileall api pipeline test_scripts` OK; `test_deck_specific_coverage_eval` OK;
+  `test_uncommon_deck_local_ocr_extraction` OK; `test_uncommon_deck_coverage_eval` OK; private coverage runner
+  completed; `git diff --check` clean. No provider generation; no guide generation; no OCR; no Docker. No raw
+  source/OCR/guide/table/caption/prompt/response/provider payload/private path committed; private artifacts and
+  `local_operator_baselines/` stay ignored. **NOT committed.**
 
 ---
 

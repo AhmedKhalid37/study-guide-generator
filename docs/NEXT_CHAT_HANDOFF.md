@@ -6,8 +6,32 @@
 > stable overview see `PROJECT_CONTEXT.md`; canonical brief is `../CLAUDE.md`.
 
 ## Current position
-- **Working tree:** branch `slice176r-uncommon-deck-local-ocr-extraction`; **Slice 176R** added the uncommon-deck
-  local OCR/text extraction artifact producer for `candidate_1`. **NOT committed.**
+- **Working tree:** branch `slice176s-uncommon-deck-coverage-eval`; **Slice 176S** added the uncommon-deck
+  coverage eval over existing candidate_1 private artifacts. **NOT committed.**
+- **Slice 176S result (uncommon-deck coverage eval).** Private closed comparison completed over existing
+  candidate_1 baseline/generated guides and the 176R extraction artifact: `status=degraded` ·
+  `source_label=candidate_1` · `candidate_type=uncommon_course_deck` ·
+  `private_baseline_guide_available=true` · `private_baseline_guide_gitignored=true` ·
+  `private_generated_guide_available=true` · `private_generated_guide_gitignored=true` ·
+  `private_ocr_artifact_available=true` · `private_ocr_artifact_gitignored=true` ·
+  `provider_call_made=false` · `generation_rerun=false` · `ocr_rerun=false` ·
+  `marker_source=closed_static_ids` · `marker_candidate_status=partial` · `marker_count_bucket=low` ·
+  `baseline_deck_specific_coverage=low` · `generated_deck_specific_coverage=high` ·
+  `deck_specific_coverage_delta=improved` · `recovered_content_usage_delta=improved` ·
+  `active_recall_from_recovered_content_delta=unavailable` · `coverage_eval_role=diagnostic` ·
+  `marker_reliability=low` · `should_run_provider_generation=not_yet` · `should_run_better_ocr=yes` ·
+  `recommended_next_step=improve_candidate_1_ocr_extraction`.
+  No raw source/OCR/guide/table/caption/prompt/response/provider payload/private path is committed; no provider
+  generation, guide generation, packaging-v2, OCR rerun, scorer mutation, new judge, repair, frontend, or API
+  behavior changed.
+- **176S interpretation.** The generated guide improves on weak closed static markers, but marker reliability is
+  low, so this is diagnostic only and not enough to justify provider generation. Next route: improve candidate_1
+  extraction.
+- **Validation for 176S.** `compileall api pipeline test_scripts` OK; `test_deck_specific_coverage_eval` OK;
+  `test_uncommon_deck_local_ocr_extraction` OK; `test_uncommon_deck_coverage_eval` OK; private coverage runner
+  completed; `git diff --check` clean. Docker was not run. `local_operator_baselines/` remains
+  ignored/uncommitted. **NOT committed.**
+- **Slice 176R is committed/merged/pushed as `6570012`** (uncommon-deck local OCR extraction).
 - **Slice 176R result (uncommon-deck local OCR extraction).** Private local extraction completed with closed labels
   only: `status=degraded` · `source_label=candidate_1` · `candidate_type=uncommon_course_deck` ·
   `private_source_available=true` · `private_source_gitignored=true` ·
@@ -31,7 +55,7 @@
   `test_uncommon_deck_local_ocr_extraction` OK; `test_uncommon_deck_ocr_value_diagnostic` OK;
   `test_slide_redundancy_detector` OK; `test_slide_raster_ocr_ingestion` OK; private extraction runner
   completed; `git diff --check` clean. Docker was not run. `local_operator_baselines/` remains
-  ignored/uncommitted. **NOT committed.**
+  ignored/uncommitted. **Committed `6570012` / merged to trunk.**
 - **Slice 176Q is committed/merged/pushed as `a0c07c0`** (uncommon-deck OCR value diagnostic).
 - **Slice 176Q result (uncommon-deck OCR value diagnostic).** Existing private inventory was inspected locally
   with closed labels only: `status=completed` · `source_label=candidate_1` ·

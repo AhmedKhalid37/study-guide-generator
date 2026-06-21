@@ -7817,4 +7817,27 @@ candidates. The engine was `text_layer`; this is not a Chandra/local structured 
 The next route is a coverage eval using existing private artifacts. Do not run provider generation, guide
 generation, cloud OCR, frame-selection pipeline, new judge, Layer-2 judge, or repair. Raw source/OCR/guide/table/
 caption/prompt/response/provider payload content and private paths stay out of git; `judge_ready=false` and
-`repair_ready=false` remain frozen. **NOT committed.**
+`repair_ready=false` remain frozen. **Committed `6570012` / merged to trunk.**
+
+## Slice 176S — uncommon-deck coverage improves on weak markers, but reliability is too low to run provider generation
+176R produced the missing `candidate_1` extraction artifact using the local text layer. 176S compares the existing
+private baseline/generated guides against that extraction artifact through closed marker IDs only. It reuses the
+deck-specific coverage evaluator path, adds the candidate_1 runner/tests, and does not run provider generation,
+guide generation, packaging-v2, OCR, cloud OCR, an official scorer mutation, a new judge, Layer-2 judge, repair,
+frontend/API wiring, or Docker.
+
+**Result:** `status=degraded`, `source_label=candidate_1`, `candidate_type=uncommon_course_deck`,
+`private_baseline_guide_available=true`, `private_baseline_guide_gitignored=true`,
+`private_generated_guide_available=true`, `private_generated_guide_gitignored=true`,
+`private_ocr_artifact_available=true`, `private_ocr_artifact_gitignored=true`, `provider_call_made=false`,
+`generation_rerun=false`, `ocr_rerun=false`, `marker_source=closed_static_ids`,
+`marker_candidate_status=partial`, `marker_count_bucket=low`, `baseline_deck_specific_coverage=low`,
+`generated_deck_specific_coverage=high`, `deck_specific_coverage_delta=improved`,
+`recovered_content_usage_delta=improved`, `active_recall_from_recovered_content_delta=unavailable`,
+`coverage_eval_role=diagnostic`, `marker_reliability=low`, `should_run_provider_generation=not_yet`,
+`should_run_better_ocr=yes`, `recommended_next_step=improve_candidate_1_ocr_extraction`.
+
+**Decision:** the generated guide is directionally better on the weak closed static markers, but the marker source
+is too weak to bank official coverage improvement or justify provider generation. The next route is improving
+candidate_1 extraction. Raw source/OCR/guide/table/caption/prompt/response/provider payload content and private
+paths stay out of git; `judge_ready=false` and `repair_ready=false` remain frozen. **NOT committed.**
