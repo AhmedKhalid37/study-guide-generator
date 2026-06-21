@@ -47,7 +47,7 @@
 
 ---
 
-## Phase 2 product path — **Slice 176Q: uncommon-deck OCR value diagnostic; private inventory shows source+guides but no OCR artifact; NOT committed.**
+## Phase 2 product path — **Slice 176Q: uncommon-deck OCR value diagnostic; private inventory shows source+guides but no OCR artifact; committed `a0c07c0` / merged to trunk.**
 
 - **phase=Phase 2 (test OCR-context value away from the common StatQuest/ensemble deck)** · **slice=176Q** ·
   **module=`pipeline/uncommon_deck_ocr_value_diagnostic.py`** ·
@@ -81,7 +81,50 @@
 - **Validation.** `compileall api pipeline test_scripts` OK; `test_uncommon_deck_ocr_value_diagnostic` OK;
   `test_deck_specific_coverage_eval` OK; `test_flat_score_diagnostic` OK; private runner completed. No provider
   generation; no OCR rerun; no Docker. No raw source/OCR/guide/table/caption/prompt/response/provider payload/
-  private path committed; generated artifacts and `local_operator_baselines/` stay ignored. **NOT committed.**
+  private path committed; generated artifacts and `local_operator_baselines/` stay ignored.
+  **Committed `a0c07c0` / merged to trunk.**
+
+---
+
+## Phase 2 product path — **Slice 176R: uncommon-deck local OCR extraction artifact; private artifact written; NOT committed.**
+
+- **phase=Phase 2 (produce missing OCR artifact for uncommon candidate)** · **slice=176R** ·
+  **module=`pipeline/uncommon_deck_local_ocr_extraction.py`** ·
+  **runner=`test_scripts/run_uncommon_deck_local_ocr_extraction.py`** ·
+  **test=`test_scripts/test_uncommon_deck_local_ocr_extraction.py`** ·
+  **doc=`docs/UNCOMMON_DECK_LOCAL_OCR_EXTRACTION.md`** ·
+  **branch=`slice176r-uncommon-deck-local-ocr-extraction`** · **judge_ready=false** ·
+  **repair_ready=false**.
+- **Why this slice.** 176Q found `candidate_1` has private source and guide artifacts, but no private OCR
+  artifact or closed marker candidates. 176R runs local extraction for that candidate and writes the raw output
+  only to private ignored storage, so a later coverage eval can use existing artifacts.
+- **What it is / is NOT.** IS: the missing private OCR/text artifact producer plus a committed-safe closed summary.
+  NOT: provider generation, guide generation, baseline generation, deck-specific coverage comparison, another
+  StatQuest/ensemble slice, frame-selection pipeline, frontend/API rollout, cloud OCR, new LLM judge, Layer-2
+  judge, repair, or numeric recompute.
+- **Real result (private local extraction over candidate_1).** `artifact_name=uncommon_deck_local_ocr_extraction` ·
+  `status=degraded` · `source_label=candidate_1` · `candidate_type=uncommon_course_deck` ·
+  `private_source_available=true` · `private_source_gitignored=true` ·
+  `private_ocr_artifact_written=true` · `private_ocr_artifact_gitignored=true` ·
+  `cloud_ocr_used=false` · `provider_call_made=false` · `generation_rerun=false` · `ocr_rerun=true` ·
+  `local_ocr_engine=text_layer` · `local_ocr_status=ran` · `slide_redundancy=unknown` ·
+  `frame_dedup_mode=auto` · `resolved_frame_dedup=off` · `expensive_frame_selection_built=false` ·
+  `pages_considered_count_bucket=low` · `pages_extracted_count_bucket=low` ·
+  `extracted_text_block_count_bucket=low` · `extracted_table_count_bucket=none` ·
+  `extracted_figure_or_diagram_count_bucket=none` · `marker_candidate_status=partial` ·
+  `marker_source=closed_static_ids` · `next_test_readiness=ready_for_uncommon_deck_coverage_eval` ·
+  `blocked_by=none` · `recommended_next_step=run_uncommon_deck_coverage_eval_existing_artifacts`.
+- **Interpretation.** The uncommon candidate now has a private extraction artifact and partial closed marker
+  candidates. Extraction is degraded because the local text layer supplied usable content but did not recover
+  table/figure-like structures. This does **not** claim Chandra/local structured OCR ran for `candidate_1`.
+  The next valid route is a coverage eval using existing private artifacts; do not run provider generation or
+  guide generation.
+- **Validation.** `compileall api pipeline test_scripts` OK; `test_uncommon_deck_local_ocr_extraction` OK;
+  `test_uncommon_deck_ocr_value_diagnostic` OK; `test_slide_redundancy_detector` OK;
+  `test_slide_raster_ocr_ingestion` OK; private runner completed; `git diff --check` clean. No provider
+  generation; no guide generation; no coverage eval; no Docker. No raw source/OCR/guide/table/caption/prompt/
+  response/provider payload/private path committed; private OCR artifacts and `local_operator_baselines/` stay
+  ignored. **NOT committed.**
 
 ---
 

@@ -7792,4 +7792,29 @@ but no existing OCR artifact or marker candidates for that candidate. Closed res
 **Decision:** the next route is an explicitly scoped uncommon-deck OCR extraction slice, not provider generation,
 not a same-deck packaging iteration, not a scorer patch, not a new judge, and not repair. Raw source/OCR/guide/
 table/caption/prompt/response/provider payload content and private paths stay out of git; `judge_ready=false`
-and `repair_ready=false` remain frozen. **NOT committed.**
+and `repair_ready=false` remain frozen. **Committed `a0c07c0` / merged to trunk.**
+
+## Slice 176R — uncommon-deck local OCR/text artifact produced for candidate_1
+176Q found `candidate_1` had private source and guide artifacts but no OCR artifact, so the next real artifact
+was the private local extraction output, not another inventory slice, provider generation, guide generation, or a
+coverage comparison. 176R adds a minimal candidate-specific producer that reuses local extraction posture and
+the cheap redundancy detector, writes raw output only to private ignored storage, and emits a closed summary.
+
+**Result:** `status=degraded`, `source_label=candidate_1`, `candidate_type=uncommon_course_deck`,
+`private_source_available=true`, `private_source_gitignored=true`, `private_ocr_artifact_written=true`,
+`private_ocr_artifact_gitignored=true`, `cloud_ocr_used=false`, `provider_call_made=false`,
+`generation_rerun=false`, `ocr_rerun=true`, `local_ocr_engine=text_layer`, `local_ocr_status=ran`,
+`slide_redundancy=unknown`, `frame_dedup_mode=auto`, `resolved_frame_dedup=off`,
+`expensive_frame_selection_built=false`, `pages_considered_count_bucket=low`,
+`pages_extracted_count_bucket=low`, `extracted_text_block_count_bucket=low`,
+`extracted_table_count_bucket=none`, `extracted_figure_or_diagram_count_bucket=none`,
+`marker_candidate_status=partial`, `marker_source=closed_static_ids`,
+`next_test_readiness=ready_for_uncommon_deck_coverage_eval`, `blocked_by=none`,
+`recommended_next_step=run_uncommon_deck_coverage_eval_existing_artifacts`.
+
+**Decision:** the uncommon candidate now has a private ignored extraction artifact and partial closed marker
+candidates. The engine was `text_layer`; this is not a Chandra/local structured OCR result for `candidate_1`.
+The next route is a coverage eval using existing private artifacts. Do not run provider generation, guide
+generation, cloud OCR, frame-selection pipeline, new judge, Layer-2 judge, or repair. Raw source/OCR/guide/table/
+caption/prompt/response/provider payload content and private paths stay out of git; `judge_ready=false` and
+`repair_ready=false` remain frozen. **NOT committed.**

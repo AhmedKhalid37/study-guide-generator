@@ -6,9 +6,33 @@
 > stable overview see `PROJECT_CONTEXT.md`; canonical brief is `../CLAUDE.md`.
 
 ## Current position
-- **Working tree:** branch `slice176q-uncommon-deck-ocr-value-diagnostic`; **Slice 176Q** added an uncommon-deck
-  OCR value diagnostic over private/gitignored inventory after 176P showed the common StatQuest/ensemble deck was
-  already highly covered. **NOT committed.**
+- **Working tree:** branch `slice176r-uncommon-deck-local-ocr-extraction`; **Slice 176R** added the uncommon-deck
+  local OCR/text extraction artifact producer for `candidate_1`. **NOT committed.**
+- **Slice 176R result (uncommon-deck local OCR extraction).** Private local extraction completed with closed labels
+  only: `status=degraded` · `source_label=candidate_1` · `candidate_type=uncommon_course_deck` ·
+  `private_source_available=true` · `private_source_gitignored=true` ·
+  `private_ocr_artifact_written=true` · `private_ocr_artifact_gitignored=true` ·
+  `cloud_ocr_used=false` · `provider_call_made=false` · `generation_rerun=false` · `ocr_rerun=true` ·
+  `local_ocr_engine=text_layer` · `local_ocr_status=ran` · `slide_redundancy=unknown` ·
+  `frame_dedup_mode=auto` · `resolved_frame_dedup=off` · `expensive_frame_selection_built=false` ·
+  `pages_considered_count_bucket=low` · `pages_extracted_count_bucket=low` ·
+  `extracted_text_block_count_bucket=low` · `extracted_table_count_bucket=none` ·
+  `extracted_figure_or_diagram_count_bucket=none` · `marker_candidate_status=partial` ·
+  `marker_source=closed_static_ids` · `next_test_readiness=ready_for_uncommon_deck_coverage_eval` ·
+  `blocked_by=none` · `recommended_next_step=run_uncommon_deck_coverage_eval_existing_artifacts`.
+  No raw source/OCR/guide/table/caption/prompt/response/provider payload/private path is committed; no provider
+  generation, guide generation, coverage eval, cloud OCR, frame-selection pipeline, new judge, repair, frontend,
+  or API behavior changed.
+- **176R interpretation.** The private OCR/text artifact for `candidate_1` now exists and is ignored. Marker
+  candidates are partial, so the next route is an uncommon-deck coverage eval using existing private artifacts.
+  The engine was `text_layer`; do not imply Chandra/local structured OCR ran for `candidate_1`. Do not run
+  provider generation or guide generation.
+- **Validation for 176R.** `compileall api pipeline test_scripts` OK;
+  `test_uncommon_deck_local_ocr_extraction` OK; `test_uncommon_deck_ocr_value_diagnostic` OK;
+  `test_slide_redundancy_detector` OK; `test_slide_raster_ocr_ingestion` OK; private extraction runner
+  completed; `git diff --check` clean. Docker was not run. `local_operator_baselines/` remains
+  ignored/uncommitted. **NOT committed.**
+- **Slice 176Q is committed/merged/pushed as `a0c07c0`** (uncommon-deck OCR value diagnostic).
 - **Slice 176Q result (uncommon-deck OCR value diagnostic).** Existing private inventory was inspected locally
   with closed labels only: `status=completed` · `source_label=candidate_1` ·
   `uncommon_candidate_available=true` · `candidate_type=uncommon_course_deck` ·
@@ -29,7 +53,7 @@
 - **Validation for 176Q.** `compileall api pipeline test_scripts` OK;
   `test_uncommon_deck_ocr_value_diagnostic` OK; `test_deck_specific_coverage_eval` OK;
   `test_flat_score_diagnostic` OK; private diagnostic runner completed. Docker was not run.
-  `local_operator_baselines/` remains ignored/uncommitted. **NOT committed.**
+  `local_operator_baselines/` remains ignored/uncommitted. **Committed `a0c07c0` / merged to trunk.**
 - **Slice 176P is committed/merged/pushed as `32707fc`** (deck-specific coverage eval).
 - **Slice 176P result (deck-specific coverage eval).** Existing private artifacts were inspected locally with
   closed labels only: `private_baseline_guide_available=true` · `private_baseline_guide_gitignored=true` ·
