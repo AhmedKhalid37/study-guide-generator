@@ -5,6 +5,58 @@
 
 ---
 
+## Phase 4 product path — **Slice 177B: combined table + figure companion private guide; operator review pending.**
+
+- **phase=Phase 4 (combined table+figure companion proof)** · **slice=177B** ·
+  **branch=`slice177b-combined-asset-companion-guide`** (off updated trunk
+  `chrome-renderer-v1` with **177A committed/merged/pushed**) ·
+  **module=`pipeline/combined_asset_companion_guide.py`**
+  (`run_combined_asset_companion_guide(...)` / `main()`; narrow private
+  combined-artifact producer — no new framework) ·
+  **runner=`test_scripts/run_combined_asset_companion_guide.py`** ·
+  **test=`test_scripts/test_combined_asset_companion_guide.py`** ·
+  **doc=`docs/COMBINED_ASSET_COMPANION_GUIDE.md`** ·
+  **judge_ready=false** · **repair_ready=false**.
+- **Lineage / scope.** 176X proved role-aware table simplification; 177A proved one
+  writer-generated non-table figure companion. 177B composes those **accepted** outputs
+  into one private rendered HTML guide, proving table + non-table-figure companions can
+  **coexist** in one student-visible artifact. This proves **one** combined path only —
+  not all tables/figures. No provider call, no generation/OCR rerun, no
+  frontend/API, no judge, no repair, no cloud OCR, no Chandra, no numeric verification.
+  Preferred path reuses the accepted private 176X + 177A guide artifacts verbatim.
+- **Real private run (no provider call).** `artifact_name=combined_asset_companion_guide` ·
+  `slice=177B` · `status=completed` · `source_label=ensemble` · `combined_render_format=html` ·
+  `combined_render_status=rendered` · `private_combined_guide_written=true` ·
+  `private_combined_guide_gitignored=true` ·
+  table block: `table_companion_source=private_176x_writer_table_companion` ·
+  `table_companion_present=true` · `faithful_table_present=true` · `table_explanation_present=true` ·
+  `role_aware_simplified_table_present=true` · `simplified_table_is_row_reduced_copy=false` ·
+  `simplified_table_is_study_oriented=true` · `table_visibility_status=operator_pending` ·
+  figure block: `figure_companion_source=private_177a_writer_figure_companion` ·
+  `figure_companion_present=true` · `figure_visual_present=true` ·
+  `figure_visual_type_closed=flow_or_structure_diagram` · `figure_visual_is_non_table_figure=true` ·
+  `figure_visual_is_text_only=false` · `figure_visual_is_partial_sliver=false` ·
+  `figure_visual_is_table_like=false` · `figure_visual_is_matrix=false` · `figure_visual_is_grid=false` ·
+  `figure_explanation_present=true` · `figure_reading_steps_present=true` ·
+  `figure_exam_takeaway_present=true` · `figure_visibility_status=operator_pending` ·
+  `provider_call_made=false` · `generation_rerun=false` · `generation_behavior_changed=false` ·
+  `numeric_verification_claimed=false` · `frontend_api_changed=false` · `judge_ready=false` ·
+  `repair_ready=false` · `blocked_by=none` ·
+  `recommended_next_step=operator_read_private_combined_asset_companion_guide`.
+- **No-leak.** No raw table/figure/caption/source/OCR text, descriptor JSON, guide prose,
+  image bytes, base64/data URI, prompts, responses, provider payloads, private paths,
+  hashes, or byte counts in committed files. Closed summary scans values only (keys are
+  controlled closed vocabulary). Private combined guide HTML + assets live under the
+  gitignored private dir; path handed to operator out-of-band, never in docs.
+- **Validation.** `compileall api pipeline test_scripts` clean;
+  `test_combined_asset_companion_guide.py` PASS; existing
+  `test_writer_generated_table_companion.py`, `test_writer_generated_figure_companion.py`,
+  `test_non_table_figure_descriptor.py` PASS; `git diff --check` clean.
+- **Status.** Implemented; real private run completed with hard-pass closed summary.
+  **NOT committed — stop for operator visual review of the private combined HTML.**
+
+---
+
 ## Phase 4 product path — **Slice 177A: writer-generated figure companion on the accepted 176Z non-table descriptor; operator review pending.**
 
 - **phase=Phase 4 (writer-generated figure/diagram companion proof)** · **slice=177A** ·

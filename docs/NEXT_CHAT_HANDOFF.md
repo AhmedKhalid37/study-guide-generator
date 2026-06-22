@@ -6,10 +6,35 @@
 > stable overview see `PROJECT_CONTEXT.md`; canonical brief is `../CLAUDE.md`.
 
 ## Current position
-- **Working tree:** branch `slice177a-writer-figure-companion-real-descriptor` (off updated trunk `chrome-renderer-v1`
-  with **176Z committed/merged/pushed as the descriptor producer**). **Slice 177A** renders the first
-  writer-generated **non-table** figure companion from the accepted 176Z descriptor. **Implemented +
-  operator-approved-input; real run completed; NOT committed — stop for operator visual review of the private HTML.**
+- **Working tree:** branch `slice177b-combined-asset-companion-guide` (off updated trunk `chrome-renderer-v1`
+  with **177A committed/merged/pushed as the writer-generated figure companion**). **Slice 177B** composes the
+  accepted 176X table companion and accepted 177A non-table figure companion into **one** private rendered HTML
+  guide. **Implemented; real run completed (no provider call); NOT committed — stop for operator visual review of
+  the private combined HTML.**
+- **177B lineage / scope.** 176X proved role-aware table simplification; 177A proved one writer-generated non-table
+  figure companion; 177B proves the two can **coexist** in one student-visible rendered artifact (one combined path
+  only, not all tables/figures). `module=pipeline/combined_asset_companion_guide.py`
+  (`run_combined_asset_companion_guide(...)`), `runner=test_scripts/run_combined_asset_companion_guide.py`,
+  `test=test_scripts/test_combined_asset_companion_guide.py`, `doc=docs/COMBINED_ASSET_COMPANION_GUIDE.md`.
+  No provider call, no generation/OCR rerun, no frontend/API, no judge, no repair, no cloud OCR, no Chandra, no
+  numeric verification. Preferred path reuses the accepted private 176X + 177A guide artifacts verbatim.
+- **177B real-run result (no provider call).** `artifact_name=combined_asset_companion_guide` · `slice=177B` ·
+  `status=completed` · `source_label=ensemble` · `combined_render_format=html` · `combined_render_status=rendered` ·
+  `private_combined_guide_written=true` · `private_combined_guide_gitignored=true` ·
+  `table_companion_present=true` · `faithful_table_present=true` · `table_explanation_present=true` ·
+  `role_aware_simplified_table_present=true` · `simplified_table_is_row_reduced_copy=false` ·
+  `simplified_table_is_study_oriented=true` · `figure_companion_present=true` · `figure_visual_present=true` ·
+  `figure_visual_type_closed=flow_or_structure_diagram` · `figure_visual_is_non_table_figure=true` ·
+  table/matrix/grid/text-only/sliver all false · `figure_explanation_present=true` ·
+  `figure_reading_steps_present=true` · `figure_exam_takeaway_present=true` · `provider_call_made=false` ·
+  `generation_rerun=false` · `frontend_api_changed=false` · `judge_ready=false` · `repair_ready=false` ·
+  `blocked_by=none` · `recommended_next_step=operator_read_private_combined_asset_companion_guide`.
+  **Operator must open the private combined HTML and confirm both blocks are visible/readable with no raw private
+  paths or broken-image indicators.**
+
+### Previous position (Slice 177A — committed/merged/pushed)
+- **Slice 177A** rendered the first writer-generated **non-table** figure companion from the accepted 176Z descriptor.
+  Committed and fast-forward-merged to trunk `chrome-renderer-v1`.
 - **177A lineage / scope.** 176Y refused table/matrix/grid assets and blocked; 176Z produced the accepted
   non-table descriptor (ensemble structure diagram); 177A consumes it to prove **one** figure/diagram companion path
   (not all figures). Reuses the 176Y companion module via `run_writer_figure_companion_from_descriptor(...)` /

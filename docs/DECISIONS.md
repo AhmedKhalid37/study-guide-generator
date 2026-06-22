@@ -8138,3 +8138,41 @@ as role-aware study simplification rather than a row-reduced copy. Commit Slice 
   `recommended_next_step=operator_read_private_rendered_figure_companion`.
 - 177A is **not committed** by the implementer: it stops for operator visual
   review of the private rendered HTML before any commit.
+
+## Slice 177B combines accepted table + figure companions into one private guide
+177B is a **narrow private combined-artifact producer**
+(`pipeline/combined_asset_companion_guide.py`), not a broad asset framework. It
+composes the two already-accepted Phase 4 companion outputs — the 176X
+writer-generated table companion (faithful table + explanation + role-aware study
+simplified table) and the 177A writer-generated non-table figure companion
+(visible non-table visual + explanation + reading steps + exam takeaway) — into
+one private rendered HTML guide. **Why:** it proves table companions and non-table
+figure companions can **coexist** in one student-visible rendered artifact, which
+is the next honest step after each was individually validated.
+- **One combined path only.** This does not claim all tables or all figures are
+  solved; it stays private/off-by-default and changes no normal frontend/API
+  behavior.
+- **Reuse, do not regenerate.** The preferred (and taken) path reuses the accepted
+  private 176X and 177A guide artifacts verbatim — **no provider call**, no
+  generation/OCR rerun, no behavior change. `provider_call_made=false`,
+  `generation_rerun=false`.
+- **Acceptance is verified, not assumed.** Inputs are validated by closed-flag +
+  structural checks: the table companion's simplified table must be study-oriented
+  and **not** a row-reduced copy; the figure companion must be a real non-table
+  figure (never table/matrix/grid/text-only/partial-sliver) with a safe relative
+  image ref. Honest blocks: `table_companion_not_found`,
+  `figure_companion_not_found`, `table_companion_row_reduced`,
+  `figure_companion_table_like`, `data_uri_or_base64_refused`,
+  `raw_private_path_in_render`, `figure_asset_unavailable`,
+  `unsafe_private_artifact_path`, `render_failed`.
+- **No inlined image data, no private paths.** Figure crops are copied as safe
+  private-relative `assets/<name>` refs; the render is refused if it would contain a
+  `data:` URI or a raw private path. Committed output is a closed summary only; the
+  no-leak assert scans **values** (keys such as `base64_image_used` are controlled
+  closed vocabulary, so scanning the full blob would false-positive).
+- **No judge/repair/cloud OCR/Chandra/numeric verification.** `judge_ready=false`,
+  `repair_ready=false`.
+- Real run completed with the hard-pass closed summary
+  (`recommended_next_step=operator_read_private_combined_asset_companion_guide`).
+  177B is **not committed** by the implementer: it stops for operator visual review
+  of the private combined HTML before any commit.
