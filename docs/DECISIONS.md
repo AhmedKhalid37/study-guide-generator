@@ -8257,5 +8257,30 @@ closer to the normal guide pipeline** by exposing a single reusable hook,
   no broad asset framework.** `judge_ready=false`, `repair_ready=false`,
   `frontend_api_changed=false`. Real run completed with the hard-pass closed summary
   (`recommended_next_step=operator_read_private_asset_companion_insertion_output`). 177D
-  is **not committed** by the implementer: it stops for operator visual review of the
-  private inserted-guide HTML before any commit.
+  was operator-accepted, committed as `8106f88`, fast-forward merged to trunk, and pushed.
+
+## Slice 177E adds a default-off normal-pipeline dry-run hook
+177D proved the pure off-by-default insertion seam. 177E adds a tiny wrapper shaped
+like the guide-Markdown-before-render chokepoint:
+`apply_asset_companion_pipeline_hook(...)` in
+`pipeline/asset_companion_pipeline_hook.py`.
+- **Why a hook wrapper after the seam.** The 177D seam proves insertion can be
+  default-off and safe as a pure function. 177E proves the same seam can be called from
+  a normal-pipeline-shaped chokepoint without changing normal generation. This is a
+  dry-run hook only, not frontend/API rollout and not an all-assets integration layer.
+- **Default config remains a no-op.** `default_asset_companion_pipeline_hook_config()`
+  returns disabled config. With default config, the hook returns guide Markdown
+  byte-for-byte unchanged and does not call the 177D seam. The private runner must set
+  both `enabled=true` and `private_runner_enabled=true` before the seam is called. The
+  closed summary records `default_hook_enabled=false`,
+  `hook_invoked_from_normal_generation=false`, `disabled_path_byte_identical=true`, and
+  `enabled_path_called_insertion_seam=true`.
+- **Reuse, do not broaden.** The private dry-run reuses the existing private ensemble
+  guide and accepted 177B combined companion. It reuses 177D for insertion and the
+  accepted 177B/177C safety helpers for accepted-block checks, relative asset copying,
+  data-URI/base64 refusal, raw-private-path refusal, and gitignored-output enforcement.
+- **No behavior rollout.** No provider/model call, no guide regeneration, no OCR rerun,
+  no judge, no repair, no cloud OCR, no Chandra, no broad OCR, no numeric verification,
+  no frontend/API change, and no broad asset framework. Real run completed with
+  `recommended_next_step=operator_read_private_pipeline_hook_output`; stop for operator
+  private read before any 177E commit.

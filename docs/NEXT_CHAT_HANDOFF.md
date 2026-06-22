@@ -6,35 +6,45 @@
 > stable overview see `PROJECT_CONTEXT.md`; canonical brief is `../CLAUDE.md`.
 
 ## Current position
-- **Working tree:** branch `slice177d-off-by-default-asset-companion-insertion` (off updated trunk
-  `chrome-renderer-v1` with **177C committed/merged/pushed (`fb1a7b0`) as the full-guide preview proof**).
-  **Slice 177D** adds an explicit **off-by-default** companion-insertion seam
-  (`pipeline/asset_companion_insertion.py`: `insert_companion_section(guide_md, combined_md, *, enabled=False)`)
-  that future normal generation *could* call, and produces **one** real private inserted-guide HTML artifact via
-  the private runner (`ENABLE_INSERTION_SEAM=1`). The pure seam returns the guide **byte-for-byte unchanged**
-  unless `enabled=True`; normal generation never enables it, so default behavior is untouched
-  (`off_by_default=true`, `normal_generation_default_unchanged=true`). **Implemented; real run completed (no
-  provider call); NOT committed — stop for operator visual review of the private inserted-guide HTML.**
-- **177D scope.** Proves **one** gated insertion seam only — not all tables/figures, **not** a frontend/API
-  rollout, **not** a normal-generation default change. Deterministic insertion location
-  (`before_trailing_summary` else `appended_at_end`; real run = `appended_at_end`). `module=pipeline/asset_companion_insertion.py`,
-  `runner=test_scripts/run_asset_companion_insertion_private.py`, `test=test_scripts/test_asset_companion_insertion.py`,
-  `doc=docs/ASSET_COMPANION_INSERTION_SEAM.md`. No provider call, no generation/OCR rerun, no judge, no repair, no
-  cloud OCR, no Chandra, no broad OCR, no numeric verification, no broad asset framework. Reuses the existing private
-  ensemble full guide + accepted 177B combined companion verbatim.
-- **177D real-run result (no provider call).** `artifact_name=asset_companion_insertion_seam` · `slice=177D` ·
-  `status=completed` · `off_by_default=true` · `normal_generation_default_unchanged=true` · `private_runner_enabled=true` ·
-  `input_full_guide_available=true` · `combined_companion_available=true` · `insertion_mode=gated_private_companion_section` ·
-  `insertion_location=appended_at_end` · `asset_companion_section_inserted=true` · `relative_asset_refs_preserved=true` ·
-  `private_inserted_guide_written=true` · `private_inserted_guide_gitignored=true` · `render_status=rendered` ·
-  `normal_guide_content_present=true` · `table_companion_inserted=true` · `figure_companion_inserted=true` ·
+- **Working tree:** branch `slice177e-normal-pipeline-asset-companion-hook` (off updated trunk
+  `chrome-renderer-v1` with **177D committed/merged/pushed (`8106f88`) as the off-by-default insertion seam**).
+  **Slice 177E** adds a default-off dry-run hook shaped like the guide-Markdown-before-render chokepoint
+  (`pipeline/asset_companion_pipeline_hook.py`: `apply_asset_companion_pipeline_hook(...)`) that calls the 177D
+  seam only when explicitly enabled by the private runner. Default config returns guide Markdown byte-for-byte
+  unchanged and normal generation does not invoke the hook. **Implemented; real private run completed (no provider
+  call); NOT committed — stop for operator visual review of the private pipeline-hook HTML.**
+- **177E scope.** Proves **one** default-off normal-pipeline dry-run hook only — not all tables/figures, **not** a
+  frontend/API rollout, **not** a normal-generation default change. `module=pipeline/asset_companion_pipeline_hook.py`,
+  `runner=test_scripts/run_asset_companion_pipeline_hook_private.py`,
+  `test=test_scripts/test_asset_companion_pipeline_hook.py`,
+  `doc=docs/ASSET_COMPANION_PIPELINE_HOOK.md`. No provider/model call, no guide regeneration, no OCR rerun, no judge,
+  no repair, no cloud OCR, no Chandra, no broad OCR, no numeric verification, no broad asset framework. Reuses the
+  existing private ensemble full guide + accepted 177B combined companion verbatim.
+- **177E real-run result (no provider call).** `artifact_name=asset_companion_pipeline_hook` · `slice=177E` ·
+  `status=completed` · `off_by_default=true` · `normal_generation_default_unchanged=true` ·
+  `default_hook_enabled=false` · `private_hook_enabled=true` · `private_runner_enabled=true` ·
+  `hook_location_closed=guide_markdown_before_render` · `hook_invoked_from_private_runner=true` ·
+  `hook_invoked_from_normal_generation=false` · `disabled_path_byte_identical=true` ·
+  `enabled_path_called_insertion_seam=true` · `insertion_seam_source=asset_companion_insertion_177d` ·
+  `input_full_guide_available=true` · `combined_companion_available=true` ·
+  `asset_companion_section_inserted=true` · `insertion_location=appended_at_end` ·
+  `relative_asset_refs_preserved=true` · `private_hook_render_written=true` · `render_status=rendered` ·
+  `normal_guide_content_present=true` · `table_companion_inserted=true` · `faithful_table_present=true` ·
+  `role_aware_simplified_table_present=true` · `figure_companion_inserted=true` ·
   `figure_visual_type_closed=flow_or_structure_diagram` · table/matrix/grid/text-only/sliver all false ·
   `raw_private_paths_in_rendered_html=false` · `broken_image_marker_detected=false` · `data_image_used=false` ·
-  `base64_image_used=false` · `provider_call_made=false` · `frontend_api_changed=false` · `judge_ready=false` ·
-  `repair_ready=false` · `blocked_by=none` · `recommended_next_step=operator_read_private_asset_companion_insertion_output`.
-  **Operator must open the private inserted-guide HTML and confirm it reads as a full guide, the companion section is
-  inserted at a sensible location, both companion blocks are visible/readable, the relative image renders, and there
-  are no raw private paths or broken-image indicators. After acceptance, commit on the slice branch and ff-merge to trunk.**
+  `base64_image_used=false` · `provider_call_made=false` · `generation_rerun=false` ·
+  `generation_behavior_changed=false` · `frontend_api_changed=false` · `judge_ready=false` · `repair_ready=false` ·
+  `blocked_by=none` · `recommended_next_step=operator_read_private_pipeline_hook_output`.
+  **Operator must open the private pipeline-hook HTML and confirm it reads as a full guide, the companion section
+  appears, both accepted companion blocks are visible/readable, the relative image renders, and there are no raw
+  private paths or broken-image indicators.**
+
+## Prior position (177D — committed/merged/pushed `8106f88`)
+- **Slice 177D** added the explicit off-by-default insertion seam
+  (`insert_companion_section(guide_md, combined_md, *, enabled=False)`) and produced one real private inserted-guide
+  HTML artifact. Operator accepted the uploaded/rendered 177D HTML; committed and integrated to trunk. Detail below
+  is retained for lineage.
 
 ## Prior position (177C — committed/merged/pushed `fb1a7b0`)
 - **Slice 177C** inserted the accepted 177B combined companion into an existing **real private generated full guide**

@@ -5,11 +5,78 @@
 
 ---
 
-## Phase 4 product path — **Slice 177D: off-by-default asset-companion insertion seam; real private artifact produced; operator review pending; NOT committed.**
+## Phase 4 product path — **Slice 177E: default-off normal-pipeline asset-companion hook; real private artifact produced; operator review pending; NOT committed.**
+
+- **phase=Phase 4 (default-off normal-pipeline dry-run hook)** · **slice=177E** ·
+  **branch=`slice177e-normal-pipeline-asset-companion-hook`** (off updated trunk
+  `chrome-renderer-v1` with **177D committed/merged/pushed (`8106f88`)** as the
+  off-by-default insertion seam) ·
+  **module=`pipeline/asset_companion_pipeline_hook.py`**
+  (`apply_asset_companion_pipeline_hook(...)` + `run_asset_companion_pipeline_hook(...)`;
+  narrow default-off wrapper — no new framework) ·
+  **runner=`test_scripts/run_asset_companion_pipeline_hook_private.py`** ·
+  **test=`test_scripts/test_asset_companion_pipeline_hook.py`** ·
+  **doc=`docs/ASSET_COMPANION_PIPELINE_HOOK.md`** ·
+  **judge_ready=false** · **repair_ready=false**.
+- **Lineage / scope.** 177D proved the off-by-default insertion seam. 177E proves a
+  default-off dry-run hook shaped like the guide-Markdown-before-render chokepoint can
+  call that seam when explicitly enabled by the private runner. Default normal generation
+  remains unchanged: default config disables the hook, normal generation does not invoke
+  it, and disabled output is byte-identical. This is **not** frontend/API rollout, **not**
+  a normal-generation default change, and **not** an all-assets claim. No provider/model
+  call, no guide regeneration, no OCR rerun, no judge, no repair, no cloud OCR, no
+  Chandra, no broad OCR, no numeric verification, no broad asset registry/framework.
+- **Real private run (no provider call).** `artifact_name=asset_companion_pipeline_hook` ·
+  `slice=177E` · `status=completed` · `source_label=ensemble` · `off_by_default=true` ·
+  `normal_generation_default_unchanged=true` · `default_hook_enabled=false` ·
+  `private_hook_enabled=true` · `private_runner_enabled=true` ·
+  `hook_location_closed=guide_markdown_before_render` ·
+  `hook_invoked_from_private_runner=true` ·
+  `hook_invoked_from_normal_generation=false` · `disabled_path_byte_identical=true` ·
+  `enabled_path_called_insertion_seam=true` ·
+  `insertion_seam_source=asset_companion_insertion_177d` ·
+  `input_full_guide_source=private_ensemble_full_guide_markdown` ·
+  `input_full_guide_available=true` · `input_full_guide_gitignored=true` ·
+  `combined_companion_source=private_177b_combined_asset_companion` ·
+  `combined_companion_available=true` · `combined_companion_gitignored=true` ·
+  `asset_companion_section_inserted=true` · `insertion_location=appended_at_end` ·
+  `relative_asset_refs_preserved=true` · `private_hook_render_written=true` ·
+  `private_hook_render_gitignored=true` · `render_format=html` ·
+  `render_status=rendered` · `normal_guide_content_present=true` ·
+  `table_companion_inserted=true` · `faithful_table_present=true` ·
+  `table_explanation_present=true` · `role_aware_simplified_table_present=true` ·
+  `simplified_table_is_row_reduced_copy=false` ·
+  `simplified_table_is_study_oriented=true` · `figure_companion_inserted=true` ·
+  `figure_visual_present=true` · `figure_visual_type_closed=flow_or_structure_diagram` ·
+  `figure_visual_is_non_table_figure=true` · table/matrix/grid/text-only/sliver all false ·
+  `figure_explanation_present=true` · `figure_reading_steps_present=true` ·
+  `figure_exam_takeaway_present=true` · `raw_private_paths_in_rendered_html=false` ·
+  `broken_image_marker_detected=false` · `data_image_used=false` · `base64_image_used=false` ·
+  `provider_call_made=false` · `generation_rerun=false` · `generation_behavior_changed=false` ·
+  `cloud_ocr_used=false` · `ocr_rerun=false` · `coverage_eval_rerun=false` ·
+  `numeric_verification_claimed=false` · `frontend_api_changed=false` ·
+  `judge_ready=false` · `repair_ready=false` · `blocked_by=none` ·
+  `recommended_next_step=operator_read_private_pipeline_hook_output`.
+- **Validation.** `python -m compileall api pipeline test_scripts` OK ·
+  `test_asset_companion_pipeline_hook.py` PASS · `test_asset_companion_insertion.py` PASS ·
+  `test_full_guide_asset_companion_preview.py` PASS ·
+  `test_combined_asset_companion_guide.py` PASS · `git diff --check` clean. Targeted
+  private HTML scan found expected companion markers and no raw private path/data URI/base64
+  markers. Added-line no-leak sweep found no real private paths, source filenames, raw
+  content, screenshots, payloads, hashes, byte counts, or secrets in 177E changes.
+- **Status / next.** Implemented; real private run completed (no provider call); **NOT
+  committed — stop for operator visual review of the private pipeline-hook HTML.** Operator
+  must open the private HTML and confirm it reads as a full guide, the companion section
+  appears, both accepted companion blocks appear, the relative image renders, there is no
+  broken-image indicator, no raw private path is visible, and the guide remains readable.
+
+---
+
+## Phase 4 product path — **Slice 177D: off-by-default asset-companion insertion seam; operator accepted; committed/merged/pushed (`8106f88`).**
 
 - **phase=Phase 4 (off-by-default companion-insertion seam)** · **slice=177D** ·
-  **branch=`slice177d-off-by-default-asset-companion-insertion`** (off updated trunk
-  `chrome-renderer-v1` with **177C committed/merged/pushed (`fb1a7b0`)** as the
+  **branch=`slice177d-off-by-default-asset-companion-insertion`** (fast-forward merged to
+  `chrome-renderer-v1` as **`8106f88`**, with **177C committed/merged/pushed (`fb1a7b0`)** as the
   full-guide preview proof) ·
   **module=`pipeline/asset_companion_insertion.py`**
   (pure seam `insert_companion_section(guide_md, combined_md, *, enabled=False)` +
@@ -59,12 +126,9 @@
   `test_asset_companion_insertion.py` all pass · 177C/177B/177A/176X regression tests still
   pass · `git diff --check` clean. No-leak sweep clean (closed labels only; no private
   paths/raw content/screenshots/base64 in committed files).
-- **Status / next.** Implemented; real private run completed (no provider call); **NOT
-  committed — stop for operator visual review of the private inserted-guide HTML.** Operator
-  must open the private HTML and confirm it reads as a full guide, the companion section is
-  inserted at a sensible location, both accepted companion blocks appear, the relative image
-  renders, there is no broken-image indicator, and no raw private path is visible. After
-  operator acceptance, commit on the slice branch and ff-merge to trunk.
+- **Status.** Implemented; real private run completed (no provider call); operator accepted
+  the uploaded/rendered 177D HTML. Committed as `8106f88`, fast-forward merged to
+  `chrome-renderer-v1`, and pushed.
 
 ---
 
