@@ -8088,3 +8088,53 @@ as role-aware study simplification rather than a row-reduced copy. Commit Slice 
   `judge_ready=false`, `repair_ready=false`, `blocked_by=none`.
 - 176Z does not complete the writer figure companion. Next route:
   `run_writer_generated_figure_companion_on_non_table_descriptor`.
+
+## Slice 177A — writer figure companion on the accepted 176Z descriptor
+
+- 177A is the consumer of the 176Z producer: it renders the **first**
+  writer-generated **non-table** figure companion from the accepted 176Z
+  descriptor (the ensemble structure diagram). It proves one figure/diagram
+  companion path end-to-end; it does **not** claim all figures are solved.
+- It reuses the existing 176Y companion module rather than introducing a new
+  framework: a new entrypoint `run_writer_figure_companion_from_descriptor(...)`
+  plus `main_177a()` and a `WRITER_COMPANION_MODE=descriptor_177a` switch in the
+  shared runner. The 176Y visible-asset path is untouched and its guard tests
+  still pass.
+- Input is the accepted 176Z descriptor JSON read from gitignored private
+  storage only. The slice refuses anything off-contract — missing descriptor,
+  table/matrix/grid, text-only, partial sliver, or a non-`ensemble` source label
+  — and never calls a provider in those cases.
+- The recovered crop is inserted as a **safe private-relative image asset**
+  (`assets/<category>.png`, copied into the private companion dir). The render is
+  rejected if it would contain a `data:` URI or any raw absolute private path, so
+  `visual_inserted_as_raw_private_path=false` holds structurally.
+- One configured provider/model writer call is made (descriptor/context only;
+  the writer never sees the image). The writer must produce a non-placeholder
+  explanation beneath the visual, how-to-read reading steps, an exam takeaway /
+  study cue, and a blank-label practice seed; placeholder or self-talk/uncertainty
+  output blocks.
+- Committed output stays a closed summary only; raw figure/caption/source/OCR
+  text, descriptor JSON, the rendered guide, image bytes, prompts, responses, and
+  provider payloads remain in gitignored private artifacts. A closed-summary
+  safety assert rejects `data:`/base64, path-like, or hash-like values.
+- No frontend/API change, no judge, no repair, no cloud OCR, no Chandra, no
+  OCR/coverage reruns, and no numeric verification.
+- Real run completed with closed labels: `status=completed`,
+  `source_label=ensemble`, `selected_asset_category=ensemble_structure_diagram`,
+  `selected_asset_kind=conceptual_diagram`,
+  `visual_type_closed=flow_or_structure_diagram`,
+  `asset_descriptor_source=private_176z_non_table_figure_descriptor`,
+  `provider_call_made=true`, `provider_name_closed=deepseek`,
+  `generation_rerun=true`, `generation_behavior_changed=true`,
+  `visual_inserted=true`, `visual_insertion_mode=image_asset`,
+  `visual_is_non_table_figure=true`, `visual_is_text_only=false`,
+  `visual_is_partial_sliver=false`, `visual_source_matches_label=true`,
+  `visual_is_table_like=false`, `visual_is_matrix=false`, `visual_is_grid=false`,
+  `explanation_beneath_asset_present=true`, `explanation_non_placeholder=true`,
+  `study_reading_steps_present=true`, `exam_takeaway_present=true`,
+  `blank_label_practice_seed_present=true`, `render_status=rendered`,
+  `private_rendered_guide_written=true`, `private_rendered_guide_gitignored=true`,
+  `operator_private_read_done=false`, `blocked_by=none`,
+  `recommended_next_step=operator_read_private_rendered_figure_companion`.
+- 177A is **not committed** by the implementer: it stops for operator visual
+  review of the private rendered HTML before any commit.

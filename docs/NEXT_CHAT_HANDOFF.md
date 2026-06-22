@@ -6,7 +6,39 @@
 > stable overview see `PROJECT_CONTEXT.md`; canonical brief is `../CLAUDE.md`.
 
 ## Current position
-- **Working tree:** branch `slice176y-writer-generated-figure-companion`; **Slice 176Y** adds a
+- **Working tree:** branch `slice177a-writer-figure-companion-real-descriptor` (off updated trunk `chrome-renderer-v1`
+  with **176Z committed/merged/pushed as the descriptor producer**). **Slice 177A** renders the first
+  writer-generated **non-table** figure companion from the accepted 176Z descriptor. **Implemented +
+  operator-approved-input; real run completed; NOT committed — stop for operator visual review of the private HTML.**
+- **177A lineage / scope.** 176Y refused table/matrix/grid assets and blocked; 176Z produced the accepted
+  non-table descriptor (ensemble structure diagram); 177A consumes it to prove **one** figure/diagram companion path
+  (not all figures). Reuses the 176Y companion module via `run_writer_figure_companion_from_descriptor(...)` /
+  `main_177a()` (`WRITER_COMPANION_MODE=descriptor_177a`); no new framework, no frontend/API, no judge, no repair,
+  no cloud OCR, no Chandra, no numeric verification. Crop inserted as a safe private-relative `assets/<category>.png`
+  image asset (no inlined bytes, no `data:`/base64, no raw absolute path).
+- **177A real-run result (one DeepSeek writer call).** `artifact_name=writer_generated_figure_companion` ·
+  `slice=177A` · `status=completed` · `source_label=ensemble` ·
+  `selected_asset_category=ensemble_structure_diagram` · `selected_asset_kind=conceptual_diagram` ·
+  `visual_type_closed=flow_or_structure_diagram` · `asset_descriptor_source=private_176z_non_table_figure_descriptor` ·
+  `writer_input_descriptor_present=true` · `writer_saw_image=false` · `provider_call_made=true` ·
+  `provider_name_closed=deepseek` · `generation_rerun=true` · `generation_behavior_changed=true` ·
+  `visual_inserted=true` · `visual_insertion_mode=image_asset` · `visual_is_non_table_figure=true` ·
+  `visual_is_text_only=false` · `visual_is_partial_sliver=false` · `visual_source_matches_label=true` ·
+  `visual_is_table_like=false` · `visual_is_matrix=false` · `visual_is_grid=false` ·
+  `visual_inserted_as_raw_private_path=false` · `explanation_beneath_asset_present=true` ·
+  `explanation_non_placeholder=true` · `study_reading_steps_present=true` · `exam_takeaway_present=true` ·
+  `blank_label_practice_seed_present=true` · `render_format=html` · `render_status=rendered` ·
+  `private_rendered_guide_written=true` · `private_rendered_guide_gitignored=true` ·
+  `visual_visibility_status=operator_pending` · `explanation_visibility_status=operator_pending` ·
+  `operator_private_read_required=true` · `operator_private_read_done=false` · `numeric_verification_claimed=false` ·
+  `frontend_api_changed=false` · `judge_ready=false` · `repair_ready=false` · `blocked_by=none` ·
+  `recommended_next_step=operator_read_private_rendered_figure_companion`.
+- **Next action:** operator opens the private rendered HTML and confirms the visual is the ensemble structure
+  diagram, the explanation sits beneath it, study steps are useful, no table/matrix/text crop was used, and there is
+  no hallucination/self-talk. Commit 177A (allowed files only) **only after** that approval.
+
+### Earlier in this stack
+- **Working tree (prior):** branch `slice176y-writer-generated-figure-companion`; **Slice 176Y** adds a
   descriptor-driven writer-generated figure/diagram companion guardrail. Operator review rejected the table-like
   rendered matrix/grid companion, and the corrected run is blocked; commit it only as a negative guardrail.
 - **Slice 176Y corrected result.** Existing private visible-asset artifacts were inspected with closed structural

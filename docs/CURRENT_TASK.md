@@ -5,6 +5,55 @@
 
 ---
 
+## Phase 4 product path — **Slice 177A: writer-generated figure companion on the accepted 176Z non-table descriptor; operator review pending.**
+
+- **phase=Phase 4 (writer-generated figure/diagram companion proof)** · **slice=177A** ·
+  **branch=`slice177a-writer-figure-companion-real-descriptor`** ·
+  **module=`pipeline/writer_generated_figure_companion.py`**
+  (new entrypoint `run_writer_figure_companion_from_descriptor(...)` / `main_177a()`;
+  reuses the 176Y companion module — no new framework) ·
+  **runner=`test_scripts/run_writer_generated_figure_companion.py`**
+  (`WRITER_COMPANION_MODE=descriptor_177a`) ·
+  **test=`test_scripts/test_writer_generated_figure_companion.py`** ·
+  **doc=`docs/WRITER_GENERATED_FIGURE_COMPANION.md`** ·
+  **judge_ready=false** · **repair_ready=false**.
+- **Lineage.** 176Y refused table/matrix/grid assets as figure companions and blocked
+  honestly. 176Z produced the accepted non-table descriptor (ensemble structure diagram:
+  Training Data → learners/models → model combiner → final model). 177A consumes that
+  accepted 176Z descriptor to render the **first writer-generated non-table figure
+  companion**. This proves **one** figure/diagram path only — not all figures.
+- **Input contract enforced.** Reads the accepted 176Z descriptor JSON from gitignored
+  storage only; refuses missing descriptor, table/matrix/grid, text-only, partial sliver,
+  or a non-`ensemble` source label. Crop inserted as a safe private-relative image asset
+  (`assets/<category>.png`); no inlined bytes, no `data:`/base64, no raw absolute path in
+  the render.
+- **Real private run (one DeepSeek writer call).** `artifact_name=writer_generated_figure_companion` ·
+  `slice=177A` · `status=completed` · `source_label=ensemble` ·
+  `selected_asset_category=ensemble_structure_diagram` · `selected_asset_kind=conceptual_diagram` ·
+  `selected_asset_role=study_visual` · `visual_type_closed=flow_or_structure_diagram` ·
+  `asset_descriptor_source=private_176z_non_table_figure_descriptor` ·
+  `writer_input_descriptor_present=true` · `writer_saw_image=false` · `provider_call_made=true` ·
+  `provider_name_closed=deepseek` · `generation_rerun=true` · `generation_behavior_changed=true` ·
+  `visual_inserted=true` · `visual_insertion_mode=image_asset` · `visual_is_non_table_figure=true` ·
+  `visual_is_text_only=false` · `visual_is_partial_sliver=false` · `visual_source_matches_label=true` ·
+  `visual_is_table_like=false` · `visual_is_matrix=false` · `visual_is_grid=false` ·
+  `visual_inserted_as_raw_private_path=false` · `explanation_beneath_asset_present=true` ·
+  `explanation_non_placeholder=true` · `study_reading_steps_present=true` · `exam_takeaway_present=true` ·
+  `blank_label_practice_seed_present=true` · `render_format=html` · `render_status=rendered` ·
+  `private_rendered_guide_written=true` · `private_rendered_guide_gitignored=true` ·
+  `visual_visibility_status=operator_pending` · `explanation_visibility_status=operator_pending` ·
+  `operator_private_read_required=true` · `operator_private_read_done=false` ·
+  `numeric_verification_claimed=false` · `frontend_api_changed=false` · `judge_ready=false` ·
+  `repair_ready=false` · `blocked_by=none` ·
+  `recommended_next_step=operator_read_private_rendered_figure_companion`.
+- **Scope guardrails.** No frontend/API change, no judge, no repair, no cloud OCR, no
+  Chandra, no OCR/coverage reruns, no numeric verification.
+- **Status.** Do not commit Slice 177A. Stop for operator visual review of the private
+  rendered HTML (visual visible + correct, explanation beneath, useful study steps, no
+  table/matrix/text crop, no hallucination/self-talk) before any commit.
+
+---
+
 ## Phase 4 product path — **Slice 176Z: corrected non-table figure descriptor; operator review pending.**
 
 - **phase=Phase 4 (writer-generated figure/diagram companion proof)** · **slice=176Z** ·
