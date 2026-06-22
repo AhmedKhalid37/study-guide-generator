@@ -8284,3 +8284,34 @@ like the guide-Markdown-before-render chokepoint:
   no frontend/API change, and no broad asset framework. Real run completed with
   `recommended_next_step=operator_read_private_pipeline_hook_output`; stop for operator
   private read before any 177E commit.
+
+## Slice 177F abandoned as uncommitted treadmill work; 177G is real multi-asset generation
+Slice 177F (asset companion manifest handoff) only recorded the **same** single
+accepted table + single accepted figure lineage into a manifest — another wrapper
+around the same two assets that did not move Phase 4 toward useful asset insertion.
+**Why abandoned:** a manifest/consumer/coverage packet over the accepted pair is a
+treadmill slice; it changes no generation behavior. The uncommitted 177F work was
+removed from the worktree after preserving a safety copy **outside** the repo
+(`/tmp/guideforge_abandoned_177f/`). **No `git stash` was used** — the parked Slice 60
+stash must remain `stash@{0}`. 177F was never committed.
+
+## 177G generalises the 176W asset-aware writer path to the full ready descriptor set
+Slice 177G runs **one real asset-aware generation** over **all** ready ensemble
+descriptors (the recovered reconstructed tables + the accepted non-table figure) in a
+single pass, instead of one hand-fed descriptor. Each ready descriptor gets a
+`{{asset:<id>}}` token; the writer uses every useful descriptor; the module resolves
+table tokens to faithful reconstructed Markdown tables (never images) plus a role-aware
+simplified study table, and figure tokens to a safe relative `assets/<name>` image, with
+a real explanation beneath each. **Why a real generation, not another wrapper:** Phase 4
+only advances when generation behavior actually changes and multiple distinct assets are
+inserted with explanations — so 177G is **allowed and expected to call the provider once**
+(prefers DeepSeek, the provider 176W used; blocks honestly on `provider_unavailable` /
+`writer_generation_unavailable`, never faking a synthetic/no-provider output). **Hard
+no-op rule:** a guide that is only the same single-table + single-figure output fails
+(`same_single_table_figure_output` must be false; `distinct_inserted_asset_count >= 3`).
+**Scope guards:** off-by-default and private only; default normal generation unchanged;
+no all-assets claim; no OCR/Chandra/cloud-OCR rerun, no judge, no repair, no numeric
+verification, no frontend/API change, no broad registry/scanner/auto-discovery. Orphan
+tokens, duplicate insertion, table-as-image, data:image/base64, and raw private paths in
+the render all block honestly. **Host note:** the real provider run requires the `openai`
+package, which lives in the project `.venv` and the Docker image but not bare host Python.

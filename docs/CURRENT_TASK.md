@@ -5,6 +5,76 @@
 
 ---
 
+## Phase 4 product path — **Slice 177G: multi-asset asset-aware generation over the full ensemble descriptor set; real private generated guide produced; operator review pending; NOT committed.**
+
+- **phase=Phase 4 (real multi-asset asset-aware generation)** · **slice=177G** ·
+  **branch=`slice177g-multi-asset-asset-aware-generation`** (off trunk
+  `chrome-renderer-v1` HEAD **`c723dd2`** = 177E committed/merged) ·
+  **module=`pipeline/multi_asset_asset_aware_generation.py`**
+  (`run_multi_asset_asset_aware_generation(...)`) ·
+  **runner=`test_scripts/run_multi_asset_asset_aware_generation_private.py`** ·
+  **test=`test_scripts/test_multi_asset_asset_aware_generation.py`** ·
+  **doc=`docs/MULTI_ASSET_ASSET_AWARE_GENERATION.md`** · **judge_ready=false** ·
+  **repair_ready=false**.
+- **177F abandoned (uncommitted treadmill).** 177F only recorded the *same* single
+  accepted table + single accepted figure lineage into a manifest — another wrapper
+  around the same two assets. The uncommitted 177F work was abandoned: a safety copy
+  was preserved outside the repo (`/tmp/guideforge_abandoned_177f/`), the in-repo 177F
+  files were removed, and 177G was branched fresh from trunk. **No `git stash` used** —
+  the parked Slice 60 stash order is untouched. 177F was never committed.
+- **Lineage / scope.** 176W/176X/177A proved the genuinely useful asset-aware *writer*
+  path on **one** hand-fed descriptor. 177G **generalises that same path to the full
+  available ready descriptor set in one generation pass**: every ready descriptor gets
+  its own `{{asset:<id>}}` token, the writer uses all useful descriptors, tables resolve
+  to faithful reconstructed Markdown tables + a role-aware simplified study table,
+  figures resolve to a safe relative `assets/<name>` image, and a real explanation sits
+  beneath each inserted asset. This is **not** a wrapper / preview / seam / hook /
+  manifest / consumer / coverage packet. **Provider generation is allowed/expected for
+  this slice** (one call). Default normal generation is unchanged. No all-assets claim.
+  No OCR/Chandra/cloud-OCR rerun, no judge, no repair, no numeric verification, no
+  frontend/API change, no broad registry/scanner/auto-discovery.
+- **Real private run (one provider call, DeepSeek).**
+  `artifact_name=multi_asset_asset_aware_generation` · `slice=177G` ·
+  `status=completed` · `source_label=ensemble` · `off_by_default=true` ·
+  `normal_generation_default_unchanged=true` ·
+  `generation_scope=single_private_ensemble_multi_asset_generation` ·
+  `wrapper_slice=false` · `manifest_consumer=false` · `coverage_packet_only=false` ·
+  `auto_discovery_enabled=false` · `all_assets_claimed=false` ·
+  `input_private_descriptor_artifacts_available=true` · `descriptor_set_built=true` ·
+  `available_asset_descriptor_count=3` · `descriptor_ready_count=3` ·
+  `table_descriptor_count=2` · `non_table_figure_descriptor_count=1` ·
+  `chart_or_graph_descriptor_count=0` · `descriptor_missing_for_generation_count=0` ·
+  `diagram_caption_descriptor_gap=false` · `multi_asset_requirement_met=true` ·
+  `provider_call_made=true` · `provider_name_closed=deepseek` ·
+  `writer_generation_run=true` · `generation_behavior_changed=true` ·
+  `asset_tokens_available_count=3` · `asset_tokens_inserted_count=3` ·
+  `distinct_inserted_asset_count=3` · `inserted_table_count=2` ·
+  `inserted_non_table_figure_count=1` · `inserted_chart_or_graph_count=0` ·
+  `all_available_useful_descriptors_considered=true` ·
+  `same_single_table_figure_output=false` ·
+  `not_byte_identical_to_prior_single_asset_output=true` ·
+  `orphan_asset_token_count=0` · `duplicate_inserted_asset_count=0` ·
+  `tables_rendered_as_real_tables=true` · `faithful_table_reconstruction_present=true` ·
+  `role_aware_simplified_tables_present=true` · `table_explanations_present=true` ·
+  `tables_inserted_as_images=false` · `figures_inserted_with_relative_assets=true` ·
+  `figure_explanations_present=true` · `figure_reading_steps_present=true` ·
+  `figure_exam_takeaways_present=true` · `table_like_visuals_refused_as_figures=true` ·
+  `private_generated_guide_written=true` · `render_status=rendered` ·
+  `rendered_html_written=true` · `raw_private_paths_in_rendered_html=false` ·
+  `broken_image_marker_detected=false` · `data_image_used=false` · `base64_used=false` ·
+  `ocr_rerun=false` · `chandra_used=false` · `cloud_ocr_used=false` ·
+  `numeric_verification_claimed=false` · `frontend_api_changed=false` ·
+  `judge_ready=false` · `repair_ready=false` · `blocked_by=none` ·
+  `recommended_next_step=operator_read_multi_asset_generated_guide`. The private
+  rendered guide (gitignored, operator-only path on the runner's stderr) structurally
+  contains **4 `<table>`** (2 faithful + 2 simplified) + **1 `<img>`** relative figure
+  asset, 0 leftover tokens, no data-URI/base64, no private-path leak.
+- **Status: implemented; tests pass (14 scenarios + 3 sibling suites); real private
+  multi-asset generation completed; NOT committed — stop for operator visual review of
+  the private rendered HTML before any 177G commit.**
+
+---
+
 ## Phase 4 product path — **Slice 177E: default-off normal-pipeline asset-companion hook; real private artifact produced; operator review pending; NOT committed.**
 
 - **phase=Phase 4 (default-off normal-pipeline dry-run hook)** · **slice=177E** ·

@@ -6,39 +6,61 @@
 > stable overview see `PROJECT_CONTEXT.md`; canonical brief is `../CLAUDE.md`.
 
 ## Current position
-- **Working tree:** branch `slice177e-normal-pipeline-asset-companion-hook` (off updated trunk
-  `chrome-renderer-v1` with **177D committed/merged/pushed (`8106f88`) as the off-by-default insertion seam**).
-  **Slice 177E** adds a default-off dry-run hook shaped like the guide-Markdown-before-render chokepoint
-  (`pipeline/asset_companion_pipeline_hook.py`: `apply_asset_companion_pipeline_hook(...)`) that calls the 177D
-  seam only when explicitly enabled by the private runner. Default config returns guide Markdown byte-for-byte
-  unchanged and normal generation does not invoke the hook. **Implemented; real private run completed (no provider
-  call); NOT committed — stop for operator visual review of the private pipeline-hook HTML.**
-- **177E scope.** Proves **one** default-off normal-pipeline dry-run hook only — not all tables/figures, **not** a
-  frontend/API rollout, **not** a normal-generation default change. `module=pipeline/asset_companion_pipeline_hook.py`,
-  `runner=test_scripts/run_asset_companion_pipeline_hook_private.py`,
-  `test=test_scripts/test_asset_companion_pipeline_hook.py`,
-  `doc=docs/ASSET_COMPANION_PIPELINE_HOOK.md`. No provider/model call, no guide regeneration, no OCR rerun, no judge,
-  no repair, no cloud OCR, no Chandra, no broad OCR, no numeric verification, no broad asset framework. Reuses the
-  existing private ensemble full guide + accepted 177B combined companion verbatim.
-- **177E real-run result (no provider call).** `artifact_name=asset_companion_pipeline_hook` · `slice=177E` ·
-  `status=completed` · `off_by_default=true` · `normal_generation_default_unchanged=true` ·
-  `default_hook_enabled=false` · `private_hook_enabled=true` · `private_runner_enabled=true` ·
-  `hook_location_closed=guide_markdown_before_render` · `hook_invoked_from_private_runner=true` ·
-  `hook_invoked_from_normal_generation=false` · `disabled_path_byte_identical=true` ·
-  `enabled_path_called_insertion_seam=true` · `insertion_seam_source=asset_companion_insertion_177d` ·
-  `input_full_guide_available=true` · `combined_companion_available=true` ·
-  `asset_companion_section_inserted=true` · `insertion_location=appended_at_end` ·
-  `relative_asset_refs_preserved=true` · `private_hook_render_written=true` · `render_status=rendered` ·
-  `normal_guide_content_present=true` · `table_companion_inserted=true` · `faithful_table_present=true` ·
-  `role_aware_simplified_table_present=true` · `figure_companion_inserted=true` ·
-  `figure_visual_type_closed=flow_or_structure_diagram` · table/matrix/grid/text-only/sliver all false ·
-  `raw_private_paths_in_rendered_html=false` · `broken_image_marker_detected=false` · `data_image_used=false` ·
-  `base64_image_used=false` · `provider_call_made=false` · `generation_rerun=false` ·
-  `generation_behavior_changed=false` · `frontend_api_changed=false` · `judge_ready=false` · `repair_ready=false` ·
-  `blocked_by=none` · `recommended_next_step=operator_read_private_pipeline_hook_output`.
-  **Operator must open the private pipeline-hook HTML and confirm it reads as a full guide, the companion section
-  appears, both accepted companion blocks are visible/readable, the relative image renders, and there are no raw
-  private paths or broken-image indicators.**
+- **Working tree:** branch `slice177g-multi-asset-asset-aware-generation` (off trunk
+  `chrome-renderer-v1` HEAD **`c723dd2`** = 177E committed/merged). **Slice 177G** runs **one real
+  asset-aware guide generation over the full available ensemble descriptor set** — it generalises the
+  genuinely useful 176W/176X/177A asset-aware writer path from one hand-fed descriptor to multiple ready
+  descriptors in the same generation pass. `module=pipeline/multi_asset_asset_aware_generation.py`
+  (`run_multi_asset_asset_aware_generation(...)`),
+  `runner=test_scripts/run_multi_asset_asset_aware_generation_private.py`,
+  `test=test_scripts/test_multi_asset_asset_aware_generation.py`,
+  `doc=docs/MULTI_ASSET_ASSET_AWARE_GENERATION.md`. **Implemented; tests pass; real private multi-asset
+  generation completed (one DeepSeek call); NOT committed — stop for operator visual review of the private
+  rendered HTML.**
+- **177F abandoned (never committed).** 177F (asset companion manifest handoff) only recorded the *same* single
+  accepted table + figure into a manifest — another wrapper around the same two assets. Uncommitted 177F work was
+  abandoned: safety copy preserved outside the repo (`/tmp/guideforge_abandoned_177f/`), in-repo 177F files removed,
+  177G branched fresh from trunk. **No `git stash` used** — parked Slice 60 stash untouched.
+- **177G scope.** A **real private generation run**, not a wrapper/preview/seam/hook/manifest/consumer/coverage
+  packet. **Provider generation is allowed/expected** (one call; prefers DeepSeek, the 176W provider; blocks honestly
+  if unavailable). Off-by-default and private only; default normal generation unchanged. Does **not** claim all-assets
+  support yet. No OCR/Chandra/cloud-OCR rerun, no judge, no repair, no numeric verification, no frontend/API change,
+  no broad registry/scanner/auto-discovery. Tables resolve to faithful reconstructed Markdown tables + a role-aware
+  simplified study table; non-table figures resolve to a safe relative `assets/<name>` image with explanation; a real
+  explanation sits beneath each inserted asset; orphan/duplicate tokens, table-as-image, data-URI/base64, and raw
+  private paths all block honestly. (Host note: the real provider run needs `openai` — present in the project `.venv`
+  and the Docker image, not bare host Python.)
+- **177G real-run result (one DeepSeek call).** `artifact_name=multi_asset_asset_aware_generation` · `slice=177G` ·
+  `status=completed` · `source_label=ensemble` · `off_by_default=true` · `normal_generation_default_unchanged=true` ·
+  `generation_scope=single_private_ensemble_multi_asset_generation` · `wrapper_slice=false` ·
+  `manifest_consumer=false` · `coverage_packet_only=false` · `auto_discovery_enabled=false` ·
+  `all_assets_claimed=false` · `descriptor_ready_count=3` (`table_descriptor_count=2`,
+  `non_table_figure_descriptor_count=1`, `chart_or_graph_descriptor_count=0`) ·
+  `descriptor_missing_for_generation_count=0` · `diagram_caption_descriptor_gap=false` ·
+  `multi_asset_requirement_met=true` · `provider_call_made=true` · `provider_name_closed=deepseek` ·
+  `writer_generation_run=true` · `generation_behavior_changed=true` · `distinct_inserted_asset_count=3` ·
+  `asset_tokens_inserted_count=3` · `inserted_table_count=2` · `inserted_non_table_figure_count=1` ·
+  `all_available_useful_descriptors_considered=true` · `same_single_table_figure_output=false` ·
+  `not_byte_identical_to_prior_single_asset_output=true` · `orphan_asset_token_count=0` ·
+  `duplicate_inserted_asset_count=0` · `tables_rendered_as_real_tables=true` · `tables_inserted_as_images=false` ·
+  `figures_inserted_with_relative_assets=true` · figure explanation/reading-steps/exam-takeaway all true ·
+  `render_status=rendered` · `rendered_html_written=true` · `raw_private_paths_in_rendered_html=false` ·
+  `broken_image_marker_detected=false` · `data_image_used=false` · `base64_used=false` · `ocr_rerun=false` ·
+  `chandra_used=false` · `cloud_ocr_used=false` · `numeric_verification_claimed=false` · `frontend_api_changed=false` ·
+  `judge_ready=false` · `repair_ready=false` · `blocked_by=none` ·
+  `recommended_next_step=operator_read_multi_asset_generated_guide`. Private rendered HTML (gitignored, operator-only
+  path on runner stderr) structurally has **4 `<table>`** (2 faithful + 2 simplified) + **1 `<img>`** relative figure
+  asset, 0 leftover `{{asset:...}}` tokens, no data-URI/base64, no private-path leak.
+  **Operator must open the private rendered HTML and confirm: it reads as a real generated study guide; it is NOT the
+  same single-table/single-figure output as before; ≥3 distinct assets are inserted, each with a real explanation;
+  tables are real reconstructed/simplified tables (not screenshots); the non-table figure has useful
+  explanation/how-to-read/exam takeaway; no orphan tokens; no duplicate insertions; no broken image; no visible raw
+  private path; the guide remains useful for studying.** Do not commit 177G until the operator confirms.
+
+## Prior position (177E — real private run completed; not committed at the time of 177G)
+- **Slice 177E** added a default-off normal-pipeline dry-run hook
+  (`pipeline/asset_companion_pipeline_hook.py`) calling the 177D seam only when explicitly enabled; default config
+  returns guide Markdown byte-for-byte unchanged. 177E is now part of trunk HEAD `c723dd2`.
 
 ## Prior position (177D — committed/merged/pushed `8106f88`)
 - **Slice 177D** added the explicit off-by-default insertion seam
