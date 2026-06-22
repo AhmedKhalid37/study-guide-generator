@@ -5,6 +5,69 @@
 
 ---
 
+## Phase 4 product path — **Slice 177D: off-by-default asset-companion insertion seam; real private artifact produced; operator review pending; NOT committed.**
+
+- **phase=Phase 4 (off-by-default companion-insertion seam)** · **slice=177D** ·
+  **branch=`slice177d-off-by-default-asset-companion-insertion`** (off updated trunk
+  `chrome-renderer-v1` with **177C committed/merged/pushed (`fb1a7b0`)** as the
+  full-guide preview proof) ·
+  **module=`pipeline/asset_companion_insertion.py`**
+  (pure seam `insert_companion_section(guide_md, combined_md, *, enabled=False)` +
+  `run_asset_companion_insertion(...)` / `main()`; narrow gated seam — no new framework) ·
+  **runner=`test_scripts/run_asset_companion_insertion_private.py`** ·
+  **test=`test_scripts/test_asset_companion_insertion.py`** ·
+  **doc=`docs/ASSET_COMPANION_INSERTION_SEAM.md`** ·
+  **judge_ready=false** · **repair_ready=false**.
+- **Lineage / scope.** 177C proved a standalone preview producer can compose the accepted
+  177B combined companion into a real private full guide. 177D proves the **same insertion**
+  can be done through an explicit **off-by-default** seam that future normal generation
+  *could* call. The pure seam returns the guide **byte-for-byte unchanged** unless
+  `enabled=True` is passed; normal app generation never passes it, so default generation
+  behavior is untouched. Only the private runner opts in (`ENABLE_INSERTION_SEAM=1`). This
+  proves **one** gated insertion seam only — not all tables/figures, not a frontend/API
+  rollout, not a normal-generation default change. No provider call, no generation/OCR
+  rerun, no judge, no repair, no cloud OCR, no Chandra, no broad OCR, no numeric
+  verification, no broad asset registry/framework.
+- **Insertion location is deterministic + content-agnostic.** `pick_insertion_point(...)`
+  inserts before a trailing generic summary-like section if present
+  (`before_trailing_summary`), else appends at the end (`appended_at_end`). The real
+  ensemble guide had no such trailing section, so the real run reported
+  `insertion_location=appended_at_end`.
+- **Real private run (no provider call).** `artifact_name=asset_companion_insertion_seam` ·
+  `slice=177D` · `status=completed` · `source_label=ensemble` · `off_by_default=true` ·
+  `normal_generation_default_unchanged=true` · `private_runner_enabled=true` ·
+  `input_full_guide_source=private_ensemble_full_guide` · `input_full_guide_available=true` ·
+  `input_full_guide_gitignored=true` ·
+  `combined_companion_source=private_177b_or_177c_combined_asset_companion` ·
+  `combined_companion_available=true` · `combined_companion_gitignored=true` ·
+  `insertion_mode=gated_private_companion_section` · `insertion_location=appended_at_end` ·
+  `asset_companion_section_inserted=true` · `relative_asset_refs_preserved=true` ·
+  `private_inserted_guide_written=true` · `private_inserted_guide_gitignored=true` ·
+  `render_format=html` · `render_status=rendered` · `normal_guide_content_present=true` ·
+  `table_companion_inserted=true` · `faithful_table_present=true` ·
+  `role_aware_simplified_table_present=true` · `simplified_table_is_row_reduced_copy=false` ·
+  `simplified_table_is_study_oriented=true` · `figure_companion_inserted=true` ·
+  `figure_visual_present=true` · `figure_visual_type_closed=flow_or_structure_diagram` ·
+  `figure_visual_is_non_table_figure=true` · table/matrix/grid/text-only/sliver all false ·
+  `figure_explanation_present=true` · `figure_reading_steps_present=true` ·
+  `figure_exam_takeaway_present=true` · `raw_private_paths_in_rendered_html=false` ·
+  `broken_image_marker_detected=false` · `data_image_used=false` · `base64_image_used=false` ·
+  `provider_call_made=false` · `generation_rerun=false` · `generation_behavior_changed=false` ·
+  `frontend_api_changed=false` · `judge_ready=false` · `repair_ready=false` · `blocked_by=none` ·
+  `recommended_next_step=operator_read_private_asset_companion_insertion_output`.
+- **Validation.** `python -m compileall api pipeline test_scripts` OK ·
+  `test_asset_companion_insertion.py` all pass · 177C/177B/177A/176X regression tests still
+  pass · `git diff --check` clean. No-leak sweep clean (closed labels only; no private
+  paths/raw content/screenshots/base64 in committed files).
+- **Status / next.** Implemented; real private run completed (no provider call); **NOT
+  committed — stop for operator visual review of the private inserted-guide HTML.** Operator
+  must open the private HTML and confirm it reads as a full guide, the companion section is
+  inserted at a sensible location, both accepted companion blocks appear, the relative image
+  renders, there is no broken-image indicator, and no raw private path is visible. After
+  operator acceptance, commit on the slice branch and ff-merge to trunk.
+
+---
+
 ## Phase 4 product path — **Slice 177C: full-guide private preview with combined asset companion inserted; operator review pending.**
 
 - **phase=Phase 4 (full-guide asset-companion preview proof)** · **slice=177C** ·

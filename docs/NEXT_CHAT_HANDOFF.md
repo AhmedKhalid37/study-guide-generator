@@ -6,11 +6,40 @@
 > stable overview see `PROJECT_CONTEXT.md`; canonical brief is `../CLAUDE.md`.
 
 ## Current position
-- **Working tree:** branch `slice177c-full-guide-asset-companion-preview` (off updated trunk `chrome-renderer-v1`
-  with **177B committed/merged/pushed (`49ee0a1`) as the combined table+figure companion**). **Slice 177C** inserts
-  the accepted 177B combined companion into an existing **real private generated full guide** (same ensemble lineage)
-  and renders **one** private full-guide HTML preview. **Implemented; real run completed (no provider call); NOT
-  committed — stop for operator visual review of the private full-guide preview HTML.**
+- **Working tree:** branch `slice177d-off-by-default-asset-companion-insertion` (off updated trunk
+  `chrome-renderer-v1` with **177C committed/merged/pushed (`fb1a7b0`) as the full-guide preview proof**).
+  **Slice 177D** adds an explicit **off-by-default** companion-insertion seam
+  (`pipeline/asset_companion_insertion.py`: `insert_companion_section(guide_md, combined_md, *, enabled=False)`)
+  that future normal generation *could* call, and produces **one** real private inserted-guide HTML artifact via
+  the private runner (`ENABLE_INSERTION_SEAM=1`). The pure seam returns the guide **byte-for-byte unchanged**
+  unless `enabled=True`; normal generation never enables it, so default behavior is untouched
+  (`off_by_default=true`, `normal_generation_default_unchanged=true`). **Implemented; real run completed (no
+  provider call); NOT committed — stop for operator visual review of the private inserted-guide HTML.**
+- **177D scope.** Proves **one** gated insertion seam only — not all tables/figures, **not** a frontend/API
+  rollout, **not** a normal-generation default change. Deterministic insertion location
+  (`before_trailing_summary` else `appended_at_end`; real run = `appended_at_end`). `module=pipeline/asset_companion_insertion.py`,
+  `runner=test_scripts/run_asset_companion_insertion_private.py`, `test=test_scripts/test_asset_companion_insertion.py`,
+  `doc=docs/ASSET_COMPANION_INSERTION_SEAM.md`. No provider call, no generation/OCR rerun, no judge, no repair, no
+  cloud OCR, no Chandra, no broad OCR, no numeric verification, no broad asset framework. Reuses the existing private
+  ensemble full guide + accepted 177B combined companion verbatim.
+- **177D real-run result (no provider call).** `artifact_name=asset_companion_insertion_seam` · `slice=177D` ·
+  `status=completed` · `off_by_default=true` · `normal_generation_default_unchanged=true` · `private_runner_enabled=true` ·
+  `input_full_guide_available=true` · `combined_companion_available=true` · `insertion_mode=gated_private_companion_section` ·
+  `insertion_location=appended_at_end` · `asset_companion_section_inserted=true` · `relative_asset_refs_preserved=true` ·
+  `private_inserted_guide_written=true` · `private_inserted_guide_gitignored=true` · `render_status=rendered` ·
+  `normal_guide_content_present=true` · `table_companion_inserted=true` · `figure_companion_inserted=true` ·
+  `figure_visual_type_closed=flow_or_structure_diagram` · table/matrix/grid/text-only/sliver all false ·
+  `raw_private_paths_in_rendered_html=false` · `broken_image_marker_detected=false` · `data_image_used=false` ·
+  `base64_image_used=false` · `provider_call_made=false` · `frontend_api_changed=false` · `judge_ready=false` ·
+  `repair_ready=false` · `blocked_by=none` · `recommended_next_step=operator_read_private_asset_companion_insertion_output`.
+  **Operator must open the private inserted-guide HTML and confirm it reads as a full guide, the companion section is
+  inserted at a sensible location, both companion blocks are visible/readable, the relative image renders, and there
+  are no raw private paths or broken-image indicators. After acceptance, commit on the slice branch and ff-merge to trunk.**
+
+## Prior position (177C — committed/merged/pushed `fb1a7b0`)
+- **Slice 177C** inserted the accepted 177B combined companion into an existing **real private generated full guide**
+  (same ensemble lineage) and rendered **one** private full-guide HTML preview. Operator accepted the rendered 177C
+  HTML; committed and integrated to trunk. Detail below is retained for lineage.
 - **177C lineage / scope.** 176X proved role-aware table simplification; 177A proved one writer-generated non-table
   figure companion; 177B composed those into one private combined companion guide; 177C proves the accepted
   table+figure companion can live inside a **realistic full study guide artifact**, not only a standalone companion

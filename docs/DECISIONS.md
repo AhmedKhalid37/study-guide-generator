@@ -8222,3 +8222,40 @@ read.
   (`recommended_next_step=operator_read_private_full_guide_asset_companion_preview`).
   177C is **not committed** by the implementer: it stops for operator visual review
   of the private full-guide preview HTML before any commit.
+
+## Slice 177D adds an off-by-default companion-insertion seam
+177C proved a **standalone preview producer** can compose the accepted 177B combined
+companion into a real private full guide. 177D moves the same insertion **one step
+closer to the normal guide pipeline** by exposing a single reusable hook,
+`insert_companion_section(guide_md, combined_md, *, enabled=False)` in
+`pipeline/asset_companion_insertion.py`, plus a private runner
+`run_asset_companion_insertion(...)`.
+- **Why a seam, not another standalone composer.** 177C's composer is a one-off
+  preview script. 177D's hook is shaped so future normal generation *could* call it
+  inline (`guide_md = insert_companion_section(guide_md, companion, enabled=flag)`)
+  without restructuring. Proving the seam now, gated off, de-risks a later wiring slice.
+- **Off-by-default is the whole point.** With `enabled=False` (the default, and what
+  normal generation uses) the hook returns the guide **byte-for-byte unchanged**, so
+  wiring it in changes nothing until a caller opts in. Only the private runner sets
+  `enabled=True` (`ENABLE_INSERTION_SEAM=1`). The closed summary records
+  `off_by_default=true` and `normal_generation_default_unchanged=true`; the disabled
+  runner path reports `blocked_by=seam_disabled` and writes no inserted guide. **Why:**
+  it must be impossible to accidentally change production generation while proving the
+  seam — the default path is a literal no-op.
+- **Deterministic, content-agnostic insertion location.** `pick_insertion_point(...)`
+  inserts **before** a trailing generic summary-like section (Summary / References /
+  Key takeaways / Further reading / Glossary / Conclusion / Wrap-up) if one exists
+  (`before_trailing_summary`), else appends at the end (`appended_at_end`). Only generic
+  heading words are matched — no raw guide text in code. The real ensemble guide had no
+  such trailing section, so the real run reported `appended_at_end`.
+- **Reuses 177B/177C safety verbatim.** Acceptance checks, asset copying, data-URI/
+  base64 refusal, raw-private-path refusal, gitignored-output enforcement, and the
+  values-only no-leak assert are imported from the accepted 177B/177C modules — 177D
+  adds only the gate and the location picker. Honest blocks mirror 177C plus
+  `seam_disabled`.
+- **No judge/repair/cloud OCR/Chandra/broad OCR/numeric verification, no frontend/API,
+  no broad asset framework.** `judge_ready=false`, `repair_ready=false`,
+  `frontend_api_changed=false`. Real run completed with the hard-pass closed summary
+  (`recommended_next_step=operator_read_private_asset_companion_insertion_output`). 177D
+  is **not committed** by the implementer: it stops for operator visual review of the
+  private inserted-guide HTML before any commit.
