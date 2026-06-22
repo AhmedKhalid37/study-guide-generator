@@ -8176,3 +8176,49 @@ is the next honest step after each was individually validated.
   (`recommended_next_step=operator_read_private_combined_asset_companion_guide`).
   177B is **not committed** by the implementer: it stops for operator visual review
   of the private combined HTML before any commit.
+
+## Slice 177C inserts the accepted combined companion into a full private guide preview
+177C is a **narrow private preview producer**
+(`pipeline/full_guide_asset_companion_preview.py`), not a broad asset framework. It
+takes the **accepted 177B combined companion** (176X table companion + 177A
+non-table figure companion) and inserts it into an **existing real private generated
+full study guide** (same ensemble lineage), then renders one private HTML preview.
+**Why:** 177B proved the table + figure companions can coexist in a *standalone*
+combined document; the next honest step is to prove they can live inside a
+*realistic full study guide artifact*, which is what an operator would actually
+read.
+- **One full-guide preview only.** This does not claim all tables or all figures in
+  the guide are solved; it stays private/off-by-default and changes no normal
+  frontend/API or production guide-generation behavior.
+- **Reuse, do not regenerate.** The preferred (and taken) path reuses the existing
+  private full guide **and** the accepted 177B combined companion verbatim — **no
+  provider call**, no generation/OCR rerun, no behavior change.
+  `provider_call_made=false`, `generation_rerun=false`,
+  `generation_behavior_changed=false`.
+- **Non-destructive deterministic placement.** The original guide content is
+  preserved verbatim and the companion is inserted under a deterministic trailing
+  `# Recovered visual/table companions` section, so placement never disturbs existing
+  guide sections. `normal_guide_content_present` is verified content-agnostically by
+  comparing the original guide's Markdown heading count against the rendered HTML
+  heading count (no raw guide text embedded in code).
+- **Acceptance is verified, not assumed.** The combined companion is validated by
+  closed-flag + structural checks before insertion: it must carry an accepted table
+  block (study-oriented simplified table, **not** a row-reduced copy) and an accepted
+  **non-table** figure block (never table/matrix/grid/text-only/partial-sliver) with
+  a safe relative image ref. Honest blocks: `full_guide_not_found`,
+  `combined_companion_not_found`, `combined_companion_missing_table`,
+  `combined_companion_missing_figure`, `combined_companion_figure_table_like`,
+  `combined_companion_table_row_reduced`, `relative_assets_unavailable`,
+  `data_uri_or_base64_refused`, `raw_private_path_in_render`,
+  `unsafe_private_artifact_path`, `render_failed`.
+- **No inlined image data, no private paths.** The companion figure asset is copied
+  as a safe private-relative `assets/<name>` ref; the render is refused if it would
+  contain a `data:` URI or a raw private path. Committed output is a closed summary
+  only; the no-leak assert scans **values** (keys such as `base64_image_used` are
+  controlled closed vocabulary).
+- **No judge/repair/cloud OCR/Chandra/broad OCR/numeric verification.**
+  `judge_ready=false`, `repair_ready=false`.
+- Real run completed with the hard-pass closed summary
+  (`recommended_next_step=operator_read_private_full_guide_asset_companion_preview`).
+  177C is **not committed** by the implementer: it stops for operator visual review
+  of the private full-guide preview HTML before any commit.

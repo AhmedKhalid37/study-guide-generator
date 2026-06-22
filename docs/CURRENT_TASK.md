@@ -5,7 +5,68 @@
 
 ---
 
-## Phase 4 product path — **Slice 177B: combined table + figure companion private guide; operator review pending.**
+## Phase 4 product path — **Slice 177C: full-guide private preview with combined asset companion inserted; operator review pending.**
+
+- **phase=Phase 4 (full-guide asset-companion preview proof)** · **slice=177C** ·
+  **branch=`slice177c-full-guide-asset-companion-preview`** (off updated trunk
+  `chrome-renderer-v1` with **177B committed/merged/pushed** as the combined
+  table+figure companion) ·
+  **module=`pipeline/full_guide_asset_companion_preview.py`**
+  (`run_full_guide_asset_companion_preview(...)` / `main()`; narrow private
+  preview producer — no new framework) ·
+  **runner=`test_scripts/run_full_guide_asset_companion_preview.py`** ·
+  **test=`test_scripts/test_full_guide_asset_companion_preview.py`** ·
+  **doc=`docs/FULL_GUIDE_ASSET_COMPANION_PREVIEW.md`** ·
+  **judge_ready=false** · **repair_ready=false**.
+- **Lineage / scope.** 176X proved role-aware table simplification; 177A proved one
+  writer-generated non-table figure companion; 177B composed those accepted outputs into
+  one private rendered combined companion guide. 177C inserts that **accepted 177B
+  combined companion** into an existing **real private generated full guide** (same
+  ensemble lineage) and renders one private HTML preview. This proves the accepted
+  table+figure companion can live inside a **realistic full study guide artifact**, not
+  only in a standalone companion document. This proves **one** full-guide preview only —
+  not all tables/figures. No provider call, no generation/OCR rerun, no frontend/API, no
+  judge, no repair, no cloud OCR, no Chandra, no broad OCR, no numeric verification.
+  Preferred (and taken) path reuses the existing private full guide + accepted 177B
+  combined companion verbatim.
+- **Real private run (no provider call).** `artifact_name=full_guide_asset_companion_preview` ·
+  `slice=177C` · `status=completed` · `source_label=ensemble` ·
+  `input_full_guide_source=private_ensemble_full_guide` · `input_full_guide_available=true` ·
+  `input_full_guide_gitignored=true` ·
+  `combined_companion_source=private_177b_combined_asset_companion_guide` ·
+  `combined_companion_available=true` · `combined_companion_gitignored=true` ·
+  `private_full_preview_written=true` · `private_full_preview_gitignored=true` ·
+  `render_format=html` · `render_status=rendered` · `normal_guide_content_present=true` ·
+  `asset_companion_section_inserted=true` · `table_companion_inserted=true` ·
+  `faithful_table_present=true` · `table_explanation_present=true` ·
+  `role_aware_simplified_table_present=true` · `simplified_table_is_row_reduced_copy=false` ·
+  `simplified_table_is_study_oriented=true` · `figure_companion_inserted=true` ·
+  `figure_visual_present=true` · `figure_visual_type_closed=flow_or_structure_diagram` ·
+  `figure_visual_is_non_table_figure=true` · table/matrix/grid/text-only/sliver all false ·
+  `figure_explanation_present=true` · `figure_reading_steps_present=true` ·
+  `figure_exam_takeaway_present=true` · `relative_asset_refs_preserved=true` ·
+  `raw_private_paths_in_rendered_html=false` · `broken_image_marker_detected=false` ·
+  `data_image_used=false` · `base64_image_used=false` · `provider_call_made=false` ·
+  `generation_rerun=false` · `generation_behavior_changed=false` · `cloud_ocr_used=false` ·
+  `numeric_verification_claimed=false` · `frontend_api_changed=false` · `judge_ready=false` ·
+  `repair_ready=false` · `blocked_by=none` ·
+  `recommended_next_step=operator_read_private_full_guide_asset_companion_preview`.
+- **No-leak.** No raw guide/table/figure/caption/source/OCR text, descriptor JSON, image
+  bytes, base64/data URI, prompts, responses, provider payloads, private paths, source
+  filenames, hashes, or byte counts in committed files. Closed summary scans values only
+  (keys are controlled closed vocabulary). The private preview HTML + assets live under the
+  gitignored private dir; path handed to operator out-of-band, never in docs.
+- **Validation.** `compileall api pipeline test_scripts` clean;
+  `test_full_guide_asset_companion_preview.py` PASS; existing
+  `test_combined_asset_companion_guide.py`, `test_writer_generated_figure_companion.py`,
+  `test_writer_generated_table_companion.py`, `test_non_table_figure_descriptor.py` PASS;
+  `git diff --check` clean.
+- **Status.** Implemented; real private run completed with hard-pass closed summary.
+  **NOT committed — stop for operator visual review of the private full-guide preview HTML.**
+
+---
+
+## Phase 4 product path — **Slice 177B: combined table + figure companion private guide; committed/merged/pushed (`49ee0a1`).**
 
 - **phase=Phase 4 (combined table+figure companion proof)** · **slice=177B** ·
   **branch=`slice177b-combined-asset-companion-guide`** (off updated trunk
